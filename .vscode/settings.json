@@ -1,0 +1,6 @@
+{
+  "python.defaultInterpreterPath": "e:\\Editor_SIH\\Fade\\.venv\\Scripts\\python.exe",
+  "python.analysis.extraPaths": ["e:\\Editor_SIH\\Fade\\.venv\\Lib\\site-packages"],
+  "python.terminal.activateEnvironment": true,
+  "pyrefly.pythonInterpreter": "e:\\Editor_SIH\\Fade\\.venv\\Scripts\\python.exe"
+}
