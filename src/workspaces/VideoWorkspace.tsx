@@ -164,34 +164,30 @@ function PropertiesPanel() {
 const layoutJson: FlexLayout.IJsonModel = {
   global: {
     tabSetTabStripHeight: 30,
-    tabSetHeaderHeight:   30,
-    borderBarSize:        0,
-    splitterSize:         5,
-    splitterExtra:        4,
+    tabSetHeaderHeight: 30,
+    borderBarSize: 0,
+    splitterSize: 2,    
+    splitterExtra: 2,
   },
   borders: [],
   layout: {
-    type: 'row',
+    type: 'column',         
     weight: 100,
     children: [
-      // Top area
-      {
+       {
         type: 'row',
-        weight: 70,
+        weight: 72,
         children: [
-          // Left: Library
           {
             type: 'tabset',
             weight: 18,
             children: [{ type: 'tab', name: 'Library', component: 'library', enableClose: false }],
           },
-          // Center: Viewport
           {
             type: 'tabset',
             weight: 52,
             children: [{ type: 'tab', name: 'Viewport', component: 'viewport', enableClose: false }],
           },
-          // Right: Effects + Properties as tabs
           {
             type: 'tabset',
             weight: 30,
@@ -202,43 +198,38 @@ const layoutJson: FlexLayout.IJsonModel = {
           },
         ],
       },
-      // Bottom: Timeline full width
-      {
+       {
         type: 'tabset',
-        weight: 30,
+        weight: 28,
         children: [{ type: 'tab', name: 'Timeline', component: 'timeline', enableClose: false }],
       },
     ],
   },
 }
 
-const FACTORY: Record<string, React.ReactNode> = {
-  library: <LibraryPanel />,
-  viewport: <ViewportPanel />,
-  timeline: <TimelinePanel />,
-  effects: <EffectsPanel />,
-  properties: <PropertiesPanel />,
+ let _model: FlexLayout.Model | null = null
+function getModel(): FlexLayout.Model {
+  if (!_model) _model = FlexLayout.Model.fromJson(layoutJson)
+  return _model
 }
 
 export default function VideoWorkspace() {
-  const modelRef = React.useRef<FlexLayout.Model | null>(null)
-
-  if (!modelRef.current) {
-    modelRef.current = FlexLayout.Model.fromJson(layoutJson)
-  }
+  const model = getModel()
 
   const factory = (node: FlexLayout.TabNode) => {
-    const key = node.getComponent() ?? ''
-    return FACTORY[key] ?? <div className="vp">Unknown panel</div>
+    switch (node.getComponent()) {
+      case 'library':    return <LibraryPanel />
+      case 'viewport':   return <ViewportPanel />
+      case 'timeline':   return <TimelinePanel />
+      case 'effects':    return <EffectsPanel />
+      case 'properties': return <PropertiesPanel />
+      default:           return <div className="vp" />
+    }
   }
 
   return (
     <div className="video-ws">
-      <FlexLayout.Layout
-        model={modelRef.current}
-        factory={factory}
-        realtimeResize
-      />
+      <FlexLayout.Layout model={model} factory={factory} realtimeResize />
     </div>
   )
 }

@@ -5,15 +5,12 @@
   overflow: hidden;
 }
 
-/* ── flexlayout-react dark theme overrides ─────────────── */
-
-/* Root container */
-.flexlayout__layout {
+ 
+ .flexlayout__layout {
   background: var(--bg-base) !important;
 }
 
-/* Tabset (panel container) */
-.flexlayout__tabset {
+ .flexlayout__tabset {
   background: var(--bg-surface) !important;
   border: 1px solid var(--border) !important;
   border-radius: 6px !important;
@@ -26,16 +23,14 @@
   background: var(--bg-surface) !important;
 }
 
-/* Tab strip (header bar) */
-.flexlayout__tab_header_outer,
+ .flexlayout__tab_header_outer,
 .flexlayout__tabset_header {
   background: var(--bg-surface) !important;
   border-bottom: 1px solid var(--border) !important;
   height: 30px !important;
 }
 
-/* Individual tabs */
-.flexlayout__tab_button {
+ .flexlayout__tab_button {
   color: var(--text-2) !important;
   font-size: 11px !important;
   font-family: 'Inter', sans-serif !important;
@@ -133,7 +128,7 @@
   background: #6c63ff44 !important;
 }
 
-/* ── Panel content ────────────────────────────────────────── */
+/*   Panel content   */
 
 .vp {
   height: 100%;

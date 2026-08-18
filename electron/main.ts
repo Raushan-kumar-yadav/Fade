@@ -6,6 +6,11 @@ const isDev = process.env.NODE_ENV === 'development'
 let mainWindow: BrowserWindow | null = null
 let pyProcess:  ChildProcess  | null = null
 
+// Suppress harmless Chromium dev-mode warnings
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
+app.commandLine.appendSwitch('disable-dev-shm-usage')
+app.commandLine.appendSwitch('no-sandbox')
+
 // Start FastAPI backend 
 function startPython(): void {
   const scriptPath = path.join(__dirname, '../backend/main.py')
@@ -43,6 +48,13 @@ function createWindow(): void {
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools({ mode: 'detach' })
+     mainWindow.webContents.on('console-message', (_e, _level, message) => {
+      if (
+        message.includes('Autofill.enable') ||
+        message.includes('Autofill.setAddresses') ||
+        message.includes('Cast.enable')
+      ) return
+     })
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
