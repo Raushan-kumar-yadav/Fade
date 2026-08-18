@@ -1,14 +1,9 @@
 import React from 'react'
-import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels'
+import * as FlexLayout from 'flexlayout-react'
+import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
 
-function ResizeHandle({ vertical = false }: { vertical?: boolean }) {
-  return (
-    <PanelResizeHandle
-      className={`resize-handle ${vertical ? 'resize-handle--v' : 'resize-handle--h'}`}
-    />
-  )
-}
+// Panel content components  
 
 function LibraryPanel() {
   const items = [
@@ -23,7 +18,6 @@ function LibraryPanel() {
 
   return (
     <div className="vp">
-      <div className="vp__header">Library</div>
       <div className="vp__search">
         <input placeholder="Search assets…" />
       </div>
@@ -42,11 +36,15 @@ function LibraryPanel() {
 function ViewportPanel() {
   return (
     <div className="vp vp--viewport">
-      <div className="vp__header">Viewport</div>
       <div className="vp__screen">
-        <div style={{ textAlign: 'center', color: '#55555f' }}>
-          <div style={{ fontSize: 48 }}>◈</div>
-          <p style={{ fontSize: 12, marginTop: 10 }}>Drop video or select from Library</p>
+        <div className="vp__screen-empty">
+          <div className="vp__screen-icon">◈</div>
+          <p>Drop video or select from Library</p>
+          <div className="vp__screen-controls">
+            <button>⏮</button>
+            <button className="vp__screen-play">▶</button>
+            <button>⏭</button>
+          </div>
         </div>
       </div>
     </div>
@@ -55,29 +53,39 @@ function ViewportPanel() {
 
 function TimelinePanel() {
   const tracks = [
-    { label: 'Video', color: '#6c63ff', clips: [{ s: 0, w: 40 }, { s: 45, w: 30 }] },
-    { label: 'Audio', color: '#00d4aa', clips: [{ s: 0, w: 75 }] },
-    { label: 'FX', color: '#ff6584', clips: [{ s: 10, w: 15 }, { s: 55, w: 10 }] },
-    { label: 'Text',  color: '#FFD60A', clips: [{ s: 5,  w: 20 }] },
+    { label: 'Video', color: '#6c63ff', clips: [{ s: 0, w: 38 }, { s: 43, w: 28 }] },
+    { label: 'Audio', color: '#00d4aa', clips: [{ s: 0, w: 72 }] },
+    { label: 'FX',    color: '#ff6584', clips: [{ s: 8,  w: 14 }, { s: 52, w: 10 }] },
+    { label: 'Text',  color: '#FFD60A', clips: [{ s: 4,  w: 18 }] },
   ]
 
   return (
     <div className="vp vp--timeline">
-      <div className="vp__header">
-        Timeline
-        <div className="vp__toolbar">
-          <button>✂</button><button>⊕</button><button>⟲</button>
-          <span style={{ marginLeft: 'auto', color: '#55555f', fontSize: 10 }}>00:00:00</span>
-        </div>
+      <div className="vp__tl-toolbar">
+        <button title="Cut">✂</button>
+        <button title="Add">⊕</button>
+        <button title="Undo">⟲</button>
+        <button title="Redo">⟳</button>
+        <div className="vp__tl-sep" />
+        <button title="Zoom In">+</button>
+        <button title="Zoom Out">−</button>
+        <span className="vp__tl-time">00:00:00</span>
       </div>
-      <div className="vp__tracks">
+      <div className="vp__tl-tracks">
+        <div className="vp__tl-ruler">
+          {Array.from({ length: 11 }, (_, i) => (
+            <div key={i} className="vp__tl-ruler-mark">
+              <span>{(i * 10).toString().padStart(2, '0')}s</span>
+            </div>
+          ))}
+        </div>
         {tracks.map(t => (
           <div key={t.label} className="vp__track">
             <div className="vp__track-label">{t.label}</div>
             <div className="vp__track-lane">
               {t.clips.map((c, i) => (
                 <div key={i} className="vp__clip"
-                  style={{ left: `${c.s}%`, width: `${c.w}%`, background: t.color + '55', borderColor: t.color }} />
+                  style={{ left: `${c.s}%`, width: `${c.w}%`, background: t.color + '44', borderColor: t.color }} />
               ))}
             </div>
           </div>
@@ -89,117 +97,148 @@ function TimelinePanel() {
 
 function EffectsPanel() {
   const [active, setActive] = React.useState<string | null>(null)
-  const EFFECTS = ['Blur Out','Zoom In','Fade In','Newton Bounce','Vignette','Drop Shadow','Color Grade','Speed Ramp']
+  const EFFECTS = [
+    { name: 'Blur Out', icon: '⬚' },
+    { name: 'Zoom In', icon: '⊕' },
+    { name: 'Fade In', icon: '◐' },
+    { name: 'Newton Bounce',  icon: '↗' },
+    { name: 'Vignette', icon: '◉' },
+    { name: 'Drop Shadow', icon: '▣' },
+    { name: 'Color Grade', icon: '◈' },
+    { name: 'Speed Ramp', icon: '⚡' },
+  ]
 
   return (
     <div className="vp">
-      <div className="vp__header">Effects</div>
       <div className="vp__list">
         {EFFECTS.map(fx => (
-          <div key={fx}
-            className={`vp__item vp__item--effect${active === fx ? ' vp__item--active' : ''}`}
-            onClick={() => setActive(fx)}>
-            <span className="vp__icon" style={{ color: '#6c63ff' }}>✦</span>
-            {fx}
+          <div key={fx.name}
+            className={`vp__item vp__item--effect${active === fx.name ? ' vp__item--active' : ''}`}
+            onClick={() => setActive(fx.name)}>
+            <span className="vp__icon">{fx.icon}</span>
+            {fx.name}
           </div>
         ))}
       </div>
-      {active && (
-        <div className="vp__detail">
-          <div className="vp__detail-title">{active}</div>
-          {[
-            { l: 'Intensity', min: 0,    max: 100, def: 50  },
-            { l: 'Duration',  min: 1,    max: 60,  def: 15  },
-          ].map(p => (
-            <label key={p.l} className="vp__prop">
-              {p.l}
-              <input type="range" min={p.min} max={p.max} defaultValue={p.def} />
-            </label>
-          ))}
-          <label className="vp__prop">
-            Easing
-            <select>
-              <option>ease_in_out</option>
-              <option>newton_bounce</option>
-              <option>ease_out_cubic</option>
-              <option>linear</option>
-            </select>
-          </label>
-          <button className="vp__apply">Apply to Timeline</button>
-        </div>
-      )}
     </div>
   )
 }
 
 function PropertiesPanel() {
+  const PROPS = [
+    { l: 'Opacity', min: 0,   max: 100, def: 100 },
+    { l: 'Scale X', min: 10,  max: 300, def: 100 },
+    { l: 'Scale Y',  min: 10,  max: 300, def: 100 },
+    { l: 'Rotation', min:-180, max: 180, def: 0   },
+    { l: 'X Offset', min:-500, max: 500, def: 0   },
+    { l: 'Y Offset', min:-500, max: 500, def: 0   },
+  ]
+
   return (
-    <div className="vp">
-      <div className="vp__header">Properties</div>
-      <div className="vp__list" style={{ gap: 12, padding: 12 }}>
-        {[
-          { l: 'Opacity',  min: 0,   max: 100, def: 100 },
-          { l: 'Scale X',  min: 10,  max: 300, def: 100 },
-          { l: 'Scale Y',  min: 10,  max: 300, def: 100 },
-          { l: 'Rotation', min:-180, max: 180, def: 0   },
-        ].map(p => (
-          <label key={p.l} className="vp__prop">
-            {p.l}
+    <div className="vp vp--props">
+      {PROPS.map(p => (
+        <label key={p.l} className="vp__prop">
+          <span>{p.l}</span>
+          <div className="vp__prop-row">
             <input type="range" min={p.min} max={p.max} defaultValue={p.def} />
-          </label>
-        ))}
-        <label className="vp__prop">
-          Easing
-          <select>
-            <option>ease_in_out</option><option>newton_bounce</option>
-            <option>ease_out_cubic</option><option>linear</option>
-          </select>
+            <span className="vp__prop-val">{p.def}</span>
+          </div>
         </label>
-        <button className="vp__apply">Apply</button>
-      </div>
+      ))}
+      <label className="vp__prop">
+        <span>Easing</span>
+        <select>
+          <option>ease_in_out</option>
+          <option>newton_bounce</option>
+          <option>ease_out_cubic</option>
+          <option>linear</option>
+        </select>
+      </label>
+      <button className="vp__apply">Apply to Selection</button>
     </div>
   )
 }
 
+ 
+
+const layoutJson: FlexLayout.IJsonModel = {
+  global: {
+    tabSetTabStripHeight: 30,
+    tabSetHeaderHeight:   30,
+    borderBarSize:        0,
+    splitterSize:         5,
+    splitterExtra:        4,
+  },
+  borders: [],
+  layout: {
+    type: 'row',
+    weight: 100,
+    children: [
+      // Top area
+      {
+        type: 'row',
+        weight: 70,
+        children: [
+          // Left: Library
+          {
+            type: 'tabset',
+            weight: 18,
+            children: [{ type: 'tab', name: 'Library', component: 'library', enableClose: false }],
+          },
+          // Center: Viewport
+          {
+            type: 'tabset',
+            weight: 52,
+            children: [{ type: 'tab', name: 'Viewport', component: 'viewport', enableClose: false }],
+          },
+          // Right: Effects + Properties as tabs
+          {
+            type: 'tabset',
+            weight: 30,
+            children: [
+              { type: 'tab', name: 'Effects',    component: 'effects',    enableClose: false },
+              { type: 'tab', name: 'Properties', component: 'properties', enableClose: false },
+            ],
+          },
+        ],
+      },
+      // Bottom: Timeline full width
+      {
+        type: 'tabset',
+        weight: 30,
+        children: [{ type: 'tab', name: 'Timeline', component: 'timeline', enableClose: false }],
+      },
+    ],
+  },
+}
+
+const FACTORY: Record<string, React.ReactNode> = {
+  library: <LibraryPanel />,
+  viewport: <ViewportPanel />,
+  timeline: <TimelinePanel />,
+  effects: <EffectsPanel />,
+  properties: <PropertiesPanel />,
+}
+
 export default function VideoWorkspace() {
+  const modelRef = React.useRef<FlexLayout.Model | null>(null)
+
+  if (!modelRef.current) {
+    modelRef.current = FlexLayout.Model.fromJson(layoutJson)
+  }
+
+  const factory = (node: FlexLayout.TabNode) => {
+    const key = node.getComponent() ?? ''
+    return FACTORY[key] ?? <div className="vp">Unknown panel</div>
+  }
+
   return (
     <div className="video-ws">
-      <PanelGroup orientation="horizontal" className="panel-group">
-        {/*  Library */}
-        <Panel defaultSize={15} minSize={10}>
-          <LibraryPanel />
-        </Panel>
-
-        <ResizeHandle />
-
-        {/*   Viewport and Timeline */}
-        <Panel defaultSize={60} minSize={30}>
-          <PanelGroup orientation="vertical">
-            <Panel defaultSize={70} minSize={30}>
-              <ViewportPanel />
-            </Panel>
-            <ResizeHandle vertical />
-            <Panel defaultSize={30} minSize={15}>
-              <TimelinePanel />
-            </Panel>
-          </PanelGroup>
-        </Panel>
-
-        <ResizeHandle />
-
-        {/*   Effects + Properties */}
-        <Panel defaultSize={25} minSize={15}>
-          <PanelGroup orientation="vertical">
-            <Panel defaultSize={55} minSize={20}>
-              <EffectsPanel />
-            </Panel>
-            <ResizeHandle vertical />
-            <Panel defaultSize={45} minSize={20}>
-              <PropertiesPanel />
-            </Panel>
-          </PanelGroup>
-        </Panel>
-      </PanelGroup>
+      <FlexLayout.Layout
+        model={modelRef.current}
+        factory={factory}
+        realtimeResize
+      />
     </div>
   )
 }
