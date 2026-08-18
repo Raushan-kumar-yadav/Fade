@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import TitleBar        from './components/TitleBar'
+import TitleBar from './components/TitleBar'
 import HomeWorkspace   from './workspaces/HomeWorkspace'
-import AIWorkspace     from './workspaces/AIWorkspace'
+import AIWorkspace from './workspaces/AIWorkspace'
 import VideoWorkspace  from './workspaces/VideoWorkspace'
 import AudioWorkspace  from './workspaces/AudioWorkspace'
 import ExportWorkspace from './workspaces/ExportWorkspace'
@@ -10,10 +10,10 @@ import './App.css'
 type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export'
 
 const WORKSPACES: Record<TabId, React.FC> = {
-  home:   HomeWorkspace,
-  ai:     AIWorkspace,
-  video:  VideoWorkspace,
-  audio:  AudioWorkspace,
+  home: HomeWorkspace,
+  ai: AIWorkspace,
+  video: VideoWorkspace,
+  audio: AudioWorkspace,
   export: ExportWorkspace,
 }
 
