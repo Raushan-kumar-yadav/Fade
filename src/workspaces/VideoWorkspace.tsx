@@ -55,7 +55,7 @@ function TimelinePanel() {
   const tracks = [
     { label: 'Video', color: '#6c63ff', clips: [{ s: 0, w: 38 }, { s: 43, w: 28 }] },
     { label: 'Audio', color: '#00d4aa', clips: [{ s: 0, w: 72 }] },
-    { label: 'FX',    color: '#ff6584', clips: [{ s: 8,  w: 14 }, { s: 52, w: 10 }] },
+    { label: 'FX', color: '#ff6584', clips: [{ s: 8,  w: 14 }, { s: 52, w: 10 }] },
     { label: 'Text',  color: '#FFD60A', clips: [{ s: 4,  w: 18 }] },
   ]
 
@@ -218,13 +218,13 @@ export default function VideoWorkspace() {
 
   const factory = (node: FlexLayout.TabNode) => {
     switch (node.getComponent()) {
-      case 'library':    return <LibraryPanel />
-      case 'viewport':   return <ViewportPanel />
-      case 'timeline':   return <TimelinePanel />
-      case 'effects':    return <EffectsPanel />
+      case 'library': return <LibraryPanel />
+      case 'viewport': return <ViewportPanel />
+      case 'timeline': return <TimelinePanel />
+      case 'effects': return <EffectsPanel />
       case 'properties': return <PropertiesPanel />
-      default:           return <div className="vp" />
-    }
+      default: return <div className="vp" />
+    } 
   }
 
   return (
