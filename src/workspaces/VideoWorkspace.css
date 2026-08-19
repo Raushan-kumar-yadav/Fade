@@ -242,53 +242,14 @@
 .vp__item--active { background: #6c63ff22 !important; color: #c4c0ff !important; }
 .vp__icon { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
 
-/* Viewport */
+/* Viewport — ViewportWidget manages its own layout */
 .vp--viewport {
-  background: #09090b !important;
-  padding: 0;
+  background: #111111 !important;
+  padding: 0 !important;
+  overflow: hidden;
 }
-.vp__screen {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  background: #000;
-  margin: 8px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-}
-.vp__screen-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  color: #55555f;
-}
-.vp__screen-icon { font-size: 52px; }
-.vp__screen-empty p { font-size: 12px; }
-.vp__screen-controls {
-  display: flex;
-  gap: 16px;
-  margin-top: 8px;
-}
-.vp__screen-controls button {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  color: var(--text-2);
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.15s;
-}
-.vp__screen-controls button:hover { color: #fff; border-color: #6c63ff; }
-.vp__screen-play {
-  background: #6c63ff !important;
-  border-color: #6c63ff !important;
-  color: #fff !important;
-  width: 44px !important;
-  height: 44px !important;
-  font-size: 16px !important;
-}
+
+
 
 /* Timeline — let the new React Timeline fill the panel completely */
 .vp--timeline {

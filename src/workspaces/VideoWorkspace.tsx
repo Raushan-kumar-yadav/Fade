@@ -3,6 +3,7 @@ import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
 import Timeline from './timeline/Timeline'
+import ViewportWidget from './viewport/ViewportWidget'
 
 // Panel content components  
 
@@ -35,21 +36,7 @@ function LibraryPanel() {
 }
 
 function ViewportPanel() {
-  return (
-    <div className="vp vp--viewport">
-      <div className="vp__screen">
-        <div className="vp__screen-empty">
-          <div className="vp__screen-icon">◈</div>
-          <p>Drop video or select from Library</p>
-          <div className="vp__screen-controls">
-            <button>⏮</button>
-            <button className="vp__screen-play">▶</button>
-            <button>⏭</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  return <ViewportWidget />
 }
 
 function TimelinePanel() {

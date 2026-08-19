@@ -1,0 +1,170 @@
+/* ─── ViewportWidget styles ─────────────────────────────────────────────────── */
+
+/* Tokens */
+:root {
+  --vw-bg:       #111111;
+  --vw-header:   #1e1e1e;
+  --vw-canvas:   #0a0a0a;
+  --vw-bar:      #1a1a1a;
+  --vw-border:   #111111;
+  --vw-btn:      #2a2a2a;
+  --vw-btn-h:    #3a3a3a;
+  --vw-text-1:   #cccccc;
+  --vw-text-2:   #888888;
+  --vw-accent:   #00ffcc;
+  --vw-play:     #4a90e2;
+}
+
+/* ── Root ─────────────────────────────────────────────────────────────────── */
+.vw-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--vw-bg);
+  overflow: hidden;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--vw-text-1);
+  user-select: none;
+}
+
+.vw-root--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+}
+
+
+/* ── Canvas ───────────────────────────────────────────────────────────────── */
+.vw-canvas {
+  flex: 1;
+  position: relative;
+  background: var(--vw-canvas);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Aspect-ratio frame (16:9) */
+.vw-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid #1e1e1e;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.vw-canvas__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #333333;
+  pointer-events: none;
+}
+
+.vw-canvas__icon {
+  font-size: 44px;
+  opacity: 0.4;
+}
+
+.vw-canvas__hint {
+  font-size: 11px;
+  color: #444444;
+  margin: 0;
+}
+
+/* Timecode overlay (top-left, like real monitors) */
+.vw-canvas__tc-overlay {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: bold;
+  color: rgba(0, 255, 200, 0.45);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  text-shadow: 0 0 6px rgba(0, 255, 200, 0.3);
+}
+
+/* ── Playback Controls ────────────────────────────────────────────────────── */
+.vw-controls {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  background: var(--vw-bar);
+  border-top: 1px solid var(--vw-border);
+  flex-shrink: 0;
+}
+
+.vw-controls__tc {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--vw-accent);
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 8px rgba(0, 255, 200, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.vw-controls__transport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.vw-controls__right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.vw-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: var(--vw-btn);
+  color: var(--vw-text-2);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  transition: background 0.12s, color 0.12s, transform 0.08s;
+  font-family: inherit;
+}
+
+.vw-btn:hover {
+  background: var(--vw-btn-h);
+  color: var(--vw-text-1);
+}
+
+.vw-btn:active {
+  transform: scale(0.9);
+  background: #555555;
+}
+
+/* Play button — larger + blue accent */
+.vw-btn--play {
+  width: 36px;
+  height: 32px;
+  background: #1e3250;
+  color: var(--vw-play);
+  border-radius: 50%;
+}
+
+.vw-btn--play:hover {
+  background: #263f66;
+  color: #6aaff5;
+}
