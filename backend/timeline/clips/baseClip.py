@@ -1,5 +1,6 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
+from backend.animation.transform import Transform
 
 
 class BaseClip(ABC):
@@ -10,11 +11,14 @@ class BaseClip(ABC):
 
     def __init__(self, clipId: str, startFrame: int, duration: int) -> None:
         self.clipId = clipId
-        self.startFrame  = startFrame
+        self.startFrame = startFrame
         self.duration = duration
-        self.effects: list = []   
+        self.effects: list = []   # list[BaseEffect]
         self.isSelected  = False
         self.isLocked = False
+
+        
+        self.transform = Transform()
 
     # Derived geometry  
     @property
@@ -23,6 +27,14 @@ class BaseClip(ABC):
 
     def overlaps(self, frame: int) -> bool:
         return self.startFrame <= frame < self.endFrame
+
+    def evaluateAll(self, frame: int) -> None:
+        """Update all animatable properties for the given timeline frame."""
+        lf = self.localFrame(frame)
+        self.transform.evaluateAll(lf)
+        for effect in self.effects:
+            if hasattr(effect, 'evaluateAll'):
+                effect.evaluateAll(lf)
 
     def localFrame(self, frame: int) -> int:
         """Convert timeline frame to clip-local frame."""
