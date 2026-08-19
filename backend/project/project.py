@@ -13,6 +13,7 @@ class ProjectSettings:
     preset : str = "fast"
     audioCodec : str = "aac"
     audioBitrate : str = "192k"
+    
 
 
 class Project:
@@ -27,6 +28,7 @@ class Project:
         self.totalFrame = totalFrame
         self.filePath : str | None = None
         self.isDirty = False
+        timelines : list = []
         self.settings = ProjectSettings()
 
     @property
@@ -53,7 +55,8 @@ class Project:
                 "preset": self.settings.preset,
                 "audioCodec": self.settings.audioCodec,
                 "audioBitrate": self.settings.audioBitrate,
-            }
+            },
+            "timelines" :self.timelines
         }
 
     @classmethod
@@ -65,9 +68,9 @@ class Project:
         totalFrame = data["totalFames"],)
 
         p.projectId = data["projectId"]
+        p.timelines = data["timelines"]
         s=data.get("settings",{})
         p.settings  = ProjectSettings(**s) if s else ProjectSettings()
-
         return p
 
     def save(self, path: str | None = None) -> str:
