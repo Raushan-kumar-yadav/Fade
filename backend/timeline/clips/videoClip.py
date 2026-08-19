@@ -104,7 +104,7 @@ class VideoClip(BaseClip):
         paint.setAlphaf(self.transform.opacity.get())
         paint.setBlendMode(BlendMode.skiaMode(int(self.blendMode.get())))
 
-        if self.mediaPath:
+        if self.assetId:
             self._renderMedia(canvas, paint, frame)
         else:
             self._renderSolid(canvas, paint)

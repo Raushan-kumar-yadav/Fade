@@ -1,18 +1,29 @@
 from __future__ import annotations
 import asyncio
+import os
 import socket
+import uuid
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from backend.engine.engine import Engine
+from backend.media.asset.mediaAsset import MediaAsset
 from backend.timeline.tracks.videoTrack import VideoTrack
+from backend.timeline.tracks.audioTrack import AudioTrack
 from backend.timeline.clips.videoClip import VideoClip
 
 engine = Engine()
 
-#   FastAPI app  
+# In-memory asset library:  assetId → MediaAsset
+_library: dict[str, MediaAsset] = {}
+
+# In-memory clip→track index map  (clipId → trackIndex)
+_clipTrackMap: dict[str, int] = {}
+
+# ── FastAPI app ────────────────────────────────────────────────────────────────
 app = FastAPI(title="Fade Backend")
 
 app.add_middleware(
@@ -23,24 +34,23 @@ app.add_middleware(
 )
 
 
-# Lifecycle  
+# ── Lifecycle ──────────────────────────────────────────────────────────────────
 
 @app.on_event("startup")
 async def startup() -> None:
-    """Create a default project and start the preview loop on startup."""
     engine.newProject()
 
-    # Add a default video 
-    vt = VideoTrack("Video 1")
-    clip = VideoClip(startFrame=0, duration=300, color=(74, 144, 226, 255))
-    vt.addClip(clip)
-    if engine.activeTimeline:
-        engine.activeTimeline.addTrack(vt)
+    # Seed three tracks so the UI has something to render against
+    for name in ["Video 1", "Video 2", "Video 3"]:
+        if engine.activeTimeline:
+            engine.activeTimeline.addTrack(VideoTrack(name))
+
+    engine.activeTimeline and engine.activeTimeline.addTrack(AudioTrack("Audio 1"))
 
     asyncio.create_task(engine.startPreviewLoop())
 
 
-#   Project routes  
+# ── Health / Project ───────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
@@ -61,7 +71,181 @@ def newProject(name: str = "Untitled Project",
     return {"status": "ok", "project": engine.project.toDict()}
 
 
-#   Playback routes  
+# ── Library routes ─────────────────────────────────────────────────────────────
+
+class ImportRequest(BaseModel):
+    filepath: str
+
+
+def _mediaType(filepath: str) -> str:
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}:
+        return "video"
+    if ext in {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".webp", ".gif"}:
+        return "image"
+    if ext in {".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a"}:
+        return "audio"
+    return "unknown"
+
+
+@app.get("/library/assets")
+def listAssets():
+    return [
+        {
+            "assetId":  a.assetId,
+            "filename": os.path.basename(a.filepath),
+            "filepath": a.filepath,
+            "type":     a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType),
+        }
+        for a in _library.values()
+    ]
+
+
+@app.post("/library/import")
+def importAsset(req: ImportRequest):
+    if not os.path.exists(req.filepath):
+        raise HTTPException(404, f"File not found: {req.filepath}")
+
+    # De-duplicate by path
+    for a in _library.values():
+        if a.filepath == req.filepath:
+            return {
+                "assetId":  a.assetId,
+                "filename": os.path.basename(a.filepath),
+                "filepath": a.filepath,
+                "type":     a.mediaType,
+            }
+
+    assetId = str(uuid.uuid4())
+    asset = MediaAsset(
+        filepath = req.filepath,
+        assetId  = assetId,
+    )
+    _library[assetId] = asset
+
+    return {
+        "assetId":  assetId,
+        "filename": os.path.basename(req.filepath),
+        "filepath": req.filepath,
+        "type":     asset.mediaType,
+    }
+
+
+@app.delete("/library/assets/{assetId}")
+def deleteAsset(assetId: str):
+    _library.pop(assetId, None)
+    return {"status": "ok"}
+
+
+# ── Timeline routes ────────────────────────────────────────────────────────────
+
+class AddClipRequest(BaseModel):
+    assetId:    str
+    trackIndex: int
+    startFrame: int
+    duration:   int
+
+
+class MoveClipRequest(BaseModel):
+    clipId:     str
+    startFrame: int
+    trackIndex: int
+
+
+@app.post("/timeline/add-clip")
+def addClip(req: AddClipRequest):
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+
+    asset = _library.get(req.assetId)
+    if asset is None:
+        raise HTTPException(404, f"Asset {req.assetId!r} not in library — import it first")
+
+    if req.trackIndex >= len(tl.tracks):
+        raise HTTPException(400, f"Track index {req.trackIndex} out of range (have {len(tl.tracks)})")
+
+    track = tl.tracks[req.trackIndex]
+
+    clip = VideoClip(
+        startFrame = req.startFrame,
+        duration   = req.duration,
+        assetId    = req.assetId,
+    )
+
+    # Wire scheduler so the clip can decode immediately
+    if engine.scheduler:
+        clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
+        engine.scheduler.registerClip(clip.clipId, asset)
+
+    track.addClip(clip)
+    _clipTrackMap[clip.clipId] = req.trackIndex
+
+    return {
+        "clipId":     clip.clipId,
+        "trackId":    track.trackId,
+        "startFrame": clip.startFrame,
+        "duration":   clip.duration,
+        "assetId":    req.assetId,
+        "type":       "video",
+    }
+
+
+@app.post("/timeline/move-clip")
+def moveClip(req: MoveClipRequest):
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+
+    # Find and remove clip from its current track
+    clip = None
+    srcIdx = None
+    for i, track in enumerate(tl.tracks):
+        c = track.getClip(req.clipId)
+        if c:
+            clip   = c
+            srcIdx = i
+            track.removeClip(req.clipId)
+            break
+
+    if clip is None:
+        raise HTTPException(404, f"Clip {req.clipId!r} not found")
+
+    dstIdx = max(0, min(len(tl.tracks) - 1, req.trackIndex))
+    clip.startFrame = max(0, req.startFrame)
+    tl.tracks[dstIdx].addClip(clip)
+    _clipTrackMap[req.clipId] = dstIdx
+    return {"status": "ok"}
+
+
+@app.delete("/timeline/clips/{clipId}")
+def deleteClip(clipId: str):
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+
+    for track in tl.tracks:
+        if track.getClip(clipId):
+            # Unregister from scheduler to free frame cache
+            if engine.scheduler:
+                engine.scheduler.unregisterClip(clipId)
+            track.removeClip(clipId)
+            _clipTrackMap.pop(clipId, None)
+            return {"status": "ok"}
+
+    raise HTTPException(404, f"Clip {clipId!r} not found")
+
+
+@app.get("/timeline/state")
+def timelineState():
+    """Snapshot of tracks + clips — used by frontend on first load."""
+    tl = engine.activeTimeline
+    if tl is None:
+        return {"tracks": [], "totalFrames": 1800, "fps": 30}
+    return tl.toDict()
+
+
+# ── Playback routes ────────────────────────────────────────────────────────────
 
 @app.post("/playback/play")
 def play():
@@ -95,27 +279,24 @@ def perfStats():
     return engine.perfStats()
 
 
-# Frame routes  
+# ── Frame / thumbnail routes ───────────────────────────────────────────────────
 
 @app.get("/frame/{frame}")
 def getFrame(frame: int):
-   
     jpeg = engine.renderFrameJpeg(frame)
     return Response(content=jpeg, media_type="image/jpeg")
 
 
 @app.get("/thumbnail/{frame}")
 def getThumbnail(frame: int, w: int = 320, h: int = 180):
- 
     jpeg = engine.renderThumbnail(frame, w, h)
     return Response(content=jpeg, media_type="image/jpeg")
 
 
-# WebSocket preview stream  
+# ── WebSocket preview stream ───────────────────────────────────────────────────
 
 @app.websocket("/ws/preview")
 async def previewStream(ws: WebSocket):
-    
     await ws.accept()
     try:
         while True:
@@ -125,7 +306,7 @@ async def previewStream(ws: WebSocket):
         pass
 
 
-#   Entry point  
+# ── Entry point ────────────────────────────────────────────────────────────────
 
 def _findFreePort(start: int = 8000, end: int = 8010) -> int:
     for port in range(start, end + 1):

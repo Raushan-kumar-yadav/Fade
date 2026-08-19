@@ -1,63 +1,25 @@
-import React from 'react'
+import React, { useCallback } from 'react'
 import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
 import Timeline from './timeline/Timeline'
 import ViewportWidget from './viewport/ViewportWidget'
+import LibraryPanel from './library/LibraryPanel'
+import { addClipToTimeline, type AssetItem } from '../api/useApi'
 
-// Panel content components  
-
-function LibraryPanel() {
-  const items = [
-    { name: 'Clip_001.mp4', type: 'video' as const },
-    { name: 'Clip_002.mp4', type: 'video' as const },
-    { name: 'BRoll_sunset.mp4', type: 'video' as const },
-    { name: 'Intro_v3.mp4', type: 'video' as const },
-    { name: 'Title_card.png', type: 'image' as const },
-    { name: 'Music_bg.mp3', type: 'audio' as const },
-  ]
-  const ICON: Record<string, string> = { video: '▶', audio: '♪', image: '🖼' }
-
-  return (
-    <div className="vp">
-      <div className="vp__search">
-        <input placeholder="Search assets…" />
-      </div>
-      <div className="vp__list">
-        {items.map(i => (
-          <div key={i.name} className="vp__item">
-            <span className="vp__icon">{ICON[i.type]}</span>
-            {i.name}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ViewportPanel() {
-  return <ViewportWidget />
-}
-
-function TimelinePanel() {
-  return (
-    <div className="vp vp--timeline">
-      <Timeline />
-    </div>
-  )
-}
+// ── Panel wrappers ─────────────────────────────────────────────────────────────
 
 function EffectsPanel() {
   const [active, setActive] = React.useState<string | null>(null)
   const EFFECTS = [
-    { name: 'Blur Out', icon: '⬚' },
-    { name: 'Zoom In', icon: '⊕' },
-    { name: 'Fade In', icon: '◐' },
-    { name: 'Newton Bounce',  icon: '↗' },
-    { name: 'Vignette', icon: '◉' },
-    { name: 'Drop Shadow', icon: '▣' },
-    { name: 'Color Grade', icon: '◈' },
-    { name: 'Speed Ramp', icon: '⚡' },
+    { name: 'Blur Out',      icon: '⬚' },
+    { name: 'Zoom In',       icon: '⊕' },
+    { name: 'Fade In',       icon: '◐' },
+    { name: 'Newton Bounce', icon: '↗' },
+    { name: 'Vignette',      icon: '◉' },
+    { name: 'Drop Shadow',   icon: '▣' },
+    { name: 'Color Grade',   icon: '◈' },
+    { name: 'Speed Ramp',    icon: '⚡' },
   ]
 
   return (
@@ -78,12 +40,12 @@ function EffectsPanel() {
 
 function PropertiesPanel() {
   const PROPS = [
-    { l: 'Opacity', min: 0,   max: 100, def: 100 },
-    { l: 'Scale X', min: 10,  max: 300, def: 100 },
-    { l: 'Scale Y',  min: 10,  max: 300, def: 100 },
-    { l: 'Rotation', min:-180, max: 180, def: 0   },
-    { l: 'X Offset', min:-500, max: 500, def: 0   },
-    { l: 'Y Offset', min:-500, max: 500, def: 0   },
+    { l: 'Opacity',  min: 0,    max: 100, def: 100 },
+    { l: 'Scale X',  min: 10,   max: 300, def: 100 },
+    { l: 'Scale Y',  min: 10,   max: 300, def: 100 },
+    { l: 'Rotation', min: -180, max: 180, def: 0   },
+    { l: 'X Offset', min: -500, max: 500, def: 0   },
+    { l: 'Y Offset', min: -500, max: 500, def: 0   },
   ]
 
   return (
@@ -111,22 +73,22 @@ function PropertiesPanel() {
   )
 }
 
- 
+// ── FlexLayout model ───────────────────────────────────────────────────────────
 
 const layoutJson: FlexLayout.IJsonModel = {
   global: {
     tabSetTabStripHeight: 30,
     tabSetHeaderHeight: 30,
     borderBarSize: 0,
-    splitterSize: 2,    
+    splitterSize: 2,
     splitterExtra: 2,
   },
   borders: [],
   layout: {
-    type: 'column',         
+    type: 'column',
     weight: 100,
     children: [
-       {
+      {
         type: 'row',
         weight: 72,
         children: [
@@ -150,7 +112,7 @@ const layoutJson: FlexLayout.IJsonModel = {
           },
         ],
       },
-       {
+      {
         type: 'tabset',
         weight: 28,
         children: [{ type: 'tab', name: 'Timeline', component: 'timeline', enableClose: false }],
@@ -159,24 +121,39 @@ const layoutJson: FlexLayout.IJsonModel = {
   },
 }
 
- let _model: FlexLayout.Model | null = null
+let _model: FlexLayout.Model | null = null
 function getModel(): FlexLayout.Model {
   if (!_model) _model = FlexLayout.Model.fromJson(layoutJson)
   return _model
 }
 
+// ── Workspace ──────────────────────────────────────────────────────────────────
+
 export default function VideoWorkspace() {
   const model = getModel()
 
+  /** Double-click in Library → add asset to track 0 at current playhead */
+  const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
+    await addClipToTimeline(asset.assetId, trackIndex, 0, 300)
+    // Timeline will reflect on next backend poll — no optimistic update needed
+  }, [])
+
   const factory = (node: FlexLayout.TabNode) => {
     switch (node.getComponent()) {
-      case 'library': return <LibraryPanel />
-      case 'viewport': return <ViewportPanel />
-      case 'timeline': return <TimelinePanel />
-      case 'effects': return <EffectsPanel />
+      case 'library':
+        return <LibraryPanel onAddToTimeline={handleAddToTimeline} />
+      case 'viewport':
+        return <ViewportWidget />
+      case 'timeline':
+        return (
+          <div className="vp vp--timeline">
+            <Timeline />
+          </div>
+        )
+      case 'effects':    return <EffectsPanel />
       case 'properties': return <PropertiesPanel />
-      default: return <div className="vp" />
-    } 
+      default:           return <div className="vp" />
+    }
   }
 
   return (
