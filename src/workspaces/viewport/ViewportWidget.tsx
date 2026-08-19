@@ -47,8 +47,8 @@ export default function ViewportWidget() {
   const fps = 30;
 
   const isPlayingRef = useRef<boolean>(false);
-  const rafRef       = useRef<number>(0);
-  const lastRef      = useRef<number>(0);
+  const rafRef = useRef<number>(0);
+  const lastRef = useRef<number>(0);
 
   const stopPlayback = useCallback(() => {
     isPlayingRef.current = false;

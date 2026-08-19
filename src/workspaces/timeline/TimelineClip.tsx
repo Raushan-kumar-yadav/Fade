@@ -12,31 +12,20 @@ interface Props {
   trackHeight: number;
 }
 
-/**
- * TimelineClip
- *
- * Handles pointer interactions for a single clip:
- *   • Click left  8 px edge → trim left
- *   • Click right 8 px edge → trim right
- *   • Click body             → move (deferred, applied on release)
- *   • Slip tool + drag       → slip (live)
- *
- * During a move, the clip renders ghost-dim at its original position;
- * a floating ghost proxy is rendered at the Timeline root level.
- */
+ 
 const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, trackHeight }: Props) {
   const { state, dispatch } = useTimeline();
   const { zoomX, selectedTool, interaction } = state;
 
-  const clipRef     = useRef<HTMLDivElement>(null);
+  const clipRef = useRef<HTMLDivElement>(null);
   const isMeMoving  = interaction?.mode === 'move' && interaction.clipId === clip.id;
 
-  // ── Derived geometry ──────────────────────────────────────────────────────
+  // Derived geometry  
   const x     = clip.startFrame * zoomX;
   const width = Math.max(clip.duration * zoomX, 4);
   const color = CLIP_COLORS[clip.type];
 
-  // ── Cursor based on tool and hover position ───────────────────────────────
+  // Cursor based on tool  
   const getCursor = useCallback((localX: number): string => {
     if (selectedTool === 'razor') return 'crosshair';
     if (selectedTool === 'slip')  return 'ew-resize';
@@ -45,7 +34,7 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
     return 'grab';
   }, [selectedTool, width]);
 
-  // ── Mouse down: start interaction ─────────────────────────────────────────
+  // Mouse down 
   const onMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     if (track.locked) return;
@@ -83,7 +72,7 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
       },
     });
 
-    // ── Set ghost for move ──────────────────────────────────────────────────
+    // Set ghost   
     if (mode === 'move') {
       const rect = clipRef.current?.getBoundingClientRect();
       dispatch({
@@ -98,7 +87,7 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
       });
     }
 
-    // ── Document-level mouse handlers ───────────────────────────────────────
+    // mouse handlers  
     _trimLastX = 0;
     _trimAccum = 0;
 
@@ -133,7 +122,7 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
         const frameDelta = Math.round(_trimAccum / zoomX);
         if (frameDelta !== 0) {
           _trimAccum -= frameDelta * zoomX;
-          // Slip: shift start frame without changing duration
+           
           dispatch({ type: 'TRIM_CLIP', clipId: clip.id, trackId: track.id, side: 'left', frameDelta });
         }
       }
@@ -153,7 +142,7 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
     window.addEventListener('mouseup', onMouseUp);
   }, [clip, track, trackIndex, trackHeight, zoomX, selectedTool, width, dispatch]);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // Render  
   const isSelected = clip.isSelected;
   const dimForGhost = isMeMoving;
 
@@ -178,8 +167,7 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
       role="button"
       aria-label={`Clip: ${clip.name}`}
     >
-      {/* Trim handles (visual only) */}
-      <div className="tl-clip__trim tl-clip__trim--left" />
+       <div className="tl-clip__trim tl-clip__trim--left" />
       <div className="tl-clip__trim tl-clip__trim--right" />
 
       {/* Label */}
@@ -188,16 +176,14 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
   );
 });
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Helpers  
 
-/** Sub-pixel trim accumulator — avoids losing fractional px on slow drags */
-let _trimAccum = 0;
+ let _trimAccum = 0;
 let _trimLastX = 0;
 
 
 
-/** Lighten a hex color by mixing with white */
-function lighten(hex: string, amount: number): string {
+ function lighten(hex: string, amount: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);

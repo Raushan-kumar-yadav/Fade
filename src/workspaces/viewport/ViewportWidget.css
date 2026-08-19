@@ -1,18 +1,18 @@
-/*   ViewportWidget styles   */
+/* ViewportWidget styles   */
 
 /* Tokens */
 :root {
-  --vw-bg:       #111111;
-  --vw-header:   #1e1e1e;
-  --vw-canvas:   #0a0a0a;
-  --vw-bar:      #1a1a1a;
-  --vw-border:   #111111;
-  --vw-btn:      #2a2a2a;
-  --vw-btn-h:    #3a3a3a;
-  --vw-text-1:   #cccccc;
-  --vw-text-2:   #888888;
-  --vw-accent:   #00ffcc;
-  --vw-play:     #4a90e2;
+  --vw-bg: #111111;
+  --vw-header: #1e1e1e;
+  --vw-canvas: #0a0a0a;
+  --vw-bar: #1a1a1a;
+  --vw-border: #111111;
+  --vw-btn: #2a2a2a;
+  --vw-btn-h: #3a3a3a;
+  --vw-text-1: #cccccc;
+  --vw-text-2: #888888;
+  --vw-accent: #00ffcc;
+  --vw-play: #4a90e2;
 }
 
 /*   Root   */
