@@ -20,8 +20,8 @@ class Engine:
     """
 
     def __init__(self) -> None:
-        self.project:     Project | None    = None
-        self.compositor:  Compositor | None = None
+        self.project: Project | None    = None
+        self.compositor: Compositor | None = None
 
         # Playback state
         self._playing      = False
@@ -31,7 +31,7 @@ class Engine:
         self.frameQueue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=3)
         self._loopTask: asyncio.Task | None   = None
 
-    # ── Project lifecycle ─────────────────────────────────────────────────────
+    # Project lifecycle  
 
     def newProject(
         self,
@@ -60,7 +60,7 @@ class Engine:
             raise RuntimeError("No active project")
         return self.project.save(path)
 
-    # ── Active timeline shortcut ──────────────────────────────────────────────
+    #   Active timeline shortcut  
 
     @property
     def activeTimeline(self) -> Timeline | None:
@@ -68,7 +68,7 @@ class Engine:
             return self.project.timelines[0]
         return None
 
-    # ── Playback control ──────────────────────────────────────────────────────
+    #   Playback control  
 
     @property
     def currentFrame(self) -> int:
@@ -92,7 +92,7 @@ class Engine:
         else:
             self.play()
 
-    # ── Preview loop ──────────────────────────────────────────────────────────
+    #   Preview loop    
 
     async def startPreviewLoop(self) -> None:
         """
@@ -126,7 +126,7 @@ class Engine:
             elapsed = asyncio.get_event_loop().time() - t0
             await asyncio.sleep(max(0.0, interval - elapsed))
 
-    # ── Single frame (for scrubbing / thumbnail) ──────────────────────────────
+    #   Single frame  
 
     def renderFrameJpeg(self, frame: int) -> bytes:
         if self.compositor is None or self.activeTimeline is None:
