@@ -28,7 +28,6 @@ class BaseClip(ABC):
         """Convert timeline frame to clip-local frame."""
         return frame - self.startFrame
 
-    # Contract  
     @abstractmethod
     def render(self, canvas, frame: int) -> None:
         """Render this clip onto the Skia canvas at the given timeline frame."""
