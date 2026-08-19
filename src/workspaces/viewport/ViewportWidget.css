@@ -1,4 +1,4 @@
-/* ─── ViewportWidget styles ─────────────────────────────────────────────────── */
+/*   ViewportWidget styles   */
 
 /* Tokens */
 :root {
@@ -15,7 +15,7 @@
   --vw-play:     #4a90e2;
 }
 
-/* ── Root ─────────────────────────────────────────────────────────────────── */
+/*   Root   */
 .vw-root {
   display: flex;
   flex-direction: column;
@@ -37,7 +37,7 @@
 }
 
 
-/* ── Canvas ───────────────────────────────────────────────────────────────── */
+/*  Canvas   */
 .vw-canvas {
   flex: 1;
   position: relative;
@@ -79,7 +79,7 @@
   margin: 0;
 }
 
-/* Timecode overlay (top-left, like real monitors) */
+/* Timecode overlay */
 .vw-canvas__tc-overlay {
   position: absolute;
   top: 14px;
@@ -93,7 +93,7 @@
   text-shadow: 0 0 6px rgba(0, 255, 200, 0.3);
 }
 
-/* ── Playback Controls ────────────────────────────────────────────────────── */
+/*   Playback Controls   */
 .vw-controls {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
@@ -127,7 +127,7 @@
   align-items: center;
 }
 
-/* ── Buttons ──────────────────────────────────────────────────────────────── */
+/*   Buttons   */
 .vw-btn {
   display: flex;
   align-items: center;
@@ -155,7 +155,7 @@
   background: #555555;
 }
 
-/* Play button — larger + blue accent */
+/* Play button  */
 .vw-btn--play {
   width: 36px;
   height: 32px;

@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useRef } from 'react';
 import './ViewportWidget.css';
 
-//   Timecode helper  
 function framesToTimecode(frame: number, fps = 30): string {
   const f  = Math.floor(frame);
   const mm = Math.floor(f / (fps * 60));
@@ -10,7 +9,6 @@ function framesToTimecode(frame: number, fps = 30): string {
   return [mm, ss, fr].map(n => String(n).padStart(2, '0')).join(':');
 }
 
-//   Icon SVGs  
 const IconPrev = () => (
   <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
     <rect x="0" y="1" width="2" height="10" rx="1"/>
@@ -39,40 +37,50 @@ const IconFullscreen = () => (
     <path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/>
   </svg>
 );
-//   Main Component  
-export default function ViewportWidget({ onPopOut }: ViewportWidgetProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
+
+export default function ViewportWidget() {
+  const [isPlaying, setIsPlaying]   = useState(false);
   const [currentFrame, setCurrentFrame] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  const totalFrames = 1800; // 60 s @ 30 fps
+  const totalFrames = 1800;
   const fps = 30;
 
-  const rafRef  = useRef<ReturnType<typeof requestAnimationFrame>>();
-  const lastRef = useRef<number>();
+  const isPlayingRef = useRef<boolean>(false);
+  const rafRef       = useRef<number>(0);
+  const lastRef      = useRef<number>(0);
 
-  //   Playback loop  
+  const stopPlayback = useCallback(() => {
+    isPlayingRef.current = false;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = 0;
+    lastRef.current = 0;
+  }, []);
+
   const startPlayback = useCallback(() => {
+    isPlayingRef.current = true;
+    lastRef.current = 0;
+
     const tick = (now: number) => {
+      if (!isPlayingRef.current) return;
       const delta = lastRef.current ? (now - lastRef.current) / 1000 : 0;
       lastRef.current = now;
       setCurrentFrame(prev => {
         const next = prev + delta * fps;
         if (next >= totalFrames) {
+          isPlayingRef.current = false;
           setIsPlaying(false);
           return 0;
         }
         return next;
       });
-      rafRef.current = requestAnimationFrame(tick);
+      if (isPlayingRef.current) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
     };
+
     rafRef.current = requestAnimationFrame(tick);
   }, [fps, totalFrames]);
-
-  const stopPlayback = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    lastRef.current = undefined;
-  }, []);
 
   const togglePlay = useCallback(() => {
     setIsPlaying(p => {
@@ -91,63 +99,30 @@ export default function ViewportWidget({ onPopOut }: ViewportWidgetProps) {
 
   return (
     <div className={`vw-root${isFullscreen ? ' vw-root--fullscreen' : ''}`} aria-label="Preview Viewport">
-
-      {/*   Viewport canvas   */}
       <div className="vw-canvas" aria-label="Video preview area">
         <div className="vw-canvas__empty">
-          <div className="vw-canvas__icon">◈</div>
+          <div className="vw-canvas__icon">?</div>
           <p className="vw-canvas__hint">Drop video or select from Library</p>
-        </div>
-         <div className="vw-canvas__tc-overlay" aria-label="Timecode overlay">
-          {timecode}
         </div>
       </div>
 
-      {/*   Playback Controls   */}
       <div className="vw-controls">
-        {/* Timecode display */}
         <div className="vw-controls__tc" aria-label="Current timecode" role="timer">
           {timecode}
         </div>
-
-        {/* Centre transport buttons */}
         <div className="vw-controls__transport">
-          <button
-            id="vw-prev-frame"
-            className="vw-btn"
-            title="Previous frame (← Arrow)"
-            onClick={() => stepFrame(-1)}
-          >
+          <button id="vw-prev-frame" className="vw-btn" title="Previous frame" onClick={() => stepFrame(-1)}>
             <IconPrev />
           </button>
-
-          <button
-            id="vw-play-pause"
-            className="vw-btn vw-btn--play"
-            title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
-            onClick={togglePlay}
-          >
+          <button id="vw-play-pause" className="vw-btn vw-btn--play" title={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay}>
             {isPlaying ? <IconPause /> : <IconPlay />}
           </button>
-
-          <button
-            id="vw-next-frame"
-            className="vw-btn"
-            title="Next frame (→ Arrow)"
-            onClick={() => stepFrame(1)}
-          >
+          <button id="vw-next-frame" className="vw-btn" title="Next frame" onClick={() => stepFrame(1)}>
             <IconNext />
           </button>
         </div>
-
-        {/* Right: Fullscreen */}
         <div className="vw-controls__right">
-          <button
-            id="vw-fullscreen"
-            className="vw-btn"
-            title="Toggle fullscreen (F)"
-            onClick={() => setIsFullscreen(f => !f)}
-          >
+          <button id="vw-fullscreen" className="vw-btn" title="Toggle fullscreen" onClick={() => setIsFullscreen(f => !f)}>
             <IconFullscreen />
           </button>
         </div>
