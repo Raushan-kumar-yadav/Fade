@@ -2,6 +2,7 @@ import React from 'react'
 import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
+import Timeline from './timeline/Timeline'
 
 // Panel content components  
 
@@ -52,45 +53,9 @@ function ViewportPanel() {
 }
 
 function TimelinePanel() {
-  const tracks = [
-    { label: 'Video', color: '#6c63ff', clips: [{ s: 0, w: 38 }, { s: 43, w: 28 }] },
-    { label: 'Audio', color: '#00d4aa', clips: [{ s: 0, w: 72 }] },
-    { label: 'FX', color: '#ff6584', clips: [{ s: 8,  w: 14 }, { s: 52, w: 10 }] },
-    { label: 'Text',  color: '#FFD60A', clips: [{ s: 4,  w: 18 }] },
-  ]
-
   return (
     <div className="vp vp--timeline">
-      <div className="vp__tl-toolbar">
-        <button title="Cut">✂</button>
-        <button title="Add">⊕</button>
-        <button title="Undo">⟲</button>
-        <button title="Redo">⟳</button>
-        <div className="vp__tl-sep" />
-        <button title="Zoom In">+</button>
-        <button title="Zoom Out">−</button>
-        <span className="vp__tl-time">00:00:00</span>
-      </div>
-      <div className="vp__tl-tracks">
-        <div className="vp__tl-ruler">
-          {Array.from({ length: 11 }, (_, i) => (
-            <div key={i} className="vp__tl-ruler-mark">
-              <span>{(i * 10).toString().padStart(2, '0')}s</span>
-            </div>
-          ))}
-        </div>
-        {tracks.map(t => (
-          <div key={t.label} className="vp__track">
-            <div className="vp__track-label">{t.label}</div>
-            <div className="vp__track-lane">
-              {t.clips.map((c, i) => (
-                <div key={i} className="vp__clip"
-                  style={{ left: `${c.s}%`, width: `${c.w}%`, background: t.color + '44', borderColor: t.color }} />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      <Timeline />
     </div>
   )
 }

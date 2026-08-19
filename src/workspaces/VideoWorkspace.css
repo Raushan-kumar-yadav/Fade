@@ -103,10 +103,34 @@
   pointer-events: none;
 }
 
- .video-ws .flexlayout__splitter:hover::after,
-.flexlayout__splitter:hover::after,
-.flexlayout__splitter_drag::after {
+ /* Hover: slightly brighten the hairline */
+.video-ws .flexlayout__splitter:hover::after,
+.flexlayout__splitter:hover::after {
   background: #444450 !important;
+}
+
+/* Drag state: keep element transparent, show 1px accent line via ::after */
+.video-ws .flexlayout__splitter_drag,
+.flexlayout__splitter_drag {
+  background: transparent !important;
+}
+.video-ws .flexlayout__splitter_drag::after,
+.flexlayout__splitter_drag::after {
+  background: #6c63ff !important;   /* accent purple line while dragging */
+  height: 1px !important;
+  width: 1px !important;
+}
+/* Horizontal drag line override */
+.flexlayout__splitter_horizontal.flexlayout__splitter_drag::after,
+.video-ws .flexlayout__splitter_horizontal.flexlayout__splitter_drag::after {
+  height: 1px !important;
+  width: auto !important;
+}
+/* Vertical drag line override */
+.flexlayout__splitter_vertical.flexlayout__splitter_drag::after,
+.video-ws .flexlayout__splitter_vertical.flexlayout__splitter_drag::after {
+  width: 1px !important;
+  height: auto !important;
 }
 
  .flexlayout__outline_rect {
@@ -266,8 +290,12 @@
   font-size: 16px !important;
 }
 
-/* Timeline */
-.vp--timeline { background: #0a0a0c !important; }
+/* Timeline — let the new React Timeline fill the panel completely */
+.vp--timeline {
+  background: #141414 !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
 
 .vp__tl-toolbar {
   display: flex;
