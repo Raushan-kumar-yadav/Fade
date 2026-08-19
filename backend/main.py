@@ -30,8 +30,8 @@ async def startup() -> None:
     """Create a default project and start the preview loop on startup."""
     engine.newProject()
 
-    # Add a default video track with a solid placeholder clip
-    vt   = VideoTrack("Video 1")
+    # Add a default video 
+    vt = VideoTrack("Video 1")
     clip = VideoClip(startFrame=0, duration=300, color=(74, 144, 226, 255))
     vt.addClip(clip)
     if engine.activeTimeline:

@@ -1,7 +1,12 @@
 from __future__ import annotations
 import uuid
+from typing import TYPE_CHECKING
 from backend.timeline.clips.baseClip import BaseClip
 from backend.animation.animatableProperty import AnimatableProperty
+
+if TYPE_CHECKING:
+    from backend.media.scheduler.decodeScheduler import DecodeScheduler
+    from backend.media.asset.mediaAsset import MediaAsset
 
 
 class BlendMode:
@@ -43,27 +48,30 @@ class VideoClip(BaseClip):
         clipId: str = "",
         startFrame: int = 0,
         duration: int = 90,
-        mediaPath: str = "",         
-        color: tuple = (74, 144, 226, 255),  
+        color: tuple = (74, 144, 226, 255),
+        # Asset reference  
+        assetId: str = "",
     ) -> None:
         super().__init__(
             clipId or str(uuid.uuid4()),
             startFrame,
             duration,
         )
-        self.mediaPath = mediaPath
-        self.color = color          
+        self.color = color
+        self.assetId = assetId     # pointer to MediaAsset in the AssetLibrary
 
-        # Animatable clip    
-         
+        # Injected by Engine after construction
+        self._scheduler: "DecodeScheduler | None" = None
+        self._projectFps: float = 30.0
+
+        # Animatable clip params
         self.cropLeft = AnimatableProperty(0.0)
-        self.cropRight  = AnimatableProperty(0.0)
+        self.cropRight = AnimatableProperty(0.0)
         self.cropTop = AnimatableProperty(0.0)
         self.cropBottom = AnimatableProperty(0.0)
-
         self.blendMode  = AnimatableProperty(0.0)
 
-        self._lastFrame = -1    
+        self._lastFrame = -1
 
     #   evaluateAll  
 
@@ -104,18 +112,44 @@ class VideoClip(BaseClip):
         canvas.restore()
 
     def _renderSolid(self, canvas, paint) -> None:
-        """Draw a solid color rectangle — placeholder until real decoder is wired."""
         import skia
         r, g, b, a = self.color
         paint.setColor(skia.Color(r, g, b, a))
-        # TODO: replace with actual clip bounds once layout system is added
         canvas.drawRect(skia.Rect.MakeXYWH(0, 0, 1920, 1080), paint)
 
     def _renderMedia(self, canvas, paint, frame: int) -> None:
-        """Render decoded video frame — decoder will be wired here."""
-        # TODO: call decoder.getFrame(self.mediaPath, frame) → skia.Image
-        # For now fall back to solid
-        self._renderSolid(canvas, paint)
+        """
+        Ask the DecodeScheduler for this frame from the shared FrameCache.
+        The clip holds NO media data itself — it owns only assetId.
+        """
+        import skia
+
+        if self._scheduler is None:
+            self._renderSolid(canvas, paint)
+            return
+
+        #   Fast path  
+        decoded = self._scheduler.tryGetFrame(self.assetId, frame)
+
+        if decoded and decoded.valid:
+            info  = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
+            image = skia.Image.MakeRasterData(
+                info,
+                skia.Data.MakeWithCopy(decoded.dataRGBA),
+                decoded.width * 4,
+            )
+            canvas.drawImage(image, 0, 0, paint)
+        else:
+           
+            
+            self._renderSolid(canvas, paint)
+
+        self._scheduler.prefetchAround(self.clipId, frame)
+
+    def setScheduler(self, scheduler: "DecodeScheduler", fps: float = 30.0) -> None:
+        """Injected by Engine when a clip is added to the timeline."""
+        self._scheduler  = scheduler
+        self._projectFps = fps
 
     #   Thumbnail  
 
@@ -136,14 +170,14 @@ class VideoClip(BaseClip):
             "clipId": self.clipId,
             "startFrame": self.startFrame,
             "duration": self.duration,
-            "mediaPath":  self.mediaPath,
+            "assetId": self.assetId,
             "color": list(self.color),
-            "transform": self.transform.toDict(),
+            "transform":   self.transform.toDict(),
             "cropLeft": self.cropLeft.get(),
-            "cropRight": self.cropRight.get(),
+            "cropRight":  self.cropRight.get(),
             "cropTop": self.cropTop.get(),
             "cropBottom": self.cropBottom.get(),
-            "blendMode": int(self.blendMode.get()),
+            "blendMode":  int(self.blendMode.get()),
         }
 
     @classmethod
@@ -153,7 +187,7 @@ class VideoClip(BaseClip):
             clipId = data["clipId"],
             startFrame = data["startFrame"],
             duration = data["duration"],
-            mediaPath  = data.get("mediaPath", ""),
+            assetId = data.get("assetId", ""),
             color = tuple(data.get("color", [74, 144, 226, 255])),
         )
         if "transform" in data:
