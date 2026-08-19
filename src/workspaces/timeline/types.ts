@@ -1,24 +1,24 @@
-// ─── Tool Types ───────────────────────────────────────────────────────────────
+//   Tool Types  
 export type ToolType = 'pointer' | 'razor' | 'ripple' | 'slip' | 'hand';
 
-// ─── Clip Types ───────────────────────────────────────────────────────────────
+//   Clip Types  
 export type ClipType =
   | 'video' | 'audio' | 'text' | 'solid'
   | 'shape' | 'lottie' | 'image' | 'comp' | 'adjustment';
 
 export const CLIP_COLORS: Record<ClipType, string> = {
-  comp:       '#7c4dff',
-  text:       '#e6a817',
-  solid:      '#00b8a9',
-  shape:      '#43a047',
-  lottie:     '#e91e8c',
-  image:      '#00bcd4',
-  audio:      '#546e7a',
+  comp: '#7c4dff',
+  text: '#e6a817',
+  solid: '#00b8a9',
+  shape: '#43a047',
+  lottie: '#e91e8c',
+  image: '#00bcd4',
+  audio: '#546e7a',
   adjustment: '#ff6d00',
-  video:      '#4a90e2',
+  video: '#4a90e2',
 };
 
-// ─── Data Models ──────────────────────────────────────────────────────────────
+// Data Models  
 export interface Clip {
   id: string;
   name: string;
@@ -38,51 +38,45 @@ export interface Track {
   clips: Clip[];
 }
 
-// ─── Interaction State (trim / move / slip) ───────────────────────────────────
+// Interaction State (trim / move / slip)  
 export type InteractionMode = 'move' | 'trimLeft' | 'trimRight' | 'slip';
 
 export interface ClipInteraction {
   clipId: string;
   trackId: string;
   mode: InteractionMode;
-  /** Screen coords at press */
-  startMouseX: number;
+   startMouseX: number;
   startMouseY: number;
-  /** Clip's start frame at press (fixed reference) */
-  startClipFrame: number;
-  /** Track index at press */
-  startTrackIndex: number;
-  /** Pending deltas — applied on release for move, live for trim */
-  pendingFrameDelta: number;
+   startClipFrame: number;
+   startTrackIndex: number;
+   pendingFrameDelta: number;
   pendingTrackDelta: number;
-  /** Sub-pixel accumulator so we don't lose fractional pixels while trimming */
-  accumPx: number;
+   accumPx: number;
 }
 
-// ─── Ghost proxy rendered during move ─────────────────────────────────────────
+// Ghost proxy rendered during move  
 export interface GhostInfo {
   clip: Clip;
-  x: number; // fixed screen X
-  y: number; // fixed screen Y
+  x: number; //   screen X
+  y: number; //   screen Y
   width: number;
   height: number;
 }
 
-// ─── Full Timeline State ──────────────────────────────────────────────────────
+// Full Timeline State  
 export interface TimelineState {
   tracks: Track[];
   currentFrame: number;
   totalFrames: number;
   fps: number;
-  /** Pixels per frame — controls horizontal zoom */
-  zoomX: number;
+   zoomX: number;
   selectedTool: ToolType;
   isPlaying: boolean;
   interaction: ClipInteraction | null;
   ghost: GhostInfo | null;
 }
 
-// ─── Reducer Actions ──────────────────────────────────────────────────────────
+// Reducer Actions  
 export type TimelineAction =
   | { type: 'SEEK'; frame: number }
   | { type: 'ZOOM_X'; newZoom: number }
@@ -103,7 +97,7 @@ export type TimelineAction =
   | { type: 'SET_GHOST'; ghost: GhostInfo | null }
   | { type: 'END_INTERACTION' };
 
-// ─── Layout Constants ─────────────────────────────────────────────────────────
+// Layout Constants  
 export const HEADER_WIDTH  = 120;
 export const RULER_HEIGHT  = 28;
 export const BOTTOM_BAR_H  = 24;

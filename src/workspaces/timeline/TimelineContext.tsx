@@ -44,7 +44,7 @@ const DEMO_TRACKS: Track[] = [
 const INITIAL_STATE: TimelineState = {
   tracks: DEMO_TRACKS,
   currentFrame: 0,
-  totalFrames: 1800,   // 60 s @ 30 fps
+  totalFrames: 1800,   // 60 s  
   fps: 30,
   zoomX: 5,            // 5 px / frame
   selectedTool: 'pointer',
@@ -53,10 +53,9 @@ const INITIAL_STATE: TimelineState = {
   ghost: null,
 };
 
-// ─── Reducer ──────────────────────────────────────────────────────────────────
-function reducer(state: TimelineState, action: TimelineAction): TimelineState {
+ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
   switch (action.type) {
-    // ── Playback ──────────────────────────────────────────────────────────
+    // Playback  
     case 'SEEK':
       return { ...state, currentFrame: Math.max(0, Math.min(action.frame, state.totalFrames)) };
 
@@ -69,14 +68,14 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
     case 'SET_PLAYING':
       return { ...state, isPlaying: action.playing };
 
-    // ── View ──────────────────────────────────────────────────────────────
+    // View  
     case 'ZOOM_X':
       return { ...state, zoomX: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, action.newZoom)) };
 
     case 'SET_TOOL':
       return { ...state, selectedTool: action.tool };
 
-    // ── Selection ─────────────────────────────────────────────────────────
+    // Selection  
     case 'SELECT_CLIP': {
       const tracks = state.tracks.map(track => ({
         ...track,
@@ -98,7 +97,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks };
     }
 
-    // ── Move (deferred — committed on mouse up) ───────────────────────────
+    // Move 
     case 'COMMIT_MOVE': {
       const intr = state.interaction;
       if (!intr || intr.mode !== 'move') return { ...state, interaction: null, ghost: null };
@@ -138,7 +137,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks: newTracks, interaction: null, ghost: null };
     }
 
-    // ── Trim (live — applied immediately) ────────────────────────────────
+    // Trim  
     case 'TRIM_CLIP': {
       const { clipId, trackId, side, frameDelta } = action;
       const tracks = state.tracks.map(track => {
@@ -160,7 +159,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks };
     }
 
-    // ── Track controls ────────────────────────────────────────────────────
+    // Track controls  
     case 'TOGGLE_MUTE':
       return { ...state, tracks: state.tracks.map(t => t.id === action.trackId ? { ...t, muted: !t.muted } : t) };
 
@@ -180,7 +179,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
         ),
       };
 
-    // ── Drag interaction ──────────────────────────────────────────────────
+    // Drag interaction  
     case 'START_INTERACTION':
       return { ...state, interaction: action.interaction };
 
@@ -207,7 +206,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
   }
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
+// Context  
 interface TimelineContextValue {
   state: TimelineState;
   dispatch: Dispatch<TimelineAction>;
@@ -224,7 +223,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/** Hook — throws if used outside <TimelineProvider> */
+/**  throws if used outside */
 export function useTimeline(): TimelineContextValue {
   const ctx = useContext(TimelineCtx);
   if (!ctx) throw new Error('useTimeline must be used inside <TimelineProvider>');

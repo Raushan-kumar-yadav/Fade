@@ -8,26 +8,22 @@ interface Props {
   trackIndex: number;
 }
 
-/**
- * TrackRow — One horizontal band in the timeline content area.
- * Contains all clips for that track plus a vertical resize handle.
- */
+ 
 const TrackRow = memo(function TrackRow({ track, trackIndex }: Props) {
   const { dispatch } = useTimeline();
 
   const resizingRef = useRef(false);
   const startYRef   = useRef(0);
   const startHRef   = useRef(0);
-
-  // ── Row-level click: clear selection when clicking empty space ────────────
+ 
+  //  clear selection 
   const onRowClick = useCallback((e: React.MouseEvent) => {
-    // Only clear if the click was directly on the row (not on a clip)
-    if ((e.target as HTMLElement).classList.contains('tl-track-row__bg')) {
+     if ((e.target as HTMLElement).classList.contains('tl-track-row__bg')) {
       dispatch({ type: 'CLEAR_SELECTION' });
     }
   }, [dispatch]);
 
-  // ── Bottom resize handle ──────────────────────────────────────────────────
+  // Bottom resize handle  
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     resizingRef.current = true;
@@ -57,10 +53,9 @@ const TrackRow = memo(function TrackRow({ track, trackIndex }: Props) {
       onClick={onRowClick}
       aria-label={`Track: ${track.name}`}
     >
-      {/* Full-width transparent bg that acts as the click target */}
-      <div className="tl-track-row__bg" style={{ position: 'absolute', inset: 0 }} />
+       <div className="tl-track-row__bg" style={{ position: 'absolute', inset: 0 }} />
 
-      {/* Bottom separator */}
+      {/*   separator */}
       <div className="tl-track-row__sep" />
 
       {/* Clips */}

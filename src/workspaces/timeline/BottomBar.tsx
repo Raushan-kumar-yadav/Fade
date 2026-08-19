@@ -6,41 +6,32 @@ interface Props {
   viewWidth: number;
 }
 
-/**
- * BottomBar — Zoom / pan slider.
- *
- * Renders a thin bar with a draggable thumb.
- *   • Thumb position  ↔  horizontal scroll
- *   • Thumb width     ↔  zoom level (fraction of total visible)
- *   • Drag left edge  →  zoom in left
- *   • Drag right edge →  zoom in right
- *   • Drag center     →  pan
- */
+ 
 const BottomBar = memo(function BottomBar({ contentRef, viewWidth }: Props) {
   const { state, dispatch } = useTimeline();
   const total = totalWidth(state);
 
-  const barRef     = useRef<HTMLDivElement>(null);
-  const dragMode   = useRef<'pan' | 'zoomLeft' | 'zoomRight' | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const dragMode = useRef<'pan' | 'zoomLeft' | 'zoomRight' | null>(null);
   const dragStartX = useRef(0);
   const dragStartScroll = useRef(0);
   const dragStartZoom   = useRef(state.zoomX);
 
-  // Thumb metrics (clamped so thumb is always at least 16px wide)
+  // Thumb metrics ( 
   const thumbW = Math.max(16, (viewWidth / total) * viewWidth);
   const maxScroll = Math.max(0, total - viewWidth);
   const scrollLeft = contentRef.current?.scrollLeft ?? 0;
   const thumbX = maxScroll > 0 ? (scrollLeft / maxScroll) * (viewWidth - thumbW) : 0;
 
-  const EDGE = 8; // px — edge zone triggers zoom
+  const EDGE = 8;  
 
   const onThumbMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const localX = e.clientX - e.currentTarget.getBoundingClientRect().left;
-    const tW     = e.currentTarget.getBoundingClientRect().width;
+    const tW = e.currentTarget.getBoundingClientRect().width;
 
-    dragMode.current      = localX < EDGE ? 'zoomLeft' : localX > tW - EDGE ? 'zoomRight' : 'pan';
-    dragStartX.current    = e.clientX;
+    dragMode.current = localX < EDGE ? 'zoomLeft' : localX > tW - EDGE ? 'zoomRight' : 'pan';
+    dragStartX.current = e.clientX;
     dragStartScroll.current = contentRef.current?.scrollLeft ?? 0;
     dragStartZoom.current   = state.zoomX;
 

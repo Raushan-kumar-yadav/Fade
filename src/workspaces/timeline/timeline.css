@@ -1,26 +1,24 @@
-/* ═══════════════════════════════════════════════════════════════════════════
-   Timeline CSS  —  Design system for Fade's video timeline
-   ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Tokens ────────────────────────────────────────────────────────────────── */
+ /*    Timeline CSS  */ 
+ 
+/* Tokens   */
 .tl-root {
-  --tl-bg:        #141414;
+  --tl-bg: #141414;
   --tl-header-bg: #161616;
   --tl-ruler-bg:  #181818;
-  --tl-track-a:   #181818;
+  --tl-track-a: #181818;
   --tl-track-b:   #1c1c1c;
-  --tl-sep:       #222222;
-  --tl-accent:    #4a90e2;
-  --tl-red:       #e53935;
-  --tl-text-1:    #cccccc;
-  --tl-text-2:    #777777;
+  --tl-sep: #222222;
+  --tl-accent: #4a90e2;
+  --tl-red: #e53935;
+  --tl-text-1: #cccccc;
+  --tl-text-2: #777777;
   --tl-header-w:  120px;
-  --tl-ruler-h:   28px;
+  --tl-ruler-h: 28px;
   --tl-toolbar-h: 34px;
   --tl-bottom-h:  24px;
 }
 
-/* ── Root grid ─────────────────────────────────────────────────────────────── */
+/*   Root grid   */
 .tl-root {
   display: grid;
   grid-template-columns: var(--tl-header-w) 1fr;
@@ -36,7 +34,7 @@
   user-select: none;
 }
 
-/* ── Toolbar ───────────────────────────────────────────────────────────────── */
+/*   Toolbar   */
 .tl-toolbar-row {
   grid-column: 1 / -1;
   border-bottom: 1px solid var(--tl-sep);
@@ -65,9 +63,9 @@
   font-size: 12px;
   transition: background 0.12s, color 0.12s;
 }
-.tl-toolbar__btn:hover      { background: #2a2a2a; color: var(--tl-text-1); }
-.tl-toolbar__btn--active    { background: #2a3a50; color: var(--tl-accent); }
-.tl-toolbar__btn--play      { width: 28px; font-size: 13px; }
+.tl-toolbar__btn:hover { background: #2a2a2a; color: var(--tl-text-1); }
+.tl-toolbar__btn--active { background: #2a3a50; color: var(--tl-accent); }
+.tl-toolbar__btn--play { width: 28px; font-size: 13px; }
 
 .tl-toolbar__sep {
   width: 1px;
@@ -84,14 +82,14 @@
   letter-spacing: 0.04em;
 }
 
-/* ── Corner ────────────────────────────────────────────────────────────────── */
+/*   Corner   */
 .tl-corner {
   background: var(--tl-header-bg);
   border-right:  1px solid var(--tl-sep);
   border-bottom: 1px solid var(--tl-sep);
 }
 
-/* ── Ruler ─────────────────────────────────────────────────────────────────── */
+/* Ruler   */
 .tl-ruler-container {
   overflow: hidden;
   border-bottom: 1px solid var(--tl-sep);
@@ -147,7 +145,7 @@
   letter-spacing: 0.03em;
 }
 
-/* ── Track headers ─────────────────────────────────────────────────────────── */
+/*   Track headers   */
 .tl-headers-container {
   overflow: hidden;
   border-right: 1px solid var(--tl-sep);
@@ -199,10 +197,10 @@
   transition: color 0.12s;
   font-family: inherit;
 }
-.tl-btn-msb:hover           { color: var(--tl-text-2); }
-.tl-btn-msb--muted          { color: #e53935; }
-.tl-btn-msb--solo           { color: #ffc107; }
-.tl-btn-msb--locked         { color: #888888; }
+.tl-btn-msb:hover { color: var(--tl-text-2); }
+.tl-btn-msb--muted { color: #e53935; }
+.tl-btn-msb--solo { color: #ffc107; }
+.tl-btn-msb--locked { color: #888888; }
 
 .tl-header-item__resize {
   position: absolute;
@@ -212,17 +210,17 @@
   z-index: 10;
 }
 
-/* ── Track content ─────────────────────────────────────────────────────────── */
+/*   Track content   */
 .tl-content {
   overflow: auto;
   position: relative;
   scrollbar-width: thin;
   scrollbar-color: #2a2a2a transparent;
 }
-.tl-content::-webkit-scrollbar       { width: 6px; height: 6px; }
+.tl-content::-webkit-scrollbar { width: 6px; height: 6px; }
 .tl-content::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
 
-/* ── Track rows ────────────────────────────────────────────────────────────── */
+/*   Track rows   */
 .tl-track-row {
   position: relative;
   width: 100%;
@@ -230,7 +228,7 @@
 }
 
 .tl-track-row--even  { background: var(--tl-track-a); }
-.tl-track-row--odd   { background: var(--tl-track-b); }
+.tl-track-row--odd { background: var(--tl-track-b); }
 .tl-track-row--locked { opacity: 0.55; }
 
 .tl-track-row__bg {
@@ -254,8 +252,8 @@
   cursor: ns-resize;
   z-index: 20;
 }
-
-/* ── Clips ──────────────────────────────────────────────────────────────────── */
+ 
+/*   Clips   */
 .tl-clip {
   position: absolute;
   border: 1px solid transparent;
@@ -294,8 +292,7 @@
   text-shadow: 0 1px 2px rgba(0,0,0,0.6);
 }
 
-/* Trim handle zones (visual only — actual hit area is EDGE_TOLERANCE px) */
-.tl-clip__trim {
+ .tl-clip__trim {
   position: absolute;
   top: 0; bottom: 0;
   width: 6px;
@@ -305,7 +302,7 @@
 .tl-clip__trim--left  { left: 0;  border-radius: 3px 0 0 3px; }
 .tl-clip__trim--right { right: 0; border-radius: 0 3px 3px 0; }
 
-/* ── Ghost clip (fixed overlay during move) ─────────────────────────────────── */
+/*   Ghost clip   */
 .tl-ghost-clip {
   position: fixed;
   border: 1.5px solid rgba(255,255,255,0.25);
@@ -320,7 +317,7 @@
   transition: none;
 }
 
-/* ── Playhead ───────────────────────────────────────────────────────────────── */
+/*   Playhead   */
 .tl-playhead {
   position: absolute;
   top: var(--tl-toolbar-h);
@@ -350,7 +347,7 @@
   pointer-events: all;
 }
 
-/* ── Bottom bar ─────────────────────────────────────────────────────────────── */
+/*   Bottom bar   */
 .tl-bottom-bar-container {
   background: #111111;
   border-top: 1px solid var(--tl-sep);

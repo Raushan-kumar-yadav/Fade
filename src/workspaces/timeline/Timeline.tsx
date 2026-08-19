@@ -163,8 +163,8 @@ function TimelineInner() {
   }, [dispatch]);
 
   // ── Playback tick ──────────────────────────────────────────────────────
-  const rafRef = useRef<number>();
-  const lastTimeRef = useRef<number>();
+  const rafRef = useRef<number | undefined>(undefined);
+  const lastTimeRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (!state.isPlaying) {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);

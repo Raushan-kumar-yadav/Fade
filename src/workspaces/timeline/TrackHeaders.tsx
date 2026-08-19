@@ -7,11 +7,7 @@ interface Props {
   totalTrackHeightPx: number;
 }
 
-/**
- * TrackHeaders — Fixed left column.
- * Shows track name, M/S/L buttons, and a resize handle at the bottom.
- * Vertically synchronized with the scrollable content via CSS translateY.
- */
+ 
 const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx }: Props) {
   return (
     <div
@@ -32,7 +28,7 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
   );
 });
 
-// ─── Individual track header ────────────────────────────────────────────────
+// Individual track header  
 interface ItemProps { track: Track; index: number }
 
 const TrackHeaderItem = memo(function TrackHeaderItem({ track, index }: ItemProps) {
@@ -41,7 +37,7 @@ const TrackHeaderItem = memo(function TrackHeaderItem({ track, index }: ItemProp
   const startYRef  = useRef(0);
   const startHRef  = useRef(0);
 
-  // ── Track resize handle ─────────────────────────────────────────────────
+  // Track resize handle  
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     resizingRef.current = true;
@@ -76,7 +72,7 @@ const TrackHeaderItem = memo(function TrackHeaderItem({ track, index }: ItemProp
         {track.name}
       </span>
 
-      {/* M / S / L buttons */}
+      {/* buttons */}
       <div className="tl-header-item__controls">
         <button
           className={`tl-btn-msb ${track.muted ? 'tl-btn-msb--muted' : ''}`}
