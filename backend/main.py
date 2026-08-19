@@ -90,6 +90,11 @@ def playbackState():
     }
 
 
+@app.get("/perf")
+def perfStats():
+    return engine.perfStats()
+
+
 # Frame routes  
 
 @app.get("/frame/{frame}")

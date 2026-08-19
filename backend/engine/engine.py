@@ -3,31 +3,19 @@ import asyncio
 from backend.project.project import Project
 from backend.timeline.timeline import Timeline
 from backend.compositor.compositor import Compositor
+from backend.media.scheduler.decodeScheduler import DecodeScheduler
 
 
 class Engine:
-    """
-    Central orchestrator — ties Project, Timeline, and Compositor together.
-    This is the single object the API layer talks to.
-
-    Equivalent to the 'Engine' or 'Application' singleton in DaVinci/Premiere.
-
-    Responsibilities:
-      - Owns the active Project and Compositor
-      - Drives the preview loop (play/pause/seek)
-      - Delegates rendering to the Compositor
-      - Exposes a frame queue that the WebSocket/pipe can consume
-    """
-
+    
     def __init__(self) -> None:
         self.project: Project | None    = None
         self.compositor: Compositor | None = None
+        self.scheduler: DecodeScheduler | None = None
 
-        # Playback state
-        self._playing      = False
+        self._playing = False
         self._currentFrame = 0
 
-        # Async frame queue consumed by the preview server
         self.frameQueue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=3)
         self._loopTask: asyncio.Task | None   = None
 
@@ -35,24 +23,28 @@ class Engine:
 
     def newProject(
         self,
-        name: str   = "Untitled Project",
+        name: str = "Untitled Project",
         width: int  = 1920,
         height: int = 1080,
         fps: float  = 30.0,
     ) -> Project:
-        self.project    = Project(name=name, width=width, height=height, fps=fps)
-        self.compositor = Compositor(width=width, height=height)
-        # Add a default main timeline
+        self.project = Project(name=name, width=width, height=height, fps=fps)
+        self.scheduler = DecodeScheduler()
+        self.compositor = Compositor(width=width, height=height, fps=fps)
+        self.compositor.setScheduler(self.scheduler)
         self.project.timelines.append(Timeline("Main Timeline"))
         return self.project
 
     def loadProject(self, path: str) -> Project:
         self.project = Project.load(path)
         if self.project.timelines:
+            self.scheduler  = DecodeScheduler()
             self.compositor = Compositor(
-                width=self.project.width,
-                height=self.project.height,
+                width  = self.project.width,
+                height = self.project.height,
+                fps = self.project.fps,
             )
+            self.compositor.setScheduler(self.scheduler)
         return self.project
 
     def saveProject(self, path: str | None = None) -> str:
@@ -60,7 +52,7 @@ class Engine:
             raise RuntimeError("No active project")
         return self.project.save(path)
 
-    #   Active timeline shortcut  
+    # Active timeline shortcut  
 
     @property
     def activeTimeline(self) -> Timeline | None:
@@ -68,7 +60,7 @@ class Engine:
             return self.project.timelines[0]
         return None
 
-    #   Playback control  
+    # Playback control  
 
     @property
     def currentFrame(self) -> int:
@@ -95,10 +87,7 @@ class Engine:
     #   Preview loop    
 
     async def startPreviewLoop(self) -> None:
-        """
-        Async loop — run with asyncio.create_task().
-        Renders frames at project FPS and puts JPEG bytes into frameQueue.
-        """
+       
         if self.project is None or self.compositor is None:
             return
 
@@ -137,6 +126,11 @@ class Engine:
         if self.compositor is None or self.activeTimeline is None:
             return b""
         return self.compositor.renderThumbnail(self.activeTimeline, frame, w, h)
+
+    def perfStats(self) -> dict:
+        if self.compositor is None:
+            return {}
+        return self.compositor.perfStats()
 
     def __repr__(self) -> str:
         proj = self.project.name if self.project else "None"

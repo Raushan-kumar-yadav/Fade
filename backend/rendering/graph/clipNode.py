@@ -6,7 +6,6 @@ from backend.timeline.clips.baseClip import BaseClip
 
 
 class ClipNode(BaseNode):
- 
 
     def __init__(self, clip: BaseClip) -> None:
         super().__init__(f"clip_{clip.clipId}")
@@ -14,15 +13,14 @@ class ClipNode(BaseNode):
 
     def execute(self, ctx: RenderContext) -> RenderResult:
         if not self.clip.overlaps(ctx.frame):
-            return RenderResult()   # nothing to draw
+            return RenderResult()
 
-        # 1. Update all animated properties for this frame
+        # Evaluate all animated properties for this frame
         self.clip.evaluateAll(ctx.frame)
 
-        # 2. Draw clip into an isolated offscreen surface
         surf   = ctx.makeOffscreenSurface()
         canvas = surf.getCanvas()
-        canvas.clear(skia.Color4f(0, 0, 0, 0))   # transparent
+        canvas.clear(skia.Color4f(0, 0, 0, 0))
 
         try:
             self.clip.render(canvas, ctx.frame)
