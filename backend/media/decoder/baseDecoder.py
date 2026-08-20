@@ -27,5 +27,9 @@ class BaseDecoder(ABC):
         """Total number of frames in the source."""
         ...
 
+    def flushSubprocess(self) -> None:
+        
+        pass
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.filepath!r})"

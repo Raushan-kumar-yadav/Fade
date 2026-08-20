@@ -216,15 +216,30 @@
   background: transparent;
 }
 
-.vw-ws-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #444;
-  margin-right: 8px;
-  transition: background 0.3s;
-  flex-shrink: 0;
-}
+.vw-ws-dot { width: 7px; height: 7px; border-radius: 50%; background: #444; margin-right: 8px; transition: background 0.3s; flex-shrink: 0; }
 
 .vw-ws-dot--ok { background: #4dcc8f; box-shadow: 0 0 5px #4dcc8f88; }
 
+/* Resolution cap dropdown */
+.vw-res-select {
+  appearance: none;
+  background: var(--vw-btn, #2a2a2a);
+  color: var(--vw-text-1, #ccc);
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 20px 2px 7px;
+  cursor: pointer;
+  outline: none;
+  /* Custom chevron */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 8px 5px;
+  min-width: 48px;
+  transition: border-color 0.15s;
+}
+.vw-res-select:hover  { border-color: #555; background-color: var(--vw-btn-h, #3a3a3a); }
+.vw-res-select:focus  { border-color: var(--vw-accent, #00ffcc); }
+.vw-res-select option { background: #1e1e1e; color: #ccc; }

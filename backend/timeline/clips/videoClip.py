@@ -118,42 +118,41 @@ class VideoClip(BaseClip):
         canvas.drawRect(skia.Rect.MakeXYWH(0, 0, 1920, 1080), paint)
 
     def _renderMedia(self, canvas, paint, frame: int) -> None:
-        """
-        Ask the DecodeScheduler for this frame from the shared FrameCache.
-        The clip holds NO media data itself — it owns only assetId.
-        """
+         
         import skia
 
         if self._scheduler is None:
             self._renderSolid(canvas, paint)
             return
 
-        # Fast path  
-        decoded = self._scheduler.tryGetFrame(self.assetId, frame)
+        # Convert global  
+        localFrame = self.localFrame(frame)
+
+        # Fast path 
+        decoded = self._scheduler.tryGetFrame(self.assetId, localFrame)
 
         if decoded and decoded.valid:
             expected = decoded.width * decoded.height * 4
             if len(decoded.dataRGBA) != expected:
-                 self._renderSolid(canvas, paint)
+                self._renderSolid(canvas, paint)
             else:
                 try:
-                    info = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
-                     
+                    info   = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
                     skdata = skia.Data.MakeWithCopy(decoded.dataRGBA)
-                    image  = skia.Image.MakeRasterData(
-                        info,
-                        skdata,
-                        decoded.width * 4,
-                    )
+                    image  = skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
                     if image is not None:
-                        canvas.drawImage(image, 0, 0, skia.SamplingOptions(), paint)
+                        
+                        dst = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
+                        opts = skia.SamplingOptions(skia.FilterMode.kLinear)
+                        canvas.drawImageRect(image, dst, opts, paint)
                     else:
                         self._renderSolid(canvas, paint)
-                    del skdata   # explicit release after drawImage is done
+                    del skdata    
                 except Exception as e:
-                    print(f"[VideoClip] drawImage error frame={frame}: {e}")
+                    print(f"[VideoClip] drawImage error frame={frame} local={localFrame}: {e}")
                     self._renderSolid(canvas, paint)
         else:
+            # Frame not yet decoded  
             self._renderSolid(canvas, paint)
 
  

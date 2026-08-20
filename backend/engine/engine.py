@@ -98,27 +98,26 @@ class Engine:
 
             if self.activeTimeline:
                 try:
-                    # ── Step 1: Render current frame (skia, no decode threads) ──
-                    jpeg = await asyncio.to_thread(
-                        self.compositor.compositeFrameJpeg,
+                    # ── Step 1: Update prefetch target (non-blocking) ───────────
+                    # prefetchForFrame just updates the target range and signals
+                    # the background decode thread — returns in <1ms.
+                    # The background thread fills the cache independently.
+                    self.compositor.prefetchForFrame(
+                        self.activeTimeline,
+                        self._currentFrame,
+                    )
+
+                    # ── Step 2: Render from cache (Skia, instant cache lookup) ──
+                    png = await asyncio.to_thread(
+                        self.compositor.compositeFramePng,
                         self.activeTimeline,
                         self._currentFrame,
                     )
                     _skip_count = 0
                     try:
-                        self.frameQueue.put_nowait(jpeg)
+                        self.frameQueue.put_nowait(png)
                     except asyncio.QueueFull:
                         pass
-
-                    # ── Step 2: Prefetch AFTER render completes ─────────────────
-                    # Decode threads start only after skia is completely done.
-                    # This prevents libavcodec internal threads from conflicting
-                    # with skia on Windows (STATUS_ACCESS_VIOLATION).
-                    await asyncio.to_thread(
-                        self.compositor.prefetchForFrame,
-                        self.activeTimeline,
-                        self._currentFrame,
-                    )
 
                     # Advance frame only when playing
                     if self._playing:
@@ -142,15 +141,46 @@ class Engine:
 
     #   Single frame  
 
-    def renderFrameJpeg(self, frame: int) -> bytes:
+    def renderFramePng(self, frame: int) -> bytes:
         if self.compositor is None or self.activeTimeline is None:
             return b""
-        return self.compositor.compositeFrameJpeg(self.activeTimeline, frame)
+        return self.compositor.compositeFramePng(self.activeTimeline, frame)
 
     def renderThumbnail(self, frame: int, w: int = 320, h: int = 180) -> bytes:
         if self.compositor is None or self.activeTimeline is None:
             return b""
         return self.compositor.renderThumbnail(self.activeTimeline, frame, w, h)
+
+    # ── Preview scale (resolution cap) ────────────────────────────────────────
+
+    def setPreviewScale(self, scale: float) -> None:
+        """
+        Change decode resolution: 1.0=full, 0.5=half, 0.25=quarter, 0.125=eighth.
+        Closes all active decoders and reopens them at the new scale.
+        Evicts the frame cache so stale-resolution frames are discarded.
+        """
+        if self.compositor is None or self.scheduler is None:
+            return
+        new_scale = max(0.125, min(1.0, scale))
+        self.scheduler._previewScale = new_scale
+        # Reopen all active decoders at the new scale
+        for clipId in list(self.scheduler._pumpToContent.keys()):
+            contentId = self.scheduler._pumpToContent.get(clipId, "")
+            self.scheduler._decoderPool.reopen(clipId, new_scale)
+            # Reset pump position so background thread re-decodes from scratch
+            with self.scheduler._lock:
+                self.scheduler._lastDecoded[clipId]  = -1
+                self.scheduler._targetFrames[clipId] = 0
+            # Evict all cached frames for this content
+            if contentId:
+                self.scheduler._frameCache.evictClip(contentId)
+        print(f"[Engine] Preview scale -> {new_scale} ({int(new_scale*100)}%)")
+
+
+    def getPreviewScale(self) -> float:
+        if self.scheduler is None:
+            return 0.5
+        return getattr(self.scheduler, '_previewScale', 0.5)
 
     def perfStats(self) -> dict:
         if self.compositor is None:

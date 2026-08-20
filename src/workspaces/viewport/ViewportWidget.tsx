@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   openPreviewSocket,
   playbackPlay, playbackPause, playbackSeek,
-  getPlaybackState, frameUrl,
+  getPlaybackState, frameUrl, setPreviewScale,
 } from '../../api/useApi';
 import './ViewportWidget.css';
 
@@ -55,6 +55,7 @@ export default function ViewportWidget() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [connected,    setConnected]    = useState(false);
   const [retryCount,   setRetryCount]   = useState(0);
+  const [resScale,     setResScale]     = useState<number>(0.5);
 
   // The canvas receives decoded JPEG blobs from the WebSocket
   const canvasRef  = useRef<HTMLCanvasElement>(null);
@@ -186,6 +187,12 @@ export default function ViewportWidget() {
     setCurrentFrame(f);
   }, [isPlaying]);
 
+  const handleResChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const scale = parseFloat(e.target.value);
+    setResScale(scale);
+    try { await setPreviewScale(scale); } catch { /* backend busy */ }
+  }, []);
+
   const timecode = framesToTimecode(currentFrame, fps);
 
   return (
@@ -237,6 +244,20 @@ export default function ViewportWidget() {
           </button>
         </div>
         <div className="vw-controls__right">
+          {/* Resolution cap dropdown */}
+          <select
+            id="vw-res-select"
+            className="vw-res-select"
+            value={resScale}
+            onChange={handleResChange}
+            title="Preview decode resolution"
+            aria-label="Preview resolution"
+          >
+            <option value={1.0}>Full</option>
+            <option value={0.5}>1/2</option>
+            <option value={0.25}>1/4</option>
+            <option value={0.125}>1/8</option>
+          </select>
           <div className={`vw-ws-dot${connected ? ' vw-ws-dot--ok' : ''}`} title={connected ? 'Engine connected' : 'Connecting…'} />
           <button id="vw-fullscreen" className="vw-btn" title="Toggle fullscreen" onClick={() => setIsFullscreen(f => !f)}>
             <IconFullscreen />

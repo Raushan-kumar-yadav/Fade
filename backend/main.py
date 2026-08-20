@@ -2,10 +2,9 @@ from __future__ import annotations
 import os
 import faulthandler
 
-# ── Thread limits ── must be set BEFORE numpy / av / skia import their thread pools
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
-os.environ.setdefault("OMP_NUM_THREADS",      "1")
-os.environ.setdefault("MKL_NUM_THREADS",      "1")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS",  "1")
 
 # Dump C-level stack trace on segfault / access violation
@@ -35,7 +34,7 @@ _library: dict[str, MediaAsset] = {}
 # In-memory clip→track index map  (clipId → trackIndex)
 _clipTrackMap: dict[str, int] = {}
 
-# ── Lifespan ──────────────────────────────────────────────────────────────────
+#   Lifespan  
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,7 +52,7 @@ async def lifespan(app: FastAPI):
     # Shutdown: nothing to clean up for now
 
 
-# ── FastAPI app ────────────────────────────────────────────────────────────────
+#   FastAPI app  
 app = FastAPI(title="Fade Backend", lifespan=lifespan)
 
 app.add_middleware(
@@ -64,7 +63,7 @@ app.add_middleware(
 )
 
 
-# ── Health / Project ───────────────────────────────────────────────────────────
+#   Health / Project  
 
 @app.get("/health")
 def health():
@@ -85,7 +84,7 @@ def newProject(name: str = "Untitled Project",
     return {"status": "ok", "project": engine.project.toDict()}
 
 
-# ── Library routes ─────────────────────────────────────────────────────────────
+#   Library routes  
 
 class ImportRequest(BaseModel):
     filepath: str
@@ -151,17 +150,17 @@ def deleteAsset(assetId: str):
     return {"status": "ok"}
 
 
-# ── Timeline routes ────────────────────────────────────────────────────────────
+#   Timeline routes  
 
 class AddClipRequest(BaseModel):
-    assetId:    str
+    assetId: str
     trackIndex: int
     startFrame: int
-    duration:   int
+    duration: int
 
 
 class MoveClipRequest(BaseModel):
-    clipId:     str
+    clipId: str
     startFrame: int
     trackIndex: int
 
@@ -183,8 +182,8 @@ def addClip(req: AddClipRequest):
 
     clip = VideoClip(
         startFrame = req.startFrame,
-        duration   = req.duration,
-        assetId    = req.assetId,
+        duration = req.duration,
+        assetId = req.assetId,
     )
 
     # Wire scheduler so the clip can decode immediately
@@ -196,12 +195,12 @@ def addClip(req: AddClipRequest):
     _clipTrackMap[clip.clipId] = req.trackIndex
 
     return {
-        "clipId":     clip.clipId,
-        "trackId":    track.trackId,
+        "clipId": clip.clipId,
+        "trackId": track.trackId,
         "startFrame": clip.startFrame,
-        "duration":   clip.duration,
-        "assetId":    req.assetId,
-        "type":       "video",
+        "duration": clip.duration,
+        "assetId": req.assetId,
+        "type": "video",
     }
 
 
@@ -264,7 +263,7 @@ def timelineState():
     return data
 
 
-# ── Playback routes ────────────────────────────────────────────────────────────
+#   Playback routes  
 
 @app.post("/playback/play")
 def play():
@@ -298,21 +297,37 @@ def perfStats():
     return engine.perfStats()
 
 
-# ── Frame / thumbnail routes ───────────────────────────────────────────────────
-
+ 
 @app.get("/frame/{frame}")
 def getFrame(frame: int):
-    jpeg = engine.renderFrameJpeg(frame)
-    return Response(content=jpeg, media_type="image/jpeg")
+    png = engine.renderFramePng(frame)
+    return Response(content=png, media_type="image/png")
 
 
 @app.get("/thumbnail/{frame}")
 def getThumbnail(frame: int, w: int = 320, h: int = 180):
-    jpeg = engine.renderThumbnail(frame, w, h)
-    return Response(content=jpeg, media_type="image/jpeg")
+    png = engine.renderThumbnail(frame, w, h)
+    return Response(content=png, media_type="image/png")
 
 
-# ── WebSocket preview stream ───────────────────────────────────────────────────
+class ScaleRequest(BaseModel):
+    scale: float   
+
+
+@app.post("/preview/scale")
+def setPreviewScale(req: ScaleRequest):
+    """Change decoder resolution cap — restarts decoders with new scale."""
+    clamped = max(0.125, min(1.0, req.scale))
+    engine.setPreviewScale(clamped)
+    return {"scale": clamped}
+
+
+@app.get("/preview/scale")
+def getPreviewScale():
+    return {"scale": engine.getPreviewScale()}
+
+
+#   WebSocket preview  
 
 @app.websocket("/ws/preview")
 async def previewStream(ws: WebSocket):
@@ -325,7 +340,7 @@ async def previewStream(ws: WebSocket):
         pass
 
 
-# ── Entry point ────────────────────────────────────────────────────────────────
+#   Entry point  
 
 def _findFreePort(start: int = 8000, end: int = 8010) -> int:
     for port in range(start, end + 1):

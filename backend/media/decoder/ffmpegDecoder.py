@@ -7,38 +7,39 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-#   Bundled executable paths  
+# Bundled executable paths  
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
-_FFDIR = os.path.join(_HERE, "ffmpeg")
+_FFDIR   = os.path.join(_HERE, "ffmpeg")
 _FFMPEG  = os.path.join(_FFDIR, "ffmpeg.exe")
 _FFPROBE = os.path.join(_FFDIR, "ffprobe.exe")
 
-# Subprocess environment: prepend _FFDIR so avcodec-61.dll etc. are found
+
 def _ffenv() -> dict:
+    """Subprocess env: prepend _FFDIR so avcodec-61.dll etc. are found."""
     env = os.environ.copy()
     env["PATH"] = _FFDIR + ";" + env.get("PATH", "")
     return env
 
+
 _ENV: dict = _ffenv()
 
 
-#   Decoded frame container  
+# Decoded frame container  
 
 @dataclass
 class DecodedFrameFF:
-    """Immutable decoded video frame (BGRA packed, ready for skia.MakeN32Premul)."""
+    """BGRA frame ready for skia.ImageInfo.MakeN32Premul on Windows."""
     frameNumber: int
     width: int
     height: int
-    dataRGBA: bytes   # BGRA 
+    dataRGBA: bytes    
     valid: bool = True
 
 
-# Metadata probe 
- 
+#   Metadata probe  
+
 def _parse_rate(s: str) -> float:
-    """Parse '60000/1001' or '60' into a float fps."""
     if not s or s == "0/0":
         return 30.0
     if "/" in s:
@@ -49,10 +50,7 @@ def _parse_rate(s: str) -> float:
 
 
 def _probe(filepath: str) -> dict:
-    """
-    Run bundled ffprobe.exe to get video stream metadata.
-    Pure subprocess — no Python FFmpeg bindings, no Skia DLL conflict.
-    """
+    """Run ffprobe subprocess to get video stream metadata."""
     cmd = [
         _FFPROBE, "-v", "quiet",
         "-print_format", "json",
@@ -84,42 +82,41 @@ def _probe(filepath: str) -> dict:
     }
 
 
-# Decoder  
-
+ 
 class FFmpegVideoDecoder:
-    """
-    Frame-accurate video decoder using ffmpeg.exe subprocess.
+    
 
-    Keeps a single persistent ffmpeg process for sequential forward reads.
-    Restarts the process on seeks.  ALWAYS drains / terminates the subprocess
-    before returning data to the caller so no pipe activity runs alongside Skia.
-    """
+ 
+     
+    SEEK_FWD_THRESH: int = 120    
 
-    SEEK_FWD_THRESH = 30   # restart on jumps > this many frames
-
-    def __init__(self, filepath: str, fps: float = 0.0) -> None:
-        # Init ALL attributes first so __del__ never hits AttributeError
+    def __init__(self, filepath: str, fps: float = 0.0, scale_factor: float = 0.5) -> None:
+        # Init all 
         self._filepath = filepath
+        self._scale_factor = max(0.125, min(1.0, scale_factor))
         self._proc: Optional[subprocess.Popen] = None
-        self._last_frame: int  = -1
+        self._last_frame:  int  = -1
         self._fps = fps or 30.0
         self._width = 1920
         self._height = 1080
         self._total_frames = 0
         self._frame_bytes  = self._width * self._height * 4
 
-        # Probe  
         info = _probe(filepath)
         self._fps = info["fps"]
-        self._width = info["width"]
-        self._height = info["height"]
-        self._total_frames  = info["nb_frames"] or int(round(info["duration"] * self._fps))
-        self._frame_bytes   = self._width * self._height * 4
+        self._width_src = info["width"]
+        self._height_src = info["height"]
+        # Apply scale factor 
+        self._width  = max(2, round(info["width"]  * self._scale_factor) // 2 * 2)
+        self._height = max(2, round(info["height"] * self._scale_factor) // 2 * 2)
+        self._total_frames = info["nb_frames"] or int(round(info["duration"] * self._fps))
+        self._frame_bytes  = self._width * self._height * 4
 
+        pct = int(self._scale_factor * 100)
         print(
             f"[FFmpegDecoder] {filepath}: "
-            f"{self._width}x{self._height} @ {self._fps:.3f}fps "
-            f"({self._total_frames} frames)"
+            f"{self._width_src}x{self._height_src} @ {self._fps:.3f}fps "
+            f"({self._total_frames} frames) [preview {pct}%: {self._width}x{self._height}]"
         )
 
     # Public API  
@@ -140,11 +137,13 @@ class FFmpegVideoDecoder:
         return self._total_frames
 
     def decodeFrame(self, frame_number: int) -> Optional[DecodedFrameFF]:
-         
+        
+        proc_dead = self._proc is not None and self._proc.poll() is not None
         need_restart = (
-            self._proc is None or
-            frame_number < self._last_frame or
-            frame_number > self._last_frame + self.SEEK_FWD_THRESH
+            self._proc is None
+            or proc_dead
+            or frame_number < self._last_frame
+            or frame_number > self._last_frame + self.SEEK_FWD_THRESH
         )
 
         if need_restart:
@@ -153,44 +152,57 @@ class FFmpegVideoDecoder:
 
         return self._read_until(frame_number)
 
+    def stopSubprocess(self) -> None:
+         
+        pass
+
     def close(self) -> None:
         self._stop_process()
 
     def __del__(self) -> None:
         self.close()
 
-    # Internal  
-
+ 
     def _start_process(self, from_frame: int) -> None:
-        """Start a new ffmpeg process from approximately from_frame."""
-        start_sec = max(0.0, (from_frame - 2) / self._fps)  # 2-frame buffer before target
+        """Start ffmpeg from just before from_frame (keyframe seek)."""
+        start_sec = max(0.0, (from_frame - 2) / self._fps)
 
-        cmd = [_FFMPEG, "-loglevel", "error"]
+        cmd = [
+            _FFMPEG,
+            "-loglevel", "error",
+            "-hwaccel", "none",
+        ]
 
+        # Input options (must come BEFORE -i):
         if start_sec > 0.5:
             cmd += ["-ss", f"{start_sec:.6f}"]
 
+        cmd += ["-i", self._filepath]
+
+        # Output options (must come AFTER -i):
+        if self._scale_factor < 1.0:
+            cmd += ["-vf", f"scale={self._width}:{self._height}"]
+
         cmd += [
-            "-i", self._filepath,
-            "-an", # drop audio
-            "-vf", f"fps={self._fps}",
-            "-pix_fmt",  "bgra",          # BGRA = skia MakeN32Premul on Windows
+            "-an",
+            "-pix_fmt", "bgra",
             "-f", "rawvideo",
             "pipe:1",
         ]
 
+
         self._proc = subprocess.Popen(
-            cmd, 
+            cmd,
             stdout = subprocess.PIPE,
             stderr = subprocess.DEVNULL,
-            bufsize = self._frame_bytes * 4,
-            env = _ENV,
+            # Large pipe buffer 
+            bufsize = self._frame_bytes * 8,
+            env     = _ENV,
         )
-        # The sequential  
+        # Frame counter: 2 frames before target  
         self._last_frame = max(-1, from_frame - 3)
 
     def _stop_process(self) -> None:
-        """Terminate the running ffmpeg process and wait for it to exit."""
         if self._proc is None:
             return
         try:
@@ -210,37 +222,26 @@ class FFmpegVideoDecoder:
 
     def _read_until(self, target: int) -> Optional[DecodedFrameFF]:
         """
-        Read frames from the pipe until we reach target frame number.
-        Drops frames before target (they're already decoded, just discarded).
-        Terminates the process cleanly before returning.
+        Read frames from the pipe until we reach target.
+        Process stays alive after this returns.
         """
         if self._proc is None:
             return None
 
-        result: Optional[DecodedFrameFF] = None
-
         while True:
             raw = self._proc.stdout.read(self._frame_bytes)
             if not raw or len(raw) < self._frame_bytes:
-                 
-                break
+                self._stop_process()    
+                return None
 
             self._last_frame += 1
-            cur = self._last_frame
+            if self._last_frame < target:
+                continue   
 
-            if cur < target:
-                continue   # drop this frame
-
-            # Found our target frame
-            result = DecodedFrameFF(
-                frameNumber = cur,
+            return DecodedFrameFF(
+                frameNumber = self._last_frame,
                 width = self._width,
                 height = self._height,
                 dataRGBA = raw,
                 valid = True,
             )
-            break
-
-      
-        self._stop_process()
-        return result

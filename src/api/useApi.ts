@@ -128,7 +128,7 @@ export function frameUrl(frame: number): string {
 // ── WebSocket preview stream ──────────────────────────────────────────────────
 
 export function openPreviewSocket(
-  onFrame: (jpeg: Blob) => void,
+  onFrame: (blob: Blob) => void,
   onClose?: () => void,
 ): WebSocket {
   const ws = new WebSocket(`${wsBase()}/ws/preview`);
@@ -137,4 +137,15 @@ export function openPreviewSocket(
   ws.onclose    = () => onClose?.();
   ws.onerror    = (e) => console.error('[PreviewWS] error', e);
   return ws;
+}
+
+// ── Preview quality ───────────────────────────────────────────────────────────
+
+/** Set decode resolution scale: 1.0=full, 0.5=half, 0.25=quarter, 0.125=eighth */
+export async function setPreviewScale(scale: number): Promise<void> {
+  await fetch(`${base()}/preview/scale`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scale }),
+  });
 }
