@@ -2,7 +2,6 @@
 from __future__ import annotations
 import threading
 import queue
-import gc
 from typing import Optional
 from backend.media.cache.frameCache import FrameCache
 from backend.media.decoder.decoderPool import DecoderPool
@@ -49,6 +48,12 @@ class DecodeScheduler:
     def tryGetFrame(self, contentId: str, frame: int) -> Optional[DecodedFrame]:
         """Cache lookup — called every frame by the clip. Always instant."""
         return self._frameCache.get((contentId, frame))
+
+    def sourceFrame(self, clipId: str, timelineFrame: int, timelineFps: float) -> int:
+        sourceFps = self._decoderPool.fps(clipId, timelineFps)
+        if timelineFps <= 0:
+            return timelineFrame
+        return max(0, round(timelineFrame * sourceFps / timelineFps))
 
     def prefetchAround(self, clipId: str, anchorFrame: int, radius: int = 15) -> None:
          
@@ -191,7 +196,6 @@ class DecodeScheduler:
 
         finally:
             self._decoderPool.checkin(clipId)
-            gc.collect()
 
          
         if needs_more:

@@ -312,10 +312,15 @@ def splitClip(req: SplitClipRequest):
             except ValueError as e:
                 raise HTTPException(400, str(e))
             right = cmd._rightClip
+            trackIndex = tl.tracks.index(track)
+            _clipTrackMap[clip.clipId] = trackIndex
+            if right:
+                _clipTrackMap[right.clipId] = trackIndex
             return {
                 "leftClipId":  clip.clipId,
                 "rightClipId": right.clipId if right else None,
                 "splitFrame":  req.frame,
+                "trackId":     track.trackId,
             }
 
     raise HTTPException(404, f"Clip {req.clipId!r} not found")

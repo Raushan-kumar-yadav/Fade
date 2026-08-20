@@ -82,5 +82,12 @@ class DecoderPool:
         with self._poolLock:
             return clipId in self._pool
 
+    def fps(self, clipId: str, default: float = 30.0) -> float:
+        with self._poolLock:
+            entry = self._pool.get(clipId)
+        if entry is None:
+            return default
+        return float(getattr(entry.decoder, "fps", default))
+
     def __repr__(self) -> str:
         return f"DecoderPool({len(self._pool)} decoders)"

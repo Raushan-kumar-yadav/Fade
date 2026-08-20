@@ -92,6 +92,16 @@ class VideoClip(BaseClip):
             if hasattr(effect, 'evaluateAll'):
                 effect.evaluateAll(lf)
 
+    def sourceFrame(self, frame: int) -> int:
+        localFrame = self.localFrame(frame)
+        if self._scheduler is None:
+            return localFrame
+        return self._scheduler.sourceFrame(
+            self.clipId,
+            localFrame,
+            self._projectFps,
+        )
+
     #   Render  
 
     def render(self, canvas, frame: int) -> None:
@@ -132,7 +142,7 @@ class VideoClip(BaseClip):
             return
 
         # Convert global frame to local frame (0-based from clip start)
-        localFrame = self.localFrame(frame)
+        localFrame = self.sourceFrame(frame)
 
         # Fast path: cache lookup by assetId + localFrame
         decoded = self._scheduler.tryGetFrame(self.assetId, localFrame)

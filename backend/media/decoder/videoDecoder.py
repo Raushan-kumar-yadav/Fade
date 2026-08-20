@@ -31,6 +31,10 @@ class VideoDecoder(BaseDecoder):
     def getDurationFrames(self) -> int:
         return self._inner.getDurationFrames()
 
+    @property
+    def fps(self) -> float:
+        return self._fps
+
     def flushSubprocess(self) -> None:
         self._inner.stopSubprocess()
 

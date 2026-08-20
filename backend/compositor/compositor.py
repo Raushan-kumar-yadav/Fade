@@ -169,6 +169,25 @@ class Compositor:
             "cacheEntries": self._stats.cacheEntries,
         }
 
+    def isFrameReady(self, timeline: "Timeline", frame: int) -> bool:
+        """Return whether every visible video clip has its requested frame cached."""
+        if self._scheduler is None:
+            return True
+
+        for track in timeline.tracks:
+            if getattr(track, "muted", False):
+                continue
+            if getattr(track, "isAudio", lambda: False)():
+                continue
+            for clip in track.clips:
+                if not clip.overlaps(frame) or not getattr(clip, "assetId", None):
+                    continue
+                localFrame = clip.sourceFrame(frame)
+                decoded = self._scheduler.tryGetFrame(clip.assetId, localFrame)
+                if not (decoded and decoded.valid):
+                    return False
+        return True
+
     #   Internal  
 
     def _syncClipRegistrations(self, timeline: "Timeline", frame: int) -> None:
@@ -230,7 +249,7 @@ class Compositor:
                     continue
                 if not clip.overlaps(frame):
                     continue
-                localFrame = clip.localFrame(frame)
+                localFrame = clip.sourceFrame(frame)
                 self._scheduler.prefetchAround(clip.clipId, localFrame, PREFETCH_RADIUS)
 
     def prefetchForFrame(self, timeline: "Timeline", frame: int) -> None:
