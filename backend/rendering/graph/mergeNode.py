@@ -12,18 +12,17 @@ class MergeNode(BaseNode):
         self.trackOpacity = trackOpacity
 
     def execute(self, ctx: RenderContext) -> RenderResult:
-        surf = ctx.makeOffscreenSurface()
-        canvas = surf.getCanvas()
-        canvas.clear(skia.Color4f(0, 0, 0, 0))
+        if self.trackOpacity <= 0.0:
+            return RenderResult()
+
+        canvas = ctx.canvas
+        if self.trackOpacity < 1.0:
+            canvas.saveLayerAlphaf(self.trackOpacity)
+        else:
+            canvas.save()
 
         for inputNode in self.inputs:
-            result = inputNode.getResult()
-            if not result or not result.valid:
-                continue
+            inputNode.execute(ctx)
 
-            paint = skia.Paint()
-            paint.setAlphaf(result.opacity * self.trackOpacity)
-            canvas.drawImage(result.image, 0, 0, skia.SamplingOptions(), paint)
-
-        img = surf.makeImageSnapshot()
-        return RenderResult(image=img, opacity=self.trackOpacity)
+        canvas.restore()
+        return RenderResult()

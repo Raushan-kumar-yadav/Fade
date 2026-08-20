@@ -14,20 +14,14 @@ class EffectNode(BaseNode):
         if not self.inputs:
             return RenderResult()
 
-        upstream = self.inputs[0].getResult()
-        if not upstream or not upstream.valid:
-            return RenderResult()
-
-        surf   = ctx.makeOffscreenSurface()
-        canvas = surf.getCanvas()
-        canvas.clear(skia.Color4f(0, 0, 0, 0))
-
+        # Effect pipeline to be implemented via Skia ImageFilters attached to saveLayer
+        # For now, pass-through to prevent memory leaks from offscreen surfaces
+        
+        ctx.canvas.save()
         try:
-            self.effect.apply(canvas, upstream.image, ctx.frame)
-        except Exception as e:
-            print(f"[EffectNode] error applying {self.effect}: {e}")
-            paint = skia.Paint()
-            canvas.drawImage(upstream.image, 0, 0, skia.SamplingOptions(), paint)
+            self.inputs[0].execute(ctx)
+        finally:
+            ctx.canvas.restore()
 
-        img = surf.makeImageSnapshot()
-        return RenderResult(image=img, opacity=upstream.opacity)
+        return RenderResult()
+

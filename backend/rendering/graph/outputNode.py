@@ -17,12 +17,8 @@ class OutputNode(BaseNode):
         ctx.canvas.scale(ctx.zoom, ctx.zoom)
 
         for mergeNode in self.inputs:
-            result = mergeNode.getResult()
-            if not result or not result.valid:
-                continue
-            paint = skia.Paint()
-            paint.setAlphaf(result.opacity)
-            ctx.canvas.drawImage(result.image, 0, 0, skia.SamplingOptions(), paint)
+            mergeNode.execute(ctx)
 
         ctx.canvas.restore()
-        return RenderResult()   
+        return RenderResult()
+

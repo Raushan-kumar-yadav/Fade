@@ -57,14 +57,15 @@ class RenderGraph:
 
     def execute(self, ctx: RenderContext) -> None:
         """
-        Run nodes in topological order.
-        Each node's run() caches its RenderResult for downstream nodes to read.
+        Run nodes hierarchically starting from the root OutputNode.
+        This avoids intermediate offscreen surface allocations, improving
+        performance and fixing OOM memory leaks.
         """
-        if not self._compiled:
-            self.compile()
-
-        for node in self._sorted:
-            node.run(ctx)
+        output_nodes = [n for n in self._nodes if n.nodeId == "output"]
+        if not output_nodes:
+            return
+            
+        output_nodes[0].execute(ctx)
 
     def nodeCount(self) -> int:
         return len(self._nodes)

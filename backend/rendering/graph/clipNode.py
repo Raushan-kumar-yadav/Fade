@@ -16,10 +16,15 @@ class ClipNode(BaseNode):
             return RenderResult()
 
         self.clip.evaluateAll(ctx.frame)
+        opacity = float(self.clip.transform.opacity.get())
+        if opacity <= 0.0:
+            return RenderResult()
 
-        surf   = ctx.makeOffscreenSurface()
-        canvas = surf.getCanvas()
-        canvas.clear(skia.Color4f(0, 0, 0, 0))
+        canvas = ctx.canvas
+        if opacity < 1.0:
+            canvas.saveLayerAlphaf(opacity)
+        else:
+            canvas.save()
 
         clip   = self.clip
         frame  = ctx.frame
@@ -35,8 +40,7 @@ class ClipNode(BaseNode):
         except Exception as e:
             print(f"[ClipNode] render error for {clip.clipId}: {e}")
             import traceback; traceback.print_exc()
-            return RenderResult()
+        finally:
+            canvas.restore()
 
-        img     = surf.makeImageSnapshot()
-        opacity = float(clip.transform.opacity.get())
-        return RenderResult(image=img, opacity=opacity)
+        return RenderResult()
