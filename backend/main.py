@@ -823,6 +823,184 @@ def listFonts():
 
 
 
+# ── Inspector — params + keyframes ─────────────────────────────────────────
+
+from backend.timeline.clips.animEngine import AnimParam, Interp, Keyframe as KF
+
+
+def _get_or_create_anim(clip, key: str, base_value) -> AnimParam:
+    """Lazily create AnimParam store on clip."""
+    if not hasattr(clip, '_anim_params'):
+        clip._anim_params = {}
+    if key not in clip._anim_params:
+        clip._anim_params[key] = AnimParam(base_value)
+    return clip._anim_params[key]
+
+
+def _clip_param_schema(clip) -> list:
+    """Build param descriptor list based on clip type."""
+    from backend.timeline.clips.textClip  import TextClip
+    from backend.timeline.clips.shapeClip import ShapeClip
+    from backend.timeline.clips.penClip   import PenClip
+
+    # Common transform params (every clip)
+    base = [
+        {"id": "opacity",   "label": "Opacity",    "type": "float", "min": 0,    "max": 100,  "default": 100,   "group": "Transform"},
+        {"id": "pos_x",     "label": "Position X", "type": "float", "min": -960, "max": 960,  "default": 0,     "group": "Transform"},
+        {"id": "pos_y",     "label": "Position Y", "type": "float", "min": -540, "max": 540,  "default": 0,     "group": "Transform"},
+        {"id": "scale_x",   "label": "Scale X",    "type": "float", "min": 0,    "max": 500,  "default": 100,   "group": "Transform"},
+        {"id": "scale_y",   "label": "Scale Y",    "type": "float", "min": 0,    "max": 500,  "default": 100,   "group": "Transform"},
+        {"id": "rotation",  "label": "Rotation",   "type": "float", "min": -360, "max": 360,  "default": 0,     "group": "Transform"},
+        {"id": "anchor_x",  "label": "Anchor X",   "type": "float", "min": -960, "max": 960,  "default": 0,     "group": "Transform"},
+        {"id": "anchor_y",  "label": "Anchor Y",   "type": "float", "min": -540, "max": 540,  "default": 0,     "group": "Transform"},
+    ]
+
+    if isinstance(clip, TextClip):
+        s = clip.style
+        base += [
+            {"id": "font_size",    "label": "Font Size",     "type": "float", "min": 4,  "max": 400, "default": s.fontSize,     "group": "Text"},
+            {"id": "tracking",     "label": "Tracking",      "type": "float", "min": -20,"max": 100, "default": s.letterSpacing,"group": "Text"},
+            {"id": "line_height",  "label": "Line Height",   "type": "float", "min": 0.5,"max": 4,   "default": s.lineHeight,   "group": "Text"},
+            {"id": "fill_r",       "label": "Fill R",        "type": "float", "min": 0,  "max": 1,   "default": s.color[0],     "group": "Text"},
+            {"id": "fill_g",       "label": "Fill G",        "type": "float", "min": 0,  "max": 1,   "default": s.color[1],     "group": "Text"},
+            {"id": "fill_b",       "label": "Fill B",        "type": "float", "min": 0,  "max": 1,   "default": s.color[2],     "group": "Text"},
+            {"id": "fill_a",       "label": "Fill A",        "type": "float", "min": 0,  "max": 1,   "default": s.color[3],     "group": "Text"},
+        ]
+
+    elif isinstance(clip, ShapeClip):
+        s = clip.style
+        fill = s.fillColor or [0.4, 0.4, 1.0, 1.0]
+        base += [
+            {"id": "shape_w",  "label": "Width",       "type": "float", "min": 1,   "max": 3840, "default": s.width,      "group": "Shape"},
+            {"id": "shape_h",  "label": "Height",      "type": "float", "min": 1,   "max": 2160, "default": s.height,     "group": "Shape"},
+            {"id": "fill_r",   "label": "Fill R",      "type": "float", "min": 0,   "max": 1,    "default": fill[0],      "group": "Shape"},
+            {"id": "fill_g",   "label": "Fill G",      "type": "float", "min": 0,   "max": 1,    "default": fill[1],      "group": "Shape"},
+            {"id": "fill_b",   "label": "Fill B",      "type": "float", "min": 0,   "max": 1,    "default": fill[2],      "group": "Shape"},
+            {"id": "fill_a",   "label": "Fill A",      "type": "float", "min": 0,   "max": 1,    "default": fill[3],      "group": "Shape"},
+            {"id": "stroke_w", "label": "Stroke Width","type": "float", "min": 0,   "max": 50,   "default": s.strokeWidth, "group": "Shape"},
+        ]
+
+    elif isinstance(clip, PenClip):
+        s = clip.style
+        sc = s.get('strokeColor', [1,1,1,1]) if isinstance(s, dict) else [1,1,1,1]
+        base += [
+            {"id": "stroke_r", "label": "Stroke R", "type": "float", "min": 0, "max": 1, "default": sc[0], "group": "Path"},
+            {"id": "stroke_g", "label": "Stroke G", "type": "float", "min": 0, "max": 1, "default": sc[1], "group": "Path"},
+            {"id": "stroke_b", "label": "Stroke B", "type": "float", "min": 0, "max": 1, "default": sc[2], "group": "Path"},
+            {"id": "stroke_w", "label": "Stroke Width","type": "float","min": 0,"max":50, "default": 2,     "group": "Path"},
+            {"id": "fill_a",   "label": "Fill Alpha", "type": "float", "min": 0, "max": 1, "default": 0,   "group": "Path"},
+        ]
+
+    return base
+
+
+class ParamValueBody(BaseModel):
+    value: float
+    frame: int = -1   # if >= 0, set as keyframe at this frame
+
+
+class KeyframeBody(BaseModel):
+    frame:        int
+    value:        float
+    interp:       str = "linear"
+    handle_in_f:  float = -5.0
+    handle_in_v:  float =  0.0
+    handle_out_f: float =  5.0
+    handle_out_v: float =  0.0
+
+
+@app.get("/clips/{clipId}/params")
+def getClipParams(clipId: str, frame: int = 0):
+    """Return all inspectable params + current values for a clip."""
+    clip, _ = _find_clip(clipId)
+    schema   = _clip_param_schema(clip)
+    rows     = []
+    for p in schema:
+        ap = _get_or_create_anim(clip, p["id"], p["default"])
+        value        = ap.evaluate(frame) if ap.is_animated() else p["default"]
+        rows.append({
+            "id":          p["id"],
+            "label":       p["label"],
+            "type":        p["type"],
+            "min":         p["min"],
+            "max":         p["max"],
+            "default":     p["default"],
+            "group":       p["group"],
+            "value":       value,
+            "isAnimated":  ap.is_animated(),
+            "hasKeyframe": ap.has_keyframe_at(frame),
+            "keyframes":   ap.all_keyframe_frames(),
+        })
+    return {
+        "clipId": clipId,
+        "clipType": type(clip).__name__,
+        "startFrame": clip.startFrame,
+        "duration":   clip.duration,
+        "params": rows,
+    }
+
+
+@app.post("/clips/{clipId}/params/{key}")
+def setClipParam(clipId: str, key: str, body: ParamValueBody):
+    """Set a static value or add a keyframe."""
+    clip, _ = _find_clip(clipId)
+    schema   = _clip_param_schema(clip)
+    p_def    = next((p for p in schema if p["id"] == key), None)
+    if p_def is None:
+        raise HTTPException(404, f"Unknown param {key!r}")
+
+    ap = _get_or_create_anim(clip, key, p_def["default"])
+    if body.frame >= 0:
+        ap.add_keyframe(body.frame, body.value, Interp.linear)
+    else:
+        ap.set_base(body.value)
+
+    return {"status": "ok", "key": key, "value": body.value,
+            "isAnimated": ap.is_animated()}
+
+
+@app.post("/clips/{clipId}/keyframes/{key}")
+def addKeyframe(clipId: str, key: str, body: KeyframeBody):
+    clip, _ = _find_clip(clipId)
+    schema   = _clip_param_schema(clip)
+    p_def    = next((p for p in schema if p["id"] == key), None)
+    if p_def is None:
+        raise HTTPException(404, f"Unknown param {key!r}")
+
+    ap  = _get_or_create_anim(clip, key, p_def["default"])
+    kf  = KF(
+        frame=body.frame, value=body.value,
+        interp=Interp(body.interp),
+        handle_in_f=body.handle_in_f,  handle_in_v=body.handle_in_v,
+        handle_out_f=body.handle_out_f, handle_out_v=body.handle_out_v,
+    )
+    ap._tracks[0].add(kf)
+    return {"status": "ok", "frames": ap.all_keyframe_frames()}
+
+
+@app.get("/clips/{clipId}/keyframes/{key}")
+def listKeyframes(clipId: str, key: str):
+    clip, _ = _find_clip(clipId)
+    if not hasattr(clip, '_anim_params') or key not in clip._anim_params:
+        return {"frames": []}
+    ap = clip._anim_params[key]
+    return {
+        "frames": ap.keyframes_for_component(0),
+        "allFrames": ap.all_keyframe_frames(),
+    }
+
+
+@app.delete("/clips/{clipId}/keyframes/{key}/{frame}")
+def removeKeyframe(clipId: str, key: str, frame: int):
+    clip, _ = _find_clip(clipId)
+    if not hasattr(clip, '_anim_params') or key not in clip._anim_params:
+        raise HTTPException(404, "No keyframes on this param")
+    removed = clip._anim_params[key].remove_keyframe(frame)
+    if not removed:
+        raise HTTPException(404, f"No keyframe at frame {frame}")
+    return {"status": "ok"}
+
+
 if __name__ == "__main__":
     port = _findFreePort()
     print(f"[Fade] Backend starting on port {port}", flush=True)

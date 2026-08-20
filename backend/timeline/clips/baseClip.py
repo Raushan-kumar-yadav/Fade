@@ -32,9 +32,29 @@ class BaseClip(ABC):
         """Update all animatable properties for the given timeline frame."""
         lf = self.localFrame(frame)
         self.transform.evaluateAll(lf)
+        
+        if hasattr(self, '_anim_params'):
+            for key, ap in self._anim_params.items():
+                if ap.is_animated():
+                    val = ap.evaluate(frame)
+                    self.applyParam(key, val)
+                else:
+                    self.applyParam(key, ap._base[0])
+
         for effect in self.effects:
             if hasattr(effect, 'evaluateAll'):
                 effect.evaluateAll(lf)
+
+    def applyParam(self, key: str, val: float) -> None:
+        """Apply a computed animation param to the clip's actual properties."""
+        if key == "opacity":   self.transform.opacity.setBaseValue(val)
+        elif key == "pos_x":   self.transform.position.setBase(val, self.transform.position.y.baseValue)
+        elif key == "pos_y":   self.transform.position.setBase(self.transform.position.x.baseValue, val)
+        elif key == "scale_x": self.transform.scale.setBase(val, self.transform.scale.y.baseValue)
+        elif key == "scale_y": self.transform.scale.setBase(self.transform.scale.x.baseValue, val)
+        elif key == "rotation":self.transform.rotation.setBaseValue(val)
+        elif key == "anchor_x":self.transform.anchor.setBase(val, self.transform.anchor.y.baseValue)
+        elif key == "anchor_y":self.transform.anchor.setBase(self.transform.anchor.x.baseValue, val)
 
     def localFrame(self, frame: int) -> int:
         """Convert timeline frame to clip-local frame."""

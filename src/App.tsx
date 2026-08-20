@@ -8,17 +8,19 @@ import AudioWorkspace     from './workspaces/AudioWorkspace'
 import ExportWorkspace    from './workspaces/ExportWorkspace'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool } from './context/toolContext'
+import { SelectionContext, type SelectedClip } from './context/selectionContext'
 import ToolboxWidget      from './workspaces/tools/ToolboxWidget'
 import './App.css'
 
 type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export'
 
 export default function App() {
-  const [activeTab,      setActiveTab]      = useState<TabId>('home')
-  const [showSettings,   setShowSettings]   = useState(false)
-  const [activeTool,     setActiveTool]     = useState<ActiveTool>('pointer')
-  const [lastShapeTool,  setLastShapeTool]  = useState<ActiveTool>('shape:rect')
-  const [showToolbox,    setShowToolbox]    = useState(true)
+  const [activeTab,     setActiveTab]     = useState<TabId>('home')
+  const [showSettings,  setShowSettings]  = useState(false)
+  const [activeTool,    setActiveTool]    = useState<ActiveTool>('pointer')
+  const [lastShapeTool, setLastShapeTool] = useState<ActiveTool>('shape:rect')
+  const [showToolbox,   setShowToolbox]   = useState(true)
+  const [selected,      setSelected]      = useState<SelectedClip | null>(null)
 
   // Apply cursor to whole app when tool changes
   useEffect(() => {
@@ -36,35 +38,37 @@ export default function App() {
   const Workspace = workspaces[activeTab]
 
   return (
-    <ToolContext.Provider value={{
-      activeTool,
-      setTool:      setActiveTool,
-      lastShapeTool,
-      setLastShape: setLastShapeTool,
-    }}>
-      <div className="app-shell">
-        <TitleBar
-          active={activeTab}
-          onTab={(t) => setActiveTab(t as TabId)}
-          onSettings={() => setShowSettings(true)}
-          activeTool={activeTool}
-          onTool={setActiveTool}
-          onToggleToolbox={() => setShowToolbox(v => !v)}
-          toolboxOpen={showToolbox}
-        />
-        <main className="app-workspace">
-          <Workspace />
-        </main>
+    <SelectionContext.Provider value={{ selected, setSelected }}>
+      <ToolContext.Provider value={{
+        activeTool,
+        setTool:      setActiveTool,
+        lastShapeTool,
+        setLastShape: setLastShapeTool,
+      }}>
+        <div className="app-shell">
+          <TitleBar
+            active={activeTab}
+            onTab={(t) => setActiveTab(t as TabId)}
+            onSettings={() => setShowSettings(true)}
+            activeTool={activeTool}
+            onTool={setActiveTool}
+            onToggleToolbox={() => setShowToolbox(v => !v)}
+            toolboxOpen={showToolbox}
+          />
+          <main className="app-workspace">
+            <Workspace />
+          </main>
 
-        {/* Floating toolbox — visible on Video tab */}
-        {activeTab === 'video' && showToolbox && (
-          <ToolboxWidget onClose={() => setShowToolbox(false)} />
-        )}
+          {/* Floating toolbox — visible on Video tab */}
+          {activeTab === 'video' && showToolbox && (
+            <ToolboxWidget onClose={() => setShowToolbox(false)} />
+          )}
 
-        {showSettings && (
-          <SettingsPanel onClose={() => setShowSettings(false)} />
-        )}
-      </div>
-    </ToolContext.Provider>
+          {showSettings && (
+            <SettingsPanel onClose={() => setShowSettings(false)} />
+          )}
+        </div>
+      </ToolContext.Provider>
+    </SelectionContext.Provider>
   )
 }

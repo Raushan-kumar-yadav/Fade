@@ -263,12 +263,23 @@ export default function ViewportWidget() {
           width={1920}
           height={1080}
         />
-        {/* Pen overlay — active when pen path tool selected */}
+        {/* Pen overlay — pen path tool (click to add bezier points) */}
         {activeTool === 'shape:path' && (
           <OverlayCanvas
             mode="pen"
             width={canvasSize.w}
             height={canvasSize.h}
+            viewScale={canvasSize.w / 1920}
+          />
+        )}
+
+        {/* Shape draw overlay — drag to draw bounding box (all shape sub-tools) */}
+        {activeTool !== 'shape:path' && activeTool.startsWith('shape:') && (
+          <OverlayCanvas
+            mode="shape"
+            width={canvasSize.w}
+            height={canvasSize.h}
+            viewScale={canvasSize.w / 1920}
           />
         )}
         {!connected && (

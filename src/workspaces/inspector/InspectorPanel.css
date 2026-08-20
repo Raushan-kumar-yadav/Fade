@@ -1,0 +1,270 @@
+/* InspectorPanel.css — After Effects style properties panel */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+/* ── Root ────────────────────────────────────────────────────────────────── */
+.insp-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0d1117;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: #c9d1d9;
+  overflow: hidden;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.insp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 8px;
+  color: #3d4450;
+}
+.insp-empty__icon {
+  font-size: 32px;
+  opacity: 0.4;
+}
+.insp-empty__text {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+.insp-empty__spinner {
+  width: 18px; height: 18px;
+  border: 2px solid #1e2533;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: insp-spin 0.7s linear infinite;
+}
+@keyframes insp-spin { to { transform: rotate(360deg); } }
+
+/* ── Clip header ─────────────────────────────────────────────────────────── */
+.insp-clip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #131820;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+.insp-clip-header__badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6366f1;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.3);
+  border-radius: 4px;
+  padding: 2px 5px;
+  flex-shrink: 0;
+}
+.insp-clip-header__name {
+  font-weight: 600;
+  font-size: 11px;
+  color: #e2e8f0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.insp-clip-header__meta {
+  font-size: 9px;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+/* ── Groups scroll container ─────────────────────────────────────────────── */
+.insp-groups {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.insp-groups::-webkit-scrollbar { width: 4px; }
+.insp-groups::-webkit-scrollbar-track { background: transparent; }
+.insp-groups::-webkit-scrollbar-thumb { background: #1e2533; border-radius: 2px; }
+
+/* ── Group ───────────────────────────────────────────────────────────────── */
+.insp-group {
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.insp-group-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  background: #131820;
+  border: none;
+  color: #64748b;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+}
+.insp-group-header:hover { background: #161e2c; color: #94a3b8; }
+
+.insp-group-header__arrow {
+  font-size: 7px;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+.insp-group-header__arrow.open {
+  transform: rotate(90deg);
+}
+
+.insp-group__body {
+  padding: 2px 0;
+}
+
+/* ── Param Row ───────────────────────────────────────────────────────────── */
+.insp-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px 3px 4px;
+  min-height: 26px;
+  transition: background 0.1s;
+}
+.insp-row:hover { background: rgba(255,255,255,0.025); }
+.insp-row--animated { background: rgba(99,102,241,0.03); }
+
+/* ── Keyframe diamond button group ──────────────────────────────────────── */
+.insp-kf-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.insp-kf-nav {
+  width: 14px; height: 14px;
+  background: none;
+  border: none;
+  color: #374151;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 3px;
+  transition: color 0.1s;
+  padding: 0;
+  line-height: 1;
+}
+.insp-kf-nav:not(:disabled):hover { color: #6366f1; }
+.insp-kf-nav:disabled { opacity: 0.25; cursor: default; }
+
+.insp-kf-diamond {
+  width: 14px; height: 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  border-radius: 3px;
+  transition: filter 0.1s;
+}
+.insp-kf-diamond:hover { filter: brightness(1.4); }
+.insp-kf-diamond--active polygon { fill: #6366f1; }
+.insp-kf-diamond--animated polygon { stroke: #6366f1; }
+
+/* ── Label ───────────────────────────────────────────────────────────────── */
+.insp-row__label {
+  flex: 0 0 80px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+/* ── Slider ──────────────────────────────────────────────────────────────── */
+.insp-row__slider-wrap {
+  flex: 1;
+  position: relative;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.insp-row__slider-track {
+  position: absolute;
+  inset: 50% 0;
+  height: 2px;
+  margin-top: -1px;
+  background: #1e2533;
+  border-radius: 1px;
+  overflow: hidden;
+}
+.insp-row__slider-fill {
+  height: 100%;
+  background: #6366f1;
+  opacity: 0.5;
+  transition: width 0.05s;
+}
+.insp-row__slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  opacity: 0;
+  cursor: ew-resize;
+  height: 100%;
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Keyframe markers on slider */
+.insp-row__kf-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  width: 5px; height: 5px;
+  background: #6366f1;
+  opacity: 0.6;
+  pointer-events: none;
+}
+.insp-row__kf-marker--current {
+  opacity: 1;
+  box-shadow: 0 0 4px #6366f1;
+}
+
+/* ── Value display / edit ────────────────────────────────────────────────── */
+.insp-row__val {
+  flex: 0 0 42px;
+  text-align: right;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-family: 'Inter', monospace;
+  font-size: 10.5px;
+  cursor: pointer;
+  padding: 1px 3px;
+  border-radius: 3px;
+  transition: background 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+.insp-row__val:hover {
+  background: rgba(99,102,241,0.12);
+  color: #e2e8f0;
+}
+.insp-row__num-input {
+  flex: 0 0 50px;
+  background: #1a2236;
+  border: 1px solid #6366f1;
+  border-radius: 4px;
+  color: #e2e8f0;
+  font-family: 'Inter', monospace;
+  font-size: 10.5px;
+  padding: 1px 4px;
+  outline: none;
+  text-align: right;
+}

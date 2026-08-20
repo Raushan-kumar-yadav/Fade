@@ -4,6 +4,7 @@ import { type Track, type Clip, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import TimelineClip from './TimelineClip';
 import { addClipToTimeline, type AssetItem } from '../../api/useApi';
 import { useTool, isCreationTool, isShapeTool, shapeTypeOf } from '../../context/toolContext';
+import { useSelection } from '../../context/selectionContext';
 import { textApi, shapeApi, penApi } from '../../api/toolsApi';
 
 interface Props {
@@ -27,6 +28,7 @@ const DEFAULT_DURATION = 150; // 5 s @ 30 fps
 const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: Props) {
   const { state, dispatch } = useTimeline();
   const { activeTool }      = useTool();
+  const { setSelected }     = useSelection();
 
   const resizingRef = useRef(false);
   const startYRef   = useRef(0);
@@ -54,6 +56,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
 
     if (bg) {
       dispatch({ type: 'CLEAR_SELECTION' });
+      setSelected(null);
     }
   }, [activeTool, dispatch, track, trackIndex, scrollLeft, state.zoomX]);
 

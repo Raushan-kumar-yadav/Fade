@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useRef } from "react";
+import { useSelection } from "../../context/selectionContext";
 import {
   useTimeline,
   mapBackendTrack,
@@ -27,6 +28,7 @@ const TimelineClip = memo(function TimelineClip({
   trackHeight,
 }: Props) {
   const { state, dispatch } = useTimeline();
+  const { setSelected } = useSelection();
   const { zoomX, selectedTool, interaction } = state;
 
   const clipRef = useRef<HTMLDivElement>(null);
@@ -90,6 +92,13 @@ const TimelineClip = memo(function TimelineClip({
         clipId: clip.id,
         trackId: track.id,
         multi: isMulti,
+      });
+      // Update InspectorPanel
+      setSelected({
+        clipId:     clip.id,
+        clipName:   clip.name,
+        clipType:   clip.type,
+        trackIndex,
       });
 
       let mode: InteractionMode = "move";

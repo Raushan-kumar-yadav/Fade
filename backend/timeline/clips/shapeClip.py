@@ -84,6 +84,16 @@ class ShapeClip(BaseClip):
 
     # ── Render ──────────────────────────────────────────────────────────────
 
+    def applyParam(self, key: str, val: float) -> None:
+        super().applyParam(key, val)
+        if key == "shape_w":     self.style.width = val
+        elif key == "shape_h":   self.style.height = val
+        elif key == "fill_r":    self.style.fillColor[0] = val
+        elif key == "fill_g":    self.style.fillColor[1] = val
+        elif key == "fill_b":    self.style.fillColor[2] = val
+        elif key == "fill_a":    self.style.fillColor[3] = val
+        elif key == "stroke_w":  self.style.strokeWidth = val
+
     def render(self, canvas, frame: int) -> None:
         from backend.rendering.nodes.shapeNode import draw_shape
         draw_shape(canvas, self, frame)

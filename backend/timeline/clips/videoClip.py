@@ -80,17 +80,16 @@ class VideoClip(BaseClip):
         if frame == self._lastFrame:
             return
         self._lastFrame = frame
+        
+        # Call BaseClip.evaluateAll to handle _anim_params routing
+        super().evaluateAll(frame)
 
         lf = self.localFrame(frame)   
-        self.transform.evaluateAll(lf)
         self.cropLeft.update(lf)
         self.cropRight.update(lf)
         self.cropTop.update(lf)
         self.cropBottom.update(lf)
         self.blendMode.update(lf)
-        for effect in self.effects:
-            if hasattr(effect, 'evaluateAll'):
-                effect.evaluateAll(lf)
 
     def sourceFrame(self, frame: int) -> int:
         localFrame = self.localFrame(frame)

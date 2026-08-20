@@ -67,6 +67,14 @@ class PenClip(BaseClip):
 
     # ── Render ──────────────────────────────────────────────────────────────
 
+    def applyParam(self, key: str, val: float) -> None:
+        super().applyParam(key, val)
+        if key == "stroke_r":    self.style.strokeColor[0] = val
+        elif key == "stroke_g":  self.style.strokeColor[1] = val
+        elif key == "stroke_b":  self.style.strokeColor[2] = val
+        elif key == "stroke_w":  self.style.strokeWidth = val
+        elif key == "fill_a":    self.style.fillColor[3] = val
+
     def render(self, canvas, frame: int) -> None:
         from backend.rendering.nodes.penNode import draw_pen
         draw_pen(canvas, self, frame)

@@ -101,6 +101,16 @@ class TextClip(BaseClip):
 
     # ── Render (called by ClipNode) ─────────────────────────────────────────
 
+    def applyParam(self, key: str, val: float) -> None:
+        super().applyParam(key, val)
+        if key == "font_size":   self.style.fontSize = val
+        elif key == "tracking":  self.style.letterSpacing = val
+        elif key == "line_height": self.style.lineHeight = val
+        elif key == "fill_r":    self.style.color[0] = val
+        elif key == "fill_g":    self.style.color[1] = val
+        elif key == "fill_b":    self.style.color[2] = val
+        elif key == "fill_a":    self.style.color[3] = val
+
     def render(self, canvas, frame: int) -> None:
         from backend.rendering.nodes.textNode import draw_text
         draw_text(canvas, self, frame)

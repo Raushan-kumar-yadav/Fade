@@ -2,37 +2,36 @@ import React, { useCallback, useState } from 'react'
 import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
-import Timeline from './timeline/Timeline'
-import ViewportWidget from './viewport/ViewportWidget'
-import LibraryPanel from './library/LibraryPanel'
+import Timeline        from './timeline/Timeline'
+import ViewportWidget  from './viewport/ViewportWidget'
+import LibraryPanel    from './library/LibraryPanel'
+import InspectorPanel  from './inspector/InspectorPanel'
 import { addClipToTimeline, type AssetItem } from '../api/useApi'
 import { useTool, isShapeTool } from '../context/toolContext'
-import TextToolPanel  from './tools/TextToolPanel'
-import ShapeToolPanel from './tools/ShapeToolPanel'
-import { MaskPanel }  from './tools/MaskPanel'
+import TextToolPanel   from './tools/TextToolPanel'
+import ShapeToolPanel  from './tools/ShapeToolPanel'
 
-// ── Effects panel ──────────────────────────────────────────────────────────
+// ── Effects panel ─────────────────────────────────────────────────────────────
 
 function EffectsPanel() {
   const [active, setActive] = React.useState<string | null>(null)
   const EFFECTS = [
-    { name: 'Blur Out', icon: '⬚' },
-    { name: 'Zoom In', icon: '⊕' },
-    { name: 'Fade In', icon: '◐' },
-    { name: 'Newton Bounce', icon: '↗' },
-    { name: 'Vignette', icon: '◉' },
-    { name: 'Drop Shadow', icon: '▣' },
-    { name: 'Color Grade', icon: '◈' },
-    { name: 'Speed Ramp', icon: '⚡' },
+    { name: 'Blur Out',       icon: '⬚' },
+    { name: 'Zoom In',        icon: '⊕' },
+    { name: 'Fade In',        icon: '◐' },
+    { name: 'Newton Bounce',  icon: '↗' },
+    { name: 'Vignette',       icon: '◉' },
+    { name: 'Drop Shadow',    icon: '▣' },
+    { name: 'Color Grade',    icon: '◈' },
+    { name: 'Speed Ramp',     icon: '⚡' },
   ]
-
   return (
     <div className="vp">
       <div className="vp__list">
         {EFFECTS.map(fx => (
           <div key={fx.name}
-            className={`vp__item vp__item--effect${active === fx.name ? ' vp__item--active' : ''}`}
-            onClick={() => setActive(fx.name)}>
+               className={`vp__item vp__item--effect${active === fx.name ? ' vp__item--active' : ''}`}
+               onClick={() => setActive(fx.name)}>
             <span className="vp__icon">{fx.icon}</span>
             {fx.name}
           </div>
@@ -42,7 +41,7 @@ function EffectsPanel() {
   )
 }
 
-// ── Properties / Tool panel (right side) ──────────────────────────────────
+// ── Tool creation panel ───────────────────────────────────────────────────────
 
 function ToolPanel() {
   const { activeTool } = useTool()
@@ -56,7 +55,6 @@ function ToolPanel() {
       />
     )
   }
-
   if (isShapeTool(activeTool)) {
     return (
       <ShapeToolPanel
@@ -65,43 +63,14 @@ function ToolPanel() {
       />
     )
   }
-
-  // Default: properties sliders
-  const PROPS = [
-    { l: 'Opacity',  min: 0, max: 100, def: 100 },
-    { l: 'Scale X',  min: 10, max: 300, def: 100 },
-    { l: 'Scale Y',  min: 10, max: 300, def: 100 },
-    { l: 'Rotation', min: -180, max: 180, def: 0 },
-    { l: 'X Offset', min: -500, max: 500, def: 0 },
-    { l: 'Y Offset', min: -500, max: 500, def: 0 },
-  ]
-
   return (
-    <div className="vp vp--props">
-      {PROPS.map(p => (
-        <label key={p.l} className="vp__prop">
-          <span>{p.l}</span>
-          <div className="vp__prop-row">
-            <input type="range" min={p.min} max={p.max} defaultValue={p.def} />
-            <span className="vp__prop-val">{p.def}</span>
-          </div>
-        </label>
-      ))}
-      <label className="vp__prop">
-        <span>Easing</span>
-        <select>
-          <option>ease_in_out</option>
-          <option>newton_bounce</option>
-          <option>ease_out_cubic</option>
-          <option>linear</option>
-        </select>
-      </label>
-      <button className="vp__apply">Apply to Selection</button>
+    <div className="vp vp--props" style={{ padding: 12, color: '#475569', fontSize: 11 }}>
+      Select a creation tool (T / Q / P) to show options here.
     </div>
   )
 }
 
-// ── FlexLayout model ────────────────────────────────────────────────────────
+// ── FlexLayout model ──────────────────────────────────────────────────────────
 
 const layoutJson: FlexLayout.IJsonModel = {
   global: {},
@@ -127,9 +96,11 @@ const layoutJson: FlexLayout.IJsonModel = {
           {
             type: 'tabset',
             weight: 30,
+            selected: 0,
             children: [
-              { type: 'tab', name: 'Effects',    component: 'effects',    enableClose: false },
-              { type: 'tab', name: 'Tools',      component: 'tools',      enableClose: false },
+              { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
+              { type: 'tab', name: 'Effects',   component: 'effects',   enableClose: false },
+              { type: 'tab', name: 'Tools',     component: 'tools',     enableClose: false },
             ],
           },
         ],
@@ -149,7 +120,7 @@ function getModel(): FlexLayout.Model {
   return _model
 }
 
-// ── VideoWorkspace ──────────────────────────────────────────────────────────
+// ── VideoWorkspace ────────────────────────────────────────────────────────────
 
 export default function VideoWorkspace() {
   const model = getModel()
@@ -160,19 +131,15 @@ export default function VideoWorkspace() {
 
   const factory = (node: FlexLayout.TabNode) => {
     switch (node.getComponent()) {
-      case 'library':
-        return <LibraryPanel onAddToTimeline={handleAddToTimeline} />
-      case 'viewport':
-        return <ViewportWidget />
-      case 'timeline':
-        return (
-          <div className="vp vp--timeline">
-            <Timeline />
-          </div>
-        )
-      case 'effects':    return <EffectsPanel />
-      case 'tools':      return <ToolPanel />
-      default: return <div className="vp" />
+      case 'library':   return <LibraryPanel onAddToTimeline={handleAddToTimeline} />
+      case 'viewport':  return <ViewportWidget />
+      case 'timeline':  return (
+        <div className="vp vp--timeline"><Timeline /></div>
+      )
+      case 'inspector': return <InspectorPanel />
+      case 'effects':   return <EffectsPanel />
+      case 'tools':     return <ToolPanel />
+      default:          return <div className="vp" />
     }
   }
 
