@@ -170,7 +170,8 @@ class FFmpegVideoDecoder:
         cmd = [
             _FFMPEG,
             "-loglevel", "error",
-            "-hwaccel", "none",
+            "-hwaccel", "auto",
+            "-threads", "0",
         ]
 
         # Input options (must come BEFORE -i):
@@ -181,7 +182,7 @@ class FFmpegVideoDecoder:
 
         # Output options (must come AFTER -i):
         if self._scale_factor < 1.0:
-            cmd += ["-vf", f"scale={self._width}:{self._height}"]
+            cmd += ["-vf", f"scale={self._width}:{self._height}:flags=fast_bilinear"]
 
         cmd += [
             "-an",

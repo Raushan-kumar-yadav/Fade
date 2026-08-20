@@ -11,7 +11,7 @@ FrameKey = tuple[str, int]
 class FrameCache:
      
 
-    def __init__(self, maxBytes: int = 512 * 1024 * 1024) -> None:
+    def __init__(self, maxBytes: int = 2 * 1024 * 1024 * 1024) -> None:
         self._maxBytes  = maxBytes
         self._usedBytes = 0
         self._map: OrderedDict[FrameKey, DecodedFrame] = OrderedDict()
@@ -63,6 +63,11 @@ class FrameCache:
     @property
     def usedMB(self) -> float:
         return self._usedBytes / (1024 * 1024)
+
+    @property
+    def entryCount(self) -> int:
+        with self._lock:
+            return len(self._map)
 
     def __repr__(self) -> str:
         return f"FrameCache({self.usedMB:.1f}/{self._maxBytes/(1024*1024):.0f} MB, {len(self._map)} frames)"

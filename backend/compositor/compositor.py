@@ -19,14 +19,9 @@ if TYPE_CHECKING:
 WAKE_RADIUS = 120
 
 # Prefetch look-ahead when playing
-PREFETCH_RADIUS = 15
+PREFETCH_RADIUS = 30
 
 
-@dataclass
-class _CacheEntry:
- 
-    skiaImage:     Optional[skia.Image] = None
-    lastFrameOnCpu: int = -1
 
 
 @dataclass
@@ -34,6 +29,7 @@ class _PerfStats:
     tickMs: float = 0.0
     uploadMs: float = 0.0
     renderMs: float = 0.0
+    decodeWaitMs: float = 0.0
     fps: float = 0.0
     activeClips:  int   = 0
     cacheEntries: int   = 0
@@ -50,7 +46,7 @@ class Compositor:
        
         self._surface: "skia.Surface | None" = None
 
-        self._imageCache: dict[str, _CacheEntry] = {}
+
 
          
         self._activeClipIds: set[str] = set()
@@ -164,10 +160,15 @@ class Compositor:
             "tickMs": round(self._stats.tickMs, 2),
             "uploadMs": round(self._stats.uploadMs, 2),
             "renderMs": round(self._stats.renderMs, 2),
+            "decodeWaitMs": round(self._stats.decodeWaitMs, 2),
             "fps": round(self._stats.fps, 1),
             "activeClips":  self._stats.activeClips,
-            "cacheEntries": self._stats.cacheEntries,
+            "cacheEntries": self._scheduler._frameCache.entryCount if self._scheduler else 0,
+            "cacheUsedMB": round(self._scheduler._frameCache.usedMB, 2) if self._scheduler else 0.0,
         }
+
+    def recordDecodeWait(self, milliseconds: float) -> None:
+        self._stats.decodeWaitMs = max(0.0, milliseconds)
 
     def isFrameReady(self, timeline: "Timeline", frame: int) -> bool:
         """Return whether every visible video clip has its requested frame cached."""
@@ -218,10 +219,8 @@ class Compositor:
         leaving = self._activeClipIds - currentIds
         for clipId in leaving:
             self._scheduler.unregisterClip(clipId)
-            self._imageCache.pop(clipId, None)
         self._activeClipIds = currentIds
         self._stats.activeClips  = len(self._activeClipIds)
-        self._stats.cacheEntries = len(self._imageCache)
 
     def _registerClip(self, clip) -> None:
         from backend.timeline.clips.videoClip import VideoClip

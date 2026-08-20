@@ -13,10 +13,11 @@ class DecodeScheduler:
      
 
     BATCH_SIZE = 30    
+    WORKER_COUNT = 4
     SEEK_FWD_THRESH = 30     
     SEEK_BWD_THRESH = 5    
 
-    def __init__(self, cacheBytes: int = 512 * 1024 * 1024) -> None:
+    def __init__(self, cacheBytes: int = 2 * 1024 * 1024 * 1024) -> None:
         self._frameCache  = FrameCache(maxBytes=cacheBytes)
         self._decoderPool = DecoderPool()
         self._lock = threading.Lock()
@@ -34,14 +35,19 @@ class DecodeScheduler:
         # Preview scale factor 
         self._previewScale: float = 0.5   
 
-        # Single background decode worker  
+        # A small pool lets independent clips decode concurrently without
+        # creating one Python thread per clip.
         self._jobQueue: queue.Queue[str] = queue.Queue()
-        self._workerThread = threading.Thread(
-            target=self._workerLoop,
-            name="DecodeWorker",
-            daemon=True,
-        )
-        self._workerThread.start()
+        self._workerThreads = [
+            threading.Thread(
+                target=self._workerLoop,
+                name=f"DecodeWorker-{index + 1}",
+                daemon=True,
+            )
+            for index in range(self.WORKER_COUNT)
+        ]
+        for worker in self._workerThreads:
+            worker.start()
 
     #   Public API  
 
@@ -114,8 +120,10 @@ class DecodeScheduler:
 
     def shutdown(self) -> None:
         """Signal the worker to stop and wait for it."""
-        self._jobQueue.put_nowait(_SENTINEL)
-        self._workerThread.join(timeout=3)
+        for _ in self._workerThreads:
+            self._jobQueue.put_nowait(_SENTINEL)
+        for worker in self._workerThreads:
+            worker.join(timeout=3)
 
     # Background worker  
 

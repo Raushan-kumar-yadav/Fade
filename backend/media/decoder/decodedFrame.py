@@ -10,6 +10,7 @@ class DecodedFrame:
     height: int   = 0
     dataRGBA: bytes = b""
     valid: bool  = False
+    skiaImage: 'skia.Image | None' = None
 
     def sizeBytes(self) -> int:
         """Memory footprint """

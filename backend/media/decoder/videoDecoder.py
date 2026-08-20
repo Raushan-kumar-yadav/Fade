@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 from typing import Optional
 from backend.media.decoder.baseDecoder import BaseDecoder
@@ -19,13 +19,18 @@ class VideoDecoder(BaseDecoder):
         if ff is None or not ff.valid:
             return None
 
-        # subprocess outputs BGRA  
+        import skia
+        info = skia.ImageInfo.MakeN32Premul(ff.width, ff.height)
+        skdata = skia.Data.MakeWithoutCopy(ff.dataRGBA)
+        image = skia.Image.MakeRasterData(info, skdata, ff.width * 4)
+
         return DecodedFrame(
             frameNumber = ff.frameNumber,
             width = ff.width,
             height = ff.height,
             dataRGBA = ff.dataRGBA,    
             valid = True,
+            skiaImage = image
         )
 
     def getDurationFrames(self) -> int:

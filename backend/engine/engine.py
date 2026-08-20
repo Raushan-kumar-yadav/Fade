@@ -110,13 +110,6 @@ class Engine:
                         self._currentFrame,
                     )
 
-                    if not self.compositor.isFrameReady(
-                        self.activeTimeline,
-                        self._currentFrame,
-                    ):
-                        await asyncio.sleep(0.005)
-                        continue
-
                     # ── Step 2: Render from cache (Skia, instant cache lookup) ──
                     png = await asyncio.to_thread(
                         self.compositor.compositeFramePng,
@@ -169,7 +162,7 @@ class Engine:
             return b""
         return self.compositor.renderThumbnail(self.activeTimeline, frame, w, h)
 
-    # ── Preview scale (resolution cap) ────────────────────────────────────────
+    #   Preview scale 
 
     def setPreviewScale(self, scale: float) -> None:
         """

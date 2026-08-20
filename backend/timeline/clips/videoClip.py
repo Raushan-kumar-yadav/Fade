@@ -157,19 +157,23 @@ class VideoClip(BaseClip):
                 self._renderSolid(canvas, paint)
             else:
                 try:
-                    info   = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
-                    skdata = skia.Data.MakeWithCopy(decoded.dataRGBA)
-                    image  = skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
-                    if image is not None:
-                        # Scale decoded frame to fill the full compositor canvas.
+                    if getattr(decoded, 'skiaImage', None) is not None:
+                        image = decoded.skiaImage
                         dst  = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
                         opts = skia.SamplingOptions(skia.FilterMode.kLinear)
                         canvas.drawImageRect(image, dst, opts, paint)
-                        # Cache for next cache-miss fallback
                         self._lastValidFrame = decoded
                     else:
-                        self._renderSolid(canvas, paint)
-                    del skdata
+                        info   = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
+                        skdata = skia.Data.MakeWithoutCopy(decoded.dataRGBA)
+                        image  = skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
+                        if image is not None:
+                            dst  = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
+                            opts = skia.SamplingOptions(skia.FilterMode.kLinear)
+                            canvas.drawImageRect(image, dst, opts, paint)
+                            self._lastValidFrame = decoded
+                        else:
+                            self._renderSolid(canvas, paint)
                 except Exception as e:
                     print(f"[VideoClip] drawImage error frame={frame} local={localFrame}: {e}")
                     self._renderSolid(canvas, paint)
