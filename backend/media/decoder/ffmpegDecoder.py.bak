@@ -111,8 +111,6 @@ class FFmpegVideoDecoder:
         self._height = max(2, round(info["height"] * self._scale_factor) // 2 * 2)
         self._total_frames = info["nb_frames"] or int(round(info["duration"] * self._fps))
         self._frame_bytes  = self._width * self._height * 4
-         
-        self._read_buf = bytearray(self._frame_bytes)
 
         pct = int(self._scale_factor * 100)
         print(
@@ -226,32 +224,25 @@ class FFmpegVideoDecoder:
     def _read_until(self, target: int) -> Optional[DecodedFrameFF]:
         """
         Read frames from the pipe until we reach target.
-        Uses pre-allocated bytearray + readinto() to avoid a 2MB bytes
-        allocation every frame (eliminates GC pressure and pipe overhead).
+        Process stays alive after this returns.
         """
         if self._proc is None:
             return None
 
         while True:
-            buf = self._read_buf
-            mv  = memoryview(buf)
-            total = 0
-            while total < len(buf):
-                n = self._proc.stdout.readinto(mv[total:])
-                if not n:
-                    self._stop_process()
-                    return None
-                total += n
+            raw = self._proc.stdout.read(self._frame_bytes)
+            if not raw or len(raw) < self._frame_bytes:
+                self._stop_process()    
+                return None
 
             self._last_frame += 1
             if self._last_frame < target:
-                continue
+                continue   
 
-            # Copy only when we keep the frame  
             return DecodedFrameFF(
                 frameNumber = self._last_frame,
                 width = self._width,
                 height = self._height,
-                dataRGBA = bytes(buf),
+                dataRGBA = raw,
                 valid = True,
             )

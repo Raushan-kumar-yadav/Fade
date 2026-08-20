@@ -12,10 +12,10 @@ from backend.media.asset.mediaAsset import MediaAsset
 class DecodeScheduler:
      
 
-    BATCH_SIZE = 60      # decode up to 60 frames per worker wakeup (2s at 30fps)
+    BATCH_SIZE = 30    
     WORKER_COUNT = 4
-    SEEK_FWD_THRESH = 30
-    SEEK_BWD_THRESH = 5
+    SEEK_FWD_THRESH = 30     
+    SEEK_BWD_THRESH = 5    
 
     def __init__(self, cacheBytes: int = 2 * 1024 * 1024 * 1024) -> None:
         self._frameCache  = FrameCache(maxBytes=cacheBytes)

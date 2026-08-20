@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 # Frames within this window of the playhead are decoded proactively
 WAKE_RADIUS = 120
 
-# Prefetch look-ahead when playing
-PREFETCH_RADIUS = 30
+# Prefetch look-ahead when playing — 60 = 2s at 30fps, 1s at 60fps
+PREFETCH_RADIUS = 60
 
 
 
@@ -319,14 +319,14 @@ class Compositor:
         graph.compile()
 
         ctx = RenderContext(
-            canvas    = canvas,
-            frame     = frame,
-            width     = self.width,
-            height    = self.height,
-            fps       = self.fps,
-            panX      = panX,
-            panY      = panY,
-            zoom      = zoom,
+            canvas = canvas,
+            frame = frame,
+            width = self.width,
+            height = self.height,
+            fps = self.fps,
+            panX = panX,
+            panY = panY,
+            zoom = zoom,
             scheduler = self._scheduler,
         )
         graph.execute(ctx)

@@ -96,22 +96,21 @@ class Engine:
         interval    = 1.0 / self.project.fps
         _skip_count = 0
 
-         
-        loop = asyncio.get_event_loop()
-        next_tick  = loop.time()
-
         while True:
-            t0 = loop.time()
+            t0 = asyncio.get_event_loop().time()
 
             if self.activeTimeline:
                 try:
-                    # : Update prefetch target  
+                    # ── Step 1: Update prefetch target (non-blocking) ───────────
+                    # prefetchForFrame just updates the target range and signals
+                    # the background decode thread — returns in <1ms.
+                    # The background thread fills the cache independently.
                     self.compositor.prefetchForFrame(
                         self.activeTimeline,
                         self._currentFrame,
                     )
 
-                    #  Render from cache  
+                    # ── Step 2: Render from cache (Skia, instant cache lookup) ──
                     png = await asyncio.to_thread(
                         self.compositor.compositeFramePng,
                         self.activeTimeline,
@@ -119,14 +118,19 @@ class Engine:
                     )
                     _skip_count = 0
 
+                    # Capture frame number BEFORE advancing so the header
+                    # matches the JPEG that was just rendered.
                     rendered_frame = self._currentFrame
 
+                    # Advance frame only when playing
                     if self._playing:
                         self._currentFrame += 1
                         if self._currentFrame >= self.project.totalFrame:
                             self._currentFrame = 0
                             self._playing = False
 
+                    # Prepend 4-byte big-endian frame number so the frontend
+                    # can update the timeline scrubber without a polling round-trip.
                     header = struct.pack('>I', rendered_frame)
                     try:
                         self.frameQueue.put_nowait(header + png)
@@ -137,22 +141,12 @@ class Engine:
                     _skip_count += 1
                     if _skip_count <= 3:
                         print(f"[Engine] render error frame {self._currentFrame}: {exc}")
-                    next_tick += interval
-                    await asyncio.sleep(max(0.0, next_tick - loop.time()))
+                    await asyncio.sleep(interval)
                     continue
 
-            # Advance the monotonic anchor
-            next_tick += interval if self._playing else 0.1
-
-            # Sleep exactly to the next tick  
-            now = loop.time()
-            sleep_for = next_tick - now
-            if sleep_for <= 0:
-                # We're running behind  
-                next_tick = now
-                await asyncio.sleep(0)   # yield to event loop
-            else:
-                await asyncio.sleep(sleep_for)
+            elapsed = asyncio.get_event_loop().time() - t0
+            target_interval = interval if self._playing else 0.1
+            await asyncio.sleep(max(0.0, target_interval - elapsed))
 
 
 
@@ -171,7 +165,11 @@ class Engine:
     #   Preview scale 
 
     def setPreviewScale(self, scale: float) -> None:
-        
+        """
+        Change decode resolution: 1.0=full, 0.5=half, 0.25=quarter, 0.125=eighth.
+        Closes all active decoders and reopens them at the new scale.
+        Evicts the frame cache so stale-resolution frames are discarded.
+        """
         if self.compositor is None or self.scheduler is None:
             return
         new_scale = max(0.125, min(1.0, scale))
@@ -180,7 +178,7 @@ class Engine:
         for clipId in list(self.scheduler._pumpToContent.keys()):
             contentId = self.scheduler._pumpToContent.get(clipId, "")
             self.scheduler._decoderPool.reopen(clipId, new_scale)
-             
+            # Reset pump position so background thread re-decodes from scratch
             with self.scheduler._lock:
                 self.scheduler._lastDecoded[clipId]  = -1
                 self.scheduler._targetFrames[clipId] = 0
