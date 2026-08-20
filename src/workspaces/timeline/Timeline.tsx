@@ -227,7 +227,7 @@ function TimelineInner() {
         {/* Expanded canvas */}
         <div style={{ width: tw, minHeight: th, position: 'relative' }}>
           {state.tracks.map((track, idx) => (
-            <TrackRow key={track.id} track={track} trackIndex={idx} />
+            <TrackRow key={track.id} track={track} trackIndex={idx} scrollLeft={scrollLeft} />
           ))}
         </div>
       </div>

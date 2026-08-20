@@ -47,21 +47,23 @@ class Compositor:
         self.height = height
         self.fps    = fps
 
-        # Single persistent raster surface  
-        self._surface = skia.Surface(width, height)
+       
+        self._surface: "skia.Surface | None" = None
 
-        # Per-clip Skia image cache
         self._imageCache: dict[str, _CacheEntry] = {}
 
-        # Set of clip IDs currently registered with DecodeScheduler
+         
         self._activeClipIds: set[str] = set()
 
-        # DecodeScheduler — injected by Engine after construction
+        # DecodeScheduler  
         self._scheduler: Optional[DecodeScheduler] = None
 
         # Pending timeline swap  
         self._pendingTimeline: Optional[Timeline] = None
         self._pendingLock = threading.Lock()
+
+        # Render lock 
+        self._renderLock = threading.Lock()
 
         # Perf stats
         self._stats = _PerfStats()
@@ -82,7 +84,6 @@ class Compositor:
         panY: float = 0.0,
         zoom: float = 1.0,
     ) -> bytes:
-        
         t0 = time.monotonic()
 
         self._applyPendingTimeline()
@@ -90,26 +91,20 @@ class Compositor:
         if timeline is None:
             return b""
 
-        # Register / unregister clips 
-        t_reg = time.monotonic()
-        self._syncClipRegistrations(timeline, frame)
+        with self._renderLock:
+            self._syncClipRegistrations(timeline, frame)
 
-        #  Prefetch frames  
-        if self._scheduler:
-            self._prefetchActiveClips(timeline, frame)
-        t_upload = time.monotonic()
+            if self._scheduler:
+                self._prefetchActiveClips(timeline, frame)
+            t_upload = time.monotonic()
 
-        #  Render frame via DAG
-        img = self._renderFrame(timeline, frame, panX, panY, zoom)
-        t_render = time.monotonic()
+            img = self._renderFrame(timeline, frame, panX, panY, zoom)
+            t_render = time.monotonic()
 
-        # Encode JPEG
-        data  = img.encodeToData(skia.kJPEG, quality)
-        result = bytes(data)
+            data   = img.encodeToData(skia.kJPEG, quality)
+            result = bytes(data)
 
-        #  Update perf stats
         self._updateStats(t0, t_upload, t_render)
-
         return result
 
     def renderThumbnail(
@@ -120,9 +115,9 @@ class Compositor:
         height: int = 180,
         quality: int = 70,
     ) -> bytes:
-         
-        img  = self._renderFrame(timeline, frame)
-        info = skia.ImageInfo.MakeN32Premul(width, height)
+        with self._renderLock:
+            img  = self._renderFrame(timeline, frame)
+        info  = skia.ImageInfo.MakeN32Premul(width, height)
         thumb = img.resize(info.width(), info.height())
         if thumb is None:
             thumb = img
@@ -130,11 +125,20 @@ class Compositor:
         return bytes(data)
 
     def resize(self, width: int, height: int) -> None:
-        
         if width != self.width or height != self.height:
             self.width    = width
             self.height   = height
-            self._surface = skia.Surface(width, height)
+            self._surface = None  # recreated lazily on next _renderFrame call
+
+
+    @staticmethod
+    def _makeSurface(width: int, height: int) -> skia.Surface:
+        """Create a CPU raster surface with explicit ImageInfo (never nullptr)."""
+        info = skia.ImageInfo.MakeN32Premul(max(1, width), max(1, height))
+        surf = skia.Surface.MakeRaster(info)
+        if surf is None:
+            raise RuntimeError(f"skia.Surface.MakeRaster({width}x{height}) failed")
+        return surf
 
     def setTimeline(self, timeline: "Timeline") -> None:
        
@@ -225,18 +229,20 @@ class Compositor:
         panY: float = 0.0,
         zoom: float = 1.0,
     ) -> skia.Image:
-        
+        #   surface creation  
+        if self._surface is None:
+            self._surface = self._makeSurface(self.width, self.height)
+
         canvas = self._surface.getCanvas()
         canvas.clear(skia.Color4f(0, 0, 0, 1))
 
         if not timeline.tracks:
             return self._surface.makeImageSnapshot()
 
-   
         if self._scheduler:
             self._injectScheduler(timeline)
 
-        # DAG build + Kahn's sort 
+        # DAG build + Kahn's sort
         graph = GraphBuilder.build(timeline, frame)
         graph.compile()
 

@@ -61,6 +61,7 @@ export async function removeAsset(assetId: string): Promise<void> {
   await fetch(`${base()}/library/assets/${assetId}`, { method: 'DELETE' });
 }
 
+
 // ── Timeline ──────────────────────────────────────────────────────────────────
 
 export async function addClipToTimeline(
@@ -68,15 +69,20 @@ export async function addClipToTimeline(
   trackIndex: number,
   startFrame: number,
   duration: number,
-): Promise<ClipInfo | null> {
-  const r = await fetch(`${base()}/timeline/add-clip`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ assetId, trackIndex, startFrame, duration }),
-  });
-  if (!r.ok) return null;
-  return r.json();
+): Promise<{ clipId: string; startFrame: number; duration: number } | null> {
+  try {
+    const r = await fetch(`${base()}/timeline/add-clip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assetId, trackIndex, startFrame, duration }),
+    });
+    if (!r.ok) return null;
+    return r.json();
+  } catch {
+    return null;
+  }
 }
+
 
 export async function moveClip(
   clipId: string,

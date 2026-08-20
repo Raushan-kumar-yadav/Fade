@@ -54,58 +54,109 @@ export default function ViewportWidget() {
   const [fps,          setFps]          = useState(30);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [connected,    setConnected]    = useState(false);
+  const [retryCount,   setRetryCount]   = useState(0);
 
   // The canvas receives decoded JPEG blobs from the WebSocket
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const wsRef      = useRef<WebSocket | null>(null);
   const imgRef     = useRef<HTMLImageElement>(new Image());
 
-  // ── WebSocket preview stream ──────────────────────────────────────────────
+  // ── WebSocket preview stream — waits for confirmed backend port ─────────────
   useEffect(() => {
-    function connect() {
-      const ws = openPreviewSocket(
-        (blob: Blob) => {
-          // Minimal-copy path: decode JPEG blob → draw directly onto canvas
-          const url = URL.createObjectURL(blob);
-          imgRef.current.onload = () => {
-            URL.revokeObjectURL(url);
-            const canvas = canvasRef.current;
-            if (!canvas) return;
-            const ctx2d = canvas.getContext('2d');
-            if (!ctx2d) return;
-            // Resize canvas only when dimensions change
-            if (canvas.width !== imgRef.current.naturalWidth) {
-              canvas.width  = imgRef.current.naturalWidth;
-              canvas.height = imgRef.current.naturalHeight;
-            }
-            ctx2d.drawImage(imgRef.current, 0, 0);
-          };
-          imgRef.current.src = url;
-        },
-        () => {
-          setConnected(false);
-          // Reconnect after 1 s
-          setTimeout(connect, 1000);
-        },
-      );
+    let destroyed = false;
+    let wsInst: WebSocket | null = null;
+
+    function connect(port: number) {
+      if (destroyed) return;
+      const url = `ws://127.0.0.1:${port}/ws/preview`;
+      const ws  = new WebSocket(url);
+      wsInst = ws;
       wsRef.current = ws;
-      ws.onopen = () => setConnected(true);
+
+      ws.binaryType = 'blob';
+      ws.onopen    = () => { if (!destroyed) { setConnected(true); setRetryCount(0); } };
+      ws.onmessage = (ev: MessageEvent<Blob>) => {
+        const blobUrl = URL.createObjectURL(ev.data);
+        imgRef.current.onload = () => {
+          URL.revokeObjectURL(blobUrl);
+          const canvas = canvasRef.current;
+          if (!canvas) return;
+          const ctx2d = canvas.getContext('2d');
+          if (!ctx2d) return;
+          if (canvas.width !== imgRef.current.naturalWidth) {
+            canvas.width  = imgRef.current.naturalWidth;
+            canvas.height = imgRef.current.naturalHeight;
+          }
+          ctx2d.drawImage(imgRef.current, 0, 0);
+        };
+        imgRef.current.src = blobUrl;
+      };
+      ws.onerror = () => { /* will retry via onclose */ };
+      ws.onclose = () => {
+        if (destroyed) return;
+        setConnected(false);
+        setRetryCount(n => n + 1);
+        // Retry after 2s — backend may be restarting
+        setTimeout(() => connect(port), 2000);
+      };
     }
-    connect();
+
+    // Delay 150ms before opening WS — in React StrictMode the effect fires twice
+    // (mount → cleanup → mount). The delay ensures the first attempt is cancelled
+    // by the cleanup before the socket is ever created, so only the real mount connects.
+    function tryConnect(port: number) {
+      const t = setTimeout(() => connect(port), 150);
+      return () => clearTimeout(t);
+    }
+
+    let cleanup = () => {};
+
+    const knownPort: number | null = (window as any).__FADE_PORT__;
+    if (knownPort) {
+      cleanup = tryConnect(knownPort);
+    } else {
+      const handler = (e: Event) => {
+        const port = (e as CustomEvent<number>).detail;
+        cleanup = tryConnect(port);
+      };
+      window.addEventListener('fade:port', handler, { once: true });
+      cleanup = () => window.removeEventListener('fade:port', handler);
+    }
+
     return () => {
-      wsRef.current?.close();
+      destroyed = true;
+      cleanup();
+      wsInst?.close();
     };
   }, []);
 
-  // ── Poll playback state (frame counter + play/pause sync) ─────────────────
+  // ── Poll playback state — only after port is confirmed ───────────────────
   useEffect(() => {
-    const id = setInterval(async () => {
-      const state = await getPlaybackState();
-      setCurrentFrame(state.frame);
-      setIsPlaying(state.playing);
-      setFps(state.fps);
-    }, 100);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | null = null;
+
+    function startPolling(port: number) {
+      id = setInterval(async () => {
+        try {
+          const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
+          if (!r.ok) return;
+          const data = await r.json();
+          setCurrentFrame(data.frame);
+          setIsPlaying(data.playing);
+          setFps(data.fps);
+        } catch { /* backend restarting */ }
+      }, 200);
+    }
+
+    const knownPort: number | null = (window as any).__FADE_PORT__;
+    if (knownPort) {
+      startPolling(knownPort);
+    } else {
+      const handler = (e: Event) => startPolling((e as CustomEvent<number>).detail);
+      window.addEventListener('fade:port', handler, { once: true });
+      return () => { window.removeEventListener('fade:port', handler); };
+    }
+
+    return () => { if (id) clearInterval(id); };
   }, []);
 
   // ── Controls ──────────────────────────────────────────────────────────────
@@ -150,7 +201,7 @@ export default function ViewportWidget() {
         {!connected && (
           <div className="vw-canvas__overlay">
             <div className="vw-canvas__spinner" />
-            <p>Connecting to engine…</p>
+            <p>{retryCount === 0 ? 'Connecting to engine…' : `Engine starting… (retry ${retryCount})`}</p>
           </div>
         )}
       </div>

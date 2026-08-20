@@ -1,5 +1,5 @@
 import React, {
-  createContext, useContext, useReducer,
+  createContext, useContext, useReducer, useEffect,
   type Dispatch, type ReactNode,
 } from 'react';
 import {
@@ -7,55 +7,78 @@ import {
   MIN_ZOOM, MAX_ZOOM, MIN_TRACK_H, MAX_TRACK_H,
 } from './types';
 
-// ─── Demo Data ────────────────────────────────────────────────────────────────
-const DEMO_TRACKS: Track[] = [
-  {
-    id: 'v1', name: 'Video 1', height: 64,
-    muted: false, solo: false, locked: false,
-    clips: [
-      { id: 'v1c1', name: 'Clip_001.mp4', startFrame: 0,   duration: 114, type: 'video', isSelected: false },
-      { id: 'v1c2', name: 'Clip_002.mp4', startFrame: 129, duration: 84,  type: 'video', isSelected: false },
-    ],
-  },
-  {
-    id: 'a1', name: 'Audio 1', height: 52,
-    muted: false, solo: false, locked: false,
-    clips: [
-      { id: 'a1c1', name: 'Music_bg.mp3', startFrame: 0, duration: 360, type: 'audio', isSelected: false },
-    ],
-  },
-  {
-    id: 'fx1', name: 'FX', height: 52,
-    muted: false, solo: false, locked: false,
-    clips: [
-      { id: 'fx1c1', name: 'Blur Out',    startFrame: 24,  duration: 42, type: 'adjustment', isSelected: false },
-      { id: 'fx1c2', name: 'Color Grade', startFrame: 156, duration: 30, type: 'adjustment', isSelected: false },
-    ],
-  },
-  {
-    id: 't1', name: 'Text', height: 52,
-    muted: false, solo: false, locked: false,
-    clips: [
-      { id: 't1c1', name: 'Title Card', startFrame: 12, duration: 54, type: 'text', isSelected: false },
-    ],
-  },
-];
-
+// ── Empty initial state — filled by backend on mount ─────────────────────────
 const INITIAL_STATE: TimelineState = {
-  tracks: DEMO_TRACKS,
+  tracks:       [],
   currentFrame: 0,
-  totalFrames: 1800,   // 60 s  
-  fps: 30,
-  zoomX: 5,            // 5 px / frame
+  totalFrames:  1800,
+  fps:          30,
+  zoomX:        5,
   selectedTool: 'pointer',
-  isPlaying: false,
-  interaction: null,
-  ghost: null,
+  isPlaying:    false,
+  interaction:  null,
+  ghost:        null,
 };
 
- function reducer(state: TimelineState, action: TimelineAction): TimelineState {
+// ── Helpers ───────────────────────────────────────────────────────────────────
+/** Map a backend track dict to our frontend Track shape */
+function mapBackendTrack(t: any, defaultHeight = 64): Track {
+  const isAudio = (t.type === 'audio') || t.name?.toLowerCase().includes('audio');
+  return {
+    id:     t.trackId ?? t.id,
+    name:   t.name,
+    height: isAudio ? 48 : defaultHeight,
+    muted:  t.muted ?? false,
+    solo:   t.solo  ?? false,
+    locked: t.locked ?? false,
+    clips:  (t.clips ?? []).map(mapBackendClip),
+  };
+}
+
+function mapBackendClip(c: any): Clip {
+  const type: Clip['type'] =
+    c.type === 'audio'  ? 'audio'  :
+    c.type === 'image'  ? 'image'  :
+    c.type === 'text'   ? 'text'   :
+    c.type === 'solid'  ? 'solid'  :
+    c.type === 'shape'  ? 'shape'  :
+    c.type === 'lottie' ? 'lottie' : 'video';
+
+  return {
+    id:          c.clipId ?? c.id,
+    name:        c.name ?? c.assetId ?? 'Clip',
+    startFrame:  c.startFrame,
+    duration:    c.duration,
+    type,
+    isSelected:  false,
+  };
+}
+
+// ── Reducer ───────────────────────────────────────────────────────────────────
+function reducer(state: TimelineState, action: TimelineAction): TimelineState {
   switch (action.type) {
-    // Playback  
+
+    // ── Backend sync ──────────────────────────────────────────────────────────
+    case 'SET_TRACKS':
+      return { ...state, tracks: action.tracks };
+
+    case 'SET_TOTAL_FRAMES':
+      return { ...state, totalFrames: action.totalFrames };
+
+    case 'ADD_CLIP': {
+      const tracks = state.tracks.map(t => {
+        if (t.id !== action.trackId) return t;
+        // Swap optimistic tmp- clip with real one, or just append
+        const hasTmp = t.clips.some(c => c.id.startsWith('tmp-') && c.name === action.clip.name);
+        const clips  = hasTmp
+          ? t.clips.map(c => (c.id.startsWith('tmp-') && c.name === action.clip.name ? action.clip : c))
+          : [...t.clips, action.clip].sort((a, b) => a.startFrame - b.startFrame);
+        return { ...t, clips };
+      });
+      return { ...state, tracks };
+    }
+
+    // ── Playback ──────────────────────────────────────────────────────────────
     case 'SEEK':
       return { ...state, currentFrame: Math.max(0, Math.min(action.frame, state.totalFrames)) };
 
@@ -68,14 +91,14 @@ const INITIAL_STATE: TimelineState = {
     case 'SET_PLAYING':
       return { ...state, isPlaying: action.playing };
 
-    // View  
+    // ── View ──────────────────────────────────────────────────────────────────
     case 'ZOOM_X':
       return { ...state, zoomX: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, action.newZoom)) };
 
     case 'SET_TOOL':
       return { ...state, selectedTool: action.tool };
 
-    // Selection  
+    // ── Selection ─────────────────────────────────────────────────────────────
     case 'SELECT_CLIP': {
       const tracks = state.tracks.map(track => ({
         ...track,
@@ -97,14 +120,12 @@ const INITIAL_STATE: TimelineState = {
       return { ...state, tracks };
     }
 
-    // Move 
+    // ── Move ──────────────────────────────────────────────────────────────────
     case 'COMMIT_MOVE': {
       const intr = state.interaction;
       if (!intr || intr.mode !== 'move') return { ...state, interaction: null, ghost: null };
 
       const { pendingFrameDelta, pendingTrackDelta } = intr;
-
-      // Collect all selected clips with their source track index
       const selected: Array<{ clip: Clip; srcIdx: number }> = [];
       state.tracks.forEach((t, ti) => {
         t.clips.forEach(c => {
@@ -112,13 +133,11 @@ const INITIAL_STATE: TimelineState = {
         });
       });
 
-      // Remove selected clips from all tracks
       let newTracks = state.tracks.map(t => ({
         ...t,
         clips: t.clips.filter(c => !c.isSelected),
       }));
 
-      // Re-insert at new positions
       selected.forEach(({ clip, srcIdx }) => {
         const dstIdx = Math.max(0, Math.min(newTracks.length - 1, srcIdx + pendingTrackDelta));
         const newStart = Math.max(0, clip.startFrame + pendingFrameDelta);
@@ -128,7 +147,6 @@ const INITIAL_STATE: TimelineState = {
         };
       });
 
-      // Sort clips in each track by start frame
       newTracks = newTracks.map(t => ({
         ...t,
         clips: [...t.clips].sort((a, b) => a.startFrame - b.startFrame),
@@ -137,7 +155,7 @@ const INITIAL_STATE: TimelineState = {
       return { ...state, tracks: newTracks, interaction: null, ghost: null };
     }
 
-    // Trim  
+    // ── Trim ──────────────────────────────────────────────────────────────────
     case 'TRIM_CLIP': {
       const { clipId, trackId, side, frameDelta } = action;
       const tracks = state.tracks.map(track => {
@@ -147,7 +165,7 @@ const INITIAL_STATE: TimelineState = {
           clips: track.clips.map(clip => {
             if (clip.id !== clipId) return clip;
             if (side === 'left') {
-              const newStart = Math.max(0, clip.startFrame + frameDelta);
+              const newStart    = Math.max(0, clip.startFrame + frameDelta);
               const newDuration = clip.duration - (newStart - clip.startFrame);
               return newDuration < 1 ? clip : { ...clip, startFrame: newStart, duration: newDuration };
             }
@@ -159,7 +177,7 @@ const INITIAL_STATE: TimelineState = {
       return { ...state, tracks };
     }
 
-    // Track controls  
+    // ── Track controls ────────────────────────────────────────────────────────
     case 'TOGGLE_MUTE':
       return { ...state, tracks: state.tracks.map(t => t.id === action.trackId ? { ...t, muted: !t.muted } : t) };
 
@@ -179,7 +197,7 @@ const INITIAL_STATE: TimelineState = {
         ),
       };
 
-    // Drag interaction  
+    // ── Drag interaction ──────────────────────────────────────────────────────
     case 'START_INTERACTION':
       return { ...state, interaction: action.interaction };
 
@@ -191,7 +209,7 @@ const INITIAL_STATE: TimelineState = {
           ...state.interaction,
           pendingFrameDelta: action.pendingFrameDelta,
           pendingTrackDelta: action.pendingTrackDelta,
-          accumPx: action.accumPx,
+          accumPx:           action.accumPx,
         },
       };
 
@@ -206,16 +224,62 @@ const INITIAL_STATE: TimelineState = {
   }
 }
 
-// Context  
+// ── Context ───────────────────────────────────────────────────────────────────
 interface TimelineContextValue {
-  state: TimelineState;
+  state:    TimelineState;
   dispatch: Dispatch<TimelineAction>;
 }
 
 const TimelineCtx = createContext<TimelineContextValue | null>(null);
 
+// ── Provider — fetches backend data on mount ──────────────────────────────────
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+
+  useEffect(() => {
+    function startSync(port: number) {
+      // 1. Load timeline state (tracks + clips) from backend
+      fetch(`http://127.0.0.1:${port}/timeline/state`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data) return;
+          const tracks: Track[] = (data.tracks ?? []).map(mapBackendTrack);
+          dispatch({ type: 'SET_TRACKS', tracks });
+          if (data.totalFrames) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: data.totalFrames });
+        })
+        .catch(() => {});
+
+      // 2. Poll playback frame + play/pause every 80 ms
+      const id = setInterval(() => {
+        fetch(`http://127.0.0.1:${port}/playback/state`)
+          .then(r => r.ok ? r.json() : null)
+          .then(data => {
+            if (!data) return;
+            dispatch({ type: 'TICK',        frame:   data.frame   });
+            dispatch({ type: 'SET_PLAYING', playing: data.playing });
+          })
+          .catch(() => {});
+      }, 80);
+
+      return id;
+    }
+
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const knownPort: number | null = (window as any).__FADE_PORT__;
+    if (knownPort) {
+      intervalId = startSync(knownPort);
+    } else {
+      const handler = (e: Event) => {
+        intervalId = startSync((e as CustomEvent<number>).detail);
+      };
+      window.addEventListener('fade:port', handler, { once: true });
+      return () => window.removeEventListener('fade:port', handler);
+    }
+
+    return () => { if (intervalId) clearInterval(intervalId); };
+  }, []);
+
   return (
     <TimelineCtx.Provider value={{ state, dispatch }}>
       {children}
@@ -223,28 +287,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**  throws if used outside */
+// ── Hook ──────────────────────────────────────────────────────────────────────
 export function useTimeline(): TimelineContextValue {
   const ctx = useContext(TimelineCtx);
   if (!ctx) throw new Error('useTimeline must be used inside <TimelineProvider>');
   return ctx;
 }
 
-/** Derive the total content width in pixels */
-export function totalWidth(state: TimelineState): number {
-  return Math.max(state.totalFrames * state.zoomX, 2000);
-}
-
-/** Derive total track-content height in pixels */
-export function totalTrackHeight(state: TimelineState): number {
-  return state.tracks.reduce((h, t) => h + t.height, 0);
-}
-
-/** Convert frame number → MM:SS:FF string (30 fps) */
-export function frameToTimecode(frame: number, fps: number): string {
-  const totalSec = Math.floor(frame / fps);
-  const ff = Math.floor(frame % fps);
-  const mm = Math.floor(totalSec / 60);
-  const ss = totalSec % 60;
-  return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}:${String(ff).padStart(2, '0')}`;
-}
+// All non-component utilities live in timelineUtils.ts for Vite Fast Refresh
+export { frameToTimecode, totalWidth, totalTrackHeight } from './timelineUtils';

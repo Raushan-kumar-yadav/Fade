@@ -9,32 +9,17 @@ from backend.media.asset.mediaAsset import MediaAsset
 
 
 class DecodeScheduler:
-    """
-    Orchestrates background prefetch decoding.
-    Port of C++ DecodeScheduler.
+  
 
-    Flow (mirrors C++ exactly):
-      1. VideoClip.render() calls tryGetFrameFromCache().
-      2. If found  → return immediately (fast path, no FFmpeg).
-      3. If missing → return a black frame THIS frame, trigger prefetchAround().
-      4. prefetchAround() detects seeks and triggers startPump() in a thread.
-      5. startPump() decodes BATCH_SIZE frames and puts them in FrameCache.
-
-    Shared content deduplication:
-      - Two clips on the same source file have different clipIds (pumpIds)
-        but the same contentId (= assetId).
-      - FrameCache is keyed by contentId — so the second clip hits the cache
-        for any frame the first clip already decoded.
-    """
-
-    BATCH_SIZE = 5    # frames decoded per pump run
-    SEEK_FWD_THRESH = 30   # frames: forward jump this big = hard seek
-    SEEK_BWD_THRESH = 5    # frames: any backward jump = hard seek
+    BATCH_SIZE = 5    
+    SEEK_FWD_THRESH = 30   
+    SEEK_BWD_THRESH = 5    
 
     def __init__(self, cacheBytes: int = 512 * 1024 * 1024) -> None:
         self._frameCache = FrameCache(maxBytes=cacheBytes)
         self._decoderPool  = DecoderPool()
-        self._threadPool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="decode")
+        
+        self._threadPool: ThreadPoolExecutor | None = None
 
         self._lock = threading.Lock()
 
@@ -45,9 +30,7 @@ class DecodeScheduler:
         self._pumpToContent:  dict[str, str] = {}  
         self._contentRefCount: dict[str, int] = {}
         self._activePumps: set[str] = set()
-
-    #   Public API used by VideoClip.render()  
-
+ 
     def tryGetFrame(self, contentId: str, frame: int) -> Optional[DecodedFrame]:
         """Cache lookup — called every frame by the clip. Must be fast."""
         return self._frameCache.get((contentId, frame))
@@ -114,8 +97,12 @@ class DecodeScheduler:
     def _startPump(self, clipId: str) -> None:
         with self._lock:
             if clipId in self._activePumps:
-                return    # already decoding this clip
+                return    
             self._activePumps.add(clipId)
+            if self._threadPool is None:
+                self._threadPool = ThreadPoolExecutor(
+                    max_workers=4, thread_name_prefix="decode"
+                )
 
         self._threadPool.submit(self._pumpWorker, clipId)
 
@@ -182,7 +169,8 @@ class DecodeScheduler:
             self._startPump(clipId)
 
     def shutdown(self) -> None:
-        self._threadPool.shutdown(wait=False)
+        if self._threadPool is not None:
+            self._threadPool.shutdown(wait=False)
 
     def __repr__(self) -> str:
         return (

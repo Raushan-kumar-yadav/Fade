@@ -87,33 +87,47 @@ class Engine:
     #   Preview loop    
 
     async def startPreviewLoop(self) -> None:
-       
         if self.project is None or self.compositor is None:
             return
 
-        interval = 1.0 / self.project.fps
+        interval    = 1.0 / self.project.fps
+        _skip_count = 0
 
         while True:
             t0 = asyncio.get_event_loop().time()
 
-            if self._playing and self.activeTimeline:
-                jpeg = await asyncio.to_thread(
-                    self.compositor.compositeFrameJpeg,
-                    self.activeTimeline,
-                    self._currentFrame,
-                )
+            if self.activeTimeline:
                 try:
-                    self.frameQueue.put_nowait(jpeg)
-                except asyncio.QueueFull:
-                    pass  # drop frame — consumer is slow
+                    jpeg = await asyncio.to_thread(
+                        self.compositor.compositeFrameJpeg,
+                        self.activeTimeline,
+                        self._currentFrame,
+                    )
+                    _skip_count = 0
+                    try:
+                        self.frameQueue.put_nowait(jpeg)
+                    except asyncio.QueueFull:
+                        pass  # drop frame — consumer is slow
 
-                self._currentFrame += 1
-                if self._currentFrame >= self.project.totalFrame:
-                    self._currentFrame = 0
-                    self._playing = False
+                    # Advance frame only when playing
+                    if self._playing:
+                        self._currentFrame += 1
+                        if self._currentFrame >= self.project.totalFrame:
+                            self._currentFrame = 0
+                            self._playing = False
+
+                except Exception as exc:
+                    _skip_count += 1
+                    if _skip_count <= 3:
+                        print(f"[Engine] render error frame {self._currentFrame}: {exc}")
+                    await asyncio.sleep(interval)
+                    continue
 
             elapsed = asyncio.get_event_loop().time() - t0
-            await asyncio.sleep(max(0.0, interval - elapsed))
+            # When paused: run at 10 fps to save CPU; when playing: full fps
+            target_interval = interval if self._playing else 0.1
+            await asyncio.sleep(max(0.0, target_interval - elapsed))
+
 
     #   Single frame  
 

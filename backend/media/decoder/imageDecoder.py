@@ -5,11 +5,8 @@ from backend.media.decoder.decodedFrame import DecodedFrame
 
 class ImageDecoder(BaseDecoder):
     """
-    Single-image decoder (JPEG, PNG, EXR, TIFF …).
-    Uses Pillow for loading; converts to raw RGBA bytes.
-
-    Since images don't have multiple frames, every call to decodeFrame()
-    returns the same decoded data (cached in _cached after first decode).
+    PIL-based image decoder (single-frame assets like PNG/JPEG).
+    Outputs BGRA bytes to match skia.ImageInfo.MakeN32Premul (little-endian).
     """
 
     def __init__(self, filepath: str) -> None:
@@ -22,13 +19,20 @@ class ImageDecoder(BaseDecoder):
 
         try:
             from PIL import Image
+            import numpy as np
+
             img  = Image.open(self.filepath).convert("RGBA")
-            raw  = img.tobytes()   # RGBA8888 bytes
+            arr  = np.array(img, dtype=np.uint8)
+
+            # Swap R↔B channels: RGBA → BGRA (matches skia MakeN32Premul on Windows)
+            arr[:, :, [0, 2]] = arr[:, :, [2, 0]]
+            raw = arr.tobytes()
+
             self._cached = DecodedFrame(
                 frameNumber = 0,
                 width       = img.width,
                 height      = img.height,
-                dataRGBA    = raw,
+                dataRGBA    = raw,   # actually BGRA — matches MakeN32Premul
                 valid       = True,
             )
             return self._cached

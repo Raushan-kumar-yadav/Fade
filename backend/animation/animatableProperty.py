@@ -4,21 +4,15 @@ from backend.animation.keyframe import Keyframe, Interpolation, makeBezierKeyfra
 
 
 class AnimatableProperty:
-    """
-    A single animatable scalar value.
-    Mirrors C++ AnimatableProperty<float>.
-
-    When not animated: always returns baseValue.
-    When animated:     evaluates the ScalarTrack at the given frame.
-    """
+  
 
     def __init__(self, defaultValue: float = 0.0) -> None:
-        self._baseValue:    float       = defaultValue
-        self._currentValue: float       = defaultValue
-        self._isAnimated:   bool        = False
-        self._track:        ScalarTrack = ScalarTrack()
+        self._baseValue: float = defaultValue
+        self._currentValue: float = defaultValue
+        self._isAnimated: bool = False
+        self._track: ScalarTrack = ScalarTrack()
 
-    # ── Control ───────────────────────────────────────────────────────────────
+    #   Control  
 
     def setAnimated(self, animated: bool) -> None:
         self._isAnimated = animated
@@ -39,7 +33,7 @@ class AnimatableProperty:
     def baseValue(self) -> float:
         return self._baseValue
 
-    # ── Keyframe editing ──────────────────────────────────────────────────────
+    #   Keyframe editing  
 
     def addKeyframe(self, frame: int, value: float,
                     interp: Interpolation = Interpolation.Bezier) -> None:
@@ -62,7 +56,7 @@ class AnimatableProperty:
     def track(self) -> ScalarTrack:
         return self._track
 
-    # ── Evaluation (called every frame by the clip) ───────────────────────────
+    # Evaluation 
 
     def update(self, frame: int) -> None:
         if not self._isAnimated or self._track.empty():
@@ -70,7 +64,7 @@ class AnimatableProperty:
         else:
             self._currentValue = self._track.evaluateAt(frame, self._baseValue)
 
-    # ── Read ──────────────────────────────────────────────────────────────────
+    # Read  
 
     def get(self) -> float:
         return self._currentValue
@@ -84,8 +78,7 @@ class AnimatableProperty:
 
 
 class Vec2Property:
-    """Two-component animatable property (position, scale, …)."""
-
+ 
     def __init__(self, x: float = 0.0, y: float = 0.0) -> None:
         self.x = AnimatableProperty(x)
         self.y = AnimatableProperty(y)

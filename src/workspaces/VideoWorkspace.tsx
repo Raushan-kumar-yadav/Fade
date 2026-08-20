@@ -7,19 +7,19 @@ import ViewportWidget from './viewport/ViewportWidget'
 import LibraryPanel from './library/LibraryPanel'
 import { addClipToTimeline, type AssetItem } from '../api/useApi'
 
-// ── Panel wrappers ─────────────────────────────────────────────────────────────
+// Panel wrappers  
 
 function EffectsPanel() {
   const [active, setActive] = React.useState<string | null>(null)
   const EFFECTS = [
-    { name: 'Blur Out',      icon: '⬚' },
-    { name: 'Zoom In',       icon: '⊕' },
-    { name: 'Fade In',       icon: '◐' },
+    { name: 'Blur Out', icon: '⬚' },
+    { name: 'Zoom In', icon: '⊕' },
+    { name: 'Fade In', icon: '◐' },
     { name: 'Newton Bounce', icon: '↗' },
-    { name: 'Vignette',      icon: '◉' },
-    { name: 'Drop Shadow',   icon: '▣' },
-    { name: 'Color Grade',   icon: '◈' },
-    { name: 'Speed Ramp',    icon: '⚡' },
+    { name: 'Vignette', icon: '◉' },
+    { name: 'Drop Shadow', icon: '▣' },
+    { name: 'Color Grade', icon: '◈' },
+    { name: 'Speed Ramp', icon: '⚡' },
   ]
 
   return (
@@ -40,12 +40,12 @@ function EffectsPanel() {
 
 function PropertiesPanel() {
   const PROPS = [
-    { l: 'Opacity',  min: 0,    max: 100, def: 100 },
-    { l: 'Scale X',  min: 10,   max: 300, def: 100 },
-    { l: 'Scale Y',  min: 10,   max: 300, def: 100 },
-    { l: 'Rotation', min: -180, max: 180, def: 0   },
-    { l: 'X Offset', min: -500, max: 500, def: 0   },
-    { l: 'Y Offset', min: -500, max: 500, def: 0   },
+    { l: 'Opacity',  min: 0, max: 100, def: 100 },
+    { l: 'Scale X',  min: 10, max: 300, def: 100 },
+    { l: 'Scale Y',  min: 10, max: 300, def: 100 },
+    { l: 'Rotation', min: -180, max: 180, def: 0 },
+    { l: 'X Offset', min: -500, max: 500, def: 0 },
+    { l: 'Y Offset', min: -500, max: 500, def: 0 },
   ]
 
   return (
@@ -73,16 +73,10 @@ function PropertiesPanel() {
   )
 }
 
-// ── FlexLayout model ───────────────────────────────────────────────────────────
+// FlexLayout model  
 
 const layoutJson: FlexLayout.IJsonModel = {
-  global: {
-    tabSetTabStripHeight: 30,
-    tabSetHeaderHeight: 30,
-    borderBarSize: 0,
-    splitterSize: 2,
-    splitterExtra: 2,
-  },
+  global: {},
   borders: [],
   layout: {
     type: 'column',
@@ -127,16 +121,14 @@ function getModel(): FlexLayout.Model {
   return _model
 }
 
-// ── Workspace ──────────────────────────────────────────────────────────────────
+// Workspace  
 
 export default function VideoWorkspace() {
   const model = getModel()
 
-  /** Double-click in Library → add asset to track 0 at current playhead */
-  const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
+   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
     await addClipToTimeline(asset.assetId, trackIndex, 0, 300)
-    // Timeline will reflect on next backend poll — no optimistic update needed
-  }, [])
+   }, [])
 
   const factory = (node: FlexLayout.TabNode) => {
     switch (node.getComponent()) {
@@ -152,7 +144,7 @@ export default function VideoWorkspace() {
         )
       case 'effects':    return <EffectsPanel />
       case 'properties': return <PropertiesPanel />
-      default:           return <div className="vp" />
+      default: return <div className="vp" />
     }
   }
 

@@ -4,8 +4,9 @@
   "description": "AI Video Editor - SIH",
   "main": "dist-electron/main.js",
   "scripts": {
+    "predev": "node scripts/killports.js",
     "build:electron": "tsc -p tsconfig.node.json",
-    "dev": "concurrently -k \"vite\" \"npm run build:electron && wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "dev": "concurrently \"vite\" \"npm run build:electron && wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
     "build": "vite build && npm run build:electron",
     "start": "electron ."
   },

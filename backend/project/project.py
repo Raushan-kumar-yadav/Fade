@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 import json
 import uuid
@@ -7,37 +7,47 @@ import uuid
 
 @dataclass
 class ProjectSettings:
-    outputPath:str = ""
-    codec : str = "libx264"
-    crf:int = 18 
-    preset : str = "fast"
-    audioCodec : str = "aac"
-    audioBitrate : str = "192k"
-    
+    outputPath: str = ""
+    codec: str = "libx264"
+    crf: int = 18
+    preset: str = "fast"
+    audioCodec: str = "aac"
+    audioBitrate: str = "192k"
 
 
 class Project:
-    version = "1.0"
+    VERSION = "1.0"
 
-    def __init__(self,name:str = "untitled Project",width : int = 1920 , height : int = 1080 , fps : float = 30.0 , totalFrame : int =  1000) -> None:
-        self.projectId = str(uuid.uuid4())
-        self.name = name 
+    def __init__(
+        self,
+        name: str = "Untitled Project",
+        width: int = 1920,
+        height: int = 1080,
+        fps: float = 30.0,
+        totalFrame: int   = 1800,
+    ) -> None: 
+        self.projectId  = str(uuid.uuid4())
+        self.name = name
         self.width = width
-        self.height  = height
+        self.height = height
         self.fps = fps
-        self.totalFrame = totalFrame
-        self.filePath : str | None = None
-        self.isDirty = False
-        timelines : list = []
-        self.settings = ProjectSettings()
+        self.totalFrame = totalFrame    
+        self.filePath:  str | None = None
+        self.isDirty    = False
+        self.timelines: list = []       
+        self.settings   = ProjectSettings()
+
+    # Derived properties  
 
     @property
-    def durationSeconds(self) -> float :
-        return self.totalFrame /self.fps
+    def durationSeconds(self) -> float:
+        return self.totalFrame / self.fps
 
     @property
-    def aspectRation(self) -> float:
+    def aspectRatio(self) -> float:
         return self.width / self.height
+
+    #   Serialization  
 
     def toDict(self) -> dict:
         return {
@@ -47,7 +57,7 @@ class Project:
             "width": self.width,
             "height": self.height,
             "fps": self.fps,
-            "totalFrames": self.totalFrames,
+            "totalFrame":  self.totalFrame,
             "settings": {
                 "outputPath": self.settings.outputPath,
                 "codec": self.settings.codec,
@@ -56,21 +66,20 @@ class Project:
                 "audioCodec": self.settings.audioCodec,
                 "audioBitrate": self.settings.audioBitrate,
             },
-            "timelines" :self.timelines
         }
 
     @classmethod
-    def fromDict(cls,data:dict) -> "Project":
-        p=cls(name = data["name"],
-        width = data["width"],
-        height = data["height"],
-        fps = data["fps"],
-        totalFrame = data["totalFames"],)
-
+    def fromDict(cls, data: dict) -> "Project":
+        p = cls(
+            name = data["name"],
+            width = data["width"],
+            height = data["height"],
+            fps = data["fps"],
+            totalFrame = data.get("totalFrame", data.get("totalFrames", 1800)),
+        )
         p.projectId = data["projectId"]
-        p.timelines = data["timelines"]
-        s=data.get("settings",{})
-        p.settings  = ProjectSettings(**s) if s else ProjectSettings()
+        s = data.get("settings", {})
+        p.settings = ProjectSettings(**s) if s else ProjectSettings()
         return p
 
     def save(self, path: str | None = None) -> str:
@@ -78,13 +87,10 @@ class Project:
         if not savePath:
             raise ValueError("No file path set")
         Path(savePath).parent.mkdir(parents=True, exist_ok=True)
-        Path(savePath).write_text(
-            json.dumps(self.toDict(), indent=2), encoding="utf-8"
-        )
+        Path(savePath).write_text(json.dumps(self.toDict(), indent=2), encoding="utf-8")
         self.filePath = savePath
         self.isDirty  = False
         return savePath
-
 
     @classmethod
     def load(cls, path: str) -> "Project":
@@ -97,6 +103,5 @@ class Project:
         return (
             f"Project({self.name!r}, "
             f"{self.width}x{self.height} @ {self.fps}fps, "
-            f"{self.durationSeconds:.1f}s)")
-
-    
+            f"{self.durationSeconds:.1f}s)"
+        )

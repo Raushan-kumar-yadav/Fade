@@ -3,33 +3,32 @@ import { fetchAssets, importAsset, removeAsset, type AssetItem } from '../../api
 import './LibraryPanel.css';
 
 const TYPE_ICON: Record<string, string> = {
-  video:    '▶',
-  image:    '🖼',
-  audio:    '♪',
+  video: '▶',
+  image: '🖼',
+  audio: '♪',
   subtitle: '✎',
   unknown:  '?',
 };
 
 const TYPE_COLOR: Record<string, string> = {
-  video:   'var(--accent-blue)',
-  image:   'var(--accent-green)',
-  audio:   'var(--accent-purple)',
+  video: 'var(--accent-blue)',
+  image: 'var(--accent-green)',
+  audio: 'var(--accent-purple)',
   unknown: 'var(--text-muted)',
 };
 
 interface Props {
-  /** Called when the user double-clicks an asset — parent places it on the timeline */
-  onAddToTimeline?: (asset: AssetItem, trackIndex?: number) => void;
+   onAddToTimeline?: (asset: AssetItem, trackIndex?: number) => void;
 }
 
 export default function LibraryPanel({ onAddToTimeline }: Props) {
-  const [assets,   setAssets]   = useState<AssetItem[]>([]);
-  const [query,    setQuery]    = useState('');
+  const [assets, setAssets] = useState<AssetItem[]>([]);
+  const [query, setQuery] = useState('');
   const [loading,  setLoading]  = useState(false);
   const [dragging, setDragging] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ── Load assets from backend ──────────────────────────────────────────────
+  // Load assets from backend  
   const refresh = useCallback(async () => {
     setLoading(true);
     const data = await fetchAssets();
@@ -37,22 +36,32 @@ export default function LibraryPanel({ onAddToTimeline }: Props) {
     setLoading(false);
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    // Wait for backend port to be confirmed before first load
+    if ((window as any).__FADE_PORT__) {
+      refresh();
+    } else {
+      const handler = () => refresh();
+      window.addEventListener('fade:port', handler, { once: true });
+      return () => window.removeEventListener('fade:port', handler);
+    }
+  }, [refresh]);
 
-  // ── Import via hidden file input ──────────────────────────────────────────
+  // Import via hidden file input  
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     setLoading(true);
     for (const file of Array.from(files)) {
-      await importAsset(file.path ?? (file as any).webkitRelativePath ?? file.name);
+      // `file.path` is Electron-only (not in TS DOM types) — cast via any
+      const filePath: string = (file as any).path ?? file.name;
+      await importAsset(filePath);
     }
     await refresh();
-    // Reset so the same file can be re-imported
-    if (inputRef.current) inputRef.current.value = '';
+     if (inputRef.current) inputRef.current.value = '';
   }, [refresh]);
 
-  // ── Drop zone ─────────────────────────────────────────────────────────────
+  // Drop zone  
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -69,7 +78,7 @@ export default function LibraryPanel({ onAddToTimeline }: Props) {
     await refresh();
   }, [refresh]);
 
-  // ── Delete ────────────────────────────────────────────────────────────────
+  // Delete  
   const handleDelete = useCallback(async (assetId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     await removeAsset(assetId);

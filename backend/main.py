@@ -1,8 +1,20 @@
 from __future__ import annotations
-import asyncio
 import os
+import faulthandler
+
+# ── Thread limits ── must be set BEFORE numpy / av / skia import their thread pools
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("OMP_NUM_THREADS",      "1")
+os.environ.setdefault("MKL_NUM_THREADS",      "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS",  "1")
+
+# Dump C-level stack trace on segfault / access violation
+faulthandler.enable()
+
+import asyncio
 import socket
 import uuid
+from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,8 +35,26 @@ _library: dict[str, MediaAsset] = {}
 # In-memory clip→track index map  (clipId → trackIndex)
 _clipTrackMap: dict[str, int] = {}
 
+# ── Lifespan ──────────────────────────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: create default project + seed tracks, then start preview loop."""
+    engine.newProject()
+
+    tl = engine.activeTimeline
+    if tl:
+        for name in ["Video 1", "Video 2", "Video 3"]:
+            tl.addTrack(VideoTrack(name))
+        tl.addTrack(AudioTrack("Audio 1"))
+
+    asyncio.create_task(engine.startPreviewLoop())
+    yield
+    # Shutdown: nothing to clean up for now
+
+
 # ── FastAPI app ────────────────────────────────────────────────────────────────
-app = FastAPI(title="Fade Backend")
+app = FastAPI(title="Fade Backend", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -32,22 +62,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ── Lifecycle ──────────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def startup() -> None:
-    engine.newProject()
-
-    # Seed three tracks so the UI has something to render against
-    for name in ["Video 1", "Video 2", "Video 3"]:
-        if engine.activeTimeline:
-            engine.activeTimeline.addTrack(VideoTrack(name))
-
-    engine.activeTimeline and engine.activeTimeline.addTrack(AudioTrack("Audio 1"))
-
-    asyncio.create_task(engine.startPreviewLoop())
 
 
 # ── Health / Project ───────────────────────────────────────────────────────────
@@ -238,11 +252,16 @@ def deleteClip(clipId: str):
 
 @app.get("/timeline/state")
 def timelineState():
-    """Snapshot of tracks + clips — used by frontend on first load."""
-    tl = engine.activeTimeline
+    tl  = engine.activeTimeline
+    prj = engine.project
+    fps         = prj.fps         if prj else 30.0
+    totalFrames = prj.totalFrame  if prj else 1800
     if tl is None:
-        return {"tracks": [], "totalFrames": 1800, "fps": 30}
-    return tl.toDict()
+        return {"tracks": [], "totalFrames": totalFrames, "fps": fps}
+    data = tl.toDict()
+    data["totalFrames"] = totalFrames
+    data["fps"]         = fps
+    return data
 
 
 # ── Playback routes ────────────────────────────────────────────────────────────
@@ -322,10 +341,10 @@ def _findFreePort(start: int = 8000, end: int = 8010) -> int:
 if __name__ == "__main__":
     port = _findFreePort()
     print(f"[Fade] Backend starting on port {port}", flush=True)
+    print(f"[Fade] Python {__import__('sys').version.split()[0]} | skia, av, numpy loading...", flush=True)
     uvicorn.run(
-        "backend.main:app",
+        app,
         host="127.0.0.1",
         port=port,
         log_level="warning",
-        reload=False,
     )

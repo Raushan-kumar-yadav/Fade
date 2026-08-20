@@ -12,7 +12,7 @@
   user-select: none;
 }
 
-/* ── Search bar ─────────────────────────────────────────────────────────── */
+/* ── Search bar   */
 
 .lib__search {
   display: flex;
@@ -66,7 +66,7 @@
 .lib__import-btn:hover  { background: #6ab2ff; }
 .lib__import-btn:active { transform: scale(0.92); }
 
-/* ── Asset list ─────────────────────────────────────────────────────────── */
+/*   Asset list   */
 
 .lib__list {
   flex: 1;

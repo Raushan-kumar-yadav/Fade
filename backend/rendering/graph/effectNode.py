@@ -5,14 +5,7 @@ from backend.rendering.renderContext import RenderContext
 
 
 class EffectNode(BaseNode):
-    """
-    Applies one BaseEffect to the output of a ClipNode.
-    Sits between ClipNode (upstream) and MergeNode (downstream).
-
-    Reads the single upstream RenderResult, applies the effect
-    on an offscreen surface, and passes the result forward.
-    """
-
+    
     def __init__(self, effect, clipId: str) -> None:
         super().__init__(f"effect_{effect.__class__.__name__}_{clipId}")
         self.effect = effect
@@ -33,9 +26,8 @@ class EffectNode(BaseNode):
             self.effect.apply(canvas, upstream.image, ctx.frame)
         except Exception as e:
             print(f"[EffectNode] error applying {self.effect}: {e}")
-            # Fall back to passing the upstream image unchanged
             paint = skia.Paint()
-            canvas.drawImage(upstream.image, 0, 0, paint)
+            canvas.drawImage(upstream.image, 0, 0, skia.SamplingOptions(), paint)
 
         img = surf.makeImageSnapshot()
         return RenderResult(image=img, opacity=upstream.opacity)

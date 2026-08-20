@@ -397,3 +397,32 @@
   border-radius: 1px;
   flex-shrink: 0;
 }
+
+/* ── Drag-from-library drop zone ─────────────────────────────────────────── */
+
+.tl-track-row--dropover {
+  outline: 2px dashed #4dcc8f !important;
+  outline-offset: -2px;
+  background: rgba(77, 204, 143, 0.06) !important;
+}
+
+.tl-track-row__drop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4dcc8f;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  text-shadow: 0 0 8px rgba(77, 204, 143, 0.5);
+  animation: tl-drop-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes tl-drop-pulse {
+  from { opacity: 0.7; }
+  to   { opacity: 1.0; }
+}
+

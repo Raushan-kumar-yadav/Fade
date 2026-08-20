@@ -22,7 +22,7 @@ class OutputNode(BaseNode):
                 continue
             paint = skia.Paint()
             paint.setAlphaf(result.opacity)
-            ctx.canvas.drawImage(result.image, 0, 0, paint)
+            ctx.canvas.drawImage(result.image, 0, 0, skia.SamplingOptions(), paint)
 
         ctx.canvas.restore()
         return RenderResult()   

@@ -38,7 +38,7 @@ export interface Track {
   clips: Clip[];
 }
 
-// Interaction State (trim / move / slip)  
+// Interaction State  
 export type InteractionMode = 'move' | 'trimLeft' | 'trimRight' | 'slip';
 
 export interface ClipInteraction {
@@ -84,6 +84,10 @@ export type TimelineAction =
   | { type: 'TOGGLE_PLAY' }
   | { type: 'SET_PLAYING'; playing: boolean }
   | { type: 'TICK'; frame: number }
+  // Backend sync
+  | { type: 'SET_TRACKS'; tracks: Track[] }
+  | { type: 'SET_TOTAL_FRAMES'; totalFrames: number }
+  | { type: 'ADD_CLIP'; trackId: string; clip: Clip }
   | { type: 'SELECT_CLIP'; clipId: string; trackId: string; multi: boolean }
   | { type: 'CLEAR_SELECTION' }
   | { type: 'COMMIT_MOVE' }

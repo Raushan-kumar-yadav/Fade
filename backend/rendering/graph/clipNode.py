@@ -18,7 +18,7 @@ class ClipNode(BaseNode):
         # Evaluate all animated properties for this frame
         self.clip.evaluateAll(ctx.frame)
 
-        surf   = ctx.makeOffscreenSurface()
+        surf = ctx.makeOffscreenSurface()
         canvas = surf.getCanvas()
         canvas.clear(skia.Color4f(0, 0, 0, 0))
 

@@ -23,7 +23,7 @@ class MergeNode(BaseNode):
 
             paint = skia.Paint()
             paint.setAlphaf(result.opacity * self.trackOpacity)
-            canvas.drawImage(result.image, 0, 0, paint)
+            canvas.drawImage(result.image, 0, 0, skia.SamplingOptions(), paint)
 
         img = surf.makeImageSnapshot()
         return RenderResult(image=img, opacity=self.trackOpacity)
