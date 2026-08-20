@@ -25,6 +25,10 @@ from backend.media.asset.mediaAsset import MediaAsset
 from backend.timeline.tracks.videoTrack import VideoTrack
 from backend.timeline.tracks.audioTrack import AudioTrack
 from backend.timeline.clips.videoClip import VideoClip
+from backend.history.commandStack import (
+    MoveClipCommand, TrimClipCommand, SplitClipCommand,
+    RemoveClipCommand,
+)
 
 engine = Engine()
 
@@ -165,6 +169,17 @@ class MoveClipRequest(BaseModel):
     trackIndex: int
 
 
+class TrimClipRequest(BaseModel):
+    clipId: str
+    side: str        # 'left' or 'right'
+    frameDelta: int  # positive = extend, negative = shrink
+
+
+class SplitClipRequest(BaseModel):
+    clipId: str
+    frame: int       # global timeline frame at which to split
+
+
 @app.post("/timeline/add-clip")
 def addClip(req: AddClipRequest):
     tl = engine.activeTimeline
@@ -238,15 +253,147 @@ def deleteClip(clipId: str):
         raise HTTPException(400, "No active timeline")
 
     for track in tl.tracks:
-        if track.getClip(clipId):
-            # Unregister from scheduler to free frame cache
+        clip = track.getClip(clipId)
+        if clip:
+            from backend.history.commandStack import RemoveClipCommand
+            cmd = RemoveClipCommand(track, clip)
+            engine.commandStack.execute(cmd)    # removes clip from track
             if engine.scheduler:
                 engine.scheduler.unregisterClip(clipId)
-            track.removeClip(clipId)
             _clipTrackMap.pop(clipId, None)
             return {"status": "ok"}
 
     raise HTTPException(404, f"Clip {clipId!r} not found")
+
+
+@app.post("/timeline/trim-clip")
+def trimClip(req: TrimClipRequest):
+    """Trim the left or right edge of a clip. Pushed to CommandStack for undo."""
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+
+    for track in tl.tracks:
+        clip = track.getClip(req.clipId)
+        if clip:
+            cmd = TrimClipCommand(clip, req.side, req.frameDelta)
+            engine.commandStack.execute(cmd)
+            track.clips.sort(key=lambda c: c.startFrame)
+            return {
+                "clipId":     clip.clipId,
+                "startFrame": clip.startFrame,
+                "duration":   clip.duration,
+            }
+
+    raise HTTPException(404, f"Clip {req.clipId!r} not found")
+
+
+@app.post("/timeline/split-clip")
+def splitClip(req: SplitClipRequest):
+    """Split a clip at global timeline frame. Returns both clip IDs."""
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+
+    fps = engine.project.fps if engine.project else 30.0
+
+    for track in tl.tracks:
+        clip = track.getClip(req.clipId)
+        if clip:
+            asset = _library.get(clip.assetId) if clip.assetId else None
+            cmd = SplitClipCommand(
+                track, clip, req.frame,
+                scheduler = engine.scheduler,
+                asset     = asset,
+                fps       = fps,
+            )
+            try:
+                engine.commandStack.execute(cmd)
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+            right = cmd._rightClip
+            return {
+                "leftClipId":  clip.clipId,
+                "rightClipId": right.clipId if right else None,
+                "splitFrame":  req.frame,
+            }
+
+    raise HTTPException(404, f"Clip {req.clipId!r} not found")
+
+
+# ── Undo / Redo ───────────────────────────────────────────────────────────────
+
+@app.post("/history/undo")
+def undoAction():
+    desc = engine.commandStack.undo()
+    return {
+        "undone":   desc,
+        "canUndo":  engine.commandStack.canUndo,
+        "canRedo":  engine.commandStack.canRedo,
+    }
+
+
+@app.post("/history/redo")
+def redoAction():
+    desc = engine.commandStack.redo()
+    return {
+        "redone":   desc,
+        "canUndo":  engine.commandStack.canUndo,
+        "canRedo":  engine.commandStack.canRedo,
+    }
+
+
+@app.get("/history/state")
+def historyState():
+    return {
+        "canUndo":       engine.commandStack.canUndo,
+        "canRedo":       engine.commandStack.canRedo,
+        "undoLabel":     engine.commandStack.undoDescription,
+        "redoLabel":     engine.commandStack.redoDescription,
+    }
+
+
+# ── Track controls ────────────────────────────────────────────────────────────
+
+@app.post("/timeline/track/{trackId}/mute")
+def muteTrack(trackId: str):
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    track = tl.getTrack(trackId)
+    if track is None:
+        raise HTTPException(404, f"Track {trackId!r} not found")
+    track.muted = not track.muted
+    return {"trackId": trackId, "muted": track.muted}
+
+
+@app.post("/timeline/track/{trackId}/solo")
+def soloTrack(trackId: str):
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    track = tl.getTrack(trackId)
+    if track is None:
+        raise HTTPException(404, f"Track {trackId!r} not found")
+    target = not getattr(track, 'solo', False)
+    # Solo is exclusive — unsolo all others
+    for t in tl.tracks:
+        t.solo = False
+    track.solo = target
+    return {"trackId": trackId, "solo": track.solo}
+
+
+@app.post("/timeline/track/{trackId}/lock")
+def lockTrack(trackId: str):
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    track = tl.getTrack(trackId)
+    if track is None:
+        raise HTTPException(404, f"Track {trackId!r} not found")
+    track.locked = not track.locked
+    return {"trackId": trackId, "locked": track.locked}
+
 
 
 @app.get("/timeline/state")
@@ -277,18 +424,23 @@ def pause():
     return {"playing": False}
 
 
+class SeekRequest(BaseModel):
+    frame: int
+
 @app.post("/playback/seek")
-def seek(frame: int):
-    engine.seek(frame)
+def seek(req: SeekRequest):
+    engine.seek(req.frame)
     return {"frame": engine.currentFrame}
 
 
 @app.get("/playback/state")
 def playbackState():
+    prj = engine.project
     return {
-        "frame":   engine.currentFrame,
-        "playing": engine._playing,
-        "fps":     engine.project.fps if engine.project else 30.0,
+        "frame":       engine.currentFrame,
+        "playing":     engine._playing,
+        "fps":         prj.fps if prj else 30.0,
+        "totalFrames": prj.totalFrame if prj else 1800,
     }
 
 

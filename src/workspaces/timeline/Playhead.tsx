@@ -1,6 +1,7 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useRef } from 'react';
 import { useTimeline, frameToTimecode } from './TimelineContext';
 import { HEADER_WIDTH, RULER_HEIGHT } from './types';
+import { playbackSeek } from '../../api/useApi';
 
 interface Props {
    scrollLeft: number;
@@ -11,6 +12,7 @@ interface Props {
 const Playhead = memo(function Playhead({ scrollLeft, contentLeft }: Props) {
   const { state, dispatch } = useTimeline();
   const { currentFrame, zoomX, fps, totalFrames } = state;
+  const lastSeekFrame = useRef<number>(-1);
 
    const physicalX = currentFrame * zoomX - scrollLeft;
 
@@ -28,7 +30,11 @@ const Playhead = memo(function Playhead({ scrollLeft, contentLeft }: Props) {
     const onMove = (ev: MouseEvent) => {
       const dx = ev.clientX - startX;
       const newFrame = Math.max(0, Math.min(totalFrames, Math.round(startFrame + dx / zoomX)));
-      dispatch({ type: 'SEEK', frame: newFrame });
+      if (newFrame !== lastSeekFrame.current) {
+        lastSeekFrame.current = newFrame;
+        dispatch({ type: 'SEEK', frame: newFrame });
+        playbackSeek(newFrame).catch(() => {});
+      }
     };
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);

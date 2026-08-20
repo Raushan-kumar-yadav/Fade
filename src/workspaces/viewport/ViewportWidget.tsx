@@ -62,7 +62,7 @@ export default function ViewportWidget() {
   const wsRef      = useRef<WebSocket | null>(null);
   const imgRef     = useRef<HTMLImageElement>(new Image());
 
-  // ── WebSocket preview stream — waits for confirmed backend port ─────────────
+  //   WebSocket preview stream 
   useEffect(() => {
     let destroyed = false;
     let wsInst: WebSocket | null = null;
@@ -74,10 +74,17 @@ export default function ViewportWidget() {
       wsInst = ws;
       wsRef.current = ws;
 
-      ws.binaryType = 'blob';
+      ws.binaryType = 'arraybuffer';
       ws.onopen    = () => { if (!destroyed) { setConnected(true); setRetryCount(0); } };
-      ws.onmessage = (ev: MessageEvent<Blob>) => {
-        const blobUrl = URL.createObjectURL(ev.data);
+      ws.onmessage = (ev: MessageEvent<ArrayBuffer>) => {
+        
+        if (ev.data.byteLength < 5) return;
+        const view     = new DataView(ev.data);
+        const frameNum = view.getUint32(0, false);          // big-endian
+        setCurrentFrame(frameNum);                          // zero-lag timeline update
+        const jpegBytes = ev.data.slice(4);
+        const blob      = new Blob([jpegBytes], { type: 'image/jpeg' });
+        const blobUrl   = URL.createObjectURL(blob);
         imgRef.current.onload = () => {
           URL.revokeObjectURL(blobUrl);
           const canvas = canvasRef.current;
@@ -102,9 +109,7 @@ export default function ViewportWidget() {
       };
     }
 
-    // Delay 150ms before opening WS — in React StrictMode the effect fires twice
-    // (mount → cleanup → mount). The delay ensures the first attempt is cancelled
-    // by the cleanup before the socket is ever created, so only the real mount connects.
+   
     function tryConnect(port: number) {
       const t = setTimeout(() => connect(port), 150);
       return () => clearTimeout(t);
@@ -131,7 +136,7 @@ export default function ViewportWidget() {
     };
   }, []);
 
-  // ── Poll playback state — only after port is confirmed ───────────────────
+  //   Poll playback state 
   useEffect(() => {
     let id: ReturnType<typeof setInterval> | null = null;
 
@@ -141,9 +146,10 @@ export default function ViewportWidget() {
           const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
           if (!r.ok) return;
           const data = await r.json();
-          setCurrentFrame(data.frame);
+           
           setIsPlaying(data.playing);
           setFps(data.fps);
+          setTotalFrames(data.totalFrames ?? 1800);
         } catch { /* backend restarting */ }
       }, 200);
     }
@@ -160,7 +166,7 @@ export default function ViewportWidget() {
     return () => { if (id) clearInterval(id); };
   }, []);
 
-  // ── Controls ──────────────────────────────────────────────────────────────
+  //   Controls  
 
   const togglePlay = useCallback(async () => {
     if (isPlaying) {
@@ -179,7 +185,7 @@ export default function ViewportWidget() {
     setCurrentFrame(next);
   }, [isPlaying, currentFrame, totalFrames]);
 
-  // On scrub — pause then seek so the backend renders exactly that frame
+  // On scrub 
   const handleScrub = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = parseInt(e.target.value, 10);
     if (isPlaying) { await playbackPause(); setIsPlaying(false); }
@@ -197,7 +203,7 @@ export default function ViewportWidget() {
 
   return (
     <div className={`vw-root${isFullscreen ? ' vw-root--fullscreen' : ''}`} aria-label="Preview Viewport">
-      {/* Canvas — receives frames from WebSocket */}
+      {/* Canvas  */}
       <div className="vw-canvas" aria-label="Video preview area">
         <canvas
           ref={canvasRef}

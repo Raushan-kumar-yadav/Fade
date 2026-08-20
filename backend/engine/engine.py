@@ -1,9 +1,11 @@
 from __future__ import annotations
 import asyncio
+import struct
 from backend.project.project import Project
 from backend.timeline.timeline import Timeline
 from backend.compositor.compositor import Compositor
 from backend.media.scheduler.decodeScheduler import DecodeScheduler
+from backend.history.commandStack import CommandStack
 
 
 class Engine:
@@ -16,6 +18,7 @@ class Engine:
         self._playing = False
         self._currentFrame = 0
 
+        self.commandStack: CommandStack = CommandStack()
         self.frameQueue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=3)
         self._loopTask: asyncio.Task | None   = None
 
@@ -114,10 +117,10 @@ class Engine:
                         self._currentFrame,
                     )
                     _skip_count = 0
-                    try:
-                        self.frameQueue.put_nowait(png)
-                    except asyncio.QueueFull:
-                        pass
+
+                    # Capture frame number BEFORE advancing so the header
+                    # matches the JPEG that was just rendered.
+                    rendered_frame = self._currentFrame
 
                     # Advance frame only when playing
                     if self._playing:
@@ -125,6 +128,14 @@ class Engine:
                         if self._currentFrame >= self.project.totalFrame:
                             self._currentFrame = 0
                             self._playing = False
+
+                    # Prepend 4-byte big-endian frame number so the frontend
+                    # can update the timeline scrubber without a polling round-trip.
+                    header = struct.pack('>I', rendered_frame)
+                    try:
+                        self.frameQueue.put_nowait(header + png)
+                    except asyncio.QueueFull:
+                        pass
 
                 except Exception as exc:
                     _skip_count += 1

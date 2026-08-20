@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useRef } from 'react';
-import { useTimeline } from './TimelineContext';
+import { useTimeline, mapBackendTrack } from './TimelineContext';
+import { moveClip, trimClip, fetchTimeline, splitClip } from '../../api/useApi';
 import {
   type Clip, type Track, type InteractionMode,
   CLIP_COLORS, EDGE_TOLERANCE,
@@ -41,7 +42,18 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
     e.preventDefault();
     e.stopPropagation();
 
-    const localX = e.clientX - e.currentTarget.getBoundingClientRect().left;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+
+    if (selectedTool === 'razor') {
+      const splitFrame = Math.max(0, Math.round(clip.startFrame + localX / zoomX));
+      splitClip(clip.id, splitFrame).then(() => {
+        fetchTimeline().then(data => {
+          if (data) dispatch({ type: 'SET_TRACKS', tracks: (data.tracks ?? []).map((t: any) => mapBackendTrack(t)) });
+        });
+      });
+      return;
+    }
 
     // Selection
     const isMulti = e.ctrlKey || e.shiftKey || e.metaKey;
@@ -90,6 +102,7 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
     // mouse handlers  
     _trimLastX = 0;
     _trimAccum = 0;
+    let _trimTotalFrames = 0;
 
     const onMouseMove = (ev: MouseEvent) => {
       const dx = ev.clientX - e.clientX;
@@ -112,6 +125,7 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
         const frameDelta = Math.round(_trimAccum / zoomX);
         if (frameDelta !== 0) {
           _trimAccum -= frameDelta * zoomX;
+          _trimTotalFrames += frameDelta;
           dispatch({ type: 'TRIM_CLIP', clipId: clip.id, trackId: track.id, side: mode === 'trimLeft' ? 'left' : 'right', frameDelta });
         }
 
@@ -122,17 +136,36 @@ const TimelineClip = memo(function TimelineClip({ clip, track, trackIndex, track
         const frameDelta = Math.round(_trimAccum / zoomX);
         if (frameDelta !== 0) {
           _trimAccum -= frameDelta * zoomX;
-           
+          _trimTotalFrames += frameDelta;
           dispatch({ type: 'TRIM_CLIP', clipId: clip.id, trackId: track.id, side: 'left', frameDelta });
         }
       }
     };
 
-    const onMouseUp = () => {
+    const onMouseUp = (ev: MouseEvent) => {
       if (mode === 'move') {
         dispatch({ type: 'COMMIT_MOVE' });
+        const dx = ev.clientX - e.clientX;
+        const frameDelta = Math.round(dx / zoomX);
+        const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
+        const newStart = Math.max(0, clip.startFrame + frameDelta);
+        const dstIdx = Math.max(0, trackIndex + trackDelta);
+        
+        moveClip(clip.id, newStart, dstIdx).then(() => {
+          fetchTimeline().then(data => {
+            if (data) dispatch({ type: 'SET_TRACKS', tracks: (data.tracks ?? []).map((t: any) => mapBackendTrack(t)) });
+          });
+        });
       } else {
         dispatch({ type: 'END_INTERACTION' });
+        if (_trimTotalFrames !== 0 && (mode === 'trimLeft' || mode === 'trimRight' || mode === 'slip')) {
+          const side = mode === 'trimRight' ? 'right' : 'left';
+          trimClip(clip.id, side, _trimTotalFrames).then(() => {
+            fetchTimeline().then(data => {
+              if (data) dispatch({ type: 'SET_TRACKS', tracks: (data.tracks ?? []).map((t: any) => mapBackendTrack(t)) });
+            });
+          });
+        }
       }
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);

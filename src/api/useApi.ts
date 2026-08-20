@@ -39,7 +39,7 @@ export interface ClipInfo {
   type: string;
 }
 
-// ── Library (Assets) ──────────────────────────────────────────────────────────
+//   Library  
 
 export async function fetchAssets(): Promise<AssetItem[]> {
   const r = await fetch(`${base()}/library/assets`);
@@ -62,7 +62,7 @@ export async function removeAsset(assetId: string): Promise<void> {
 }
 
 
-// ── Timeline ──────────────────────────────────────────────────────────────────
+//   Timeline  
 
 export async function addClipToTimeline(
   assetId: string,
@@ -100,7 +100,63 @@ export async function removeClip(clipId: string): Promise<void> {
   await fetch(`${base()}/timeline/clips/${clipId}`, { method: 'DELETE' });
 }
 
-// ── Playback ──────────────────────────────────────────────────────────────────
+export async function trimClip(
+  clipId: string,
+  side: 'left' | 'right',
+  frameDelta: number,
+): Promise<{ clipId: string; startFrame: number; duration: number } | null> {
+  try {
+    const r = await fetch(`${base()}/timeline/trim-clip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipId, side, frameDelta }),
+    });
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
+export async function splitClip(
+  clipId: string,
+  frame: number,
+): Promise<{ leftClipId: string; rightClipId: string; splitFrame: number } | null> {
+  try {
+    const r = await fetch(`${base()}/timeline/split-clip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipId, frame }),
+    });
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
+export async function undoAction(): Promise<void> {
+  await fetch(`${base()}/history/undo`, { method: 'POST' });
+}
+
+export async function redoAction(): Promise<void> {
+  await fetch(`${base()}/history/redo`, { method: 'POST' });
+}
+
+export async function setTrackMute(trackId: string): Promise<void> {
+  await fetch(`${base()}/timeline/track/${trackId}/mute`, { method: 'POST' });
+}
+
+export async function setTrackSolo(trackId: string): Promise<void> {
+  await fetch(`${base()}/timeline/track/${trackId}/solo`, { method: 'POST' });
+}
+
+export async function setTrackLock(trackId: string): Promise<void> {
+  await fetch(`${base()}/timeline/track/${trackId}/lock`, { method: 'POST' });
+}
+
+// Re-fetch timeline state (used after undo/redo to sync UI)
+export async function fetchTimeline(): Promise<any> {
+  try {
+    const r = await fetch(`${base()}/timeline/state`);
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
 
 export async function playbackPlay(): Promise<void> {
   await fetch(`${base()}/playback/play`, { method: 'POST' });
@@ -111,7 +167,11 @@ export async function playbackPause(): Promise<void> {
 }
 
 export async function playbackSeek(frame: number): Promise<void> {
-  await fetch(`${base()}/playback/seek?frame=${frame}`, { method: 'POST' });
+  await fetch(`${base()}/playback/seek`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frame }),
+  });
 }
 
 export async function getPlaybackState(): Promise<PlaybackState> {

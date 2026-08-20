@@ -6,6 +6,7 @@ import {
   type TimelineState, type TimelineAction, type Track, type Clip,
   MIN_ZOOM, MAX_ZOOM, MIN_TRACK_H, MAX_TRACK_H,
 } from './types';
+import { setTrackMute, setTrackSolo, setTrackLock } from '../../api/useApi';
 
 // ── Empty initial state — filled by backend on mount ─────────────────────────
 const INITIAL_STATE: TimelineState = {
@@ -22,7 +23,7 @@ const INITIAL_STATE: TimelineState = {
 
 //   Helpers  
  
-function mapBackendTrack(t: any, defaultHeight = 64): Track {
+export function mapBackendTrack(t: any, defaultHeight = 64): Track {
   const isAudio = (t.type === 'audio') || t.name?.toLowerCase().includes('audio');
   return {
     id: t.trackId ?? t.id,
@@ -120,6 +121,28 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks };
     }
 
+    case 'DELETE_CLIP': {
+      const tracks = state.tracks.map(t => ({
+        ...t,
+        clips: t.clips.filter(c => c.id !== action.clipId),
+      }));
+      return { ...state, tracks };
+    }
+
+    case 'SPLIT_CLIP_DONE': {
+      // Replace the original clip (now shorter) and append the right half
+      const { originalClip, rightClip, trackId } = action;
+      const tracks = state.tracks.map(t => {
+        if (t.id !== trackId) return t;
+        const clips = t.clips
+          .filter(c => c.id !== originalClip.id)
+          .concat([originalClip, rightClip])
+          .sort((a, b) => a.startFrame - b.startFrame);
+        return { ...t, clips };
+      });
+      return { ...state, tracks };
+    }
+
     //   Move  
     case 'COMMIT_MOVE': {
       const intr = state.interaction;
@@ -179,12 +202,17 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
 
     //   Track controls  
     case 'TOGGLE_MUTE':
+      setTrackMute(action.trackId).catch(() => {});
       return { ...state, tracks: state.tracks.map(t => t.id === action.trackId ? { ...t, muted: !t.muted } : t) };
 
     case 'TOGGLE_SOLO':
-      return { ...state, tracks: state.tracks.map(t => t.id === action.trackId ? { ...t, solo: !t.solo } : t) };
+      setTrackSolo(action.trackId).catch(() => {});
+      return { ...state, tracks: state.tracks.map(t =>
+        t.id === action.trackId ? { ...t, solo: !t.solo } : { ...t, solo: false }
+      )};
 
     case 'TOGGLE_LOCK':
+      setTrackLock(action.trackId).catch(() => {});
       return { ...state, tracks: state.tracks.map(t => t.id === action.trackId ? { ...t, locked: !t.locked } : t) };
 
     case 'RESIZE_TRACK':
@@ -255,11 +283,12 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           .then(r => r.ok ? r.json() : null)
           .then(data => {
             if (!data) return;
-            dispatch({ type: 'TICK',        frame:   data.frame   });
+           
             dispatch({ type: 'SET_PLAYING', playing: data.playing });
+            if (data.totalFrames) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: data.totalFrames });
           })
           .catch(() => {});
-      }, 80);
+      }, 200);
 
       return id;
     }

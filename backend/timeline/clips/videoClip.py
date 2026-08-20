@@ -72,6 +72,7 @@ class VideoClip(BaseClip):
         self.blendMode  = AnimatableProperty(0.0)
 
         self._lastFrame = -1
+        self._lastValidFrame: "DecodedFrame | None" = None  # hold-last-frame on cache miss
 
     #   evaluateAll  
 
@@ -118,18 +119,27 @@ class VideoClip(BaseClip):
         canvas.drawRect(skia.Rect.MakeXYWH(0, 0, 1920, 1080), paint)
 
     def _renderMedia(self, canvas, paint, frame: int) -> None:
-         
+        """
+        Ask the DecodeScheduler for this frame from the shared FrameCache.
+        frame = global timeline frame; convert to local clip frame for cache lookup.
+        On a cache miss, re-uses the last successfully decoded frame so the
+        viewport never shows the solid blue placeholder during playback.
+        """
         import skia
 
         if self._scheduler is None:
             self._renderSolid(canvas, paint)
             return
 
-        # Convert global  
+        # Convert global frame to local frame (0-based from clip start)
         localFrame = self.localFrame(frame)
 
-        # Fast path 
+        # Fast path: cache lookup by assetId + localFrame
         decoded = self._scheduler.tryGetFrame(self.assetId, localFrame)
+
+        # On cache miss, fall back to last valid frame (hold-last-frame)
+        if not (decoded and decoded.valid):
+            decoded = self._lastValidFrame
 
         if decoded and decoded.valid:
             expected = decoded.width * decoded.height * 4
@@ -141,18 +151,20 @@ class VideoClip(BaseClip):
                     skdata = skia.Data.MakeWithCopy(decoded.dataRGBA)
                     image  = skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
                     if image is not None:
-                        
-                        dst = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
+                        # Scale decoded frame to fill the full compositor canvas.
+                        dst  = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
                         opts = skia.SamplingOptions(skia.FilterMode.kLinear)
                         canvas.drawImageRect(image, dst, opts, paint)
+                        # Cache for next cache-miss fallback
+                        self._lastValidFrame = decoded
                     else:
                         self._renderSolid(canvas, paint)
-                    del skdata    
+                    del skdata
                 except Exception as e:
                     print(f"[VideoClip] drawImage error frame={frame} local={localFrame}: {e}")
                     self._renderSolid(canvas, paint)
         else:
-            # Frame not yet decoded  
+            # No frame available at all (clip just loaded) — show solid placeholder
             self._renderSolid(canvas, paint)
 
  

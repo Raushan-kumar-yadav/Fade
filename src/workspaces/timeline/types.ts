@@ -88,6 +88,8 @@ export type TimelineAction =
   | { type: 'SET_TRACKS'; tracks: Track[] }
   | { type: 'SET_TOTAL_FRAMES'; totalFrames: number }
   | { type: 'ADD_CLIP'; trackId: string; clip: Clip }
+  | { type: 'DELETE_CLIP'; clipId: string }
+  | { type: 'SPLIT_CLIP_DONE'; trackId: string; originalClip: Clip; rightClip: Clip }
   | { type: 'SELECT_CLIP'; clipId: string; trackId: string; multi: boolean }
   | { type: 'CLEAR_SELECTION' }
   | { type: 'COMMIT_MOVE' }

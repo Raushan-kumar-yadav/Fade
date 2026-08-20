@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { TimelineProvider, useTimeline, totalWidth, totalTrackHeight } from './TimelineContext';
+import { TimelineProvider, useTimeline, totalWidth, totalTrackHeight, mapBackendTrack } from './TimelineContext';
 import { HEADER_WIDTH, RULER_HEIGHT, BOTTOM_BAR_H, CLIP_COLORS } from './types';
 import TimelineRuler   from './TimelineRuler';
 import TrackHeaders    from './TrackHeaders';
 import TrackRow        from './TrackRow';
 import Playhead        from './Playhead';
 import BottomBar       from './BottomBar';
+import { removeClip, undoAction, redoAction, fetchTimeline, splitClip, playbackSeek } from '../../api/useApi';
 import './timeline.css';
 
 // ─── Ghost clip — floats at fixed screen position during move ─────────────────
@@ -148,6 +149,24 @@ function TimelineInner() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).matches('input,textarea')) return;
+      
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
+
+      if (cmdOrCtrl && e.code === 'KeyZ') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          redoAction().then(() => fetchTimeline()).then(data => {
+            if (data) dispatch({ type: 'SET_TRACKS', tracks: (data.tracks ?? []).map(mapBackendTrack) });
+          });
+        } else {
+          undoAction().then(() => fetchTimeline()).then(data => {
+            if (data) dispatch({ type: 'SET_TRACKS', tracks: (data.tracks ?? []).map(mapBackendTrack) });
+          });
+        }
+        return;
+      }
+
       switch (e.code) {
         case 'Space': e.preventDefault(); dispatch({ type: 'TOGGLE_PLAY' }); break;
         case 'KeyV':  dispatch({ type: 'SET_TOOL', tool: 'pointer' }); break;
@@ -156,11 +175,42 @@ function TimelineInner() {
         case 'KeyY':  dispatch({ type: 'SET_TOOL', tool: 'slip'    }); break;
         case 'KeyH':  dispatch({ type: 'SET_TOOL', tool: 'hand'    }); break;
         case 'Escape': dispatch({ type: 'CLEAR_SELECTION' }); break;
+        case 'Delete':
+        case 'Backspace': {
+          e.preventDefault();
+          state.tracks.forEach(track => {
+            track.clips.forEach(clip => {
+              if (clip.isSelected) {
+                removeClip(clip.id).then(() => {
+                  dispatch({ type: 'DELETE_CLIP', clipId: clip.id });
+                });
+              }
+            });
+          });
+          break;
+        }
+        case 'KeyS': {
+          // Split at playhead
+          e.preventDefault();
+          const frame = state.currentFrame;
+          state.tracks.forEach(track => {
+            track.clips.forEach(clip => {
+              if (clip.isSelected && frame > clip.startFrame && frame < clip.startFrame + clip.duration) {
+                splitClip(clip.id, frame).then(res => {
+                  if (res) fetchTimeline().then(data => {
+                    if (data) dispatch({ type: 'SET_TRACKS', tracks: (data.tracks ?? []).map(mapBackendTrack) });
+                  });
+                });
+              }
+            });
+          });
+          break;
+        }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [dispatch]);
+  }, [state.tracks, state.currentFrame, dispatch]);
 
   // ── Playback tick ──────────────────────────────────────────────────────
   const rafRef = useRef<number | undefined>(undefined);
@@ -190,6 +240,7 @@ function TimelineInner() {
   // ── Seek on ruler click ────────────────────────────────────────────────
   const onSeek = useCallback((frame: number) => {
     dispatch({ type: 'SEEK', frame });
+    playbackSeek(frame).catch(() => {});
   }, [dispatch]);
 
   return (
