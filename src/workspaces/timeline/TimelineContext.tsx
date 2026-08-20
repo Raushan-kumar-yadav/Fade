@@ -20,16 +20,16 @@ const INITIAL_STATE: TimelineState = {
   ghost:        null,
 };
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-/** Map a backend track dict to our frontend Track shape */
+//   Helpers  
+ 
 function mapBackendTrack(t: any, defaultHeight = 64): Track {
   const isAudio = (t.type === 'audio') || t.name?.toLowerCase().includes('audio');
   return {
-    id:     t.trackId ?? t.id,
-    name:   t.name,
+    id: t.trackId ?? t.id,
+    name: t.name,
     height: isAudio ? 48 : defaultHeight,
-    muted:  t.muted ?? false,
-    solo:   t.solo  ?? false,
+    muted: t.muted ?? false,
+    solo: t.solo  ?? false,
     locked: t.locked ?? false,
     clips:  (t.clips ?? []).map(mapBackendClip),
   };
@@ -45,21 +45,21 @@ function mapBackendClip(c: any): Clip {
     c.type === 'lottie' ? 'lottie' : 'video';
 
   return {
-    id:          c.clipId ?? c.id,
-    name:        c.name ?? c.assetId ?? 'Clip',
+    id: c.clipId ?? c.id,
+    name: c.name ?? c.assetId ?? 'Clip',
     startFrame:  c.startFrame,
     duration:    c.duration,
-    type,
+    type, 
     isSelected:  false,
   };
 }
 
-// ── Reducer ───────────────────────────────────────────────────────────────────
+//   Reducer  
 function reducer(state: TimelineState, action: TimelineAction): TimelineState {
   switch (action.type) {
 
-    // ── Backend sync ──────────────────────────────────────────────────────────
-    case 'SET_TRACKS':
+    //   Backend sync  
+    case 'SET_TRACKS': 
       return { ...state, tracks: action.tracks };
 
     case 'SET_TOTAL_FRAMES':
@@ -78,7 +78,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks };
     }
 
-    // ── Playback ──────────────────────────────────────────────────────────────
+    //   Playback  
     case 'SEEK':
       return { ...state, currentFrame: Math.max(0, Math.min(action.frame, state.totalFrames)) };
 
@@ -91,14 +91,14 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
     case 'SET_PLAYING':
       return { ...state, isPlaying: action.playing };
 
-    // ── View ──────────────────────────────────────────────────────────────────
+    //   View  
     case 'ZOOM_X':
       return { ...state, zoomX: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, action.newZoom)) };
 
     case 'SET_TOOL':
       return { ...state, selectedTool: action.tool };
 
-    // ── Selection ─────────────────────────────────────────────────────────────
+    //   Selection  
     case 'SELECT_CLIP': {
       const tracks = state.tracks.map(track => ({
         ...track,
@@ -120,7 +120,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks };
     }
 
-    // ── Move ──────────────────────────────────────────────────────────────────
+    //   Move  
     case 'COMMIT_MOVE': {
       const intr = state.interaction;
       if (!intr || intr.mode !== 'move') return { ...state, interaction: null, ghost: null };
@@ -155,7 +155,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks: newTracks, interaction: null, ghost: null };
     }
 
-    // ── Trim ──────────────────────────────────────────────────────────────────
+    //   Trim  
     case 'TRIM_CLIP': {
       const { clipId, trackId, side, frameDelta } = action;
       const tracks = state.tracks.map(track => {
@@ -177,7 +177,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks };
     }
 
-    // ── Track controls ────────────────────────────────────────────────────────
+    //   Track controls  
     case 'TOGGLE_MUTE':
       return { ...state, tracks: state.tracks.map(t => t.id === action.trackId ? { ...t, muted: !t.muted } : t) };
 
@@ -197,7 +197,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
         ),
       };
 
-    // ── Drag interaction ──────────────────────────────────────────────────────
+    //   Drag interaction  
     case 'START_INTERACTION':
       return { ...state, interaction: action.interaction };
 
@@ -224,7 +224,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
   }
 }
 
-// ── Context ───────────────────────────────────────────────────────────────────
+//   Context  
 interface TimelineContextValue {
   state:    TimelineState;
   dispatch: Dispatch<TimelineAction>;
@@ -232,13 +232,13 @@ interface TimelineContextValue {
 
 const TimelineCtx = createContext<TimelineContextValue | null>(null);
 
-// ── Provider — fetches backend data on mount ──────────────────────────────────
+//   Provider   
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
 
   useEffect(() => {
     function startSync(port: number) {
-      // 1. Load timeline state (tracks + clips) from backend
+       
       fetch(`http://127.0.0.1:${port}/timeline/state`)
         .then(r => r.ok ? r.json() : null)
         .then(data => {
@@ -249,7 +249,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         })
         .catch(() => {});
 
-      // 2. Poll playback frame + play/pause every 80 ms
+       
       const id = setInterval(() => {
         fetch(`http://127.0.0.1:${port}/playback/state`)
           .then(r => r.ok ? r.json() : null)
@@ -287,12 +287,11 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+// Hook  
 export function useTimeline(): TimelineContextValue {
   const ctx = useContext(TimelineCtx);
   if (!ctx) throw new Error('useTimeline must be used inside <TimelineProvider>');
   return ctx;
 }
 
-// All non-component utilities live in timelineUtils.ts for Vite Fast Refresh
-export { frameToTimecode, totalWidth, totalTrackHeight } from './timelineUtils';
+ export { frameToTimecode, totalWidth, totalTrackHeight } from './timelineUtils';

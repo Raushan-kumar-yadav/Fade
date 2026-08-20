@@ -98,6 +98,7 @@ class Engine:
 
             if self.activeTimeline:
                 try:
+                    # ── Step 1: Render current frame (skia, no decode threads) ──
                     jpeg = await asyncio.to_thread(
                         self.compositor.compositeFrameJpeg,
                         self.activeTimeline,
@@ -107,7 +108,17 @@ class Engine:
                     try:
                         self.frameQueue.put_nowait(jpeg)
                     except asyncio.QueueFull:
-                        pass  # drop frame — consumer is slow
+                        pass
+
+                    # ── Step 2: Prefetch AFTER render completes ─────────────────
+                    # Decode threads start only after skia is completely done.
+                    # This prevents libavcodec internal threads from conflicting
+                    # with skia on Windows (STATUS_ACCESS_VIOLATION).
+                    await asyncio.to_thread(
+                        self.compositor.prefetchForFrame,
+                        self.activeTimeline,
+                        self._currentFrame,
+                    )
 
                     # Advance frame only when playing
                     if self._playing:
@@ -124,9 +135,9 @@ class Engine:
                     continue
 
             elapsed = asyncio.get_event_loop().time() - t0
-            # When paused: run at 10 fps to save CPU; when playing: full fps
             target_interval = interval if self._playing else 0.1
             await asyncio.sleep(max(0.0, target_interval - elapsed))
+
 
 
     #   Single frame  

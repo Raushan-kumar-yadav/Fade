@@ -128,33 +128,35 @@ class VideoClip(BaseClip):
             self._renderSolid(canvas, paint)
             return
 
-        #   Fast path  
+        # Fast path  
         decoded = self._scheduler.tryGetFrame(self.assetId, frame)
 
         if decoded and decoded.valid:
             expected = decoded.width * decoded.height * 4
             if len(decoded.dataRGBA) != expected:
-                # Corrupt / wrong-size frame — fall back rather than crash skia
-                self._renderSolid(canvas, paint)
+                 self._renderSolid(canvas, paint)
             else:
                 try:
-                    info  = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
-                    image = skia.Image.MakeRasterData(
+                    info = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
+                     
+                    skdata = skia.Data.MakeWithCopy(decoded.dataRGBA)
+                    image  = skia.Image.MakeRasterData(
                         info,
-                        skia.Data.MakeWithCopy(decoded.dataRGBA),
+                        skdata,
                         decoded.width * 4,
                     )
                     if image is not None:
                         canvas.drawImage(image, 0, 0, skia.SamplingOptions(), paint)
                     else:
                         self._renderSolid(canvas, paint)
+                    del skdata   # explicit release after drawImage is done
                 except Exception as e:
                     print(f"[VideoClip] drawImage error frame={frame}: {e}")
                     self._renderSolid(canvas, paint)
         else:
             self._renderSolid(canvas, paint)
 
-        self._scheduler.prefetchAround(self.clipId, frame)
+ 
 
     def setScheduler(self, scheduler: "DecodeScheduler", fps: float = 30.0) -> None:
         """Injected by Engine when a clip is added to the timeline."""

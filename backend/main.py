@@ -341,7 +341,7 @@ def _findFreePort(start: int = 8000, end: int = 8010) -> int:
 if __name__ == "__main__":
     port = _findFreePort()
     print(f"[Fade] Backend starting on port {port}", flush=True)
-    print(f"[Fade] Python {__import__('sys').version.split()[0]} | skia, av, numpy loading...", flush=True)
+    print(f"[Fade] Python {__import__('sys').version.split()[0]} | skia + subprocess-ffmpeg ready", flush=True)
     uvicorn.run(
         app,
         host="127.0.0.1",

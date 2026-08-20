@@ -1,6 +1,6 @@
 from __future__ import annotations
 import threading
-from concurrent.futures import ThreadPoolExecutor
+import gc
 from typing import Optional
 from backend.media.cache.frameCache import FrameCache
 from backend.media.decoder.decoderPool import DecoderPool
@@ -18,48 +18,40 @@ class DecodeScheduler:
     def __init__(self, cacheBytes: int = 512 * 1024 * 1024) -> None:
         self._frameCache = FrameCache(maxBytes=cacheBytes)
         self._decoderPool  = DecoderPool()
-        
-        self._threadPool: ThreadPoolExecutor | None = None
-
         self._lock = threading.Lock()
 
-        # Per pump-id tracking  
+        # Per pump-id tracking
         self._lastDecoded: dict[str, int] = {}
         self._targetFrames: dict[str, int] = {}
         self._lastAnchor: dict[str, int] = {}
-        self._pumpToContent:  dict[str, str] = {}  
+        self._pumpToContent:  dict[str, str] = {}
         self._contentRefCount: dict[str, int] = {}
-        self._activePumps: set[str] = set()
  
     def tryGetFrame(self, contentId: str, frame: int) -> Optional[DecodedFrame]:
         """Cache lookup — called every frame by the clip. Must be fast."""
         return self._frameCache.get((contentId, frame))
 
     def prefetchAround(self, clipId: str, anchorFrame: int, radius: int = 15) -> None:
-        
-        needsPump = False
+     
         with self._lock:
             lastAnchor = self._lastAnchor.get(clipId, -1)
-
-            seekedFwd = anchorFrame > lastAnchor + self.SEEK_FWD_THRESH
-            seekedBwd = anchorFrame < lastAnchor - self.SEEK_BWD_THRESH
+            seekedFwd  = anchorFrame > lastAnchor + self.SEEK_FWD_THRESH
+            seekedBwd  = anchorFrame < lastAnchor - self.SEEK_BWD_THRESH
 
             if seekedFwd or seekedBwd:
-                # Hard seek 
                 self._lastDecoded[clipId]  = anchorFrame - 1
                 self._targetFrames[clipId] = anchorFrame + radius
 
             self._lastAnchor[clipId] = anchorFrame
 
-            # Keep runway moving
             if anchorFrame + radius > self._targetFrames.get(clipId, 0):
                 self._targetFrames[clipId] = anchorFrame + radius
 
-            if self._lastDecoded.get(clipId, -1) < self._targetFrames.get(clipId, 0):
-                needsPump = True
+            needs_pump = self._lastDecoded.get(clipId, -1) < self._targetFrames.get(clipId, 0)
 
-        if needsPump:
-            self._startPump(clipId)
+        if needs_pump:
+           
+            self._pumpWorker(clipId)
 
     #   Clip registration  
 
@@ -94,37 +86,19 @@ class DecodeScheduler:
 
     #   Internal pump  
 
-    def _startPump(self, clipId: str) -> None:
-        with self._lock:
-            if clipId in self._activePumps:
-                return    
-            self._activePumps.add(clipId)
-            if self._threadPool is None:
-                self._threadPool = ThreadPoolExecutor(
-                    max_workers=4, thread_name_prefix="decode"
-                )
-
-        self._threadPool.submit(self._pumpWorker, clipId)
-
+ 
     def _pumpWorker(self, clipId: str) -> None:
-        
-        contentId = ""
+      
         with self._lock:
             contentId = self._pumpToContent.get(clipId, "")
         if not contentId:
-            with self._lock:
-                self._activePumps.discard(clipId)
             return
 
         decoder = self._decoderPool.checkout(clipId)
         if decoder is None:
-            with self._lock:
-                self._activePumps.discard(clipId)
             return
 
         decoded = 0
-        needsMore = False
-
         try:
             while decoded < self.BATCH_SIZE:
                 with self._lock:
@@ -135,9 +109,8 @@ class DecodeScheduler:
                     break
 
                 nextFrame = current + 1
-                success = False
+                success   = False
 
-                # Check cache  
                 if self._frameCache.get((contentId, nextFrame)) is not None:
                     success = True
                 else:
@@ -151,26 +124,15 @@ class DecodeScheduler:
                         self._lastDecoded[clipId] = nextFrame
                     decoded += 1
                 else:
-                    # EOF or decode error  
                     with self._lock:
                         self._targetFrames[clipId] = self._lastDecoded.get(clipId, 0)
                     break
-
         finally:
             self._decoderPool.checkin(clipId)
-
-        with self._lock:
-            self._activePumps.discard(clipId)
-            needsMore = (
-                self._lastDecoded.get(clipId, -1) < self._targetFrames.get(clipId, 0)
-            )
-
-        if needsMore:
-            self._startPump(clipId)
+            gc.collect()
 
     def shutdown(self) -> None:
-        if self._threadPool is not None:
-            self._threadPool.shutdown(wait=False)
+        pass   
 
     def __repr__(self) -> str:
         return (

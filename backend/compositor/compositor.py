@@ -93,9 +93,6 @@ class Compositor:
 
         with self._renderLock:
             self._syncClipRegistrations(timeline, frame)
-
-            if self._scheduler:
-                self._prefetchActiveClips(timeline, frame)
             t_upload = time.monotonic()
 
             img = self._renderFrame(timeline, frame, panX, panY, zoom)
@@ -218,6 +215,13 @@ class Compositor:
                     continue
                 localFrame = clip.localFrame(frame)
                 self._scheduler.prefetchAround(clip.clipId, localFrame, PREFETCH_RADIUS)
+
+    def prefetchForFrame(self, timeline: "Timeline", frame: int) -> None:
+       
+        if self._scheduler is None or timeline is None:
+            return
+        self._syncClipRegistrations(timeline, frame)
+        self._prefetchActiveClips(timeline, frame)
 
     # Internal  
 
