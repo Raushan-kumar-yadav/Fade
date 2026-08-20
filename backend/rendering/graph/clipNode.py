@@ -15,19 +15,28 @@ class ClipNode(BaseNode):
         if not self.clip.overlaps(ctx.frame):
             return RenderResult()
 
-        # Evaluate all animated properties for this frame
         self.clip.evaluateAll(ctx.frame)
 
-        surf = ctx.makeOffscreenSurface()
+        surf   = ctx.makeOffscreenSurface()
         canvas = surf.getCanvas()
         canvas.clear(skia.Color4f(0, 0, 0, 0))
 
+        clip   = self.clip
+        frame  = ctx.frame
+        masks  = getattr(clip, "masks", [])
+
         try:
-            self.clip.render(canvas, ctx.frame)
+            if masks:
+                # Compositing with masks via maskNode
+                from backend.rendering.nodes.maskNode import apply_masks
+                apply_masks(canvas, clip, lambda: clip.render(canvas, frame))
+            else:
+                clip.render(canvas, frame)
         except Exception as e:
-            print(f"[ClipNode] render error for {self.clip.clipId}: {e}")
+            print(f"[ClipNode] render error for {clip.clipId}: {e}")
+            import traceback; traceback.print_exc()
             return RenderResult()
 
-        img = surf.makeImageSnapshot()
-        opacity = float(self.clip.transform.opacity.get())
+        img     = surf.makeImageSnapshot()
+        opacity = float(clip.transform.opacity.get())
         return RenderResult(image=img, opacity=opacity)

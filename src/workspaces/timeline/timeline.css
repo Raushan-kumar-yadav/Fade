@@ -426,3 +426,73 @@
   to   { opacity: 1.0; }
 }
 
+/* ── Creation-tool track state ────────────────────────────────────────────── */
+
+/* Dashed inset border when a creation tool is active */
+.tl-track-row--creation {
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.25);
+}
+
+.tl-track-row--creation:hover {
+  box-shadow: inset 0 0 0 1.5px rgba(99, 102, 241, 0.55);
+  background: rgba(99, 102, 241, 0.04) !important;
+}
+
+/* "Click to add …" hint — appears bottom-right, non-blocking */
+.tl-track-row__create-hint {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(99, 102, 241, 0.6);
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: tl-drop-pulse 1.2s ease-in-out infinite alternate;
+}
+
+/* "Adding…" spinner hint */
+.tl-track-row--placing {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.tl-track-row__placing-hint {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: #a5b4fc;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Playhead crosshair preview line on hover (creation mode) */
+.tl-track-row__guide {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: rgba(99, 102, 241, 0.65);
+  pointer-events: none;
+  left: var(--tbx-cursor-x, 50%);
+  z-index: 4;
+  will-change: left;
+}
+
+/* Small dot on the guide line at cursor Y midpoint */
+.tl-track-row__guide::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #6366f1;
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.8);
+}

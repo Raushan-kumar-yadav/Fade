@@ -580,6 +580,249 @@ def _findFreePort(start: int = 8000, end: int = 8010) -> int:
     raise RuntimeError(f"No free port found between {start} and {end}")
 
 
+# ═══════════════════════════════════════════════════════════════════════
+#   Text / Shape / Pen / Mask routes
+# ═══════════════════════════════════════════════════════════════════════
+
+from backend.timeline.clips.textClip  import TextClip,  TextStyle,  MaskLayer
+from backend.timeline.clips.shapeClip import ShapeClip, ShapeStyle
+from backend.timeline.clips.penClip   import PenClip,   BezierPoint
+
+
+def _active_timeline():
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(status_code=400, detail="No active timeline")
+    return tl
+
+
+def _find_clip(clipId: str):
+    tl = _active_timeline()
+    for track in tl.tracks:
+        for clip in track.clips:
+            if clip.clipId == clipId:
+                return clip, track
+    raise HTTPException(status_code=404, detail=f"Clip {clipId!r} not found")
+
+
+def _default_video_track():
+    """Return first non-audio track, or create one."""
+    from backend.timeline.tracks.videoTrack import VideoTrack
+    tl = _active_timeline()
+    for track in tl.tracks:
+        if not getattr(track, 'isAudio', lambda: False)():
+            return track
+    track = VideoTrack("Video 1")
+    tl.addTrack(track)
+    return track
+
+
+# ── Text ─────────────────────────────────────────────────────────────
+
+class TextClipRequest(BaseModel):
+    trackIndex: int  | None = None
+    startFrame: int         = 0
+    duration:   int         = 150
+    style:      dict        = {}
+
+
+@app.post("/clips/text")
+def addTextClip(req: TextClipRequest):
+    import uuid
+    tl    = _active_timeline()
+    track = _default_video_track()
+    clip  = TextClip(
+        clipId     = str(uuid.uuid4()),
+        startFrame = req.startFrame,
+        duration   = req.duration,
+        style      = TextStyle.fromDict(req.style),
+    )
+    track.addClip(clip)
+    return clip.toDict()
+
+
+class TextPatchRequest(BaseModel):
+    style:    dict | None = None
+    transform: dict | None = None
+
+
+@app.patch("/clips/text/{clipId}")
+def updateTextClip(clipId: str, req: TextPatchRequest):
+    clip, _ = _find_clip(clipId)
+    if not isinstance(clip, TextClip):
+        raise HTTPException(400, "Not a text clip")
+    if req.style:
+        for k, v in req.style.items():
+            if hasattr(clip.style, k):
+                setattr(clip.style, k, v)
+    if req.transform:
+        from backend.animation.transform import Transform
+        clip.transform = Transform.fromDict(req.transform)
+    return clip.toDict()
+
+
+# ── Shape ─────────────────────────────────────────────────────────────
+
+class ShapeClipRequest(BaseModel):
+    startFrame: int  = 0
+    duration:   int  = 150
+    style:      dict = {}
+
+
+@app.post("/clips/shape")
+def addShapeClip(req: ShapeClipRequest):
+    import uuid
+    track = _default_video_track()
+    clip  = ShapeClip(
+        clipId     = str(uuid.uuid4()),
+        startFrame = req.startFrame,
+        duration   = req.duration,
+        style      = ShapeStyle.fromDict(req.style),
+    )
+    track.addClip(clip)
+    return clip.toDict()
+
+
+class ShapePatchRequest(BaseModel):
+    style:     dict | None = None
+    transform: dict | None = None
+
+
+@app.patch("/clips/shape/{clipId}")
+def updateShapeClip(clipId: str, req: ShapePatchRequest):
+    clip, _ = _find_clip(clipId)
+    if not isinstance(clip, ShapeClip):
+        raise HTTPException(400, "Not a shape clip")
+    if req.style:
+        for k, v in req.style.items():
+            if hasattr(clip.style, k):
+                setattr(clip.style, k, v)
+    if req.transform:
+        from backend.animation.transform import Transform
+        clip.transform = Transform.fromDict(req.transform)
+    return clip.toDict()
+
+
+# ── Pen ───────────────────────────────────────────────────────────────
+
+class PenClipRequest(BaseModel):
+    startFrame: int   = 0
+    duration:   int   = 150
+    isClosed:   bool  = False
+    points:     list  = []
+    style:      dict  = {}
+
+
+@app.post("/clips/pen")
+def addPenClip(req: PenClipRequest):
+    import uuid
+    track = _default_video_track()
+    clip  = PenClip(
+        clipId     = str(uuid.uuid4()),
+        startFrame = req.startFrame,
+        duration   = req.duration,
+        isClosed   = req.isClosed,
+        points     = [BezierPoint.fromDict(p) for p in req.points],
+        style      = ShapeStyle.fromDict(req.style),
+    )
+    track.addClip(clip)
+    return clip.toDict()
+
+
+class PenPointsRequest(BaseModel):
+    points:   list = []
+    isClosed: bool | None = None
+
+
+@app.patch("/clips/pen/{clipId}/points")
+def updatePenPoints(clipId: str, req: PenPointsRequest):
+    clip, _ = _find_clip(clipId)
+    if not isinstance(clip, PenClip):
+        raise HTTPException(400, "Not a pen clip")
+    clip.points = [BezierPoint.fromDict(p) for p in req.points]
+    if req.isClosed is not None:
+        clip.isClosed = req.isClosed
+    return clip.toDict()
+
+
+# ── Mask ──────────────────────────────────────────────────────────────
+
+class MaskRequest(BaseModel):
+    name:     str   = "Mask"
+    shape:    str   = "rect"    # rect | ellipse | bezier
+    mode:     str   = "add"
+    inverted: bool  = False
+    feather:  float = 0.0
+    opacity:  float = 1.0
+    points:   list  = []
+
+
+@app.post("/clips/{clipId}/mask")
+def addMask(clipId: str, req: MaskRequest):
+    import uuid
+    clip, _ = _find_clip(clipId)
+    if not hasattr(clip, "masks"):
+        raise HTTPException(400, "Clip type does not support masks")
+    mask = MaskLayer(
+        maskId   = str(uuid.uuid4()),
+        name     = req.name,
+        shape    = req.shape,
+        mode     = req.mode,
+        inverted = req.inverted,
+        feather  = req.feather,
+        opacity  = req.opacity,
+        points   = req.points,
+    )
+    clip.addMask(mask)
+    return clip.toDict()
+
+
+class MaskPatchRequest(BaseModel):
+    name:     str   | None = None
+    mode:     str   | None = None
+    inverted: bool  | None = None
+    feather:  float | None = None
+    opacity:  float | None = None
+    points:   list  | None = None
+
+
+@app.patch("/clips/{clipId}/mask/{maskId}")
+def updateMask(clipId: str, maskId: str, req: MaskPatchRequest):
+    clip, _ = _find_clip(clipId)
+    mask = getattr(clip, "getMask", lambda _: None)(maskId)
+    if mask is None:
+        raise HTTPException(404, f"Mask {maskId!r} not found on clip {clipId!r}")
+    for field_name in ("name", "mode", "inverted", "feather", "opacity", "points"):
+        v = getattr(req, field_name)
+        if v is not None:
+            setattr(mask, field_name, v)
+    return clip.toDict()
+
+
+@app.delete("/clips/{clipId}/mask/{maskId}")
+def removeMask(clipId: str, maskId: str):
+    clip, _ = _find_clip(clipId)
+    removed = getattr(clip, "removeMask", lambda _: False)(maskId)
+    if not removed:
+        raise HTTPException(404, f"Mask {maskId!r} not found")
+    return {"status": "ok", "clipId": clipId}
+
+
+# ── System fonts ───────────────────────────────────────────────────────
+
+@app.get("/fonts")
+def listFonts():
+    """Return system font families available to Skia."""
+    try:
+        import skia
+        fm = skia.FontMgr()
+        families = [fm.getFamilyName(i) for i in range(fm.countFamilies())]
+        return {"fonts": sorted(set(families))}
+    except Exception as e:
+        return {"fonts": [], "error": str(e)}
+
+
+
 if __name__ == "__main__":
     port = _findFreePort()
     print(f"[Fade] Backend starting on port {port}", flush=True)

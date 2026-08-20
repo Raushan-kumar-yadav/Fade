@@ -4,6 +4,8 @@ import {
   playbackPlay, playbackPause, playbackSeek,
   getPlaybackState, frameUrl, setPreviewScale,
 } from '../../api/useApi';
+import { useTool } from '../../context/toolContext';
+import OverlayCanvas from './OverlayCanvas';
 import './ViewportWidget.css';
 
 function framesToTimecode(frame: number, fps = 30): string {
@@ -233,18 +235,42 @@ export default function ViewportWidget() {
     try { await setPreviewScale(scale); } catch { /* backend busy */ }
   }, []);
 
+  const [canvasSize, setCanvasSize] = useState({ w: 1920, h: 1080 });
+  const { activeTool } = useTool();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Track rendered canvas size for OverlayCanvas
+  useEffect(() => {
+    const obs = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const { width, height } = e.contentRect;
+        setCanvasSize({ w: Math.round(width), h: Math.round(height) });
+      }
+    });
+    if (containerRef.current) obs.observe(containerRef.current);
+    return () => obs.disconnect();
+  }, []);
+
   const timecode = framesToTimecode(currentFrame, fps);
 
   return (
     <div className={`vw-root${isFullscreen ? ' vw-root--fullscreen' : ''}`} aria-label="Preview Viewport">
       {/* Canvas  */}
-      <div className="vw-canvas" aria-label="Video preview area">
+      <div className="vw-canvas" ref={containerRef} aria-label="Video preview area" style={{ position: 'relative' }}>
         <canvas
           ref={canvasRef}
           className="vw-canvas__el"
           width={1920}
           height={1080}
         />
+        {/* Pen overlay — active when pen path tool selected */}
+        {activeTool === 'shape:path' && (
+          <OverlayCanvas
+            mode="pen"
+            width={canvasSize.w}
+            height={canvasSize.h}
+          />
+        )}
         {!connected && (
           <div className="vw-canvas__overlay">
             <div className="vw-canvas__spinner" />

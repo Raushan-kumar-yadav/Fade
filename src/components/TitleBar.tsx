@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
+import type { ActiveTool } from '../context/toolContext';
 import './TitleBar.css';
+import '../workspaces/tools/ToolPanels.css';
 
 interface ElectronAPI {
   minimize: () => void;
@@ -73,13 +75,22 @@ function MenuButton({ label, items }: { label: string; items: MenuItem[] }) {
 
 // ── TitleBar ────────────────────────────────────────────────────────────────
 
+// ActiveTool re-exported for backwards-compat with App.tsx
+export type { ActiveTool } from '../context/toolContext';
+
+
+
 interface TitleBarProps {
-  active:        string;
-  onTab:         (id: string) => void;
-  onSettings:    () => void;
+  active:             string;
+  onTab:              (id: string) => void;
+  onSettings:         () => void;
+  activeTool?:        ActiveTool;
+  onTool?:            (t: ActiveTool) => void;
+  onToggleToolbox?:   () => void;
+  toolboxOpen?:       boolean;
 }
 
-export default function TitleBar({ active, onTab, onSettings }: TitleBarProps) {
+export default function TitleBar({ active, onTab, onSettings, activeTool = 'pointer', onTool, onToggleToolbox, toolboxOpen }: TitleBarProps) {
   const api = window.electronAPI;
 
   const fileItems: MenuItem[] = [
@@ -106,7 +117,7 @@ export default function TitleBar({ active, onTab, onSettings }: TitleBarProps) {
 
   return (
     <div className="titlebar">
-      {/* Left: Logo + menus */}
+      {/* Left: Logo + menus + tool buttons */}
       <div className="titlebar__left">
         <div className="titlebar__logo">
           <div className="titlebar__logo-dot" />
@@ -117,6 +128,21 @@ export default function TitleBar({ active, onTab, onSettings }: TitleBarProps) {
           <MenuButton label="Edit"     items={editItems} />
           <button className="tb-menu__btn" onClick={onSettings}>Settings</button>
         </div>
+
+        {/* Toolbox toggle — only on Video tab */}
+        {active === 'video' && (
+          <div className="tb-tool-group">
+            <button
+              id="tb-toolbox-toggle"
+              className={`tb-tool-btn${toolboxOpen ? ' tb-tool-btn--active' : ''}`}
+              title="Toggle Toolbox (§)"
+              onClick={onToggleToolbox}
+            >
+              <span style={{ fontSize: 13 }}>⊞</span>
+              <span className="tb-tool-btn__tip">Toolbox</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Centre: workspace tabs */}

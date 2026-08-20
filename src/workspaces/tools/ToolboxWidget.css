@@ -1,0 +1,296 @@
+/* ToolboxWidget.css — Dockable floating tool palette */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+
+/* ── Floating container ──────────────────────────────────────────────────── */
+.tbx-floating {
+  position: fixed;
+  z-index: 200;
+  width: 52px;
+  background: #0f131a;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  box-shadow:
+    0 4px 24px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(255,255,255,0.04);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  backdrop-filter: blur(12px);
+  user-select: none;
+}
+
+/* ── Docked (sidebar) mode ───────────────────────────────────────────────── */
+.tbx-docked {
+  width: 52px;
+  height: 100%;
+  background: #0f131a;
+  border-right: 1px solid rgba(255,255,255,0.06);
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ── Header / drag handle ────────────────────────────────────────────────── */
+.tbx-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 6px 4px;
+  cursor: grab;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  border-radius: 10px 10px 0 0;
+}
+
+.tbx-docked .tbx-header {
+  cursor: default;
+  border-radius: 0;
+}
+
+.tbx-header:active { cursor: grabbing; }
+
+.tbx-header__label {
+  font-family: 'Inter', sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #475569;
+  flex: 1;
+  text-align: center;
+}
+
+.tbx-header__close {
+  width: 16px; height: 16px;
+  background: none;
+  border: none;
+  color: #475569;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 3px;
+  line-height: 1;
+  padding: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.tbx-header__close:hover { color: #f87171; background: rgba(239,68,68,0.12); }
+
+/* ── Group ───────────────────────────────────────────────────────────────── */
+.tbx-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+  gap: 2px;
+}
+
+.tbx-group__label {
+  font-family: 'Inter', sans-serif;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #334155;
+  margin-bottom: 2px;
+}
+
+/* ── Divider ─────────────────────────────────────────────────────────────── */
+.tbx-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.06);
+  margin: 2px 8px;
+}
+
+/* ── Tool button ─────────────────────────────────────────────────────────── */
+.tbx-btn {
+  position: relative;
+  width: 36px; height: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: #64748b;
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.12s;
+  gap: 1px;
+}
+
+.tbx-btn:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.08);
+  color: #e2e8f0;
+}
+
+.tbx-btn--active {
+  background: rgba(99,102,241,0.18) !important;
+  border-color: rgba(99,102,241,0.5) !important;
+  color: #a5b4fc !important;
+  box-shadow: 0 0 0 1px rgba(99,102,241,0.25) inset;
+}
+
+.tbx-btn__icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.tbx-btn__key {
+  font-size: 8px;
+  color: #334155;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.tbx-btn--active .tbx-btn__key {
+  color: #6366f1;
+}
+
+/* ── Shape split button ──────────────────────────────────────────────────── */
+.tbx-btn--shape {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.tbx-shape-main {
+  flex: 1;
+  height: 100%;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  gap: 1px;
+  padding: 0 2px;
+}
+
+.tbx-shape-arrow {
+  width: 12px;
+  height: 100%;
+  background: rgba(255,255,255,0.04);
+  border: none;
+  border-left: 1px solid rgba(255,255,255,0.07);
+  color: #475569;
+  font-size: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+  padding: 0;
+}
+
+.tbx-shape-arrow:hover {
+  background: rgba(99,102,241,0.2);
+  color: #a5b4fc;
+}
+
+/* ── Shape flyout ────────────────────────────────────────────────────────── */
+.tbx-flyout {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  z-index: 300;
+  min-width: 148px;
+  background: #141920;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.5),
+    0 0 0 1px rgba(255,255,255,0.03);
+  overflow: hidden;
+  animation: tbx-flyout-in 0.12s ease;
+}
+
+@keyframes tbx-flyout-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.tbx-flyout__title {
+  font-family: 'Inter', sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #475569;
+  padding: 8px 10px 4px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.tbx-flyout__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s, color 0.1s;
+}
+
+.tbx-flyout__item:hover {
+  background: rgba(99,102,241,0.12);
+  color: #e2e8f0;
+}
+
+.tbx-flyout__item--active {
+  background: rgba(99,102,241,0.18);
+  color: #a5b4fc;
+}
+
+.tbx-flyout__icon {
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.tbx-flyout__label {
+  flex: 1;
+}
+
+.tbx-flyout__key {
+  font-size: 10px;
+  color: #475569;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-weight: 600;
+}
+
+/* ── Tooltip (long press / hover title is enough, but add extra) ─────────── */
+.tbx-btn[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: #1e2533;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: #e2e8f0;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 400;
+}

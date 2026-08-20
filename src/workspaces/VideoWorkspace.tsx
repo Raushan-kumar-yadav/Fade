@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useState } from 'react'
 import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
@@ -6,8 +6,12 @@ import Timeline from './timeline/Timeline'
 import ViewportWidget from './viewport/ViewportWidget'
 import LibraryPanel from './library/LibraryPanel'
 import { addClipToTimeline, type AssetItem } from '../api/useApi'
+import { useTool, isShapeTool } from '../context/toolContext'
+import TextToolPanel  from './tools/TextToolPanel'
+import ShapeToolPanel from './tools/ShapeToolPanel'
+import { MaskPanel }  from './tools/MaskPanel'
 
-// Panel wrappers  
+// ── Effects panel ──────────────────────────────────────────────────────────
 
 function EffectsPanel() {
   const [active, setActive] = React.useState<string | null>(null)
@@ -38,7 +42,31 @@ function EffectsPanel() {
   )
 }
 
-function PropertiesPanel() {
+// ── Properties / Tool panel (right side) ──────────────────────────────────
+
+function ToolPanel() {
+  const { activeTool } = useTool()
+  const [currentFrame] = useState(0)
+
+  if (activeTool === 'text') {
+    return (
+      <TextToolPanel
+        currentFrame={currentFrame}
+        onCreated={(clip) => console.log('[Fade] text clip created', clip.clipId)}
+      />
+    )
+  }
+
+  if (isShapeTool(activeTool)) {
+    return (
+      <ShapeToolPanel
+        currentFrame={currentFrame}
+        onCreated={(clip) => console.log('[Fade] shape clip created', clip.clipId)}
+      />
+    )
+  }
+
+  // Default: properties sliders
   const PROPS = [
     { l: 'Opacity',  min: 0, max: 100, def: 100 },
     { l: 'Scale X',  min: 10, max: 300, def: 100 },
@@ -73,7 +101,7 @@ function PropertiesPanel() {
   )
 }
 
-// FlexLayout model  
+// ── FlexLayout model ────────────────────────────────────────────────────────
 
 const layoutJson: FlexLayout.IJsonModel = {
   global: {},
@@ -101,7 +129,7 @@ const layoutJson: FlexLayout.IJsonModel = {
             weight: 30,
             children: [
               { type: 'tab', name: 'Effects',    component: 'effects',    enableClose: false },
-              { type: 'tab', name: 'Properties', component: 'properties', enableClose: false },
+              { type: 'tab', name: 'Tools',      component: 'tools',      enableClose: false },
             ],
           },
         ],
@@ -121,14 +149,14 @@ function getModel(): FlexLayout.Model {
   return _model
 }
 
-// Workspace  
+// ── VideoWorkspace ──────────────────────────────────────────────────────────
 
 export default function VideoWorkspace() {
   const model = getModel()
 
-   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
+  const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
     await addClipToTimeline(asset.assetId, trackIndex, 0, 300)
-   }, [])
+  }, [])
 
   const factory = (node: FlexLayout.TabNode) => {
     switch (node.getComponent()) {
@@ -143,7 +171,7 @@ export default function VideoWorkspace() {
           </div>
         )
       case 'effects':    return <EffectsPanel />
-      case 'properties': return <PropertiesPanel />
+      case 'tools':      return <ToolPanel />
       default: return <div className="vp" />
     }
   }
