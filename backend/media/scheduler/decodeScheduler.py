@@ -1,6 +1,7 @@
  
 from __future__ import annotations
 import threading
+import time
 import queue
 from typing import Optional
 from backend.media.cache.frameCache import FrameCache
@@ -12,10 +13,12 @@ from backend.media.asset.mediaAsset import MediaAsset
 class DecodeScheduler:
      
 
-    BATCH_SIZE = 60      # decode up to 60 frames per worker wakeup (2s at 30fps)
-    WORKER_COUNT = 4
-    SEEK_FWD_THRESH = 30
-    SEEK_BWD_THRESH = 5
+    BATCH_SIZE       = 30   # frames per worker wakeup (back from 60 — reduces burst alloc)
+    WORKER_COUNT     = 4
+    MAX_ACTIVE_PUMPS = 2    # at most 2 clips decode simultaneously (prevents bus saturation)
+    SEEK_FWD_THRESH  = 30
+    SEEK_BWD_THRESH  = 5
+    DECODE_SLEEP_S   = 0.002  # 2ms yield between frames — releases memory bus for GPU
 
     def __init__(self, cacheBytes: int = 2 * 1024 * 1024 * 1024) -> None:
         self._frameCache  = FrameCache(maxBytes=cacheBytes)
@@ -48,6 +51,18 @@ class DecodeScheduler:
         ]
         for worker in self._workerThreads:
             worker.start()
+            # Lower decode threads to below-normal OS priority.
+            # This prevents them from starving the GPU display DMA pipeline
+            # which causes Windows TDR (display driver crash/restart).
+            try:
+                import ctypes
+                THREAD_PRIORITY_BELOW_NORMAL = -1
+                handle = ctypes.windll.kernel32.OpenThread(0x0060, False, worker.ident)
+                if handle:
+                    ctypes.windll.kernel32.SetThreadPriority(handle, THREAD_PRIORITY_BELOW_NORMAL)
+                    ctypes.windll.kernel32.CloseHandle(handle)
+            except Exception:
+                pass   # non-Windows or ctypes unavailable — safe to ignore
 
     #   Public API  
 
@@ -81,7 +96,8 @@ class DecodeScheduler:
 
             behind = self._lastDecoded.get(clipId, -1) < self._targetFrames.get(clipId, 0)
              
-            if behind and clipId not in self._activePumps:
+            # Limit concurrent decoders — prevents PCIe/RAM bus saturation (GPU TDR)
+            if behind and clipId not in self._activePumps and len(self._activePumps) < self.MAX_ACTIVE_PUMPS:
                 self._activePumps.add(clipId)
                 needs_pump = True
 
@@ -187,6 +203,9 @@ class DecodeScheduler:
                     with self._lock:
                         self._lastDecoded[clipId] = nextFrame
                     decoded += 1
+                    # 2ms yield — releases PCIe/memory bus for GPU display pipeline
+                    # This prevents Windows TDR (display driver restart)
+                    time.sleep(self.DECODE_SLEEP_S)
                 else:
                     # EOF or decode error — stop pump
                     with self._lock:

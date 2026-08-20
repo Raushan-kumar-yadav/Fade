@@ -9,10 +9,16 @@ let detectedPort:  number | null = null
 let appQuitting  = false
 let pyKilledByUs = false   
 
-// Suppress harmless 
+// GPU stability — prevents exit_code=34 (GPU TDR timeout)
+// createImageBitmap can overload the GPU compositor; force software raster for 2D canvas
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
 app.commandLine.appendSwitch('disable-dev-shm-usage')
 app.commandLine.appendSwitch('no-sandbox')
+app.commandLine.appendSwitch('disable-gpu-sandbox')
+app.commandLine.appendSwitch('disable-software-rasterizer')   // use ANGLE instead of SW
+app.commandLine.appendSwitch('ignore-gpu-blocklist')           // don't block GPU on driver issues
+app.commandLine.appendSwitch('enable-gpu-rasterization')       // keep GPU for Chromium UI
+app.commandLine.appendSwitch('disable-zero-copy')              // prevent zero-copy GPU mem pressure
 
 // Helpers  
 

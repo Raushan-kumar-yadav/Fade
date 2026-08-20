@@ -13,8 +13,11 @@ class DecodedFrame:
     skiaImage: 'skia.Image | None' = None
 
     def sizeBytes(self) -> int:
-        """Memory footprint """
-        return len(self.dataRGBA)
+        """Real memory footprint: dataRGBA bytes + skia CPU raster memory."""
+        raw = len(self.dataRGBA)
+        # skiaImage holds a separate CPU raster of the same size
+        skia_sz = (self.width * self.height * 4) if self.skiaImage is not None else 0
+        return raw + skia_sz
 
     @property
     def channels(self) -> int:

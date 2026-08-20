@@ -358,6 +358,13 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
 
   useEffect(() => {
+    // Hoist onFrame so cleanup can always reach it
+    const onFrame = (e: Event) => {
+      const frame = (e as CustomEvent<number>).detail;
+      dispatch({ type: "SET_CURRENT_FRAME", frame });
+    };
+    window.addEventListener("fade:frame", onFrame);
+
     function startSync(port: number) {
       fetch(`http://127.0.0.1:${port}/timeline/state`)
         .then((r) => (r.ok ? r.json() : null))
@@ -366,31 +373,24 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           const tracks: Track[] = (data.tracks ?? []).map(mapBackendTrack);
           dispatch({ type: "SET_TRACKS", tracks });
           if (data.totalFrames)
-            dispatch({
-              type: "SET_TOTAL_FRAMES",
-              totalFrames: data.totalFrames,
-            });
+            dispatch({ type: "SET_TOTAL_FRAMES", totalFrames: data.totalFrames });
         })
         .catch(() => {});
 
+      // Poll only for play/pause + totalFrames — NOT for frame position.
+      // Frame position is driven zero-lag via the 'fade:frame' custom event
+      // dispatched by ViewportWidget on every WebSocket frame.
       const id = setInterval(() => {
         fetch(`http://127.0.0.1:${port}/playback/state`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
             if (!data) return;
-
             dispatch({ type: "SET_PLAYING", playing: data.playing });
-            if (typeof data.frame === "number") {
-              dispatch({ type: "SET_CURRENT_FRAME", frame: data.frame });
-            }
             if (data.totalFrames)
-              dispatch({
-                type: "SET_TOTAL_FRAMES",
-                totalFrames: data.totalFrames,
-              });
+              dispatch({ type: "SET_TOTAL_FRAMES", totalFrames: data.totalFrames });
           })
           .catch(() => {});
-      }, 200);
+      }, 500);
 
       return id;
     }
@@ -405,13 +405,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         intervalId = startSync((e as CustomEvent<number>).detail);
       };
       window.addEventListener("fade:port", handler, { once: true });
-      return () => window.removeEventListener("fade:port", handler);
     }
 
     return () => {
       if (intervalId) clearInterval(intervalId);
+      window.removeEventListener("fade:frame", onFrame);
     };
   }, []);
+
 
   return (
     <TimelineCtx.Provider value={{ state, dispatch }}>

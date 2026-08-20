@@ -74,6 +74,76 @@ def health():
     return {"status": "ok"}
 
 
+#   Settings  
+
+class SettingsPayload(BaseModel):
+    cacheMaxMB:      int   | None = None   # Frame cache budget in MB
+    previewScale:    float | None = None   # Decode resolution 0.125–1.0
+    jpegQuality:     int   | None = None   # JPEG encode quality 1–100
+    prefetchRadius:  int   | None = None   # Frames to pre-decode ahead
+    batchSize:       int   | None = None   # Frames decoded per worker wakeup
+    decoderMode:     str   | None = None   # "auto" | "pyav" | "ffmpeg"
+
+
+def _get_settings() -> dict:
+    import backend.compositor.compositor as _comp
+    from backend.media.scheduler.decodeScheduler import DecodeScheduler
+    from backend.media.cache.frameCache import FrameCache
+    from backend.media.decoder.videoDecoder import _DECODER_MODE
+
+    cache_mb   = round(engine.scheduler._frameCache._maxBytes / (1024**2)) if engine.scheduler else 512
+    scale      = engine.getPreviewScale()
+    quality    = getattr(engine.compositor, '_jpegQuality', 85) if engine.compositor else 85
+    return {
+        "cacheMaxMB":     cache_mb,
+        "cacheUsedMB":    round(engine.scheduler._frameCache.usedMB, 1) if engine.scheduler else 0,
+        "cacheFrames":    engine.scheduler._frameCache.entryCount if engine.scheduler else 0,
+        "cacheMaxFrames": FrameCache.MAX_FRAMES,
+        "previewScale":   scale,
+        "jpegQuality":    quality,
+        "prefetchRadius": _comp.PREFETCH_RADIUS,
+        "batchSize":      DecodeScheduler.BATCH_SIZE,
+        "decoderMode":    _DECODER_MODE,
+    }
+
+
+@app.get("/settings")
+def getSettings():
+    return _get_settings()
+
+
+@app.post("/settings")
+def postSettings(payload: SettingsPayload):
+    import backend.compositor.compositor as _comp
+    from backend.media.scheduler.decodeScheduler import DecodeScheduler
+
+    if payload.cacheMaxMB is not None:
+        mb = max(64, min(4096, payload.cacheMaxMB))
+        if engine.scheduler:
+            engine.scheduler._frameCache._maxBytes = mb * 1024 * 1024
+
+    if payload.previewScale is not None:
+        engine.setPreviewScale(payload.previewScale)
+
+    if payload.jpegQuality is not None:
+        q = max(1, min(100, payload.jpegQuality))
+        if engine.compositor:
+            engine.compositor._jpegQuality = q
+
+    if payload.prefetchRadius is not None:
+        _comp.PREFETCH_RADIUS = max(10, min(240, payload.prefetchRadius))
+
+    if payload.batchSize is not None:
+        DecodeScheduler.BATCH_SIZE = max(10, min(120, payload.batchSize))
+
+    if payload.decoderMode is not None and payload.decoderMode in ("auto", "pyav", "ffmpeg"):
+        import backend.media.decoder.videoDecoder as _vd
+        _vd._DECODER_MODE = payload.decoderMode
+
+    return _get_settings()
+
+
+
 @app.get("/project")
 def getProject():
     if engine.project is None:

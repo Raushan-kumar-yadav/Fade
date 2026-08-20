@@ -65,6 +65,8 @@ class Compositor:
         self._stats = _PerfStats()
         self._fpsCount = 0
         self._fpsT0 = time.monotonic()
+        # JPEG quality for preview stream (adjustable via /settings)
+        self._jpegQuality: int = 85
 
     # API  
 
@@ -110,7 +112,8 @@ class Compositor:
             t_render = time.monotonic()
 
             # JPEG: 7ms at 960x540 vs PNG 46ms — 6x faster, fine for opaque preview
-            data   = img.encodeToData(skia.kJPEG, quality)
+            q      = quality if quality != 85 else self._jpegQuality
+            data   = img.encodeToData(skia.kJPEG, q)
             result = bytes(data)
 
         self._updateStats(t0, t_upload, t_render)

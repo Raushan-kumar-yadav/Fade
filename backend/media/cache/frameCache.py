@@ -9,9 +9,10 @@ FrameKey = tuple[str, int]
 
 
 class FrameCache:
-     
 
-    def __init__(self, maxBytes: int = 2 * 1024 * 1024 * 1024) -> None:
+    MAX_FRAMES: int = 300   # hard cap: never store more than this many frames
+
+    def __init__(self, maxBytes: int = 512 * 1024 * 1024) -> None:  # 512 MB default
         self._maxBytes  = maxBytes
         self._usedBytes = 0
         self._map: OrderedDict[FrameKey, DecodedFrame] = OrderedDict()
@@ -55,10 +56,15 @@ class FrameCache:
             self._usedBytes = 0
 
     def _evictUntilUnderBudget(self) -> None:
-        # Called while _lock is already held
-        while self._usedBytes > self._maxBytes and self._map:
-            _, lruFrame = self._map.popitem(last=False)  # oldest first
+        """Evict LRU entries until both byte budget AND frame count are satisfied.
+        Called while _lock is already held.
+        Explicitly clears skiaImage so Skia releases its CPU raster memory."""
+        while (self._usedBytes > self._maxBytes or len(self._map) > self.MAX_FRAMES) and self._map:
+            _, lruFrame = self._map.popitem(last=False)  # pop oldest
             self._usedBytes -= lruFrame.sizeBytes()
+            # Explicitly release Skia memory — Python GC may not run immediately
+            lruFrame.skiaImage = None
+            lruFrame.dataRGBA  = b""
 
     @property
     def usedMB(self) -> float:

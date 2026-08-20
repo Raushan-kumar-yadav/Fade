@@ -60,12 +60,45 @@ export default function ViewportWidget() {
   // The canvas receives decoded JPEG blobs from the WebSocket
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const wsRef      = useRef<WebSocket | null>(null);
-  const imgRef     = useRef<HTMLImageElement>(new Image());
+
+  // Pending bitmap for next animation frame — avoids drawing stale frames
+  const pendingBitmapRef = useRef<ImageBitmap | null>(null);
+  const rafIdRef         = useRef<number>(0);
+  // Local frame ref updated on every WS message (avoids React re-render per frame)
+  const frameNumRef      = useRef<number>(0);
+  // Throttled React state update (only drives scrub bar, not canvas)
+  const lastStateFrameRef = useRef<number>(-1);
 
   //   WebSocket preview stream 
   useEffect(() => {
     let destroyed = false;
     let wsInst: WebSocket | null = null;
+
+    // RAF loop: draws the latest decoded bitmap each display frame
+    function rafLoop() {
+      rafIdRef.current = requestAnimationFrame(rafLoop);
+      const bmp = pendingBitmapRef.current;
+      if (!bmp) return;
+      pendingBitmapRef.current = null;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx2d = canvas.getContext('2d');
+      if (!ctx2d) return;
+      if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
+        canvas.width  = bmp.width;
+        canvas.height = bmp.height;
+      }
+      ctx2d.drawImage(bmp, 0, 0);
+      bmp.close();   // release GPU/CPU memory immediately
+
+      // Throttle React setState to max 30/s — prevents 60 re-renders/sec
+      const frame = frameNumRef.current;
+      if (frame !== lastStateFrameRef.current) {
+        lastStateFrameRef.current = frame;
+        setCurrentFrame(frame);
+      }
+    }
+    rafIdRef.current = requestAnimationFrame(rafLoop);
 
     function connect(port: number) {
       if (destroyed) return;
@@ -77,27 +110,25 @@ export default function ViewportWidget() {
       ws.binaryType = 'arraybuffer';
       ws.onopen    = () => { if (!destroyed) { setConnected(true); setRetryCount(0); } };
       ws.onmessage = (ev: MessageEvent<ArrayBuffer>) => {
-        
         if (ev.data.byteLength < 5) return;
+
+        // Parse frame number from 4-byte big-endian header
         const view     = new DataView(ev.data);
-        const frameNum = view.getUint32(0, false);          // big-endian
-        setCurrentFrame(frameNum);                          // zero-lag timeline update
+        const frameNum = view.getUint32(0, false);
+        frameNumRef.current = frameNum;
+
+        // Dispatch zero-lag custom event so Timeline updates immediately
+        window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
+
+        // Decode JPEG off-main-thread using createImageBitmap
+        // This is much faster than Blob → BlobURL → img.onload
         const jpegBytes = ev.data.slice(4);
-        const blob      = new Blob([jpegBytes], { type: 'image/jpeg' });
-        const blobUrl   = URL.createObjectURL(blob);
-        imgRef.current.onload = () => {
-          URL.revokeObjectURL(blobUrl);
-          const canvas = canvasRef.current;
-          if (!canvas) return;
-          const ctx2d = canvas.getContext('2d');
-          if (!ctx2d) return;
-          if (canvas.width !== imgRef.current.naturalWidth) {
-            canvas.width  = imgRef.current.naturalWidth;
-            canvas.height = imgRef.current.naturalHeight;
-          }
-          ctx2d.drawImage(imgRef.current, 0, 0);
-        };
-        imgRef.current.src = blobUrl;
+        const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
+        createImageBitmap(blob).then((bmp) => {
+          // Drop previous pending bitmap if it wasn't consumed (frame-skip)
+          pendingBitmapRef.current?.close();
+          pendingBitmapRef.current = bmp;
+        }).catch(() => {/* decode error, skip frame */});
       };
       ws.onerror = () => { /* will retry via onclose */ };
       ws.onclose = () => {
@@ -131,6 +162,9 @@ export default function ViewportWidget() {
 
     return () => {
       destroyed = true;
+      cancelAnimationFrame(rafIdRef.current);
+      pendingBitmapRef.current?.close();
+      pendingBitmapRef.current = null;
       cleanup();
       wsInst?.close();
     };
