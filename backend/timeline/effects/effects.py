@@ -75,7 +75,7 @@ class BrightnessContrastEffect(BaseEffect):
     def __init__(self, brightness: float = 0.0, contrast: float = 1.0) -> None:
         super().__init__(self.NAME)
         self.brightness = brightness
-        self.contrast   = contrast
+        self.contrast = contrast
 
     def _matrix(self) -> list[float]:
         c = self.contrast
@@ -114,14 +114,14 @@ class HSLEffect(BaseEffect):
 
     def __init__(self, hue: float = 0.0, saturation: float = 1.0, lightness: float = 0.0) -> None:
         super().__init__(self.NAME)
-        self.hue        = hue
+        self.hue = hue
         self.saturation = saturation
         self.lightness  = lightness
 
     def _matrix(self) -> list[float]:
-        h    = math.radians(self.hue)
-        s    = self.saturation
-        lu   = self.lightness
+        h = math.radians(self.hue)
+        s = self.saturation
+        lu = self.lightness
         cosH = math.cos(h)
         sinH = math.sin(h)
         lr = 0.213; lg = 0.715; lb = 0.072
@@ -154,13 +154,13 @@ class HSLEffect(BaseEffect):
 
     def params(self) -> dict:
         return {
-            "hue":        (self.hue,        -180.0, 180.0),
+            "hue": (self.hue, -180.0, 180.0),
             "saturation": (self.saturation,    0.0,   3.0),
             "lightness":  (self.lightness,    -1.0,   1.0),
         }
 
     def setParam(self, key: str, val: float) -> None:
-        if key == "hue":          self.hue = val
+        if key == "hue": self.hue = val
         elif key == "saturation": self.saturation = val
         elif key == "lightness":  self.lightness = val
 
@@ -171,7 +171,7 @@ class ColorGradeEffect(BaseEffect):
     def __init__(self, temperature: float = 0.0, tint: float = 0.0) -> None:
         super().__init__(self.NAME)
         self.temperature = temperature
-        self.tint        = tint
+        self.tint = tint
 
     def apply(self, canvas: skia.Canvas, frame: int) -> None:
         if not self.enabled:
@@ -301,9 +301,9 @@ class ChromaKeyEffect(BaseEffect):
     def __init__(self, key_r: float = 0.0, key_g: float = 1.0, key_b: float = 0.0,
                  threshold: float = 0.3, softness: float = 0.1) -> None:
         super().__init__(self.NAME)
-        self.key_r     = key_r
-        self.key_g     = key_g
-        self.key_b     = key_b
+        self.key_r = key_r
+        self.key_g = key_g
+        self.key_b = key_b
         self.threshold = threshold
         self.softness  = softness
 
@@ -353,9 +353,9 @@ class ChromaKeyEffect(BaseEffect):
 
     def params(self) -> dict:
         return {
-            "key_r":     (self.key_r,     0.0, 1.0),
-            "key_g":     (self.key_g,     0.0, 1.0),
-            "key_b":     (self.key_b,     0.0, 1.0),
+            "key_r": (self.key_r, 0.0, 1.0),
+            "key_g": (self.key_g, 0.0, 1.0),
+            "key_b": (self.key_b, 0.0, 1.0),
             "threshold": (self.threshold, 0.0, 1.0),
             "softness":  (self.softness,  0.0, 0.5),
         }
@@ -369,28 +369,44 @@ class ChromaKeyEffect(BaseEffect):
 
 
 EFFECT_REGISTRY: dict[str, type] = {
-    "blur":                BlurEffect,
+    "blur": BlurEffect,
     "brightness_contrast": BrightnessContrastEffect,
-    "hsl":                 HSLEffect,
-    "color_grade":         ColorGradeEffect,
-    "sharpen":             SharpenEffect,
-    "vignette":            VignetteEffect,
-    "chroma_key":          ChromaKeyEffect,
+    "hsl": HSLEffect,
+    "color_grade": ColorGradeEffect,
+    "sharpen": SharpenEffect,
+    "vignette": VignetteEffect,
+    "chroma_key": ChromaKeyEffect,
 }
 
 EFFECT_META = [
-    {"type": "blur",                "name": "Blur",                 "icon": "◈", "category": "Stylize",  "desc": "Gaussian blur"},
+    {"type": "blur", "name": "Blur", "icon": "◈", "category": "Stylize",  "desc": "Gaussian blur"},
     {"type": "brightness_contrast", "name": "Brightness/Contrast",  "icon": "◑", "category": "Color",    "desc": "Adjust luminance"},
-    {"type": "hsl",                 "name": "HSL",                  "icon": "◐", "category": "Color",    "desc": "Hue / Saturation / Lightness"},
-    {"type": "color_grade",         "name": "Color Grade",          "icon": "◧", "category": "Color",    "desc": "Temperature & tint"},
-    {"type": "sharpen",             "name": "Sharpen",              "icon": "◇", "category": "Stylize",  "desc": "Unsharp mask"},
-    {"type": "vignette",            "name": "Vignette",             "icon": "◉", "category": "Cinematic","desc": "Dark edge falloff"},
-    {"type": "chroma_key",          "name": "Chroma Key",           "icon": "◫", "category": "Keying",   "desc": "Green / blue screen removal"},
+    {"type": "hsl", "name": "HSL", "icon": "◐", "category": "Color",    "desc": "Hue / Saturation / Lightness"},
+    {"type": "color_grade", "name": "Color Grade", "icon": "◧", "category": "Color",    "desc": "Temperature & tint"},
+    {"type": "sharpen", "name": "Sharpen", "icon": "◇", "category": "Stylize",  "desc": "Unsharp mask"},
+    {"type": "vignette", "name": "Vignette", "icon": "◉", "category": "Cinematic","desc": "Dark edge falloff"},
+    {"type": "chroma_key", "name": "Chroma Key", "icon": "◫", "category": "Keying",   "desc": "Green / blue screen removal"},
 ]
+
+try:
+    from backend.timeline.effects.skslEffect import SKSL_META, _make_sksl
+    EFFECT_META = EFFECT_META + SKSL_META
+except Exception as _sksl_err:
+    print(f"[effects] SkSL effects unavailable: {_sksl_err}")
+    _make_sksl = None
 
 
 def effectFromDict(data: dict) -> BaseEffect:
-    cls = EFFECT_REGISTRY.get(data.get("type", ""))
+    etype = data.get("type", "")
+    if etype.startswith("sksl:") and _make_sksl is not None:
+        typeId = etype[len("sksl:"):]
+        e = _make_sksl(typeId)
+        e.effectId = data.get("effectId", e.effectId)
+        e.enabled  = data.get("enabled", True)
+        for k, v in data.get("values", {}).items():
+            e._values[k] = v
+        return e
+    cls = EFFECT_REGISTRY.get(etype)
     if cls is None:
-        raise ValueError(f"Unknown effect type: {data.get('type')}")
+        raise ValueError(f"Unknown effect type: {etype!r}")
     return cls.fromDict(data)

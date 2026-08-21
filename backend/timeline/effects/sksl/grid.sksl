@@ -1,0 +1,59 @@
+uniform shader source;          // accumulated result from previous effects
+uniform shader _originalSource; // original clip image before any effects
+
+uniform float gridSize;   // number of grid cells across the clip's width
+uniform float thickness;  // line thickness in screen pixels
+uniform float4 color;     // RGBA grid line colour
+uniform float offsetX;    // horizontal offset
+uniform float offsetY;    // vertical offset
+uniform float opacity;    // overall grid opacity
+
+// Injected by Compositor: clip top-left in canvas pixels, clip screen-pixel size.
+uniform float _clipOriginX;
+uniform float _clipOriginY;
+uniform float _clipWidth;   // clip's width in screen pixels (scales with resize + zoom)
+uniform float _clipHeight;  // clip's height in screen pixels
+
+half4 main(float2 coord) {
+    // Accumulated layer (output of all previous effects)
+    half4 dst = source.eval(coord);
+
+    // Original clip alpha — used as mask so the grid never bleeds into the
+    // soft glow/blur fringe that extends beyond the actual shape boundary.
+    float origAlpha = _originalSource.eval(coord).a;
+
+    // Offset from the clip's top-left corner (screen pixels)
+    // Add user-defined offsets so the grid can be animated to move
+    float2 relCoord = coord - float2(_clipOriginX + offsetX, _clipOriginY + offsetY);
+
+    // Derive the cell size in screen pixels from the clip's actual screen width.
+    // gridSize == "cells across the clip width", so the cell pixel width is:
+    //   cellSize = _clipWidth / gridSize
+    // This makes the grid scale automatically when the clip is resized or the
+    // viewport is zoomed, without touching the gridSize parameter.
+    float safeGridCount = max(gridSize, 1.0);
+    float cellSize = (_clipWidth > 0.5) ? (_clipWidth / safeGridCount)
+                                        : (50.0 / safeGridCount); // fallback
+
+    float2 localPos = mod(relCoord, cellSize);
+    float halfThick = thickness * 0.5;
+
+    // Draw lines at the centre of each cell
+    if (abs(localPos.x - cellSize * 0.5) < halfThick ||
+        abs(localPos.y - cellSize * 0.5) < halfThick) {
+
+        // Premultiplied colour: (R·A, G·A, B·A, A)
+        half4 src = half4(color.rgb, 1.0) * color.a;
+
+        // Apply overall opacity
+        src *= opacity;
+
+        // Mask to the original shape (not the post-glow fringe)
+        src *= origAlpha;
+
+        // Standard Source-Over for premultiplied alpha
+        return src + dst * (1.0 - src.a);
+    }
+
+    return dst;
+}

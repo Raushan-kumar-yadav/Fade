@@ -1,0 +1,104 @@
+{
+    "typeId": "turbulent_displace",
+    "displayName": "Turbulent Displace",
+    "category": "Distort",
+    "shader": "turbulent_displace.sksl",
+    "params": [
+        {
+            "id": "amount",
+            "displayName": "Amount",
+            "type": "FloatSlider",
+            "default": 30.0,
+            "min": 0.0,
+            "max": 500.0
+        },
+        {
+            "id": "size",
+            "displayName": "Size",
+            "type": "FloatSlider",
+            "default": 80.0,
+            "min": 1.0,
+            "max": 1000.0
+        },
+        {
+            "id": "complexity",
+            "displayName": "Complexity",
+            "type": "FloatSlider",
+            "default": 3.0,
+            "min": 1.0,
+            "max": 8.0
+        },
+        {
+            "id": "lacunarity",
+            "displayName": "Lacunarity",
+            "type": "FloatSlider",
+            "default": 2.0,
+            "min": 1.1,
+            "max": 4.0
+        },
+        {
+            "id": "gain",
+            "displayName": "Gain",
+            "type": "FloatSlider",
+            "default": 0.5,
+            "min": 0.1,
+            "max": 0.9
+        },
+        {
+            "id": "evolutionSpeed",
+            "displayName": "Evolution Speed",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": 0.0,
+            "max": 20.0
+        },
+        {
+            "id": "evolutionOffset",
+            "displayName": "Evolution Offset",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": 0.0,
+            "max": 100.0
+        },
+        {
+            "id": "offsetX",
+            "displayName": "Offset X",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": -5000.0,
+            "max": 5000.0
+        },
+        {
+            "id": "offsetY",
+            "displayName": "Offset Y",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": -5000.0,
+            "max": 5000.0
+        },
+        {
+            "id": "seed",
+            "displayName": "Random Seed",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": 0.0,
+            "max": 100.0
+        },
+        {
+            "id": "displacementMode",
+            "displayName": "Displacement",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": 0.0,
+            "max": 3.0
+        },
+        {
+            "id": "edgeBehavior",
+            "displayName": "Edge",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": 0.0,
+            "max": 2.0
+        }
+    ]
+}

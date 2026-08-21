@@ -1,0 +1,196 @@
+uniform shader source;
+
+// ── Displacement ──────────────────────────────────────────────────────────────
+uniform float amount;          // px — how far pixels can be pushed (AE: Amount)
+uniform float size;            // noise scale in pixels (AE: Size)
+
+// ── Noise Structure ───────────────────────────────────────────────────────────
+uniform float complexity;      // 1–8 octave count (AE: Complexity)
+uniform float lacunarity;      // freq multiplier per octave (AE: ~2.0)
+uniform float gain;            // amplitude decay per octave (AE: ~0.5)
+
+// ── Animation / Offset ────────────────────────────────────────────────────────
+uniform float evolutionSpeed;  // units/frame for time-based flow (AE: Evolution)
+uniform float evolutionOffset; // manual phase offset (keyframe animatable)
+uniform float offsetX;         // noise pattern offset X (AE: Offset Turbulence)
+uniform float offsetY;         // noise pattern offset Y
+uniform float seed;            // integer seed 0-100 (shifts noise space)
+
+// ── Displacement Mode ─────────────────────────────────────────────────────────
+// 0 = All Directions, 1 = Horizontal only, 2 = Vertical only,
+// 3 = Turbulent (absolute value, sharper edges)
+uniform float displacementMode;
+
+// ── Edge Behavior ─────────────────────────────────────────────────────────────
+// 0 = transparent (AE default), 1 = mirror edges, 2 = repeat/tile
+uniform float edgeBehavior;
+
+// System-injected
+uniform float _frame;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Smooth value noise — bi-linear interpolation over a hash grid.
+// Uses two independent hash salts so X- and Y-displacement channels are
+// completely uncorrelated. Correlated X/Y causes the diagonal smear that makes
+// displacement look like random noise rather than a coherent fluid warp.
+// ─────────────────────────────────────────────────────────────────────────────
+float hashA(float2 p) {
+    // Salt A — X displacement channel
+    p = float2(dot(p, float2(127.1,  311.7)),
+               dot(p, float2(269.5,  183.3)));
+    return fract(sin(p.x + p.y * 53.539) * 43758.5453123);
+}
+
+float hashB(float2 p) {
+    // Salt B — Y displacement channel (independent salt prevents correlation)
+    p = float2(dot(p, float2(419.2,  371.9)),
+               dot(p, float2(512.3,   97.5)));
+    return fract(sin(p.x + p.y * 37.117) * 93761.3271456);
+}
+
+float valueNoiseA(float2 p) {
+    float2 i = floor(p);
+    float2 f = fract(p);
+    float2 u = f * f * (3.0 - 2.0 * f);     // cubic smoothstep — C1 continuous
+    float a = hashA(i);
+    float b = hashA(i + float2(1, 0));
+    float c = hashA(i + float2(0, 1));
+    float d = hashA(i + float2(1, 1));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float valueNoiseB(float2 p) {
+    float2 i = floor(p);
+    float2 f = fract(p);
+    float2 u = f * f * (3.0 - 2.0 * f);
+    float a = hashB(i);
+    float b = hashB(i + float2(1, 0));
+    float c = hashB(i + float2(0, 1));
+    float d = hashB(i + float2(1, 1));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+// fBm — fractional Brownian Motion with rotation to break grid alignment.
+// The 30° rotation per octave prevents the characteristic axis-aligned
+// banding that appears in purely scaled fBm.
+float2 fbm2(float2 p, float octaves, float lac, float gn, bool turbulent) {
+    float vx = 0.0, vy = 0.0;
+    float amp  = 0.5;
+    float freq = 1.0;
+    float totalAmp = 0.0;
+
+    // 30° rotation matrix baked to constants to avoid per-iteration trig.
+    // Rotating breaks the grid axis alignment which causes horizontal/vertical
+    // "banding" artifacts on mid-frequency fBm.
+    const float cosR = 0.8660254;  // cos(30°)
+    const float sinR = 0.5;        // sin(30°)
+
+    for (int i = 0; i < 8; i++) {
+        // Step function: contribute only for octaves below complexity.
+        // Using step() instead of break lets the GPU unroll the loop and
+        // avoids non-uniform control flow which some drivers disallow.
+        float w = step(float(i), octaves - 1.0);
+
+        float nx = valueNoiseA(p * freq);
+        float ny = valueNoiseB(p * freq);
+
+        if (turbulent) {
+            // Turbulent mode: fold the noise to create sharp creases/folds
+            // (like AE's "Turbulent Smooth" mode — abs maps [-1,1] to [0,1]
+            //  producing a zero-crossing crease at every noise cell boundary)
+            nx = abs(nx * 2.0 - 1.0);
+            ny = abs(ny * 2.0 - 1.0);
+        }
+
+        vx += amp * nx * w;
+        vy += amp * ny * w;
+        totalAmp += amp * w;
+
+        // Rotate + scale for next octave
+        float px2 = p.x * cosR - p.y * sinR;
+        float py2 = p.x * sinR + p.y * cosR;
+        p = float2(px2, py2) * lac;
+
+        amp  *= gn;
+        freq *= lac;
+    }
+
+    float invTotal = (totalAmp > 0.0001) ? 1.0 / totalAmp : 0.0;
+    return float2(vx * invTotal, vy * invTotal);   // normalized to [0, 1]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Edge helpers
+// ─────────────────────────────────────────────────────────────────────────────
+float2 applyEdge(float2 coord, float2 resolution, float mode) {
+    if (mode < 0.5) {
+        // Transparent — return as-is; out-of-bounds pixels will alpha=0
+        return coord;
+    } else if (mode < 1.5) {
+        // Mirror
+        float2 t = coord / resolution;
+        t = abs(fract(t * 0.5) * 2.0 - 1.0);
+        return t * resolution;
+    } else {
+        // Repeat / tile
+        float2 t = coord / resolution;
+        t = fract(t);
+        return t * resolution;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+half4 main(float2 coord) {
+    // Time-based evolution: evolutionSpeed * frame + manual offset.
+    // Keeping them separate lets the user animate evolutionOffset on a keyframe
+    // curve while evolutionSpeed drives the looping background flow.
+    float timePhase = evolutionSpeed * _frame * 0.01 + evolutionOffset;
+
+    // Build noise sample coordinate:
+    //   coord / size    → frequency control (bigger size = lower frequency = bigger blobs)
+    //   + offset        → pans the noise pattern
+    //   + seed * 37     → shifts to a completely different region of noise space
+    //   + timePhase     → continuous temporal evolution
+    float2 noiseCoord = (coord + float2(offsetX, offsetY)) / max(size, 1.0)
+                       + seed * 37.391
+                       + float2(timePhase, timePhase * 0.61803398); // golden ratio split
+
+    bool turbulent = (displacementMode > 2.5);  // mode 3 = turbulent
+    float2 n = fbm2(noiseCoord,
+                    clamp(complexity, 1.0, 8.0),
+                    max(lacunarity, 1.1),
+                    clamp(gain, 0.1, 0.9),
+                    turbulent);
+
+    // Remap [0, 1] → [-1, 1] so displacement is centered
+    float2 disp = (n - 0.5) * 2.0;
+
+    // Apply displacement mode mask
+    if (displacementMode > 0.5 && displacementMode < 1.5) {
+        disp.y = 0.0;   // Horizontal only
+    } else if (displacementMode > 1.5 && displacementMode < 2.5) {
+        disp.x = 0.0;   // Vertical only
+    }
+
+    float2 newCoord = coord + disp * amount;
+
+    // Edge behavior:
+    // 0 = Transparent edge (default, AE behavior) — out-of-bounds pixels are
+    //     just whatever source.eval returns for out-of-range coords (transparent).
+    // 1 = Clamp to edge — prevents fully dark/transparent tears at the boundary
+    //     by clamping displaced coords to just inside the source area.
+    //     Uses coord as a reference for approximate bounds.
+    // 2 = Tile — wraps coords (requires knowing image size; uses a large tile).
+    if (edgeBehavior > 0.5 && edgeBehavior < 1.5) {
+        // Clamp: keep displaced coord on the same side as original coord,
+        // at minimum 0.5px inset to always land on a valid texel.
+        newCoord = max(newCoord, float2(0.5, 0.5));
+    } else if (edgeBehavior > 1.5) {
+        // Tile: simple fract-based wrap; visually correct for tiling textures.
+        // For non-tiling sources this will create seam artifacts — user's choice.
+        float2 tileSize = float2(1920.0, 1080.0); // approximate; acceptable for preview
+        newCoord = fract(newCoord / tileSize) * tileSize;
+    }
+
+    return source.eval(newCoord);
+}

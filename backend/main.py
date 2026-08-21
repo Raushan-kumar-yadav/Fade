@@ -925,13 +925,21 @@ class EffectPatchRequest(BaseModel):
 def addEffect(clipId: str, req: EffectAddRequest):
     from backend.timeline.effects.effects import EFFECT_REGISTRY
     clip, _ = _find_clip(clipId)
-    cls = EFFECT_REGISTRY.get(req.effectType)
-    if cls is None:
-        raise HTTPException(400, f"Unknown effect type: {req.effectType!r}")
-    eff = cls()
+    etype = req.effectType
+    if etype.startswith("sksl:"):
+        try:
+            from backend.timeline.effects.skslEffect import _make_sksl
+            eff = _make_sksl(etype[len("sksl:"):])
+        except Exception as e:
+            raise HTTPException(400, f"SkSL effect error: {e}")
+    else:
+        cls = EFFECT_REGISTRY.get(etype)
+        if cls is None:
+            raise HTTPException(400, f"Unknown effect type: {etype!r}")
+        eff = cls()
     clip.effects.append(eff)
     return {"effectId": eff.effectId, "name": eff.name,
-            "type": req.effectType, "params": eff.params()}
+            "type": etype, "params": eff.params()}
 
 @app.get("/clips/{clipId}/effects")
 def listEffects(clipId: str):
@@ -952,7 +960,12 @@ def patchEffect(clipId: str, effectId: str, req: EffectPatchRequest):
         eff.enabled = req.enabled
     if req.params:
         for k, v in req.params.items():
-            eff.setParam(k, float(v))
+            # SkSL effects with vec params need channel routing
+            from backend.timeline.effects.skslEffect import SkslEffect
+            if isinstance(eff, SkslEffect):
+                eff._resolveVecParam(k, v) or eff.setParam(k, v)
+            else:
+                eff.setParam(k, float(v))
     return {"effectId": eff.effectId, "params": eff.params()}
 
 @app.delete("/clips/{clipId}/effects/{effectId}")

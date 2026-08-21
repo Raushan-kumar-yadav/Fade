@@ -1,0 +1,15 @@
+uniform shader source;
+uniform float brightness;
+uniform float contrast;
+
+half4 main(float2 coord) {
+    half4 c = source.eval(coord);
+    if (c.a < 0.001) return c;
+    c.rgb /= c.a;
+    c.rgb += half3(brightness);
+    float factor = (1.0 + contrast);
+    c.rgb = (c.rgb - half3(0.5)) * factor + half3(0.5);
+    c.rgb = clamp(c.rgb, half3(0.0), half3(1.0));
+    c.rgb *= c.a;
+    return c;
+}

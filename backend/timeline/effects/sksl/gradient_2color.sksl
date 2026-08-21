@@ -1,0 +1,49 @@
+uniform shader source;
+uniform float2 point1;
+uniform float4 color1;
+uniform float2 point2;
+uniform float4 color2;
+uniform float opacity;
+uniform float viewOverlay;
+ 
+uniform float _clipOriginX;
+uniform float _clipOriginY;
+
+half4 main(float2 coord) {
+    half4 dst = source.eval(coord);
+    
+    // Convert clip-local point coords to canvas space by adding the clip origin.
+    float2 p1 = float2(_clipOriginX, _clipOriginY) + point1;
+    float2 p2 = float2(_clipOriginX, _clipOriginY) + point2;
+    
+    float2 v = p2 - p1;
+    float d = length(v);
+    float t = 0.0;
+    
+    if (d > 0.001) {
+        float2 w = coord - p1;
+        t = dot(w, v) / (d * d);
+        t = clamp(t, 0.0, 1.0);
+    }
+    
+    // Premultiply the colors
+    half4 c1 = half4(color1.rgb, 1.0) * color1.a;
+    half4 c2 = half4(color2.rgb, 1.0) * color2.a;
+    
+    half4 gradColor = mix(c1, c2, t);
+    
+    // Apply overall opacity
+    gradColor *= opacity;
+    
+    // Mask the gradient to the clip's alpha
+    gradColor *= dst.a;
+    
+    // Source-Over blend formula
+    half4 result = gradColor + dst * (1.0 - gradColor.a);
+    
+    // viewOverlay is now handled by the Compositor as a post-effects Skia
+    // draw pass, so it is never displaced/warped by subsequent effects.
+    // The uniform is kept here so fillUniforms() can set it without errors.
+    
+    return result;
+}

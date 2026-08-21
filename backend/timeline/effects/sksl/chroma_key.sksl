@@ -1,0 +1,28 @@
+uniform shader source;
+uniform float key_hue;
+uniform float tolerance;
+uniform float softness;
+
+float3 rgb2hsv(float3 c) {
+    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
+    float4 p = mix(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
+    float4 q = mix(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
+    float d = q.x - min(q.w, q.y);
+    float e = 1.0e-10;
+    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+half4 main(float2 coord) {
+    half4 c = source.eval(coord);
+    if (c.a < 0.001) return c;
+
+    float3 straight = float3(c.rgb / c.a);
+    float3 hsv = rgb2hsv(straight);
+
+    float hueDist = min(abs(hsv.x - key_hue), 1.0 - abs(hsv.x - key_hue));
+    float chromaStrength = hsv.y;
+    float keyDist = hueDist / max(chromaStrength, 0.01);
+
+    float alpha = smoothstep(tolerance, tolerance + softness, keyDist);
+    return half4(c.rgb * alpha, c.a * alpha);
+}

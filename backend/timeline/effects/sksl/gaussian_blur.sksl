@@ -1,0 +1,24 @@
+uniform shader source;
+uniform float radius;
+
+half4 main(float2 coord) {
+    if (radius < 0.5) return source.eval(coord);
+
+    half4 sum = half4(0);
+    float total = 0.0;
+    int r = int(min(radius, 24.0));
+
+    for (int x = -24; x <= 24; x++) {
+        if (x < -r || x > r) continue;
+        for (int y = -24; y <= 24; y++) {
+            if (y < -r || y > r) continue;
+            float d = length(float2(x, y));
+            if (d > radius) continue;
+            float w = exp(-(d * d) / (2.0 * radius * radius));
+            half4 s = source.eval(coord + float2(x, y));
+            sum += s * w;
+            total += w;
+        }
+    }
+    return sum / total;
+}

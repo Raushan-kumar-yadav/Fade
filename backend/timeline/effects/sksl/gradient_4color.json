@@ -1,0 +1,102 @@
+{
+    "typeId": "gradient_4color",
+    "displayName": "4-Color Gradient",
+    "category": "Generate",
+    "shader": "gradient_4color.sksl",
+    "params": [
+        {
+            "id": "point1",
+            "displayName": "Point 1",
+            "type": "Vec2Input",
+            "hint": "Vec2Value",
+            "default": [100.0, 100.0],
+            "min": [-4000.0, -4000.0],
+            "max": [4000.0, 4000.0]
+        },
+        {
+            "id": "color1",
+            "displayName": "Color 1",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [1.0, 0.8, 0.0, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "point2",
+            "displayName": "Point 2",
+            "type": "Vec2Input",
+            "hint": "Vec2Value",
+            "default": [1820.0, 100.0],
+            "min": [-4000.0, -4000.0],
+            "max": [4000.0, 4000.0]
+        },
+        {
+            "id": "color2",
+            "displayName": "Color 2",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [1.0, 0.0, 0.5, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "point3",
+            "displayName": "Point 3",
+            "type": "Vec2Input",
+            "hint": "Vec2Value",
+            "default": [100.0, 980.0],
+            "min": [-4000.0, -4000.0],
+            "max": [4000.0, 4000.0]
+        },
+        {
+            "id": "color3",
+            "displayName": "Color 3",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [0.0, 0.8, 1.0, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "point4",
+            "displayName": "Point 4",
+            "type": "Vec2Input",
+            "hint": "Vec2Value",
+            "default": [1820.0, 980.0],
+            "min": [-4000.0, -4000.0],
+            "max": [4000.0, 4000.0]
+        },
+        {
+            "id": "color4",
+            "displayName": "Color 4",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [0.0, 1.0, 0.0, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "blendPower",
+            "displayName": "Blend Amount",
+            "type": "FloatSlider",
+            "default": 1.5,
+            "min": 0.1,
+            "max": 5.0
+        },
+        {
+            "id": "opacity",
+            "displayName": "Opacity",
+            "type": "FloatSlider",
+            "default": 1.0,
+            "min": 0.0,
+            "max": 1.0
+        },
+        {
+            "id": "viewOverlay",
+            "displayName": "Show Overlay Helpers",
+            "type": "ToggleBool",
+            "default": 1.0
+        }
+    ]
+}

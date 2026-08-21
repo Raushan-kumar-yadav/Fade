@@ -1,0 +1,8 @@
+{
+    "typeId": "deep_glow_composite",
+    "displayName": "Deep Glow Composite (Internal)",
+    "category": "Internal",
+    "shader": "deep_glow_composite.sksl",
+    "internal": true,
+    "params": []
+}

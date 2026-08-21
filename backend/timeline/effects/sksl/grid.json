@@ -1,0 +1,57 @@
+{
+    "typeId": "grid",
+    "displayName": "Infinite Grid",
+    "category": "Generate",
+    "shader": "grid.sksl",
+    "params": [
+        {
+            "id": "gridSize",
+            "displayName": "Grid Cells",
+            "type": "FloatSlider",
+            "default": 10.0,
+            "min": 1.0,
+            "max": 100.0
+        },
+        {
+            "id": "thickness",
+            "displayName": "Thickness",
+            "type": "FloatSlider",
+            "default": 2.0,
+            "min": 0.5,
+            "max": 20.0
+        },
+        {
+            "id": "color",
+            "displayName": "Color",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [1.0, 1.0, 1.0, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "offsetX",
+            "displayName": "Offset X",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": -1000.0,
+            "max": 1000.0
+        },
+        {
+            "id": "offsetY",
+            "displayName": "Offset Y",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": -1000.0,
+            "max": 1000.0
+        },
+        {
+            "id": "opacity",
+            "displayName": "Opacity",
+            "type": "FloatSlider",
+            "default": 1.0,
+            "min": 0.0,
+            "max": 1.0
+        }
+    ]
+}

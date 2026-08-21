@@ -1,0 +1,16 @@
+{
+    "typeId": "gaussian_blur",
+    "displayName": "Gaussian Blur",
+    "category": "Blur & Sharpen",
+    "shader": "gaussian_blur.sksl",
+    "params": [
+        {
+            "id": "radius",
+            "displayName": "Blur Radius",
+            "type": "FloatSlider",
+            "default": 5.0,
+            "min": 0.0,
+            "max": 50.0
+        }
+    ]
+}

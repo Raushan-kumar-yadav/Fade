@@ -1,0 +1,82 @@
+{
+    "typeId": "deep_glow",
+    "displayName": "Deep Glow",
+    "category": "Stylize",
+    "shader": "deep_glow.sksl",
+    "params": [
+        {
+            "id": "threshold",
+            "displayName": "Glow Threshold",
+            "type": "FloatSlider",
+            "default": 0.5,
+            "min": 0.0,
+            "max": 1.0
+        },
+        {
+            "id": "softness",
+            "displayName": "Threshold Softness",
+            "type": "FloatSlider",
+            "default": 0.2,
+            "min": 0.0,
+            "max": 1.0
+        },
+        {
+            "id": "radius",
+            "displayName": "Glow Radius",
+            "type": "FloatSlider",
+            "default": 40.0,
+            "min": 1.0,
+            "max": 300.0
+        },
+        {
+            "id": "intensity",
+            "displayName": "Glow Intensity",
+            "type": "FloatSlider",
+            "default": 2.0,
+            "min": 0.0,
+            "max": 10.0
+        },
+        {
+            "id": "useColorTint",
+            "displayName": "Color Tint",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": 0.0,
+            "max": 1.0
+        },
+        {
+            "id": "glowColorA",
+            "displayName": "Glow Color A (Bright)",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [1.0, 1.0, 1.0, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "glowColorB",
+            "displayName": "Glow Color B (Mid)",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [1.0, 0.8, 0.4, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "blendMode",
+            "displayName": "Blend Mode (0=Screen 1=Add)",
+            "type": "FloatSlider",
+            "default": 0.0,
+            "min": 0.0,
+            "max": 1.0
+        },
+        {
+            "id": "opacity",
+            "displayName": "Opacity",
+            "type": "FloatSlider",
+            "default": 1.0,
+            "min": 0.0,
+            "max": 1.0
+        }
+    ]
+}

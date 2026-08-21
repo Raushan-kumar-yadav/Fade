@@ -1,0 +1,51 @@
+// ── Stage 3: Screen Composite ─────────────────────────────────────────────────
+// Blends the blurred glow (bloom) back onto the original using Screen mode.
+// Called from C++ as the final pass, with `bloom` = blurred stage-1 output.
+//
+// Screen formula:  out = 1 - (1 - a) * (1 - b)
+//                       = a + b - a*b
+// This fakes additive light emission without ever clipping to pure white:
+// dark areas stay dark, bright areas push toward white naturally.
+// ─────────────────────────────────────────────────────────────────────────────
+uniform shader source;   // original unmodified image
+uniform shader bloom;    // blurred bright-pixel extract from stage 1
+
+// How strongly the glow mixes into the result (AE: Glow Intensity)
+uniform float intensity;
+
+// Blend mode: 0 = Screen (default, natural glow), 1 = Add (hot/overexposed look)
+uniform float blendMode;
+
+// Overall alpha of the effect layer (AE-style effect opacity)
+uniform float opacity;
+
+half4 main(float2 coord) {
+    half4 orig  = source.eval(coord);
+    half4 glow  = bloom.eval(coord) * half(intensity);
+
+    half4 result;
+
+    if (blendMode < 0.5) {
+        // ── Screen mode ───────────────────────────────────────────────────────
+        // Works in linear light: un-premultiply, apply Screen, re-premultiply.
+        float3 origLinear = orig.a > 0.001 ? float3(orig.rgb) / orig.a : float3(0.0);
+        float3 glowLinear = glow.a > 0.001 ? float3(glow.rgb) / glow.a : float3(0.0);
+
+        // Screen: out = 1 - (1-src)(1-dst)
+        float3 screened = 1.0 - (1.0 - origLinear) * (1.0 - glowLinear);
+
+        // Re-premultiply with the original alpha (glow shouldn't change layer edges)
+        float outA = orig.a + glow.a * (1.0 - orig.a);
+        result = half4(half3(screened) * half(outA), half(outA));
+
+    } else {
+        // ── Add mode ─────────────────────────────────────────────────────────
+        // Pure additive — hotter, overexposed look (good for laser/neon effects)
+        result = orig + glow;
+        result.rgb = min(result.rgb, half3(1.0));
+        result.a   = min(result.a,   half(1.0));
+    }
+
+    // Mix between original and result according to opacity
+    return mix(orig, result, half(opacity));
+}

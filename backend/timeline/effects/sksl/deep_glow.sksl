@@ -1,0 +1,61 @@
+// ── Stage 1: Threshold Extraction ────────────────────────────────────────────
+// This shader extracts pixels that will contribute to the glow bloom.
+// It is run FIRST on the original image; the result is then blurred by the
+// C++ Skia pipeline (SkImageFilters::Blur) and Screen-composited back.
+//
+// Running threshold + blur + composite in a single SkSL pass caps usable
+// radius at ~20px before GPU shader timeout. This 3-stage approach (which
+// mirrors how After Effects implements Deep Glow) allows radii of 1–300+px.
+// ─────────────────────────────────────────────────────────────────────────────
+uniform shader source;
+
+// Luminance threshold: pixels ABOVE this value emit glow (AE: Glow Threshold)
+uniform float threshold;
+
+// Controls how quickly pixels ramp from no-glow to full-glow around threshold.
+// 0.0 = hard binary cut, 0.2 = smooth AE-like feather (AE: Glow Threshold)
+uniform float softness;
+
+// Tint the extracted bright areas before blur (AE: Glow Colors)
+// Color A applies to the brightest pixels, Color B to mid-bright.
+uniform float4 glowColorA;
+uniform float4 glowColorB;
+
+// When 1.0, tint the glow bloom; when 0.0, use original pixel color.
+uniform float useColorTint;
+
+half4 main(float2 coord) {
+    half4 src = source.eval(coord);
+
+    // Un-premultiply to get actual color for luminance calc.
+    // Premul pixels have RGB already scaled by alpha, so dividing restores them.
+    float3 linearRGB = src.a > 0.001 ? float3(src.rgb) / src.a : float3(0.0);
+
+    // Perceptual luminance (ITU-R BT.709 coefficients)
+    float lum = dot(linearRGB, float3(0.2126, 0.7152, 0.0722));
+
+    // Smooth threshold ramp — smoothstep produces the characteristic AE glow
+    // feathering: nothing below threshold, full glow above threshold+softness.
+    float edge = max(softness, 0.01);
+    float brightness = smoothstep(threshold, threshold + edge, lum);
+
+    if (brightness < 0.0001) {
+        return half4(0.0); // fully below threshold — transparent
+    }
+
+    // Build the bright pixel contribution.
+    // If tinting is on, blend between color B (mid-bright) and color A (full-bright).
+    half4 glowPixel;
+    if (useColorTint > 0.5) {
+        half4 cA = half4(glowColorA.rgb * glowColorA.a, glowColorA.a);
+        half4 cB = half4(glowColorB.rgb * glowColorB.a, glowColorB.a);
+        glowPixel = mix(cB, cA, half(brightness));
+    } else {
+        // Use original pixel colour — the bloom will be coloured like the source
+        glowPixel = src;
+    }
+
+    // Output premultiplied: scale by brightness so the brightest areas contribute
+    // most to the subsequent blur pass.
+    return glowPixel * half(brightness);
+}

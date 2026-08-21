@@ -1,0 +1,17 @@
+uniform shader source;
+uniform float _frame;
+uniform float amplitude;
+uniform float speed;
+
+float hash(float n) {
+    return fract(sin(n) * 43758.5453123);
+}
+
+half4 main(float2 coord) {
+    float t = _frame * speed * 0.1;
+    float2 offset = float2(
+        hash(t * 1.0) * 2.0 - 1.0,
+        hash(t * 2.0 + 17.3) * 2.0 - 1.0
+    ) * amplitude;
+    return source.eval(coord + offset);
+}

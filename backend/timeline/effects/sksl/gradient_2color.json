@@ -1,0 +1,58 @@
+{
+    "typeId": "gradient_2color",
+    "displayName": "2-Color Gradient",
+    "category": "Generate",
+    "shader": "gradient_2color.sksl",
+    "params": [
+        {
+            "id": "point1",
+            "displayName": "Point 1",
+            "type": "Vec2Input",
+            "hint": "Vec2Value",
+            "default": [0.0, 0.0],
+            "min": [-4000.0, -4000.0],
+            "max": [4000.0, 4000.0]
+        },
+        {
+            "id": "color1",
+            "displayName": "Color 1",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [1.0, 0.0, 0.0, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "point2",
+            "displayName": "Point 2",
+            "type": "Vec2Input",
+            "hint": "Vec2Value",
+            "default": [1920.0, 1080.0],
+            "min": [-4000.0, -4000.0],
+            "max": [4000.0, 4000.0]
+        },
+        {
+            "id": "color2",
+            "displayName": "Color 2",
+            "type": "Vec4Input",
+            "hint": "Color",
+            "default": [0.0, 0.0, 1.0, 1.0],
+            "min": [0.0, 0.0, 0.0, 0.0],
+            "max": [1.0, 1.0, 1.0, 1.0]
+        },
+        {
+            "id": "opacity",
+            "displayName": "Opacity",
+            "type": "FloatSlider",
+            "default": 1.0,
+            "min": 0.0,
+            "max": 1.0
+        },
+        {
+            "id": "viewOverlay",
+            "displayName": "Show Overlay Helpers",
+            "type": "ToggleBool",
+            "default": 1.0
+        }
+    ]
+}
