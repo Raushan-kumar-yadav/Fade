@@ -37,8 +37,7 @@ export default function LibraryPanel({ onAddToTimeline }: Props) {
   }, []);
 
   useEffect(() => {
-    // Wait for backend port to be confirmed before first load
-    if ((window as any).__FADE_PORT__) {
+     if ((window as any).__FADE_PORT__) {
       refresh();
     } else {
       const handler = () => refresh();
@@ -53,7 +52,7 @@ export default function LibraryPanel({ onAddToTimeline }: Props) {
     if (!files) return;
     setLoading(true);
     for (const file of Array.from(files)) {
-      // `file.path` is Electron-only (not in TS DOM types) — cast via any
+      // `file.path` is Electron-only 
       const filePath: string = (file as any).path ?? file.name;
       await importAsset(filePath);
     }

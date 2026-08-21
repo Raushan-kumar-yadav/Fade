@@ -48,36 +48,40 @@ const IconFullscreen = () => (
   </svg>
 );
 
-// ── Component ──────────────────────────────────────────────────────────────────
+//   Component  
 
 export default function ViewportWidget() {
-  const [isPlaying,    setIsPlaying]    = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrame, setCurrentFrame] = useState(0);
   const [totalFrames,  setTotalFrames]  = useState(1800);
-  const [fps,          setFps]          = useState(30);
+  const [fps, setFps] = useState(30);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [connected,    setConnected]    = useState(false);
-  const [retryCount,   setRetryCount]   = useState(0);
-  const [resScale,     setResScale]     = useState<number>(0.5);
+  const [connected, setConnected] = useState(false);
+  const [retryCount, setRetryCount]   = useState(0);
+  const [resScale, setResScale] = useState<number>(0.5);
+  // 'jpeg'  
+  const [previewFormat, setPreviewFormat] = useState<'jpeg' | 'png'>('png');
 
-  // The canvas receives decoded JPEG blobs from the WebSocket
-  const canvasRef  = useRef<HTMLCanvasElement>(null);
-  const wsRef      = useRef<WebSocket | null>(null);
+  // The canvas receives decoded  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Pending bitmap for next animation frame — avoids drawing stale frames
+  // Pending bitmap for next animation frame 
   const pendingBitmapRef = useRef<ImageBitmap | null>(null);
-  const rafIdRef         = useRef<number>(0);
-  // Local frame ref updated on every WS message (avoids React re-render per frame)
-  const frameNumRef      = useRef<number>(0);
-  // Throttled React state update (only drives scrub bar, not canvas)
+  const rafIdRef = useRef<number>(0);
+  // Local frame ref updated on every WS message  
+  const frameNumRef = useRef<number>(0);
+  // Throttled React state update  
   const lastStateFrameRef = useRef<number>(-1);
+  // Track current incoming format  
+  const pendingFormatRef  = useRef<'jpeg' | 'png'>('jpeg');
 
   //   WebSocket preview stream 
   useEffect(() => {
     let destroyed = false;
     let wsInst: WebSocket | null = null;
 
-    // RAF loop: draws the latest decoded bitmap each display frame
+    // RAF loop 
     function rafLoop() {
       rafIdRef.current = requestAnimationFrame(rafLoop);
       const bmp = pendingBitmapRef.current;
@@ -85,16 +89,20 @@ export default function ViewportWidget() {
       pendingBitmapRef.current = null;
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const ctx2d = canvas.getContext('2d');
+      // alpha  
+      const ctx2d = canvas.getContext('2d', { alpha: true });
       if (!ctx2d) return;
       if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
         canvas.width  = bmp.width;
         canvas.height = bmp.height;
       }
+      // Always clear before drawing  
+      
+      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
       ctx2d.drawImage(bmp, 0, 0);
       bmp.close();   // release GPU/CPU memory immediately
 
-      // Throttle React setState to max 30/s — prevents 60 re-renders/sec
+      // Throttle React setState  
       const frame = frameNumRef.current;
       if (frame !== lastStateFrameRef.current) {
         lastStateFrameRef.current = frame;
@@ -113,32 +121,34 @@ export default function ViewportWidget() {
       ws.binaryType = 'arraybuffer';
       ws.onopen    = () => { if (!destroyed) { setConnected(true); setRetryCount(0); } };
       ws.onmessage = (ev: MessageEvent<ArrayBuffer>) => {
-        if (ev.data.byteLength < 5) return;
+        if (ev.data.byteLength < 6) return;   
 
-        // Parse frame number from 4-byte big-endian header
-        const view     = new DataView(ev.data);
+        // Parse header 
+        const view = new DataView(ev.data);
         const frameNum = view.getUint32(0, false);
+        const fmtByte  = view.getUint8(4);
+        const mime = fmtByte === 1 ? 'image/png' : 'image/jpeg';
+        pendingFormatRef.current = fmtByte === 1 ? 'png' : 'jpeg';
         frameNumRef.current = frameNum;
 
         // Dispatch zero-lag custom event so Timeline updates immediately
         window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
 
-        // Decode JPEG off-main-thread using createImageBitmap
-        // This is much faster than Blob → BlobURL → img.onload
-        const jpegBytes = ev.data.slice(4);
-        const blob = new Blob([jpegBytes], { type: 'image/jpeg' });
+        // Decode off-main-thread using createImageBitmap
+        const imgBytes = ev.data.slice(5);
+        const blob = new Blob([imgBytes], { type: mime });
         createImageBitmap(blob).then((bmp) => {
           // Drop previous pending bitmap if it wasn't consumed (frame-skip)
           pendingBitmapRef.current?.close();
           pendingBitmapRef.current = bmp;
         }).catch(() => {/* decode error, skip frame */});
       };
-      ws.onerror = () => { /* will retry via onclose */ };
+      ws.onerror = () => {  };
       ws.onclose = () => {
         if (destroyed) return;
         setConnected(false);
         setRetryCount(n => n + 1);
-        // Retry after 2s — backend may be restarting
+        // Retry after  
         setTimeout(() => connect(port), 2000);
       };
     }
@@ -233,8 +243,22 @@ export default function ViewportWidget() {
   const handleResChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const scale = parseFloat(e.target.value);
     setResScale(scale);
-    try { await setPreviewScale(scale); } catch { /* backend busy */ }
+    try { await setPreviewScale(scale); } catch { /* backend */ }
   }, []);
+
+  const handleFormatToggle = useCallback(async () => {
+    const next = previewFormat === 'jpeg' ? 'png' : 'jpeg';
+    setPreviewFormat(next);
+    pendingFormatRef.current = next;
+    try {
+      const port = (window as any).__FADE_PORT__ ?? 8000;
+      await fetch(`http://127.0.0.1:${port}/preview/format`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: next }),
+      });
+    } catch { /* backend busy */ }
+  }, [previewFormat]);
 
   const [canvasSize, setCanvasSize] = useState({ w: 1920, h: 1080 });
   const { activeTool, penOutputMode } = useTool();
@@ -261,9 +285,9 @@ export default function ViewportWidget() {
 
   useEffect(() => { fitToFrame(); }, [fitToFrame]);
 
-  // Scroll to zoom (centered on mouse)
+  // Scroll to zoom  
   const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    // Only zoom when Ctrl is held OR it's a trackpad pinch  
+    // Only zoom when Ctrl is held  
     if (!e.ctrlKey && !spaceDown.current) {
        
       return;
@@ -300,7 +324,7 @@ export default function ViewportWidget() {
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!mmDown.current && !spaceDown.current) return;
-    if (e.buttons === 0) { mmDown.current = false; return; } // released outside
+    if (e.buttons === 0) { mmDown.current = false; return; }  
     const dx = e.clientX - lastPan.current.x;
     const dy = e.clientY - lastPan.current.y;
     lastPan.current = { x: e.clientX, y: e.clientY };
@@ -378,7 +402,7 @@ export default function ViewportWidget() {
             width={1920}
             height={1080}
           />
-          {/* Pen / Mask overlay — shape:path activates based on penOutputMode */}
+          {/* Pen / Mask overlay   */}
           {activeTool === 'shape:path' && (
             penOutputMode === 'mask' && selected ? (
               <OverlayCanvas
@@ -396,7 +420,7 @@ export default function ViewportWidget() {
             )
           )}
 
-          {/* Shape draw overlay — drag to draw bounding box */}
+          {/* Shape draw overlay */}
           {activeTool !== 'shape:path' && activeTool.startsWith('shape:') && (
             <OverlayCanvas
               mode="shape"
@@ -453,7 +477,6 @@ export default function ViewportWidget() {
           >
             {Math.round(vpZoom * 100)}%
           </button>
-          {/* Resolution cap dropdown */}
           <select
             id="vw-res-select"
             className="vw-res-select"
@@ -467,6 +490,18 @@ export default function ViewportWidget() {
             <option value={0.25}>1/4</option>
             <option value={0.125}>1/8</option>
           </select>
+          {/* PNG / JPEG toggle */}
+          <button
+            id="vw-format-toggle"
+            className={`vw-format-btn${previewFormat === 'png' ? ' vw-format-btn--png' : ''}`}
+            title={previewFormat === 'jpeg'
+              ? 'Preview: JPEG (fast, no alpha) — click to switch to PNG for opacity/mask accuracy'
+              : 'Preview: PNG (alpha-correct, slower) — click to switch back to JPEG'}
+            onClick={handleFormatToggle}
+            aria-label="Toggle preview format"
+          >
+            {previewFormat === 'jpeg' ? 'JPG' : 'PNG'}
+          </button>
           <div className={`vw-ws-dot${connected ? ' vw-ws-dot--ok' : ''}`} title={connected ? 'Engine connected' : 'Connecting…'} />
           <button id="vw-fullscreen" className="vw-btn" title="Toggle fullscreen" onClick={() => setIsFullscreen(f => !f)}>
             <IconFullscreen />

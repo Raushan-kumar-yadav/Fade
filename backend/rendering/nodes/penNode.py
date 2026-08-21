@@ -1,9 +1,4 @@
-"""
-penNode.py — Skia bezier pen path rendering.
-
-Builds SkPath from BezierPoints using cubic segments —
-exact same algorithm as Qteee-Vulkan clipMask.buildPath().
-"""
+ 
 from __future__ import annotations
 import skia
 from typing import TYPE_CHECKING
@@ -13,10 +8,7 @@ if TYPE_CHECKING:
 
 
 def build_skpath(points: list, is_closed: bool) -> skia.Path:
-    """
-    Build SkPath from BezierPoints using cubicTo for bezier curves.
-    Mirrors Qteee clipMask.buildPath() — same segment logic.
-    """
+     
     n = len(points)
     if n == 0:
         return skia.Path()
@@ -43,13 +35,13 @@ def build_skpath(points: list, is_closed: bool) -> skia.Path:
             path.lineTo(curr.x, curr.y)
 
     if is_closed and n >= 2:
-        # Close: last point → first point, with out/in tangents
+        # Close 
         last  = points[-1]
         first = points[0]
-        last_out_x  = last.x  + last.outX
-        last_out_y  = last.y  + last.outY
-        first_in_x  = first.x + first.inX
-        first_in_y  = first.y + first.inY
+        last_out_x = last.x  + last.outX
+        last_out_y = last.y  + last.outY
+        first_in_x = first.x + first.inX
+        first_in_y = first.y + first.inY
         has_tangent = (
             (last.outX  ** 2 + last.outY  ** 2) > 1e-6 or
             (first.inX  ** 2 + first.inY  ** 2) > 1e-6
@@ -64,6 +56,9 @@ def build_skpath(points: list, is_closed: bool) -> skia.Path:
 
 def draw_pen(canvas: skia.Canvas, clip: "PenClip", frame: int) -> None:
     from backend.rendering.nodes.shapeNode import _draw_shadow, _draw_shape_path
+
+    # Evaluate all animatable params so _anim_params  
+    clip.evaluateAll(frame)
 
     if len(clip.points) < 2:
         return

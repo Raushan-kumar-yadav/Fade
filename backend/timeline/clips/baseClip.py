@@ -4,10 +4,7 @@ from backend.animation.transform import Transform
 
 
 class BaseClip(ABC):
-    """
-    Abstract base for every clip type (Video, Audio, Text, Solid, Shape …)
-    All clips support masks, effects, and the animatable Transform.
-    """
+     
 
     def __init__(self, clipId: str, startFrame: int, duration: int) -> None:
         self.clipId = clipId
@@ -18,12 +15,12 @@ class BaseClip(ABC):
         self.isLocked = False
         self.transform = Transform()
 
-        #   Mask support  
-        # Lazy import avoids circular deps 
+        # Mask    
+         
         from backend.timeline.clips.textClip import MaskLayer   
-        self.masks: list = []    # list[MaskLayer]
+        self.masks: list = []     
 
-    # Derived geometry  
+    # geometry  
     @property
     def endFrame(self) -> int:
         return self.startFrame + self.duration
@@ -50,7 +47,6 @@ class BaseClip(ABC):
 
     def applyParam(self, key: str, val: float) -> None:
         """Apply a computed animation param to the clip's actual properties."""
-        print(f"[BaseClip.applyParam] {self.__class__.__name__} id={self.clipId[:8]} key={key!r} val={val}")
         if key == "opacity": self.transform.opacity.setBaseValue(val)
         elif key == "pos_x": self.transform.position.setBase(val, self.transform.position.y.baseValue)
         elif key == "pos_y": self.transform.position.setBase(self.transform.position.x.baseValue, val)

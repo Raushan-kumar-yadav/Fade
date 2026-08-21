@@ -6,8 +6,8 @@ from backend.timeline.tracks.baseTrack import BaseTrack
 class Timeline:
     
     def __init__(self, name: str = "Sequence 01") -> None:
-        self.timelineId    = str(uuid.uuid4())
-        self.name          = name
+        self.timelineId = str(uuid.uuid4())
+        self.name = name
         self.tracks: list[BaseTrack] = []
         self.playheadFrame = 0
 

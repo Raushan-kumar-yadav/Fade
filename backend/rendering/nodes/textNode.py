@@ -1,9 +1,4 @@
-"""
-textNode.py — Skia text rendering.
-
-Replaces Qteee-Vulkan's font-atlas SDF approach with skia-python's
-native text rendering (which handles anti-aliasing and sub-pixel rendering).
-"""
+ 
 from __future__ import annotations
 import math
 import skia
@@ -14,7 +9,7 @@ if TYPE_CHECKING:
 
 
 def _rgba(color: list, alpha_override: float = 1.0) -> int:
-    """Convert [r,g,b,a] (0-1) list to Skia ARGB int."""
+     
     r, g, b = [int(c * 255) for c in color[:3]]
     a = int(color[3] * alpha_override * 255) if len(color) > 3 else int(alpha_override * 255)
     return skia.ColorSetARGB(a, r, g, b)
@@ -56,7 +51,10 @@ def _layout_lines(text: str, style, font: skia.Font, max_width: float) -> list[s
 
 
 def draw_text(canvas: skia.Canvas, clip: "TextClip", frame: int) -> None:
-    """Full text rendering pipeline — matches Qteee-Vulkan TextClip evaluation."""
+     
+    # Evaluate all  
+    clip.evaluateAll(frame)
+
     s = clip.style
 
     typeface = _make_typeface(s.fontFamily, s.bold, s.italic)
@@ -66,7 +64,7 @@ def draw_text(canvas: skia.Canvas, clip: "TextClip", frame: int) -> None:
 
     # Letter spacing
     if s.letterSpacing != 0.0:
-        font.setScaleX(1.0)  # no direct API; approximate via paint
+        font.setScaleX(1.0)   
     letter_extra = s.letterSpacing
 
     lines = _layout_lines(s.text, s, font, s.maxWidth)
@@ -75,7 +73,7 @@ def draw_text(canvas: skia.Canvas, clip: "TextClip", frame: int) -> None:
     canvas.save()
     clip.transform.applyToCanvas(canvas)
 
-    # Measure total block height for vertical centering (future use)
+    #   total block height for vertical 
     total_h = line_height * len(lines)
     start_y = 0.0
 
@@ -91,20 +89,20 @@ def draw_text(canvas: skia.Canvas, clip: "TextClip", frame: int) -> None:
         else:
             ox = 0.0
 
-        # --- Shadow pass ---
+        # Shadow pass 
         if s.shadowEnabled:
             _draw_line_shadow(canvas, font, line, ox, baseline_y, s, letter_extra)
 
-        # --- Background box ---
+        # Background box  
         if s.bgEnabled:
             _draw_bg_box(canvas, font, line, ox, baseline_y, s, letter_extra, line_h=s.fontSize)
 
-        # --- Stroke pass ---
+        # Stroke pass 
         if s.strokeWidth > 0:
             _draw_line_text(canvas, font, line, ox, baseline_y, s.strokeColor,
                             stroke=True, stroke_width=s.strokeWidth, letter_extra=letter_extra)
 
-        # --- Fill pass ---
+        # Fill pass 
         _draw_line_text(canvas, font, line, ox, baseline_y, s.color,
                         stroke=False, letter_extra=letter_extra)
 

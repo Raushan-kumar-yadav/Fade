@@ -1,11 +1,4 @@
-"""
-maskNode.py — Skia mask compositing.
-
-Mirrors Qteee-Vulkan's MaskNode and clipMask.buildPath():
-  - For each MaskLayer on a clip, builds SkPath (rect/ellipse/bezier)
-  - Composites Add/Subtract masks using saveLayer + kDstIn/kDstOut blend mode
-  - Applies feather via SkMaskFilter.MakeBlur
-"""
+ 
 from __future__ import annotations
 import math
 import skia
@@ -16,7 +9,7 @@ if TYPE_CHECKING:
 
 
 def _build_mask_path(mask: "MaskLayer") -> skia.Path:
-    """Build SkPath from a MaskLayer — mirrors Qteee clipMask.buildPath()."""
+    """Build SkPath from a MaskLayer """
     pts = mask.points
     shape = mask.shape
 
@@ -44,7 +37,7 @@ def _build_mask_path(mask: "MaskLayer") -> skia.Path:
         path.addOval(skia.Rect.MakeLTRB(x1, y1, x2, y2))
         return path
 
-    # bezier (same logic as clipMask.buildPath)
+    # bezier  
     n = len(pts)
     if n < 2:
         return skia.Path()
@@ -90,34 +83,20 @@ def _build_mask_path(mask: "MaskLayer") -> skia.Path:
 
 
 def apply_masks(canvas: skia.Canvas, clip, draw_content_fn) -> None:
-    """
-    Apply all clip masks using Skia layer compositing.
-
-    Algorithm:
-      1. saveLayer (transparent backing)
-      2. draw clip content
-      3. For each mask: draw mask path with blend mode kDstIn (add) or kDstOut (subtract)
-      4. restore backing layer
-
-    Mirrors Qteee MaskNode compositor pass.
-    """
+     
     masks = getattr(clip, "masks", [])
     if not masks:
         draw_content_fn()
         return
 
-    print(f"[maskNode] apply_masks: clipId={clip.clipId[:8]} mask_count={len(masks)}")
-
-    # Outer layer: captures clip content + mask compositing
+    # Outer layer 
     canvas.saveLayer(None, None)
     draw_content_fn()
 
     for mask in masks:
         path = _build_mask_path(mask)
-        n_pts = len(getattr(mask, 'points', []))
-        print(f"[maskNode]   mask={mask.maskId[:8]} shape={mask.shape} mode={mask.mode} pts={n_pts}")
 
-        # Feather: blur the mask edge (Qteee: SkMaskFilter on feather)
+        # Feather 
         mask_paint = skia.Paint()
         mask_paint.setAntiAlias(True)
         alpha = int(mask.opacity * 255)
@@ -130,10 +109,10 @@ def apply_masks(canvas: skia.Canvas, clip, draw_content_fn) -> None:
             )
 
         if mask.mode == "subtract":
-            # Subtract: erase the masked region
+            # Subtract 
             mask_paint.setBlendMode(skia.BlendMode.kDstOut)
         else:
-            # Add: keep only the masked region (intersect)
+            # Add 
             mask_paint.setBlendMode(skia.BlendMode.kDstIn)
 
         canvas.drawPath(path, mask_paint)

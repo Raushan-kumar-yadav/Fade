@@ -1,5 +1,4 @@
-/* ViewportWidget styles   */
-
+ 
 /* Tokens */
 :root {
   --vw-bg: #111111;
@@ -187,6 +186,16 @@
   height: 1080px;
   border-radius: 2px;
   pointer-events: none;
+  /* Checkerboard: transparent pixels show as classic grey pattern.
+     Two-tone 8×8 tiles using CSS gradient — zero JS, GPU-accelerated. */
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
 }
 
 /* Zoom level button in controls */
@@ -278,3 +287,36 @@
 .vw-res-select:hover  { border-color: #555; background-color: var(--vw-btn-h, #3a3a3a); }
 .vw-res-select:focus  { border-color: var(--vw-accent, #00ffcc); }
 .vw-res-select option { background: #1e1e1e; color: #ccc; }
+
+/* PNG / JPEG format toggle */
+.vw-format-btn {
+  appearance: none;
+  background: var(--vw-btn, #2a2a2a);
+  color: var(--vw-text-2, #888);
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: 'Inter', monospace, inherit;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
+  min-width: 36px;
+}
+.vw-format-btn:hover {
+  border-color: #555;
+  background: var(--vw-btn-h, #3a3a3a);
+  color: var(--vw-text-1, #ccc);
+}
+/* PNG active  */
+.vw-format-btn--png {
+  color: #f59e0b;
+  border-color: #f59e0b55;
+  box-shadow: 0 0 6px #f59e0b44;
+}
+.vw-format-btn--png:hover {
+  border-color: #f59e0b99;
+  box-shadow: 0 0 10px #f59e0b66;
+}

@@ -1,10 +1,4 @@
-"""
-shapeNode.py — Skia shape rendering.
-
-Covers all Qteee-Vulkan ShapeType variants:
-  Rect, Circle, Ellipse, Star, Polygon, Line, Arc
-Plus drop shadow via saveLayer + blur.
-"""
+ 
 from __future__ import annotations
 import math
 import skia
@@ -122,7 +116,7 @@ def _draw_shadow(canvas: skia.Canvas, path: skia.Path, s) -> None:
 
 
 def _draw_shape_path(canvas: skia.Canvas, path: skia.Path, s) -> None:
-    """Draw fill + stroke with correct style (center/inside/outside)."""
+    """Draw fill  , stroke with correct style  """
     if s.fillOpacity > 0.0:
         fill_paint = skia.Paint()
         fill_paint.setAntiAlias(True)
@@ -154,11 +148,14 @@ def _draw_shape_path(canvas: skia.Canvas, path: skia.Path, s) -> None:
             canvas.drawPath(path, stroke)
             canvas.restore()
         else:
-            # center (default)
+            # center 
             canvas.drawPath(path, stroke)
 
 
 def draw_shape(canvas: skia.Canvas, clip: "ShapeClip", frame: int) -> None:
+     
+    clip.evaluateAll(frame)
+
     s    = clip.style
     path = _build_path(s)
 

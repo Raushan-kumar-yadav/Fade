@@ -105,7 +105,7 @@ class Engine:
 
             if self.activeTimeline:
                 try:
-                    # : Update prefetch target  
+                    #  Update prefetch target  
                     self.compositor.prefetchForFrame(
                         self.activeTimeline,
                         self._currentFrame,
@@ -127,7 +127,9 @@ class Engine:
                             self._currentFrame = 0
                             self._playing = False
 
-                    header = struct.pack('>I', rendered_frame)
+                    # Header 
+                    fmt_byte = 1 if (self.compositor and self.compositor.getPreviewFormat() == 'png') else 0
+                    header = struct.pack('>IB', rendered_frame, fmt_byte)
                     try:
                         self.frameQueue.put_nowait(header + png)
                     except asyncio.QueueFull:
@@ -148,9 +150,9 @@ class Engine:
             now = loop.time()
             sleep_for = next_tick - now
             if sleep_for <= 0:
-                # We're running behind  
+                # running behind  
                 next_tick = now
-                await asyncio.sleep(0)   # yield to event loop
+                await asyncio.sleep(0)   
             else:
                 await asyncio.sleep(sleep_for)
 
@@ -176,7 +178,7 @@ class Engine:
             return
         new_scale = max(0.125, min(1.0, scale))
         self.scheduler._previewScale = new_scale
-        # Reopen all active decoders at the new scale
+        # Reopen all active decoders  
         for clipId in list(self.scheduler._pumpToContent.keys()):
             contentId = self.scheduler._pumpToContent.get(clipId, "")
             self.scheduler._decoderPool.reopen(clipId, new_scale)
@@ -192,8 +194,18 @@ class Engine:
 
     def getPreviewScale(self) -> float:
         if self.scheduler is None:
-            return 0.5
-        return getattr(self.scheduler, '_previewScale', 0.5)
+            return 1.0
+        return getattr(self.scheduler, '_previewScale', 1.0)
+
+    def setPreviewFormat(self, fmt: str) -> None:
+        """Switch between 'jpeg' (fast, no alpha) and 'png' (slower, alpha ok)."""
+        if self.compositor:
+            self.compositor.setPreviewFormat(fmt)
+
+    def getPreviewFormat(self) -> str:
+        if self.compositor:
+            return self.compositor.getPreviewFormat()
+        return 'jpeg'
 
     def perfStats(self) -> dict:
         if self.compositor is None:

@@ -15,10 +15,10 @@ if TYPE_CHECKING:
     from backend.media.decoder.decodedFrame import DecodedFrame
 
 
-# Frames within this window of the playhead are decoded proactively
+# Frames within this window  
 WAKE_RADIUS = 120
 
-# Prefetch look-ahead when playing — 60 = 2s at 30fps, 1s at 60fps
+# Prefetch look-ahead 
 PREFETCH_RADIUS = 60
 
 
@@ -41,7 +41,7 @@ class Compositor:
     def __init__(self, width: int, height: int, fps: float = 30.0) -> None:
         self.width  = width
         self.height = height
-        self.fps    = fps
+        self.fps = fps
 
        
         self._surface: "skia.Surface | None" = None
@@ -65,30 +65,34 @@ class Compositor:
         self._stats = _PerfStats()
         self._fpsCount = 0
         self._fpsT0 = time.monotonic()
-        # JPEG quality for preview stream (adjustable via /settings)
+        # JPEG quality for preview stream  
         self._jpegQuality: int = 85
+        # Preview format 
+        self._previewFormat: str = 'png'
 
     # API  
 
     def setScheduler(self, scheduler: "DecodeScheduler") -> None:
         self._scheduler = scheduler
 
+    def setPreviewFormat(self, fmt: str) -> None:
+        """Switch preview encoding: 'jpeg' (fast, no alpha) or 'png' (slower, alpha ok)."""
+        if fmt in ('jpeg', 'png'):
+            self._previewFormat = fmt
+
+    def getPreviewFormat(self) -> str:
+        return self._previewFormat
+
     def compositeFramePng(
         self,
         timeline: "Timeline",
         frame: int,
-        quality: int   = 85,   # JPEG quality 1-100 (PNG fallback uses this too)
+        quality: int   = 85,   # JPEG quality 
         panX: float = 0.0,
         panY: float = 0.0,
         zoom: float = 1.0,
     ) -> bytes:
-        """Main preview composite method.
-
-        Uses JPEG encoding for the WebSocket preview stream — 7ms vs 46ms for
-        PNG at 960x540.  The compositor output is always opaque (clips with
-        alpha are composited internally by Skia onto the black background), so
-        JPEG transparency loss is irrelevant for preview.
-        """
+         
         t0 = time.monotonic()
 
         self._applyPendingTimeline()
@@ -96,7 +100,7 @@ class Compositor:
         if timeline is None:
             return b""
 
-        # Determine preview scale — drives both surface size and clip scaling
+        # Determine preview scale  
         scale = getattr(self._scheduler, '_previewScale', 1.0) if self._scheduler else 1.0
         if scale < 1.0:
             pw = max(2, round(self.width  * scale) // 2 * 2)
@@ -111,10 +115,15 @@ class Compositor:
             img = self._renderFrameAtSize(timeline, frame, pw, ph, panX, panY, zoom)
             t_render = time.monotonic()
 
-            # JPEG: 7ms at 960x540 vs PNG 46ms — 6x faster, fine for opaque preview
-            q      = quality if quality != 85 else self._jpegQuality
-            data   = img.encodeToData(skia.kJPEG, q)
-            result = bytes(data)
+            if self._previewFormat == 'png':
+                # PNG 
+                data = img.encodeToData(skia.kPNG, 6)  # compression 
+                result = bytes(data)
+            else:
+                # JPEG 
+                q = quality if quality != 85 else self._jpegQuality
+                data = img.encodeToData(skia.kJPEG, q)
+                result = bytes(data)
 
         self._updateStats(t0, t_upload, t_render)
         return result
@@ -139,14 +148,14 @@ class Compositor:
 
     def resize(self, width: int, height: int) -> None:
         if width != self.width or height != self.height:
-            self.width    = width
-            self.height   = height
-            self._surface = None  # recreated lazily on next _renderFrame call
+            self.width = width
+            self.height = height
+            self._surface = None  # recreated 
 
 
     @staticmethod
     def _makeSurface(width: int, height: int) -> skia.Surface:
-        """Create a CPU raster surface with explicit ImageInfo (never nullptr)."""
+         
         info = skia.ImageInfo.MakeN32Premul(max(1, width), max(1, height))
         surf = skia.Surface.MakeRaster(info)
         if surf is None:
@@ -174,7 +183,7 @@ class Compositor:
         self._stats.decodeWaitMs = max(0.0, milliseconds)
 
     def isFrameReady(self, timeline: "Timeline", frame: int) -> bool:
-        """Return whether every visible video clip has its requested frame cached."""
+         
         if self._scheduler is None:
             return True
 
@@ -283,12 +292,7 @@ class Compositor:
         panY: float = 0.0,
         zoom: float = 1.0,
     ) -> skia.Image:
-        """Render directly into a pw×ph surface.
-
-        All clip coordinates are in full project space (self.width × self.height).
-        canvas.scale(sx, sy) maps them to pw×ph automatically — one Skia pass,
-        no intermediate surface or blit needed.
-        """
+         
         info = skia.ImageInfo.MakeN32Premul(max(2, pw), max(2, ph))
         surf = skia.Surface.MakeRaster(info)
         if surf is None:
@@ -298,7 +302,11 @@ class Compositor:
             surf = self._surface
 
         canvas = surf.getCanvas()
-        canvas.clear(skia.Color4f(0, 0, 0, 1))
+         
+        if self._previewFormat == 'png':
+            canvas.clear(skia.ColorTRANSPARENT)    
+        else:
+            canvas.clear(skia.Color4f(0, 0, 0, 1))
 
         if not timeline.tracks:
             return surf.makeImageSnapshot()
@@ -306,7 +314,7 @@ class Compositor:
         if self._scheduler:
             self._injectScheduler(timeline)
 
-        # Scale canvas so full-project coordinates map to preview size
+        # Scale canvas so full-project 
         sx = pw / self.width
         sy = ph / self.height
         if sx != 1.0 or sy != 1.0:
@@ -369,7 +377,7 @@ class Compositor:
         if pending is None:
             return
 
-        # Clear all clip-level state for the old timeline
+        # Clear all clip-level state  
         if self._scheduler:
             for clipId in self._activeClipIds:
                 self._scheduler.unregisterClip(clipId)
@@ -382,7 +390,7 @@ class Compositor:
 
     def _updateStats(self, t0: float, t_upload: float, t_render: float) -> None:
         now = time.monotonic()
-        self._stats.tickMs   = (now - t0) * 1000.0
+        self._stats.tickMs = (now - t0) * 1000.0
         self._stats.uploadMs = (t_upload  - t0) * 1000.0
         self._stats.renderMs = (t_render  - t_upload)  * 1000.0
 

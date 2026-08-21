@@ -7,7 +7,6 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS",  "1")
 
-# Dump C-level stack trace on segfault / access violation
 faulthandler.enable()
 
 import asyncio
@@ -32,10 +31,10 @@ from backend.history.commandStack import (
 
 engine = Engine()
 
-# In-memory asset library:  assetId → MediaAsset
+# In-memory asset library 
 _library: dict[str, MediaAsset] = {}
 
-# In-memory clip→track index map  (clipId → trackIndex)
+# In-memory clip→track index map   
 _clipTrackMap: dict[str, int] = {}
 
 #   Lifespan  
@@ -53,7 +52,7 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(engine.startPreviewLoop())
     yield
-    # Shutdown: nothing to clean up for now
+    # Shutdown 
 
 
 #   FastAPI app  
@@ -77,12 +76,12 @@ def health():
 #   Settings  
 
 class SettingsPayload(BaseModel):
-    cacheMaxMB:      int   | None = None   # Frame cache budget in MB
-    previewScale:    float | None = None   # Decode resolution 0.125–1.0
-    jpegQuality:     int   | None = None   # JPEG encode quality 1–100
-    prefetchRadius:  int   | None = None   # Frames to pre-decode ahead
-    batchSize:       int   | None = None   # Frames decoded per worker wakeup
-    decoderMode:     str   | None = None   # "auto" | "pyav" | "ffmpeg"
+    cacheMaxMB: int | None = None   # Frame cache budget in MB
+    previewScale: float | None = None   # Decode resolution 0.125–1.0
+    jpegQuality: int | None = None   # JPEG encode quality 1–100
+    prefetchRadius:  int | None = None   # Frames to pre-decode ahead
+    batchSize: int | None = None   # Frames decoded per worker wakeup
+    decoderMode: str | None = None   # "auto" | "pyav" | "ffmpeg"
 
 
 def _get_settings() -> dict:
@@ -91,19 +90,19 @@ def _get_settings() -> dict:
     from backend.media.cache.frameCache import FrameCache
     from backend.media.decoder.videoDecoder import _DECODER_MODE
 
-    cache_mb   = round(engine.scheduler._frameCache._maxBytes / (1024**2)) if engine.scheduler else 512
-    scale      = engine.getPreviewScale()
-    quality    = getattr(engine.compositor, '_jpegQuality', 85) if engine.compositor else 85
+    cache_mb = round(engine.scheduler._frameCache._maxBytes / (1024**2)) if engine.scheduler else 512
+    scale = engine.getPreviewScale()
+    quality = getattr(engine.compositor, '_jpegQuality', 85) if engine.compositor else 85
     return {
-        "cacheMaxMB":     cache_mb,
-        "cacheUsedMB":    round(engine.scheduler._frameCache.usedMB, 1) if engine.scheduler else 0,
-        "cacheFrames":    engine.scheduler._frameCache.entryCount if engine.scheduler else 0,
+        "cacheMaxMB": cache_mb,
+        "cacheUsedMB": round(engine.scheduler._frameCache.usedMB, 1) if engine.scheduler else 0,
+        "cacheFrames": engine.scheduler._frameCache.entryCount if engine.scheduler else 0,
         "cacheMaxFrames": FrameCache.MAX_FRAMES,
-        "previewScale":   scale,
-        "jpegQuality":    quality,
+        "previewScale": scale,
+        "jpegQuality": quality,
         "prefetchRadius": _comp.PREFETCH_RADIUS,
-        "batchSize":      DecodeScheduler.BATCH_SIZE,
-        "decoderMode":    _DECODER_MODE,
+        "batchSize": DecodeScheduler.BATCH_SIZE,
+        "decoderMode": _DECODER_MODE,
     }
 
 
@@ -182,7 +181,7 @@ def listAssets():
             "assetId":  a.assetId,
             "filename": os.path.basename(a.filepath),
             "filepath": a.filepath,
-            "type":     a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType),
+            "type": a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType),
         }
         for a in _library.values()
     ]
@@ -197,10 +196,10 @@ def importAsset(req: ImportRequest):
     for a in _library.values():
         if a.filepath == req.filepath:
             return {
-                "assetId":  a.assetId,
+                "assetId": a.assetId,
                 "filename": os.path.basename(a.filepath),
                 "filepath": a.filepath,
-                "type":     a.mediaType,
+                "type": a.mediaType,
             }
 
     assetId = str(uuid.uuid4())
@@ -211,10 +210,10 @@ def importAsset(req: ImportRequest):
     _library[assetId] = asset
 
     return {
-        "assetId":  assetId,
+        "assetId": assetId,
         "filename": os.path.basename(req.filepath),
         "filepath": req.filepath,
-        "type":     asset.mediaType,
+        "type": asset.mediaType,
     }
 
 
@@ -242,7 +241,7 @@ class MoveClipRequest(BaseModel):
 class TrimClipRequest(BaseModel):
     clipId: str
     side: str        # 'left' or 'right'
-    frameDelta: int  # positive = extend, negative = shrink
+    frameDelta: int  # positive 
 
 
 class SplitClipRequest(BaseModel):
@@ -327,7 +326,7 @@ def deleteClip(clipId: str):
         if clip:
             from backend.history.commandStack import RemoveClipCommand
             cmd = RemoveClipCommand(track, clip)
-            engine.commandStack.execute(cmd)    # removes clip from track
+            engine.commandStack.execute(cmd)     
             if engine.scheduler:
                 engine.scheduler.unregisterClip(clipId)
             _clipTrackMap.pop(clipId, None)
@@ -396,15 +395,15 @@ def splitClip(req: SplitClipRequest):
     raise HTTPException(404, f"Clip {req.clipId!r} not found")
 
 
-# ── Undo / Redo ───────────────────────────────────────────────────────────────
+# Undo / Redo  
 
 @app.post("/history/undo")
 def undoAction():
     desc = engine.commandStack.undo()
     return {
-        "undone":   desc,
-        "canUndo":  engine.commandStack.canUndo,
-        "canRedo":  engine.commandStack.canRedo,
+        "undone": desc,
+        "canUndo": engine.commandStack.canUndo,
+        "canRedo": engine.commandStack.canRedo,
     }
 
 
@@ -412,23 +411,23 @@ def undoAction():
 def redoAction():
     desc = engine.commandStack.redo()
     return {
-        "redone":   desc,
-        "canUndo":  engine.commandStack.canUndo,
-        "canRedo":  engine.commandStack.canRedo,
+        "redone": desc,
+        "canUndo": engine.commandStack.canUndo,
+        "canRedo": engine.commandStack.canRedo,
     }
 
 
 @app.get("/history/state")
 def historyState():
     return {
-        "canUndo":       engine.commandStack.canUndo,
-        "canRedo":       engine.commandStack.canRedo,
-        "undoLabel":     engine.commandStack.undoDescription,
-        "redoLabel":     engine.commandStack.redoDescription,
+        "canUndo": engine.commandStack.canUndo,
+        "canRedo": engine.commandStack.canRedo,
+        "undoLabel": engine.commandStack.undoDescription,
+        "redoLabel": engine.commandStack.redoDescription,
     }
 
 
-# ── Track controls ────────────────────────────────────────────────────────────
+#   Track controls  
 
 @app.post("/timeline/track/{trackId}/mute")
 def muteTrack(trackId: str):
@@ -451,7 +450,7 @@ def soloTrack(trackId: str):
     if track is None:
         raise HTTPException(404, f"Track {trackId!r} not found")
     target = not getattr(track, 'solo', False)
-    # Solo is exclusive — unsolo all others
+    # Solo is exclusive  
     for t in tl.tracks:
         t.solo = False
     track.solo = target
@@ -475,13 +474,13 @@ def lockTrack(trackId: str):
 def timelineState():
     tl  = engine.activeTimeline
     prj = engine.project
-    fps         = prj.fps         if prj else 30.0
+    fps = prj.fps if prj else 30.0
     totalFrames = prj.totalFrame  if prj else 1800
     if tl is None:
         return {"tracks": [], "totalFrames": totalFrames, "fps": fps}
     data = tl.toDict()
     data["totalFrames"] = totalFrames
-    data["fps"]         = fps
+    data["fps"] = fps
     return data
 
 
@@ -512,9 +511,9 @@ def seek(req: SeekRequest):
 def playbackState():
     prj = engine.project
     return {
-        "frame":       engine.currentFrame,
-        "playing":     engine._playing,
-        "fps":         prj.fps if prj else 30.0,
+        "frame": engine.currentFrame,
+        "playing": engine._playing,
+        "fps": prj.fps if prj else 30.0,
         "totalFrames": prj.totalFrame if prj else 1800,
     }
 
@@ -554,6 +553,23 @@ def getPreviewScale():
     return {"scale": engine.getPreviewScale()}
 
 
+class FormatRequest(BaseModel):
+    format: str  # 'jpeg' or 'png'
+
+@app.post("/preview/format")
+def setPreviewFormat(req: FormatRequest):
+    """Switch preview stream encoding between 'jpeg' (fast) and 'png' (alpha support)."""
+    if req.format not in ('jpeg', 'png'):
+        raise HTTPException(400, "format must be 'jpeg' or 'png'")
+    engine.setPreviewFormat(req.format)
+    print(f"[preview/format] switched to {req.format!r}")
+    return {"format": req.format}
+
+@app.get("/preview/format")
+def getPreviewFormat():
+    return {"format": engine.getPreviewFormat()}
+
+
 #   WebSocket preview  
 
 @app.websocket("/ws/preview")
@@ -580,9 +596,7 @@ def _findFreePort(start: int = 8000, end: int = 8010) -> int:
     raise RuntimeError(f"No free port found between {start} and {end}")
 
 
-# ═══════════════════════════════════════════════════════════════════════
-#   Text / Shape / Pen / Mask routes
-# ═══════════════════════════════════════════════════════════════════════
+  
 
 from backend.timeline.clips.textClip  import TextClip,  TextStyle,  MaskLayer
 from backend.timeline.clips.shapeClip import ShapeClip, ShapeStyle
@@ -614,7 +628,7 @@ def _top_empty_track(startFrame: int, duration: int):
 
     video_tracks = [t for t in tl.tracks if not getattr(t, 'isAudio', lambda: False)()]
 
-    # Walk from top (last) to bottom; return the first free one
+    # Walk from top 
     for track in reversed(video_tracks):
         clips = getattr(track, 'clips', [])
         overlaps = any(
@@ -624,7 +638,7 @@ def _top_empty_track(startFrame: int, duration: int):
         if not overlaps:
             return track
 
-    # All occupied — add a new track at the top
+    # All occupied  
     name = f"Video {len(video_tracks) + 1}"
     new_track = VideoTrack(name)
     tl.addTrack(new_track)
@@ -643,25 +657,25 @@ def _default_video_track():
     return track
 
 
-# ── Text ─────────────────────────────────────────────────────────────
+# Text  
 
 class TextClipRequest(BaseModel):
     trackIndex: int  | None = None
-    startFrame: int         = 0
-    duration:   int         = 150
-    style:      dict        = {}
+    startFrame: int = 0
+    duration: int = 150
+    style: dict = {}
 
 
 @app.post("/clips/text")
 def addTextClip(req: TextClipRequest):
     import uuid
-    tl    = _active_timeline()
+    tl = _active_timeline()
     track = _top_empty_track(req.startFrame, req.duration)
     clip  = TextClip(
-        clipId     = str(uuid.uuid4()),
+        clipId = str(uuid.uuid4()),
         startFrame = req.startFrame,
-        duration   = req.duration,
-        style      = TextStyle.fromDict(req.style),
+        duration = req.duration,
+        style = TextStyle.fromDict(req.style),
     )
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
@@ -669,7 +683,7 @@ def addTextClip(req: TextClipRequest):
 
 
 class TextPatchRequest(BaseModel):
-    style:    dict | None = None
+    style: dict | None = None
     transform: dict | None = None
 
 
@@ -688,14 +702,14 @@ def updateTextClip(clipId: str, req: TextPatchRequest):
     return clip.toDict()
 
 
-# ── Shape ─────────────────────────────────────────────────────────────
+# Shape  
 
 class ShapeClipRequest(BaseModel):
     startFrame: int   = 0
-    duration:   int   = 150
-    style:      dict  = {}
-    x:          float = 960.0   # center x in design space (default: canvas center)
-    y:          float = 540.0   # center y in design space
+    duration: int   = 150
+    style: dict  = {}
+    x: float = 960.0   # center x in design space 
+    y: float = 540.0   # center y in design space
 
 
 @app.post("/clips/shape")
@@ -704,10 +718,10 @@ def addShapeClip(req: ShapeClipRequest):
     tl    = _active_timeline()
     track = _top_empty_track(req.startFrame, req.duration)
     clip  = ShapeClip(
-        clipId     = str(uuid.uuid4()),
+        clipId = str(uuid.uuid4()),
         startFrame = req.startFrame,
-        duration   = req.duration,
-        style      = ShapeStyle.fromDict(req.style),
+        duration = req.duration,
+        style = ShapeStyle.fromDict(req.style),
     )
     # Position the shape where the user drew it
     clip.transform.position.setBase(req.x, req.y)
@@ -717,7 +731,7 @@ def addShapeClip(req: ShapeClipRequest):
 
 
 class ShapePatchRequest(BaseModel):
-    style:     dict | None = None
+    style: dict | None = None
     transform: dict | None = None
 
 
@@ -736,15 +750,15 @@ def updateShapeClip(clipId: str, req: ShapePatchRequest):
     return clip.toDict()
 
 
-# ── Pen ───────────────────────────────────────────────────────────────
+#   Pen  
 
 class PenClipRequest(BaseModel):
     startFrame: int   = 0
-    duration:   int   = 150
-    isClosed:   bool  = False
-    points:     list  = []
-    style:      dict  = {}
-
+    duration: int   = 150
+    isClosed: bool  = False
+    points: list  = []
+    style: dict  = {}
+ 
 
 @app.post("/clips/pen")
 def addPenClip(req: PenClipRequest):
@@ -752,12 +766,12 @@ def addPenClip(req: PenClipRequest):
     tl    = _active_timeline()
     track = _top_empty_track(req.startFrame, req.duration)
     clip  = PenClip(
-        clipId     = str(uuid.uuid4()),
+        clipId = str(uuid.uuid4()),
         startFrame = req.startFrame,
-        duration   = req.duration,
-        isClosed   = req.isClosed,
-        points     = [BezierPoint.fromDict(p) for p in req.points],
-        style      = ShapeStyle.fromDict(req.style),
+        duration = req.duration,
+        isClosed = req.isClosed,
+        points = [BezierPoint.fromDict(p) for p in req.points],
+        style = ShapeStyle.fromDict(req.style),
     )
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
@@ -765,7 +779,7 @@ def addPenClip(req: PenClipRequest):
 
 
 class PenPointsRequest(BaseModel):
-    points:   list = []
+    points: list = []
     isClosed: bool | None = None
 
 
@@ -780,12 +794,12 @@ def updatePenPoints(clipId: str, req: PenPointsRequest):
     return clip.toDict()
 
 
-# ── Mask ──────────────────────────────────────────────────────────────
+#   Mask  
 
 class MaskRequest(BaseModel):
-    name:     str   = "Mask"
-    shape:    str   = "rect"    # rect | ellipse | bezier
-    mode:     str   = "add"
+    name: str = "Mask"
+    shape: str = "rect"    # rect | ellipse | bezier
+    mode: str   = "add"
     inverted: bool  = False
     feather:  float = 0.0
     opacity:  float = 1.0
@@ -800,14 +814,14 @@ def addMask(clipId: str, req: MaskRequest):
     if not hasattr(clip, 'masks'):
         raise HTTPException(400, "Clip type does not support masks")
     mask = MaskLayer(
-        maskId   = str(uuid.uuid4()),
-        name     = req.name,
-        shape    = req.shape,
-        mode     = req.mode,
+        maskId = str(uuid.uuid4()),
+        name = req.name,
+        shape = req.shape,
+        mode = req.mode,
         inverted = req.inverted,
-        feather  = req.feather,
-        opacity  = req.opacity,
-        points   = req.points,
+        feather = req.feather,
+        opacity = req.opacity,
+        points = req.points,
     )
     clip.addMask(mask)
     print(f"[addMask] clipId={clipId[:8]} maskId={mask.maskId[:8]} shape={mask.shape} pts={len(mask.points)} mode={mask.mode}")
@@ -815,12 +829,12 @@ def addMask(clipId: str, req: MaskRequest):
 
 
 class MaskPatchRequest(BaseModel):
-    name:     str   | None = None
-    mode:     str   | None = None
-    inverted: bool  | None = None
-    feather:  float | None = None
-    opacity:  float | None = None
-    points:   list  | None = None
+    name: str | None = None
+    mode: str | None = None
+    inverted: bool | None = None
+    feather: float | None = None
+    opacity: float | None = None
+    points: list | None = None
 
 
 @app.patch("/clips/{clipId}/mask/{maskId}")
@@ -855,13 +869,13 @@ def listMasks(clipId: str):
         "clipId": clipId,
         "masks": [
             {
-                "maskId":   m.maskId,
-                "name":     m.name,
-                "shape":    m.shape,
-                "mode":     m.mode,
+                "maskId": m.maskId,
+                "name": m.name,
+                "shape": m.shape,
+                "mode": m.mode,
                 "inverted": m.inverted,
-                "feather":  m.feather,
-                "opacity":  m.opacity,
+                "feather": m.feather,
+                "opacity": m.opacity,
                 "pointCount": len(getattr(m, 'points', [])),
             }
             for m in masks
@@ -869,7 +883,7 @@ def listMasks(clipId: str):
     }
 
 
-# ── System fonts ───────────────────────────────────────────────────────
+# System fonts  
 
 @app.get("/fonts")
 def listFonts():
@@ -884,7 +898,7 @@ def listFonts():
 
 
 
-# ── Inspector — params + keyframes ─────────────────────────────────────────
+#   Inspector  
 
 from backend.timeline.clips.animEngine import AnimParam, Interp, Keyframe as KF
 
@@ -909,28 +923,28 @@ def _clip_param_schema(clip) -> list:
     sx, sy = t.scale.get()
     ax, ay = t.anchor.get()
 
-    # Transform params — real units: opacity 0-1, scale 0-10, position px, rotation deg
+    # Transform params  
     base = [
-        {"id": "opacity",  "label": "Opacity",    "type": "float", "min": 0,     "max": 1,    "default": round(t.opacity.get(), 4),  "group": "Transform"},
-        {"id": "pos_x",    "label": "Position X", "type": "float", "min": -3840, "max": 3840, "default": round(px, 2),               "group": "Transform"},
-        {"id": "pos_y",    "label": "Position Y", "type": "float", "min": -2160, "max": 2160, "default": round(py, 2),               "group": "Transform"},
-        {"id": "scale_x",  "label": "Scale X",    "type": "float", "min": 0,     "max": 10,   "default": round(sx, 4),               "group": "Transform"},
-        {"id": "scale_y",  "label": "Scale Y",    "type": "float", "min": 0,     "max": 10,   "default": round(sy, 4),               "group": "Transform"},
-        {"id": "rotation", "label": "Rotation",   "type": "float", "min": -360,  "max": 360,  "default": round(t.rotation.get(), 2), "group": "Transform"},
-        {"id": "anchor_x", "label": "Anchor X",   "type": "float", "min": -1920, "max": 1920, "default": round(ax, 2),               "group": "Transform"},
-        {"id": "anchor_y", "label": "Anchor Y",   "type": "float", "min": -1080, "max": 1080, "default": round(ay, 2),               "group": "Transform"},
+        {"id": "opacity",  "label": "Opacity", "type": "float", "min": 0, "max": 1, "default": round(t.opacity.get(), 4),  "group": "Transform"},
+        {"id": "pos_x", "label": "Position X", "type": "float", "min": -3840, "max": 3840, "default": round(px, 2),               "group": "Transform"},
+        {"id": "pos_y", "label": "Position Y", "type": "float", "min": -2160, "max": 2160, "default": round(py, 2),               "group": "Transform"},
+        {"id": "scale_x", "label": "Scale X", "type": "float", "min": 0, "max": 10, "default": round(sx, 4),               "group": "Transform"},
+        {"id": "scale_y", "label": "Scale Y", "type": "float", "min": 0, "max": 10, "default": round(sy, 4),               "group": "Transform"},
+        {"id": "rotation", "label": "Rotation", "type": "float", "min": -360,  "max": 360,  "default": round(t.rotation.get(), 2), "group": "Transform"},
+        {"id": "anchor_x", "label": "Anchor X", "type": "float", "min": -1920, "max": 1920, "default": round(ax, 2),               "group": "Transform"},
+        {"id": "anchor_y", "label": "Anchor Y", "type": "float", "min": -1080, "max": 1080, "default": round(ay, 2),               "group": "Transform"},
     ]
 
     if isinstance(clip, TextClip):
         s = clip.style
         base += [
-            {"id": "font_size",    "label": "Font Size",     "type": "float", "min": 4,  "max": 400, "default": s.fontSize,     "group": "Text"},
-            {"id": "tracking",     "label": "Tracking",      "type": "float", "min": -20,"max": 100, "default": s.letterSpacing,"group": "Text"},
+            {"id": "font_size", "label": "Font Size", "type": "float", "min": 4,  "max": 400, "default": s.fontSize,     "group": "Text"},
+            {"id": "tracking", "label": "Tracking", "type": "float", "min": -20,"max": 100, "default": s.letterSpacing,"group": "Text"},
             {"id": "line_height",  "label": "Line Height",   "type": "float", "min": 0.5,"max": 4,   "default": s.lineHeight,   "group": "Text"},
-            {"id": "fill_r",       "label": "Fill R",        "type": "float", "min": 0,  "max": 1,   "default": s.color[0],     "group": "Text"},
-            {"id": "fill_g",       "label": "Fill G",        "type": "float", "min": 0,  "max": 1,   "default": s.color[1],     "group": "Text"},
-            {"id": "fill_b",       "label": "Fill B",        "type": "float", "min": 0,  "max": 1,   "default": s.color[2],     "group": "Text"},
-            {"id": "fill_a",       "label": "Fill A",        "type": "float", "min": 0,  "max": 1,   "default": s.color[3],     "group": "Text"},
+            {"id": "fill_r", "label": "Fill R", "type": "float", "min": 0,  "max": 1, "default": s.color[0],     "group": "Text"},
+            {"id": "fill_g", "label": "Fill G", "type": "float", "min": 0,  "max": 1, "default": s.color[1],     "group": "Text"},
+            {"id": "fill_b", "label": "Fill B", "type": "float", "min": 0,  "max": 1, "default": s.color[2],     "group": "Text"},
+            {"id": "fill_a", "label": "Fill A", "type": "float", "min": 0,  "max": 1, "default": s.color[3],     "group": "Text"},
         ]
 
     elif isinstance(clip, ShapeClip):
@@ -938,15 +952,15 @@ def _clip_param_schema(clip) -> list:
         fill   = s.fillColor   or [0.4, 0.4, 1.0, 1.0]
         stroke = s.strokeColor or [1.0, 1.0, 1.0, 1.0]
         base += [
-            {"id": "shape_w",  "label": "Width",        "type": "float", "min": 1, "max": 3840, "default": s.width,       "group": "Shape"},
-            {"id": "shape_h",  "label": "Height",       "type": "float", "min": 1, "max": 2160, "default": s.height,      "group": "Shape"},
-            {"id": "fill_r",   "label": "Fill R",       "type": "float", "min": 0, "max": 1,    "default": fill[0],       "group": "Shape"},
-            {"id": "fill_g",   "label": "Fill G",       "type": "float", "min": 0, "max": 1,    "default": fill[1],       "group": "Shape"},
-            {"id": "fill_b",   "label": "Fill B",       "type": "float", "min": 0, "max": 1,    "default": fill[2],       "group": "Shape"},
-            {"id": "fill_a",   "label": "Fill A",       "type": "float", "min": 0, "max": 1,    "default": fill[3],       "group": "Shape"},
-            {"id": "stroke_r", "label": "Stroke R",     "type": "float", "min": 0, "max": 1,    "default": stroke[0],     "group": "Shape"},
-            {"id": "stroke_g", "label": "Stroke G",     "type": "float", "min": 0, "max": 1,    "default": stroke[1],     "group": "Shape"},
-            {"id": "stroke_b", "label": "Stroke B",     "type": "float", "min": 0, "max": 1,    "default": stroke[2],     "group": "Shape"},
+            {"id": "shape_w", "label": "Width", "type": "float", "min": 1, "max": 3840, "default": s.width,       "group": "Shape"},
+            {"id": "shape_h",  "label": "Height", "type": "float", "min": 1, "max": 2160, "default": s.height,      "group": "Shape"},
+            {"id": "fill_r", "label": "Fill R", "type": "float", "min": 0, "max": 1, "default": fill[0],       "group": "Shape"},
+            {"id": "fill_g", "label": "Fill G", "type": "float", "min": 0, "max": 1, "default": fill[1],       "group": "Shape"},
+            {"id": "fill_b", "label": "Fill B", "type": "float", "min": 0, "max": 1, "default": fill[2],       "group": "Shape"},
+            {"id": "fill_a",   "label": "Fill A", "type": "float", "min": 0, "max": 1, "default": fill[3],       "group": "Shape"},
+            {"id": "stroke_r", "label": "Stroke R", "type": "float", "min": 0, "max": 1, "default": stroke[0],     "group": "Shape"},
+            {"id": "stroke_g", "label": "Stroke G",     "type": "float", "min": 0, "max": 1, "default": stroke[1],     "group": "Shape"},
+            {"id": "stroke_b", "label": "Stroke B", "type": "float", "min": 0, "max": 1,    "default": stroke[2],     "group": "Shape"},
             {"id": "stroke_w", "label": "Stroke Width", "type": "float", "min": 0, "max": 50,   "default": s.strokeWidth, "group": "Shape"},
         ]
 
@@ -955,11 +969,11 @@ def _clip_param_schema(clip) -> list:
         sc = s.strokeColor if hasattr(s, 'strokeColor') else [1.0, 1.0, 1.0, 1.0]
         fc = s.fillColor   if hasattr(s, 'fillColor')   else [0.0, 0.0, 0.0, 0.0]
         base += [
-            {"id": "stroke_r", "label": "Stroke R",     "type": "float", "min": 0, "max": 1,  "default": sc[0],         "group": "Path"},
-            {"id": "stroke_g", "label": "Stroke G",     "type": "float", "min": 0, "max": 1,  "default": sc[1],         "group": "Path"},
-            {"id": "stroke_b", "label": "Stroke B",     "type": "float", "min": 0, "max": 1,  "default": sc[2],         "group": "Path"},
+            {"id": "stroke_r", "label": "Stroke R", "type": "float", "min": 0, "max": 1,  "default": sc[0],         "group": "Path"},
+            {"id": "stroke_g", "label": "Stroke G", "type": "float", "min": 0, "max": 1,  "default": sc[1],         "group": "Path"},
+            {"id": "stroke_b", "label": "Stroke B", "type": "float", "min": 0, "max": 1,  "default": sc[2],         "group": "Path"},
             {"id": "stroke_w", "label": "Stroke Width", "type": "float", "min": 0, "max": 50, "default": s.strokeWidth, "group": "Path"},
-            {"id": "fill_a",   "label": "Fill Alpha",   "type": "float", "min": 0, "max": 1,  "default": fc[3],         "group": "Path"},
+            {"id": "fill_a",   "label": "Fill Alpha", "type": "float", "min": 0, "max": 1,  "default": fc[3],         "group": "Path"},
         ]
 
     return base
@@ -971,9 +985,9 @@ class ParamValueBody(BaseModel):
 
 
 class KeyframeBody(BaseModel):
-    frame:        int
-    value:        float
-    interp:       str = "linear"
+    frame: int
+    value: float
+    interp: str = "linear"
     handle_in_f:  float = -5.0
     handle_in_v:  float =  0.0
     handle_out_f: float =  5.0
@@ -988,16 +1002,17 @@ def getClipParams(clipId: str, frame: int = 0):
     rows     = []
     for p in schema:
         ap = _get_or_create_anim(clip, p["id"], p["default"])
-        value        = ap.evaluate(frame) if ap.is_animated() else p["default"]
+         
+        value = ap.evaluate(frame) if ap.is_animated() else ap._base[0]
         rows.append({
-            "id":          p["id"],
-            "label":       p["label"],
-            "type":        p["type"],
-            "min":         p["min"],
-            "max":         p["max"],
-            "default":     p["default"],
-            "group":       p["group"],
-            "value":       value,
+            "id": p["id"],
+            "label": p["label"],
+            "type": p["type"],
+            "min": p["min"],
+            "max": p["max"],
+            "default": p["default"],
+            "group": p["group"],
+            "value": value,
             "isAnimated":  ap.is_animated(),
             "hasKeyframe": ap.has_keyframe_at(frame),
             "keyframes":   ap.all_keyframe_frames(),
@@ -1052,7 +1067,7 @@ def addKeyframe(clipId: str, key: str, body: KeyframeBody):
         handle_in_f=body.handle_in_f,  handle_in_v=body.handle_in_v,
         handle_out_f=body.handle_out_f, handle_out_v=body.handle_out_v,
     )
-    # For scalar params, add to component 0 only; vec params get single-value per component
+    # For scalar params 
     ap._tracks[0].add(kf)
     return {"status": "ok", "frames": ap.all_keyframe_frames()}
 
@@ -1064,16 +1079,16 @@ def listKeyframes(clipId: str, key: str):
         return {"frames": [], "allFrames": [], "vecType": "float"}
     ap = clip._anim_params[key]
     return {
-        "frames":     ap.keyframes_for_component(0),
-        "allFrames":  ap.all_keyframe_frames(),
-        "vecType":    ap.to_schema_type() if hasattr(ap, 'to_schema_type') else "float",
+        "frames": ap.keyframes_for_component(0),
+        "allFrames": ap.all_keyframe_frames(),
+        "vecType": ap.to_schema_type() if hasattr(ap, 'to_schema_type') else "float",
         "components": ap.components if hasattr(ap, 'components') else 1,
     }
 
 
 class MoveKeyframeBody(BaseModel):
     from_frame: int
-    to_frame:   int
+    to_frame: int
 
 
 @app.post("/clips/{clipId}/keyframes/{key}/move")

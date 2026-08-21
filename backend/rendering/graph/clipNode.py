@@ -18,13 +18,14 @@ class ClipNode(BaseNode):
         self.clip.evaluateAll(ctx.frame)
         opacity = float(self.clip.transform.opacity.get())
         masks   = getattr(self.clip, "masks", [])
-        print(f"[ClipNode] frame={ctx.frame} clip={self.clip.clipId[:8]} opacity={opacity:.3f} masks={len(masks)}")
         if opacity <= 0.0:
             return RenderResult()
 
         canvas = ctx.canvas
         if opacity < 1.0:
-            canvas.saveLayerAlphaf(opacity)
+            # saveLayerAlpha(bounds, alpha): bounds=None means full canvas,
+            # alpha is an integer 0-255 (not float).
+            canvas.saveLayerAlpha(None, int(round(opacity * 255)))
         else:
             canvas.save()
 
