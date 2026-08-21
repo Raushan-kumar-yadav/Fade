@@ -1,5 +1,5 @@
 /**
- * toolContext.ts — Extended with full Qteee-Vulkan tool set
+ * toolContext.ts — Extended with full Qteee-Vulkan tool set + pen sub-modes
  *
  * Mirrors UiTools::Tool enum from Qteee toolDef.hpp
  */
@@ -26,9 +26,20 @@ export type ActiveTool =
   | 'shape:polygon'
   | 'shape:line'
   | 'shape:arc'
-  | 'shape:path'    // bezier pen
+  | 'shape:path'    // bezier pen (activates pen sub-tool panel)
   // Adjustment
   | 'adjustment';
+
+// ── Pen sub-modes (visible when activeTool === 'shape:path') ──────────────
+export type PenSubMode =
+  | 'pen:add'      // Click to add anchor point (default)
+  | 'pen:select'   // Click/drag to select + move anchors; box-select
+  | 'pen:handle'   // Drag bezier handles without moving anchor
+  | 'pen:delete'   // Click anchor to remove it
+  | 'pen:curve';   // Click anchor to toggle corner ↔ smooth
+
+// ── Pen output mode: what the pen creates ─────────────────────────────────
+export type PenOutputMode = 'clip' | 'mask';
 
 /** Shape-type string extracted from a shape tool id */
 export function shapeTypeOf(tool: ActiveTool): string | null {
@@ -38,6 +49,10 @@ export function shapeTypeOf(tool: ActiveTool): string | null {
 
 export function isShapeTool(tool: ActiveTool): boolean {
   return tool.startsWith('shape:');
+}
+
+export function isPenTool(tool: ActiveTool): boolean {
+  return tool === 'shape:path';
 }
 
 export function isEditTool(tool: ActiveTool): boolean {
@@ -50,39 +65,56 @@ export function isCreationTool(tool: ActiveTool): boolean {
 
 // ── CSS cursor for each tool ───────────────────────────────────────────────
 export const TOOL_CURSOR: Record<string, string> = {
-  pointer:       'default',
-  razor:         'url("data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'><text y=\'16\' font-size=\'16\'>✂</text></svg>") 4 16, crosshair',
-  ripple:        'col-resize',
-  slip:          'ew-resize',
-  hand:          'grab',
-  selectLeft:    'w-resize',
-  selectRight:   'e-resize',
-  text:          'text',
-  solid:         'crosshair',
-  adjustment:    'crosshair',
-  'shape:rect':  'crosshair',
-  'shape:circle':'crosshair',
+  pointer:        'default',
+  razor:          'url("data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'><text y=\'16\' font-size=\'16\'>✂</text></svg>") 4 16, crosshair',
+  ripple:         'col-resize',
+  slip:           'ew-resize',
+  hand:           'grab',
+  selectLeft:     'w-resize',
+  selectRight:    'e-resize',
+  text:           'text',
+  solid:          'crosshair',
+  adjustment:     'crosshair',
+  'shape:rect':   'crosshair',
+  'shape:circle': 'crosshair',
   'shape:ellipse':'crosshair',
-  'shape:star':  'crosshair',
+  'shape:star':   'crosshair',
   'shape:polygon':'crosshair',
-  'shape:line':  'crosshair',
-  'shape:arc':   'crosshair',
-  'shape:path':  'crosshair',
+  'shape:line':   'crosshair',
+  'shape:arc':    'crosshair',
+  'shape:path':   'crosshair',
+};
+
+export const PEN_SUB_CURSOR: Record<PenSubMode, string> = {
+  'pen:add':    'crosshair',
+  'pen:select': 'default',
+  'pen:handle': 'grab',
+  'pen:delete': 'not-allowed',
+  'pen:curve':  'cell',
 };
 
 // ── Context ────────────────────────────────────────────────────────────────
 export interface ToolCtx {
   activeTool:    ActiveTool;
   setTool:       (t: ActiveTool) => void;
-  lastShapeTool: ActiveTool;            // remembers last shape sub-type
+  lastShapeTool: ActiveTool;
   setLastShape:  (t: ActiveTool) => void;
+  // Pen-specific
+  penSubMode:    PenSubMode;
+  setPenSubMode: (m: PenSubMode) => void;
+  penOutputMode: PenOutputMode;
+  setPenOutputMode: (m: PenOutputMode) => void;
 }
 
 export const ToolContext = createContext<ToolCtx>({
-  activeTool:    'pointer',
-  setTool:       () => {},
-  lastShapeTool: 'shape:rect',
-  setLastShape:  () => {},
+  activeTool:       'pointer',
+  setTool:          () => {},
+  lastShapeTool:    'shape:rect',
+  setLastShape:     () => {},
+  penSubMode:       'pen:add',
+  setPenSubMode:    () => {},
+  penOutputMode:    'clip',
+  setPenOutputMode: () => {},
 });
 
 export function useTool() {

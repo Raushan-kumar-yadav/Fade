@@ -5,6 +5,7 @@ import {
   getPlaybackState, frameUrl, setPreviewScale,
 } from '../../api/useApi';
 import { useTool } from '../../context/toolContext';
+import { useSelection } from '../../context/selectionContext';
 import OverlayCanvas from './OverlayCanvas';
 import './ViewportWidget.css';
 
@@ -236,52 +237,175 @@ export default function ViewportWidget() {
   }, []);
 
   const [canvasSize, setCanvasSize] = useState({ w: 1920, h: 1080 });
-  const { activeTool } = useTool();
+  const { activeTool, penOutputMode } = useTool();
+  const { selected } = useSelection();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Pan / Zoom state  
+  const [vpZoom, setVpZoom] = useState(1);     
+  const [vpPan, setVpPan] = useState({ x: 0, y: 0 });  
+  const spaceDown = useRef(false);
+  const mmDown = useRef(false);   
+  const lastPan = useRef({ x: 0, y: 0 });
+
+  // Fit canvas to container on mount / resize
+  const fitToFrame = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    const scaleW = (width - 24) / 1920;
+    const scaleH = (height - 24) / 1080;
+    setVpZoom(Math.min(scaleW, scaleH));
+    setVpPan({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => { fitToFrame(); }, [fitToFrame]);
+
+  // Scroll to zoom (centered on mouse)
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    // Only zoom when Ctrl is held OR it's a trackpad pinch  
+    if (!e.ctrlKey && !spaceDown.current) {
+       
+      return;
+    }
+    e.preventDefault();
+    const el = containerRef.current;
+    if (!el) return;
+    const rect  = el.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - rect.width  / 2;
+    const mouseY = e.clientY - rect.top  - rect.height / 2;
+
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    setVpZoom(prev => {
+      const next = Math.max(0.05, Math.min(8, prev * factor));
+      // Adjust pan so zoom stays centred on mouse position
+      const ratio = next / prev;
+      setVpPan(p => ({
+        x: mouseX + (p.x - mouseX) * ratio,
+        y: mouseY + (p.y - mouseY) * ratio,
+      }));
+      return next;
+    });
+  }, []);
+
+  // Middle-mouse drag to pan
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const isMM    = e.button === 1;
+    const isSpace = spaceDown.current && e.button === 0;
+    if (!isMM && !isSpace) return;
+    e.preventDefault();
+    if (isMM) mmDown.current = true;
+    lastPan.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!mmDown.current && !spaceDown.current) return;
+    if (e.buttons === 0) { mmDown.current = false; return; } // released outside
+    const dx = e.clientX - lastPan.current.x;
+    const dy = e.clientY - lastPan.current.y;
+    lastPan.current = { x: e.clientX, y: e.clientY };
+    setVpPan(p => ({ x: p.x + dx, y: p.y + dy }));
+  }, []);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 1) mmDown.current = false;
+  }, []);
+
+  // Space key for pan mode
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !(e.target as HTMLElement).matches('input,textarea,select')) {
+        e.preventDefault();
+        spaceDown.current = true;
+      }
+      if (e.code === 'KeyF' && !(e.target as HTMLElement).matches('input,textarea,select')) {
+        fitToFrame();
+      }
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spaceDown.current = false;
+        mmDown.current = false;
+      }
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup',   up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup',   up);
+    };
+  }, [fitToFrame]);
 
   // Track rendered canvas size for OverlayCanvas
   useEffect(() => {
     const obs = new ResizeObserver(entries => {
       for (const e of entries) {
         const { width, height } = e.contentRect;
-        setCanvasSize({ w: Math.round(width), h: Math.round(height) });
+        setCanvasSize({ w: Math.round(width * vpZoom), h: Math.round(height * vpZoom) });
       }
     });
     if (containerRef.current) obs.observe(containerRef.current);
     return () => obs.disconnect();
-  }, []);
+  }, [vpZoom]);
 
   const timecode = framesToTimecode(currentFrame, fps);
 
   return (
     <div className={`vw-root${isFullscreen ? ' vw-root--fullscreen' : ''}`} aria-label="Preview Viewport">
-      {/* Canvas  */}
-      <div className="vw-canvas" ref={containerRef} aria-label="Video preview area" style={{ position: 'relative' }}>
-        <canvas
-          ref={canvasRef}
-          className="vw-canvas__el"
-          width={1920}
-          height={1080}
-        />
-        {/* Pen overlay — pen path tool (click to add bezier points) */}
-        {activeTool === 'shape:path' && (
-          <OverlayCanvas
-            mode="pen"
-            width={canvasSize.w}
-            height={canvasSize.h}
-            viewScale={canvasSize.w / 1920}
+      {/* Canvas area  */}
+      <div
+        className="vw-canvas"
+        ref={containerRef}
+        aria-label="Video preview area"
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onDoubleClick={fitToFrame}
+        style={{ cursor: spaceDown.current ? 'grab' : 'default' }}
+      >
+        {/*   the element that moves with pan/zoom */}
+        <div
+          className="vw-stage"
+          style={{
+            transform: `translate(${vpPan.x}px, ${vpPan.y}px) scale(${vpZoom})`,
+            transformOrigin: 'center center',
+          }}
+        >
+          <canvas
+            ref={canvasRef}
+            className="vw-canvas__el"
+            width={1920}
+            height={1080}
           />
-        )}
+          {/* Pen / Mask overlay — shape:path activates based on penOutputMode */}
+          {activeTool === 'shape:path' && (
+            penOutputMode === 'mask' && selected ? (
+              <OverlayCanvas
+                mode="mask"
+                clipId={selected.clipId}
+                width={1920}
+                height={1080}
+              />
+            ) : (
+              <OverlayCanvas
+                mode="pen"
+                width={1920}
+                height={1080}
+              />
+            )
+          )}
 
-        {/* Shape draw overlay — drag to draw bounding box (all shape sub-tools) */}
-        {activeTool !== 'shape:path' && activeTool.startsWith('shape:') && (
-          <OverlayCanvas
-            mode="shape"
-            width={canvasSize.w}
-            height={canvasSize.h}
-            viewScale={canvasSize.w / 1920}
-          />
-        )}
+          {/* Shape draw overlay — drag to draw bounding box */}
+          {activeTool !== 'shape:path' && activeTool.startsWith('shape:') && (
+            <OverlayCanvas
+              mode="shape"
+              width={1920}
+              height={1080}
+            />
+          )}
+        </div>{/* /vw-stage */}
+
         {!connected && (
           <div className="vw-canvas__overlay">
             <div className="vw-canvas__spinner" />
@@ -321,6 +445,14 @@ export default function ViewportWidget() {
           </button>
         </div>
         <div className="vw-controls__right">
+          {/* Zoom indicator + reset */}
+          <button
+            className="vw-zoom-btn"
+            title="Zoom level — click to fit (or press F)"
+            onClick={fitToFrame}
+          >
+            {Math.round(vpZoom * 100)}%
+          </button>
           {/* Resolution cap dropdown */}
           <select
             id="vw-res-select"

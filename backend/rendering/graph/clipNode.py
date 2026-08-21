@@ -17,6 +17,8 @@ class ClipNode(BaseNode):
 
         self.clip.evaluateAll(ctx.frame)
         opacity = float(self.clip.transform.opacity.get())
+        masks   = getattr(self.clip, "masks", [])
+        print(f"[ClipNode] frame={ctx.frame} clip={self.clip.clipId[:8]} opacity={opacity:.3f} masks={len(masks)}")
         if opacity <= 0.0:
             return RenderResult()
 
@@ -28,7 +30,6 @@ class ClipNode(BaseNode):
 
         clip   = self.clip
         frame  = ctx.frame
-        masks  = getattr(clip, "masks", [])
 
         try:
             if masks:

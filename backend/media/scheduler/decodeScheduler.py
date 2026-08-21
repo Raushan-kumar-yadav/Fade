@@ -13,7 +13,7 @@ from backend.media.asset.mediaAsset import MediaAsset
 class DecodeScheduler:
      
 
-    BATCH_SIZE       = 30   # frames per worker wakeup (back from 60 — reduces burst alloc)
+    BATCH_SIZE       = 24   # frames per worker wakeup — smaller = more responsive to seeks
     WORKER_COUNT     = 4
     MAX_ACTIVE_PUMPS = 2    # at most 2 clips decode simultaneously (prevents bus saturation)
     SEEK_FWD_THRESH  = 30
@@ -34,6 +34,9 @@ class DecodeScheduler:
 
         # Active pump guard  
         self._activePumps: set[str] = set()
+
+        # Cancel flags — set True when a seek invalidates the running pump
+        self._cancelFlags: dict[str, bool] = {}
 
         # Preview scale factor 
         self._previewScale: float = 0.5   
@@ -86,6 +89,11 @@ class DecodeScheduler:
             seekedBwd  = anchorFrame < lastAnchor - self.SEEK_BWD_THRESH
 
             if seekedFwd or seekedBwd:
+                # Seek detected: cancel any running pump immediately
+                self._cancelFlags[clipId] = True
+                # Remove from activePumps so next pump slot is free immediately
+                self._activePumps.discard(clipId)
+
                 self._lastDecoded[clipId]  = anchorFrame - 1
                 self._targetFrames[clipId] = anchorFrame + radius
 
@@ -99,6 +107,7 @@ class DecodeScheduler:
             # Limit concurrent decoders — prevents PCIe/RAM bus saturation (GPU TDR)
             if behind and clipId not in self._activePumps and len(self._activePumps) < self.MAX_ACTIVE_PUMPS:
                 self._activePumps.add(clipId)
+                self._cancelFlags[clipId] = False  # clear cancel for new pump
                 needs_pump = True
 
         if needs_pump:
@@ -115,6 +124,7 @@ class DecodeScheduler:
                 self._lastDecoded[clipId] = -1
                 self._targetFrames[clipId]  = 0
                 self._lastAnchor[clipId] = -1
+                self._cancelFlags[clipId] = False
                 self._pumpToContent[clipId] = cid
                 self._contentRefCount[cid] = self._contentRefCount.get(cid, 0) + 1
 
@@ -124,6 +134,7 @@ class DecodeScheduler:
             self._targetFrames.pop(clipId, None)
             self._lastDecoded.pop(clipId, None)
             self._lastAnchor.pop(clipId, None)
+            self._cancelFlags.pop(clipId, None)
             contentId = self._pumpToContent.pop(clipId, "")
             self._activePumps.discard(clipId)
             if contentId:
@@ -180,7 +191,12 @@ class DecodeScheduler:
 
         try:
             while decoded < self.BATCH_SIZE:
+                # Check cancel flag — set by seek in prefetchAround()
                 with self._lock:
+                    if self._cancelFlags.get(clipId, False):
+                        needs_more = False
+                        break
+
                     target  = self._targetFrames.get(clipId, 0)
                     current = self._lastDecoded.get(clipId, -1)
 
@@ -214,8 +230,9 @@ class DecodeScheduler:
 
             # Check if more work remains  
             with self._lock:
+                cancelled = self._cancelFlags.get(clipId, False)
                 behind = self._lastDecoded.get(clipId, -1) < self._targetFrames.get(clipId, 0)
-                if behind:
+                if behind and not cancelled:
                     needs_more = True
                     # Stay in activePumps for the chained job
                 else:

@@ -7,7 +7,7 @@ import VideoWorkspace     from './workspaces/VideoWorkspace'
 import AudioWorkspace     from './workspaces/AudioWorkspace'
 import ExportWorkspace    from './workspaces/ExportWorkspace'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
-import type { ActiveTool } from './context/toolContext'
+import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
 import { SelectionContext, type SelectedClip } from './context/selectionContext'
 import ToolboxWidget      from './workspaces/tools/ToolboxWidget'
 import './App.css'
@@ -21,6 +21,8 @@ export default function App() {
   const [lastShapeTool, setLastShapeTool] = useState<ActiveTool>('shape:rect')
   const [showToolbox,   setShowToolbox]   = useState(true)
   const [selected,      setSelected]      = useState<SelectedClip | null>(null)
+  const [penSubMode,    setPenSubMode]    = useState<PenSubMode>('pen:add')
+  const [penOutputMode, setPenOutputMode] = useState<PenOutputMode>('clip')
 
   // Apply cursor to whole app when tool changes
   useEffect(() => {
@@ -41,9 +43,13 @@ export default function App() {
     <SelectionContext.Provider value={{ selected, setSelected }}>
       <ToolContext.Provider value={{
         activeTool,
-        setTool:      setActiveTool,
+        setTool:          setActiveTool,
         lastShapeTool,
-        setLastShape: setLastShapeTool,
+        setLastShape:     setLastShapeTool,
+        penSubMode,
+        setPenSubMode,
+        penOutputMode,
+        setPenOutputMode,
       }}>
         <div className="app-shell">
           <TitleBar

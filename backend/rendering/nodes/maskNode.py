@@ -96,7 +96,7 @@ def apply_masks(canvas: skia.Canvas, clip, draw_content_fn) -> None:
     Algorithm:
       1. saveLayer (transparent backing)
       2. draw clip content
-      3. For each mask: saveLayer → draw mask path → restore with blend mode
+      3. For each mask: draw mask path with blend mode kDstIn (add) or kDstOut (subtract)
       4. restore backing layer
 
     Mirrors Qteee MaskNode compositor pass.
@@ -106,12 +106,16 @@ def apply_masks(canvas: skia.Canvas, clip, draw_content_fn) -> None:
         draw_content_fn()
         return
 
+    print(f"[maskNode] apply_masks: clipId={clip.clipId[:8]} mask_count={len(masks)}")
+
     # Outer layer: captures clip content + mask compositing
     canvas.saveLayer(None, None)
     draw_content_fn()
 
     for mask in masks:
         path = _build_mask_path(mask)
+        n_pts = len(getattr(mask, 'points', []))
+        print(f"[maskNode]   mask={mask.maskId[:8]} shape={mask.shape} mode={mask.mode} pts={n_pts}")
 
         # Feather: blur the mask edge (Qteee: SkMaskFilter on feather)
         mask_paint = skia.Paint()

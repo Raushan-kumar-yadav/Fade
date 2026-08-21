@@ -14,45 +14,42 @@ from backend.timeline.clips.textClip import MaskLayer   # shared mask model
 
 @dataclass
 class ShapeStyle:
-    """
-    Mirrors Qteee ShapeData appearance properties.
-    All values are Python scalars (not AnimatableProperty — we add keyframes later).
-    """
-    shapeType:      str   = "rect"     # rect|circle|ellipse|star|polygon|line|arc
+     
+    shapeType: str   = "rect"     # rect|circle|ellipse|star|polygon|line|arc
     # Rect / rounded rect
-    width:          float = 200.0
-    height:         float = 120.0
+    width: float = 200.0
+    height: float = 120.0
     cornerRadius:   float = 0.0
     # Circle / Ellipse
-    radiusX:        float = 100.0
-    radiusY:        float = 80.0
+    radiusX: float = 100.0
+    radiusY: float = 80.0
     # Star
-    outerRadius:    float = 100.0
-    innerRadius:    float = 40.0
-    numPoints:      int   = 5
+    outerRadius: float = 100.0
+    innerRadius: float = 40.0
+    numPoints: int   = 5
     # Polygon
-    numSides:       int   = 6
-    polygonRadius:  float = 100.0
+    numSides: int   = 6
+    polygonRadius: float = 100.0
     # Line
     x1: float = -100.0; y1: float = 0.0
     x2: float =  100.0; y2: float = 0.0
     # Arc
-    arcStartAngle:  float = 0.0
-    arcSweepAngle:  float = 180.0
-    arcRadius:      float = 100.0
+    arcStartAngle: float = 0.0
+    arcSweepAngle: float = 180.0
+    arcRadius: float = 100.0
     # Fill
-    fillColor:      list  = field(default_factory=lambda: [0.4, 0.4, 1.0, 1.0])
-    fillOpacity:    float = 1.0
+    fillColor: list  = field(default_factory=lambda: [0.4, 0.4, 1.0, 1.0])
+    fillOpacity: float = 1.0
     # Stroke
-    strokeColor:    list  = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])
-    strokeWidth:    float = 0.0
-    strokeStyle:    str   = "center"   # center | inside | outside
-    # Shadow (mirrors Qteee ShapeData shadow fields)
-    shadowEnabled:  bool  = False
-    shadowColor:    list  = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.75])
-    shadowAngle:    float = 135.0      # degrees
+    strokeColor: list  = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])
+    strokeWidth: float = 0.0
+    strokeStyle: str   = "center"   # center | inside | outside
+    # Shadow 
+    shadowEnabled: bool  = False
+    shadowColor: list  = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.75])
+    shadowAngle: float = 135.0      # degrees
     shadowDistance: float = 10.0
-    shadowBlur:     float = 5.0
+    shadowBlur: float = 5.0
 
     def toDict(self) -> dict:
         return self.__dict__.copy()
@@ -82,16 +79,16 @@ class ShapeClip(BaseClip):
         self.style = style or ShapeStyle()
         self.masks: list[MaskLayer] = []
 
-    # ── Render ──────────────────────────────────────────────────────────────
+    # Render  
 
     def applyParam(self, key: str, val: float) -> None:
         super().applyParam(key, val)
-        if key == "shape_w":     self.style.width = val
-        elif key == "shape_h":   self.style.height = val
-        elif key == "fill_r":    self.style.fillColor[0] = val
-        elif key == "fill_g":    self.style.fillColor[1] = val
-        elif key == "fill_b":    self.style.fillColor[2] = val
-        elif key == "fill_a":    self.style.fillColor[3] = val
+        if key == "shape_w": self.style.width = val
+        elif key == "shape_h": self.style.height = val
+        elif key == "fill_r": self.style.fillColor[0] = val
+        elif key == "fill_g": self.style.fillColor[1] = val
+        elif key == "fill_b": self.style.fillColor[2] = val
+        elif key == "fill_a": self.style.fillColor[3] = val
         elif key == "stroke_w":  self.style.strokeWidth = val
 
     def render(self, canvas, frame: int) -> None:
@@ -108,7 +105,7 @@ class ShapeClip(BaseClip):
         data = surf.makeImageSnapshot().encodeToData(skia.kJPEG, 80)
         return bytes(data)
 
-    # ── Mask helpers ────────────────────────────────────────────────────────
+    # Mask helpers  
 
     def addMask(self, mask: MaskLayer) -> None:
         self.masks.append(mask)
@@ -121,27 +118,27 @@ class ShapeClip(BaseClip):
     def getMask(self, maskId: str) -> MaskLayer | None:
         return next((m for m in self.masks if m.maskId == maskId), None)
 
-    # ── Serialization ───────────────────────────────────────────────────────
+    #   Serialization  
 
     def toDict(self) -> dict:
         return {
-            "clipType":   self.clipType,
-            "clipId":     self.clipId,
+            "clipType": self.clipType,
+            "clipId": self.clipId,
             "startFrame": self.startFrame,
-            "duration":   self.duration,
-            "transform":  self.transform.toDict(),
-            "style":      self.style.toDict(),
-            "masks":      [m.toDict() for m in self.masks],
+            "duration": self.duration,
+            "transform": self.transform.toDict(),
+            "style": self.style.toDict(),
+            "masks": [m.toDict() for m in self.masks],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "ShapeClip":
         clip = cls(
-            clipId     = data["clipId"],
+            clipId = data["clipId"],
             startFrame = data["startFrame"],
-            duration   = data["duration"],
-            style      = ShapeStyle.fromDict(data.get("style", {})),
+            duration = data["duration"],
+            style = ShapeStyle.fromDict(data.get("style", {})),
         )
         clip.transform = Transform.fromDict(data.get("transform", {}))
-        clip.masks     = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
+        clip.masks = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
         return clip

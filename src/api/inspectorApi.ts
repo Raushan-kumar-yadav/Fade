@@ -24,11 +24,12 @@ async function del(path: string): Promise<void> {
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export type InterpMode = 'constant' | 'linear' | 'bezier' | 'ease_in' | 'ease_out' | 'ease_both';
+export type ParamType  = 'float' | 'int' | 'toggle' | 'vec2' | 'vec3' | 'vec4';
 
 export interface ParamRow {
   id:          string;
   label:       string;
-  type:        'float' | 'int';
+  type:        ParamType;
   min:         number;
   max:         number;
   default:     number;
@@ -36,7 +37,7 @@ export interface ParamRow {
   value:       number;
   isAnimated:  boolean;
   hasKeyframe: boolean;
-  keyframes:   number[];   // frame numbers that have keyframes
+  keyframes:   number[];
 }
 
 export interface ClipParams {
@@ -57,6 +58,13 @@ export interface KFDef {
   handle_out_v: number;
 }
 
+export interface KFListResult {
+  frames:     KFDef[];
+  allFrames:  number[];
+  vecType:    ParamType;
+  components: number;
+}
+
 // ── API calls ─────────────────────────────────────────────────────────────
 
 export const inspectorApi = {
@@ -69,9 +77,12 @@ export const inspectorApi = {
   addKeyframe: (clipId: string, key: string, kf: KFDef) =>
     post(`/clips/${clipId}/keyframes/${key}`, kf),
 
-  listKeyframes: (clipId: string, key: string) =>
-    get<{ frames: KFDef[]; allFrames: number[] }>(`/clips/${clipId}/keyframes/${key}`),
+  listKeyframes: (clipId: string, key: string): Promise<KFListResult> =>
+    get(`/clips/${clipId}/keyframes/${key}`),
 
   removeKeyframe: (clipId: string, key: string, frame: number) =>
     del(`/clips/${clipId}/keyframes/${key}/${frame}`),
+
+  moveKeyframe: (clipId: string, key: string, fromFrame: number, toFrame: number) =>
+    post(`/clips/${clipId}/keyframes/${key}/move`, { from_frame: fromFrame, to_frame: toFrame }),
 };

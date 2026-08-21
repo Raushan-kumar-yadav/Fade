@@ -605,8 +605,34 @@ def _find_clip(clipId: str):
     raise HTTPException(status_code=404, detail=f"Clip {clipId!r} not found")
 
 
+def _top_empty_track(startFrame: int, duration: int):
+    """Return the topmost video track with no clip overlapping [startFrame, startFrame+duration).
+    If all tracks are occupied, create a new VideoTrack above them."""
+    from backend.timeline.tracks.videoTrack import VideoTrack
+    tl = _active_timeline()
+    endFrame = startFrame + duration
+
+    video_tracks = [t for t in tl.tracks if not getattr(t, 'isAudio', lambda: False)()]
+
+    # Walk from top (last) to bottom; return the first free one
+    for track in reversed(video_tracks):
+        clips = getattr(track, 'clips', [])
+        overlaps = any(
+            not (clip.startFrame >= endFrame or clip.startFrame + clip.duration <= startFrame)
+            for clip in clips
+        )
+        if not overlaps:
+            return track
+
+    # All occupied — add a new track at the top
+    name = f"Video {len(video_tracks) + 1}"
+    new_track = VideoTrack(name)
+    tl.addTrack(new_track)
+    return new_track
+
+
 def _default_video_track():
-    """Return first non-audio track, or create one."""
+    """Return first non-audio track, or create one (legacy helper)."""
     from backend.timeline.tracks.videoTrack import VideoTrack
     tl = _active_timeline()
     for track in tl.tracks:
@@ -630,7 +656,7 @@ class TextClipRequest(BaseModel):
 def addTextClip(req: TextClipRequest):
     import uuid
     tl    = _active_timeline()
-    track = _default_video_track()
+    track = _top_empty_track(req.startFrame, req.duration)
     clip  = TextClip(
         clipId     = str(uuid.uuid4()),
         startFrame = req.startFrame,
@@ -638,6 +664,7 @@ def addTextClip(req: TextClipRequest):
         style      = TextStyle.fromDict(req.style),
     )
     track.addClip(clip)
+    _clipTrackMap[clip.clipId] = tl.tracks.index(track)
     return clip.toDict()
 
 
@@ -664,22 +691,28 @@ def updateTextClip(clipId: str, req: TextPatchRequest):
 # ── Shape ─────────────────────────────────────────────────────────────
 
 class ShapeClipRequest(BaseModel):
-    startFrame: int  = 0
-    duration:   int  = 150
-    style:      dict = {}
+    startFrame: int   = 0
+    duration:   int   = 150
+    style:      dict  = {}
+    x:          float = 960.0   # center x in design space (default: canvas center)
+    y:          float = 540.0   # center y in design space
 
 
 @app.post("/clips/shape")
 def addShapeClip(req: ShapeClipRequest):
     import uuid
-    track = _default_video_track()
+    tl    = _active_timeline()
+    track = _top_empty_track(req.startFrame, req.duration)
     clip  = ShapeClip(
         clipId     = str(uuid.uuid4()),
         startFrame = req.startFrame,
         duration   = req.duration,
         style      = ShapeStyle.fromDict(req.style),
     )
+    # Position the shape where the user drew it
+    clip.transform.position.setBase(req.x, req.y)
     track.addClip(clip)
+    _clipTrackMap[clip.clipId] = tl.tracks.index(track)
     return clip.toDict()
 
 
@@ -716,7 +749,8 @@ class PenClipRequest(BaseModel):
 @app.post("/clips/pen")
 def addPenClip(req: PenClipRequest):
     import uuid
-    track = _default_video_track()
+    tl    = _active_timeline()
+    track = _top_empty_track(req.startFrame, req.duration)
     clip  = PenClip(
         clipId     = str(uuid.uuid4()),
         startFrame = req.startFrame,
@@ -726,6 +760,7 @@ def addPenClip(req: PenClipRequest):
         style      = ShapeStyle.fromDict(req.style),
     )
     track.addClip(clip)
+    _clipTrackMap[clip.clipId] = tl.tracks.index(track)
     return clip.toDict()
 
 
@@ -761,7 +796,8 @@ class MaskRequest(BaseModel):
 def addMask(clipId: str, req: MaskRequest):
     import uuid
     clip, _ = _find_clip(clipId)
-    if not hasattr(clip, "masks"):
+    # All clips now support masks via BaseClip
+    if not hasattr(clip, 'masks'):
         raise HTTPException(400, "Clip type does not support masks")
     mask = MaskLayer(
         maskId   = str(uuid.uuid4()),
@@ -774,6 +810,7 @@ def addMask(clipId: str, req: MaskRequest):
         points   = req.points,
     )
     clip.addMask(mask)
+    print(f"[addMask] clipId={clipId[:8]} maskId={mask.maskId[:8]} shape={mask.shape} pts={len(mask.points)} mode={mask.mode}")
     return clip.toDict()
 
 
@@ -795,6 +832,7 @@ def updateMask(clipId: str, maskId: str, req: MaskPatchRequest):
     for field_name in ("name", "mode", "inverted", "feather", "opacity", "points"):
         v = getattr(req, field_name)
         if v is not None:
+            print(f"[updateMask] clipId={clipId[:8]} maskId={maskId[:8]} {field_name}={v}")
             setattr(mask, field_name, v)
     return clip.toDict()
 
@@ -806,6 +844,29 @@ def removeMask(clipId: str, maskId: str):
     if not removed:
         raise HTTPException(404, f"Mask {maskId!r} not found")
     return {"status": "ok", "clipId": clipId}
+
+
+@app.get("/clips/{clipId}/masks")
+def listMasks(clipId: str):
+    """Return all masks attached to a clip."""
+    clip, _ = _find_clip(clipId)
+    masks = getattr(clip, 'masks', [])
+    return {
+        "clipId": clipId,
+        "masks": [
+            {
+                "maskId":   m.maskId,
+                "name":     m.name,
+                "shape":    m.shape,
+                "mode":     m.mode,
+                "inverted": m.inverted,
+                "feather":  m.feather,
+                "opacity":  m.opacity,
+                "pointCount": len(getattr(m, 'points', [])),
+            }
+            for m in masks
+        ],
+    }
 
 
 # ── System fonts ───────────────────────────────────────────────────────
@@ -843,16 +904,21 @@ def _clip_param_schema(clip) -> list:
     from backend.timeline.clips.shapeClip import ShapeClip
     from backend.timeline.clips.penClip   import PenClip
 
-    # Common transform params (every clip)
+    t = clip.transform
+    px, py = t.position.get()
+    sx, sy = t.scale.get()
+    ax, ay = t.anchor.get()
+
+    # Transform params — real units: opacity 0-1, scale 0-10, position px, rotation deg
     base = [
-        {"id": "opacity",   "label": "Opacity",    "type": "float", "min": 0,    "max": 100,  "default": 100,   "group": "Transform"},
-        {"id": "pos_x",     "label": "Position X", "type": "float", "min": -960, "max": 960,  "default": 0,     "group": "Transform"},
-        {"id": "pos_y",     "label": "Position Y", "type": "float", "min": -540, "max": 540,  "default": 0,     "group": "Transform"},
-        {"id": "scale_x",   "label": "Scale X",    "type": "float", "min": 0,    "max": 500,  "default": 100,   "group": "Transform"},
-        {"id": "scale_y",   "label": "Scale Y",    "type": "float", "min": 0,    "max": 500,  "default": 100,   "group": "Transform"},
-        {"id": "rotation",  "label": "Rotation",   "type": "float", "min": -360, "max": 360,  "default": 0,     "group": "Transform"},
-        {"id": "anchor_x",  "label": "Anchor X",   "type": "float", "min": -960, "max": 960,  "default": 0,     "group": "Transform"},
-        {"id": "anchor_y",  "label": "Anchor Y",   "type": "float", "min": -540, "max": 540,  "default": 0,     "group": "Transform"},
+        {"id": "opacity",  "label": "Opacity",    "type": "float", "min": 0,     "max": 1,    "default": round(t.opacity.get(), 4),  "group": "Transform"},
+        {"id": "pos_x",    "label": "Position X", "type": "float", "min": -3840, "max": 3840, "default": round(px, 2),               "group": "Transform"},
+        {"id": "pos_y",    "label": "Position Y", "type": "float", "min": -2160, "max": 2160, "default": round(py, 2),               "group": "Transform"},
+        {"id": "scale_x",  "label": "Scale X",    "type": "float", "min": 0,     "max": 10,   "default": round(sx, 4),               "group": "Transform"},
+        {"id": "scale_y",  "label": "Scale Y",    "type": "float", "min": 0,     "max": 10,   "default": round(sy, 4),               "group": "Transform"},
+        {"id": "rotation", "label": "Rotation",   "type": "float", "min": -360,  "max": 360,  "default": round(t.rotation.get(), 2), "group": "Transform"},
+        {"id": "anchor_x", "label": "Anchor X",   "type": "float", "min": -1920, "max": 1920, "default": round(ax, 2),               "group": "Transform"},
+        {"id": "anchor_y", "label": "Anchor Y",   "type": "float", "min": -1080, "max": 1080, "default": round(ay, 2),               "group": "Transform"},
     ]
 
     if isinstance(clip, TextClip):
@@ -868,27 +934,32 @@ def _clip_param_schema(clip) -> list:
         ]
 
     elif isinstance(clip, ShapeClip):
-        s = clip.style
-        fill = s.fillColor or [0.4, 0.4, 1.0, 1.0]
+        s      = clip.style
+        fill   = s.fillColor   or [0.4, 0.4, 1.0, 1.0]
+        stroke = s.strokeColor or [1.0, 1.0, 1.0, 1.0]
         base += [
-            {"id": "shape_w",  "label": "Width",       "type": "float", "min": 1,   "max": 3840, "default": s.width,      "group": "Shape"},
-            {"id": "shape_h",  "label": "Height",      "type": "float", "min": 1,   "max": 2160, "default": s.height,     "group": "Shape"},
-            {"id": "fill_r",   "label": "Fill R",      "type": "float", "min": 0,   "max": 1,    "default": fill[0],      "group": "Shape"},
-            {"id": "fill_g",   "label": "Fill G",      "type": "float", "min": 0,   "max": 1,    "default": fill[1],      "group": "Shape"},
-            {"id": "fill_b",   "label": "Fill B",      "type": "float", "min": 0,   "max": 1,    "default": fill[2],      "group": "Shape"},
-            {"id": "fill_a",   "label": "Fill A",      "type": "float", "min": 0,   "max": 1,    "default": fill[3],      "group": "Shape"},
-            {"id": "stroke_w", "label": "Stroke Width","type": "float", "min": 0,   "max": 50,   "default": s.strokeWidth, "group": "Shape"},
+            {"id": "shape_w",  "label": "Width",        "type": "float", "min": 1, "max": 3840, "default": s.width,       "group": "Shape"},
+            {"id": "shape_h",  "label": "Height",       "type": "float", "min": 1, "max": 2160, "default": s.height,      "group": "Shape"},
+            {"id": "fill_r",   "label": "Fill R",       "type": "float", "min": 0, "max": 1,    "default": fill[0],       "group": "Shape"},
+            {"id": "fill_g",   "label": "Fill G",       "type": "float", "min": 0, "max": 1,    "default": fill[1],       "group": "Shape"},
+            {"id": "fill_b",   "label": "Fill B",       "type": "float", "min": 0, "max": 1,    "default": fill[2],       "group": "Shape"},
+            {"id": "fill_a",   "label": "Fill A",       "type": "float", "min": 0, "max": 1,    "default": fill[3],       "group": "Shape"},
+            {"id": "stroke_r", "label": "Stroke R",     "type": "float", "min": 0, "max": 1,    "default": stroke[0],     "group": "Shape"},
+            {"id": "stroke_g", "label": "Stroke G",     "type": "float", "min": 0, "max": 1,    "default": stroke[1],     "group": "Shape"},
+            {"id": "stroke_b", "label": "Stroke B",     "type": "float", "min": 0, "max": 1,    "default": stroke[2],     "group": "Shape"},
+            {"id": "stroke_w", "label": "Stroke Width", "type": "float", "min": 0, "max": 50,   "default": s.strokeWidth, "group": "Shape"},
         ]
 
     elif isinstance(clip, PenClip):
-        s = clip.style
-        sc = s.get('strokeColor', [1,1,1,1]) if isinstance(s, dict) else [1,1,1,1]
+        s  = clip.style
+        sc = s.strokeColor if hasattr(s, 'strokeColor') else [1.0, 1.0, 1.0, 1.0]
+        fc = s.fillColor   if hasattr(s, 'fillColor')   else [0.0, 0.0, 0.0, 0.0]
         base += [
-            {"id": "stroke_r", "label": "Stroke R", "type": "float", "min": 0, "max": 1, "default": sc[0], "group": "Path"},
-            {"id": "stroke_g", "label": "Stroke G", "type": "float", "min": 0, "max": 1, "default": sc[1], "group": "Path"},
-            {"id": "stroke_b", "label": "Stroke B", "type": "float", "min": 0, "max": 1, "default": sc[2], "group": "Path"},
-            {"id": "stroke_w", "label": "Stroke Width","type": "float","min": 0,"max":50, "default": 2,     "group": "Path"},
-            {"id": "fill_a",   "label": "Fill Alpha", "type": "float", "min": 0, "max": 1, "default": 0,   "group": "Path"},
+            {"id": "stroke_r", "label": "Stroke R",     "type": "float", "min": 0, "max": 1,  "default": sc[0],         "group": "Path"},
+            {"id": "stroke_g", "label": "Stroke G",     "type": "float", "min": 0, "max": 1,  "default": sc[1],         "group": "Path"},
+            {"id": "stroke_b", "label": "Stroke B",     "type": "float", "min": 0, "max": 1,  "default": sc[2],         "group": "Path"},
+            {"id": "stroke_w", "label": "Stroke Width", "type": "float", "min": 0, "max": 50, "default": s.strokeWidth, "group": "Path"},
+            {"id": "fill_a",   "label": "Fill Alpha",   "type": "float", "min": 0, "max": 1,  "default": fc[3],         "group": "Path"},
         ]
 
     return base
@@ -951,9 +1022,16 @@ def setClipParam(clipId: str, key: str, body: ParamValueBody):
 
     ap = _get_or_create_anim(clip, key, p_def["default"])
     if body.frame >= 0:
+        print(f"[setClipParam] clipId={clipId[:8]} key={key!r} frame={body.frame} value={body.value} (keyframe)")
         ap.add_keyframe(body.frame, body.value, Interp.linear)
     else:
+        print(f"[setClipParam] clipId={clipId[:8]} key={key!r} value={body.value} (base)")
         ap.set_base(body.value)
+        # Apply immediately so render on same frame picks up the change
+        clip.applyParam(key, body.value)
+        # Clear frame cache guard so evaluateAll re-runs on next render
+        if hasattr(clip, '_lastFrame'):
+            clip._lastFrame = -1
 
     return {"status": "ok", "key": key, "value": body.value,
             "isAnimated": ap.is_animated()}
@@ -967,13 +1045,14 @@ def addKeyframe(clipId: str, key: str, body: KeyframeBody):
     if p_def is None:
         raise HTTPException(404, f"Unknown param {key!r}")
 
-    ap  = _get_or_create_anim(clip, key, p_def["default"])
-    kf  = KF(
+    ap = _get_or_create_anim(clip, key, p_def["default"])
+    kf = KF(
         frame=body.frame, value=body.value,
         interp=Interp(body.interp),
         handle_in_f=body.handle_in_f,  handle_in_v=body.handle_in_v,
         handle_out_f=body.handle_out_f, handle_out_v=body.handle_out_v,
     )
+    # For scalar params, add to component 0 only; vec params get single-value per component
     ap._tracks[0].add(kf)
     return {"status": "ok", "frames": ap.all_keyframe_frames()}
 
@@ -982,12 +1061,32 @@ def addKeyframe(clipId: str, key: str, body: KeyframeBody):
 def listKeyframes(clipId: str, key: str):
     clip, _ = _find_clip(clipId)
     if not hasattr(clip, '_anim_params') or key not in clip._anim_params:
-        return {"frames": []}
+        return {"frames": [], "allFrames": [], "vecType": "float"}
     ap = clip._anim_params[key]
     return {
-        "frames": ap.keyframes_for_component(0),
-        "allFrames": ap.all_keyframe_frames(),
+        "frames":     ap.keyframes_for_component(0),
+        "allFrames":  ap.all_keyframe_frames(),
+        "vecType":    ap.to_schema_type() if hasattr(ap, 'to_schema_type') else "float",
+        "components": ap.components if hasattr(ap, 'components') else 1,
     }
+
+
+class MoveKeyframeBody(BaseModel):
+    from_frame: int
+    to_frame:   int
+
+
+@app.post("/clips/{clipId}/keyframes/{key}/move")
+def moveKeyframe(clipId: str, key: str, body: MoveKeyframeBody):
+    """Move a keyframe from one frame position to another."""
+    clip, _ = _find_clip(clipId)
+    if not hasattr(clip, '_anim_params') or key not in clip._anim_params:
+        raise HTTPException(404, "No keyframes on this param")
+    ap = clip._anim_params[key]
+    moved = ap.move_keyframe(body.from_frame, body.to_frame)
+    if not moved:
+        raise HTTPException(404, f"No keyframe at frame {body.from_frame}")
+    return {"status": "ok", "frames": ap.all_keyframe_frames()}
 
 
 @app.delete("/clips/{clipId}/keyframes/{key}/{frame}")

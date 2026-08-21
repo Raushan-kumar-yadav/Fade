@@ -6,7 +6,7 @@ from backend.animation.transform import Transform
 class BaseClip(ABC):
     """
     Abstract base for every clip type (Video, Audio, Text, Solid, Shape …)
- 
+    All clips support masks, effects, and the animatable Transform.
     """
 
     def __init__(self, clipId: str, startFrame: int, duration: int) -> None:
@@ -16,9 +16,12 @@ class BaseClip(ABC):
         self.effects: list = []   # list[BaseEffect]
         self.isSelected  = False
         self.isLocked = False
-
-        
         self.transform = Transform()
+
+        #   Mask support  
+        # Lazy import avoids circular deps 
+        from backend.timeline.clips.textClip import MaskLayer   
+        self.masks: list = []    # list[MaskLayer]
 
     # Derived geometry  
     @property
@@ -47,14 +50,28 @@ class BaseClip(ABC):
 
     def applyParam(self, key: str, val: float) -> None:
         """Apply a computed animation param to the clip's actual properties."""
-        if key == "opacity":   self.transform.opacity.setBaseValue(val)
-        elif key == "pos_x":   self.transform.position.setBase(val, self.transform.position.y.baseValue)
-        elif key == "pos_y":   self.transform.position.setBase(self.transform.position.x.baseValue, val)
+        print(f"[BaseClip.applyParam] {self.__class__.__name__} id={self.clipId[:8]} key={key!r} val={val}")
+        if key == "opacity": self.transform.opacity.setBaseValue(val)
+        elif key == "pos_x": self.transform.position.setBase(val, self.transform.position.y.baseValue)
+        elif key == "pos_y": self.transform.position.setBase(self.transform.position.x.baseValue, val)
         elif key == "scale_x": self.transform.scale.setBase(val, self.transform.scale.y.baseValue)
         elif key == "scale_y": self.transform.scale.setBase(self.transform.scale.x.baseValue, val)
         elif key == "rotation":self.transform.rotation.setBaseValue(val)
         elif key == "anchor_x":self.transform.anchor.setBase(val, self.transform.anchor.y.baseValue)
         elif key == "anchor_y":self.transform.anchor.setBase(self.transform.anchor.x.baseValue, val)
+
+    #   Mask helpers  
+
+    def addMask(self, mask) -> None:
+        self.masks.append(mask)
+
+    def removeMask(self, maskId: str) -> bool:
+        before = len(self.masks)
+        self.masks = [m for m in self.masks if m.maskId != maskId]
+        return len(self.masks) < before
+
+    def getMask(self, maskId: str):
+        return next((m for m in self.masks if m.maskId == maskId), None)
 
     def localFrame(self, frame: int) -> int:
         """Convert timeline frame to clip-local frame."""

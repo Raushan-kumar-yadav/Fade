@@ -49,7 +49,7 @@
   min-height: 0;
 }
 
-/* Aspect-ratio frame (16:9) */
+/* Aspect-ratio frame  */
 .vw-canvas::before {
   content: '';
   position: absolute;
@@ -57,6 +57,17 @@
   border: 1px solid #1e1e1e;
   border-radius: 2px;
   pointer-events: none;
+  z-index: 10;
+}
+
+/* Stage */
+.vw-stage {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  flex-shrink: 0;
+ 
+  will-change: transform;
 }
 
 .vw-canvas__empty {
@@ -169,12 +180,36 @@
   color: #6aaff5;
 }
 
+/* Canvas el  */
 .vw-canvas__el {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
   display: block;
+  width: 1920px;
+  height: 1080px;
   border-radius: 2px;
+  pointer-events: none;
+}
+
+/* Zoom level button in controls */
+.vw-zoom-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--vw-text-2);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 38px;
+  text-align: center;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  margin-right: 6px;
+}
+.vw-zoom-btn:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.18);
+  color: var(--vw-text-1);
 }
 
 .vw-canvas__overlay {

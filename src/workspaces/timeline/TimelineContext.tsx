@@ -356,6 +356,9 @@ const TimelineCtx = createContext<TimelineContextValue | null>(null);
 //   Provider
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  // Keep a ref so async callbacks can read latest tracks without stale closure
+  const stateRef = React.useRef<TimelineState>(state);
+  React.useEffect(() => { stateRef.current = state; }, [state]);
 
   useEffect(() => {
     // Hoist onFrame so cleanup can always reach it
@@ -365,22 +368,52 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("fade:frame", onFrame);
 
-    function startSync(port: number) {
+    function fetchAndSetTracks(port: number, preserveOrder = false) {
       fetch(`http://127.0.0.1:${port}/timeline/state`)
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (!data) return;
-          const tracks: Track[] = (data.tracks ?? []).map(mapBackendTrack);
+          const backendTracks = data.tracks ?? [];
+          const tracks: Track[] = preserveOrder
+            ? mapBackendTracksPreservingOrder(
+                stateRef.current.tracks,
+                backendTracks,
+              )
+            : backendTracks.map(mapBackendTrack);
           dispatch({ type: "SET_TRACKS", tracks });
           if (data.totalFrames)
             dispatch({ type: "SET_TOTAL_FRAMES", totalFrames: data.totalFrames });
         })
         .catch(() => {});
+    }
 
-      // Poll only for play/pause + totalFrames — NOT for frame position.
-      // Frame position is driven zero-lag via the 'fade:frame' custom event
-      // dispatched by ViewportWidget on every WebSocket frame.
-      const id = setInterval(() => {
+    function startSync(port: number) {
+      // ── Startup burst: poll /timeline/state rapidly for 2s ────────────
+      // Necessary because the backend lifespan (which seeds tracks) runs
+      // after FastAPI starts accepting connections — so the very first
+      // fetch may return 0 tracks before lifespan finishes.
+      let burstCount = 0;
+      const BURST_INTERVAL = 200;  // ms between polls
+      const BURST_DURATION = 2000; // ms total burst window
+      const burstId = setInterval(() => {
+        fetchAndSetTracks(port, false);
+        burstCount++;
+        if (burstCount * BURST_INTERVAL >= BURST_DURATION) {
+          clearInterval(burstId);
+        }
+      }, BURST_INTERVAL);
+
+      // ── Listen for track changes from viewport tools ───────────────────
+      const onTracksChanged = () => fetchAndSetTracks(port, true);
+      window.addEventListener("fade:tracks-changed", onTracksChanged);
+
+      // ── Slow refresh: re-sync tracks every 2s (catches missed events) ──
+      const trackRefreshId = setInterval(() => {
+        fetchAndSetTracks(port, true);
+      }, 2000);
+
+      // ── Fast poll: playback state (play/pause + totalFrames) ──────────
+      const playbackId = setInterval(() => {
         fetch(`http://127.0.0.1:${port}/playback/state`)
           .then((r) => (r.ok ? r.json() : null))
           .then((data) => {
@@ -392,27 +425,31 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           .catch(() => {});
       }, 500);
 
-      return id;
+      return () => {
+        clearInterval(burstId);
+        clearInterval(trackRefreshId);
+        clearInterval(playbackId);
+        window.removeEventListener("fade:tracks-changed", onTracksChanged);
+      };
     }
 
-    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let cleanupSync: (() => void) | null = null;
 
     const knownPort: number | null = (window as any).__FADE_PORT__;
     if (knownPort) {
-      intervalId = startSync(knownPort);
+      cleanupSync = startSync(knownPort);
     } else {
       const handler = (e: Event) => {
-        intervalId = startSync((e as CustomEvent<number>).detail);
+        cleanupSync = startSync((e as CustomEvent<number>).detail);
       };
       window.addEventListener("fade:port", handler, { once: true });
     }
 
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      if (cleanupSync) cleanupSync();
       window.removeEventListener("fade:frame", onFrame);
     };
   }, []);
-
 
   return (
     <TimelineCtx.Provider value={{ state, dispatch }}>

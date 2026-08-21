@@ -1,9 +1,4 @@
-"""
-TextClip — Skia-rendered text layer.
-
-Mirrors Qteee-Vulkan's TextClip + TextLayoutSettings + TextStylingSettings,
-adapted for Python + skia-python (CPU raster surface).
-"""
+ 
 from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
@@ -13,9 +8,9 @@ from backend.animation.transform import Transform
 
 @dataclass
 class TextStyle:
-    """Mirrors TextLayoutSettings + TextStylingSettings + TextFormatSettings."""
+     
     # Content
-    text:           str   = "New Text"
+    text: str   = "New Text"
     # Font
     fontFamily:     str   = "Arial"
     fontSize:       float = 48.0

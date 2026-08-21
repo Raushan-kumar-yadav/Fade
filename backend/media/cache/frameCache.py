@@ -4,13 +4,13 @@ from threading import Lock
 from typing import Optional
 from backend.media.decoder.decodedFrame import DecodedFrame
 
-# Cache key: (assetId/contentId, frameNumber)
+# Cache key 
 FrameKey = tuple[str, int]
 
 
 class FrameCache:
 
-    MAX_FRAMES: int = 300   # hard cap: never store more than this many frames
+    MAX_FRAMES: int = 150   # hard cap 
 
     def __init__(self, maxBytes: int = 512 * 1024 * 1024) -> None:  # 512 MB default
         self._maxBytes  = maxBytes
@@ -62,7 +62,7 @@ class FrameCache:
         while (self._usedBytes > self._maxBytes or len(self._map) > self.MAX_FRAMES) and self._map:
             _, lruFrame = self._map.popitem(last=False)  # pop oldest
             self._usedBytes -= lruFrame.sizeBytes()
-            # Explicitly release Skia memory — Python GC may not run immediately
+             
             lruFrame.skiaImage = None
             lruFrame.dataRGBA  = b""
 

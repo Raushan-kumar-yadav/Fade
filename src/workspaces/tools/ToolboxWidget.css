@@ -6,7 +6,8 @@
 .tbx-floating {
   position: fixed;
   z-index: 200;
-  width: 52px;
+  min-width: 52px;
+  width: auto;
   background: #0f131a;
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 10px;
@@ -22,7 +23,8 @@
 
 /* ── Docked (sidebar) mode ───────────────────────────────────────────────── */
 .tbx-docked {
-  width: 52px;
+  min-width: 52px;
+  width: auto;
   height: 100%;
   background: #0f131a;
   border-right: 1px solid rgba(255,255,255,0.06);
@@ -293,4 +295,98 @@
   white-space: nowrap;
   pointer-events: none;
   z-index: 400;
+}
+
+/* ── Pen Sub-tool Panel ───────────────────────────────────────────────────── */
+.tbx-pen-panel {
+  padding: 4px 4px 8px;
+  width: 160px;
+}
+.tbx-pen-subtools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+.tbx-pen-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #94a3b8;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+  text-align: left;
+}
+.tbx-pen-btn:hover {
+  background: rgba(255,255,255,0.06);
+  color: #e2e8f0;
+}
+.tbx-pen-btn--active {
+  background: rgba(99,102,241,0.15) !important;
+  border-color: rgba(99,102,241,0.4) !important;
+  color: #a5b4fc !important;
+}
+.tbx-pen-btn__icon {
+  font-size: 13px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.tbx-pen-btn__label {
+  flex: 1;
+  font-size: 11px;
+}
+.tbx-pen-btn__key {
+  font-size: 9px;
+  font-weight: 600;
+  color: #475569;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  padding: 1px 4px;
+  flex-shrink: 0;
+}
+.tbx-pen-btn--active .tbx-pen-btn__key {
+  color: #818cf8;
+  background: rgba(99,102,241,0.2);
+}
+.tbx-pen-divider {
+  height: 1px;
+  background: rgba(255,255,255,0.07);
+  margin: 6px 0;
+}
+
+/* Output mode toggle */
+.tbx-pen-output {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+}
+.tbx-pen-output-btn {
+  flex: 1;
+  padding: 5px 4px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 5px;
+  color: #64748b;
+  font-size: 10px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: all 0.12s;
+  text-align: center;
+}
+.tbx-pen-output-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: #94a3b8;
+}
+.tbx-pen-output-btn.active {
+  background: rgba(99,102,241,0.15);
+  border-color: rgba(99,102,241,0.5);
+  color: #a5b4fc;
 }

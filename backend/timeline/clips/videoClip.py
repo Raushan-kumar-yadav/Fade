@@ -58,7 +58,7 @@ class VideoClip(BaseClip):
             duration,
         )
         self.color = color
-        self.assetId = assetId     # pointer to MediaAsset in the AssetLibrary
+        self.assetId = assetId      
 
         # Injected by Engine after construction
         self._scheduler: "DecodeScheduler | None" = None
@@ -72,7 +72,7 @@ class VideoClip(BaseClip):
         self.blendMode  = AnimatableProperty(0.0)
 
         self._lastFrame = -1
-        self._lastValidFrame: "DecodedFrame | None" = None  # hold-last-frame on cache miss
+        self._lastValidFrame: "DecodedFrame | None" = None   
 
     #   evaluateAll  
 
@@ -214,11 +214,13 @@ class VideoClip(BaseClip):
             "cropTop": self.cropTop.get(),
             "cropBottom": self.cropBottom.get(),
             "blendMode":  int(self.blendMode.get()),
+            "masks": [m.toDict() for m in self.masks],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "VideoClip":
         from backend.animation.transform import Transform
+        from backend.timeline.clips.textClip import MaskLayer
         c = cls(
             clipId = data["clipId"],
             startFrame = data["startFrame"],
@@ -233,4 +235,5 @@ class VideoClip(BaseClip):
         c.cropTop.setBaseValue(data.get("cropTop", 0.0))
         c.cropBottom.setBaseValue(data.get("cropBottom", 0.0))
         c.blendMode.setBaseValue(float(data.get("blendMode", 0)))
+        c.masks = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
         return c
