@@ -31,11 +31,9 @@ from backend.history.commandStack import (
 
 engine = Engine()
 
-# In-memory asset library 
 _library: dict[str, MediaAsset] = {}
-
-# In-memory clip→track index map   
 _clipTrackMap: dict[str, int] = {}
+_exportJobs: dict[str, object] = {}
 
 #   Lifespan  
 
@@ -275,7 +273,9 @@ def addClip(req: AddClipRequest):
         clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
         engine.scheduler.registerClip(clip.clipId, asset)
 
-    track.addClip(clip)
+    from backend.history.commandStack import AddClipCommand
+    cmd = AddClipCommand(track, clip)
+    engine.commandStack.execute(cmd)
     _clipTrackMap[clip.clipId] = req.trackIndex
 
     return {
@@ -308,9 +308,15 @@ def moveClip(req: MoveClipRequest):
     if clip is None:
         raise HTTPException(404, f"Clip {req.clipId!r} not found")
 
-    dstIdx = max(0, min(len(tl.tracks) - 1, req.trackIndex))
-    clip.startFrame = max(0, req.startFrame)
-    tl.tracks[dstIdx].addClip(clip)
+    dstIdx   = max(0, min(len(tl.tracks) - 1, req.trackIndex))
+    oldStart = clip.startFrame
+    newStart = max(0, req.startFrame)
+    srcTrack = tl.tracks[srcIdx]
+    dstTrack = tl.tracks[dstIdx]
+
+    from backend.history.commandStack import MoveClipCommand
+    cmd = MoveClipCommand(clip, srcTrack, dstTrack, oldStart, newStart)
+    engine.commandStack.execute(cmd)
     _clipTrackMap[req.clipId] = dstIdx
     return {"status": "ok"}
 
@@ -825,7 +831,24 @@ def addMask(clipId: str, req: MaskRequest):
     )
     clip.addMask(mask)
     print(f"[addMask] clipId={clipId[:8]} maskId={mask.maskId[:8]} shape={mask.shape} pts={len(mask.points)} mode={mask.mode}")
-    return clip.toDict()
+    return {
+        "clipId": clipId,
+        "maskId": mask.maskId,
+        "masks": [
+            {
+                "maskId": m.maskId,
+                "name": m.name,
+                "shape": m.shape,
+                "mode": m.mode,
+                "inverted": m.inverted,
+                "feather": m.feather,
+                "opacity": m.opacity,
+                "points": getattr(m, 'points', []),
+                "pointCount": len(getattr(m, 'points', [])),
+            }
+            for m in clip.masks
+        ],
+    }
 
 
 class MaskPatchRequest(BaseModel):
@@ -862,7 +885,7 @@ def removeMask(clipId: str, maskId: str):
 
 @app.get("/clips/{clipId}/masks")
 def listMasks(clipId: str):
-    """Return all masks attached to a clip."""
+    """Return all masks attached to a clip, including full point arrays."""
     clip, _ = _find_clip(clipId)
     masks = getattr(clip, 'masks', [])
     return {
@@ -876,11 +899,172 @@ def listMasks(clipId: str):
                 "inverted": m.inverted,
                 "feather": m.feather,
                 "opacity": m.opacity,
+                "points": getattr(m, 'points', []),
                 "pointCount": len(getattr(m, 'points', [])),
             }
             for m in masks
         ],
     }
+
+
+# Effects  
+
+@app.get("/effects/catalog")
+def effectsCatalog():
+    from backend.timeline.effects.effects import EFFECT_META
+    return {"effects": EFFECT_META}
+
+class EffectAddRequest(BaseModel):
+    effectType: str
+
+class EffectPatchRequest(BaseModel):
+    enabled: bool | None = None
+    params:  dict | None = None
+
+@app.post("/clips/{clipId}/effects")
+def addEffect(clipId: str, req: EffectAddRequest):
+    from backend.timeline.effects.effects import EFFECT_REGISTRY
+    clip, _ = _find_clip(clipId)
+    cls = EFFECT_REGISTRY.get(req.effectType)
+    if cls is None:
+        raise HTTPException(400, f"Unknown effect type: {req.effectType!r}")
+    eff = cls()
+    clip.effects.append(eff)
+    return {"effectId": eff.effectId, "name": eff.name,
+            "type": req.effectType, "params": eff.params()}
+
+@app.get("/clips/{clipId}/effects")
+def listEffects(clipId: str):
+    clip, _ = _find_clip(clipId)
+    return {"effects": [
+        {"effectId": e.effectId, "name": e.name, "enabled": e.enabled,
+         "type": e.toDict().get("type"), "params": e.params()}
+        for e in clip.effects
+    ]}
+
+@app.patch("/clips/{clipId}/effects/{effectId}")
+def patchEffect(clipId: str, effectId: str, req: EffectPatchRequest):
+    clip, _ = _find_clip(clipId)
+    eff = next((e for e in clip.effects if e.effectId == effectId), None)
+    if eff is None:
+        raise HTTPException(404, "Effect not found")
+    if req.enabled is not None:
+        eff.enabled = req.enabled
+    if req.params:
+        for k, v in req.params.items():
+            eff.setParam(k, float(v))
+    return {"effectId": eff.effectId, "params": eff.params()}
+
+@app.delete("/clips/{clipId}/effects/{effectId}")
+def removeEffect(clipId: str, effectId: str):
+    clip, _ = _find_clip(clipId)
+    before = len(clip.effects)
+    clip.effects = [e for e in clip.effects if e.effectId != effectId]
+    if len(clip.effects) == before:
+        raise HTTPException(404, "Effect not found")
+    return {"status": "ok"}
+
+
+# Waveform  
+
+@app.get("/assets/{assetId}/waveform")
+def getWaveform(assetId: str, bins: int = 200):
+    asset = _library.get(assetId)
+    if asset is None:
+        raise HTTPException(404, f"Asset {assetId!r} not found")
+    from backend.audio.mixer import extract_waveform
+    peaks = extract_waveform(asset.filepath, bins)
+    return {"assetId": assetId, "bins": len(peaks), "peaks": peaks}
+
+
+@app.get("/assets/{assetId}/stream")
+def streamAsset(assetId: str, request: __import__('fastapi').Request = None):
+    from fastapi.responses import FileResponse
+    asset = _library.get(assetId)
+    if asset is None:
+        raise HTTPException(404, f"Asset {assetId!r} not found")
+    path = asset.filepath
+    if not os.path.exists(path):
+        raise HTTPException(404, "File not found on disk")
+    ext  = os.path.splitext(path)[1].lower()
+    mime_map = {
+        ".mp3": "audio/mpeg", ".wav": "audio/wav", ".aac": "audio/aac",
+        ".flac": "audio/flac", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
+        ".mp4": "video/mp4", ".mov": "video/quicktime", ".avi": "video/x-msvideo",
+    }
+    media_type = mime_map.get(ext, "application/octet-stream")
+    return FileResponse(path, media_type=media_type, headers={
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-cache",
+    })
+
+
+@app.get("/timeline/audio-clips")
+def listAudioClips():
+    tl = engine.activeTimeline
+    if tl is None:
+        return {"clips": []}
+    result = []
+    for track in tl.tracks:
+        if not getattr(track, 'isAudio', lambda: False)():
+            continue
+        for clip in track.clips:
+            asset = _library.get(getattr(clip, 'assetId', None) or '')
+            if asset is None:
+                continue
+            result.append({
+                "clipId":     clip.clipId,
+                "assetId":    clip.assetId,
+                "startFrame": clip.startFrame,
+                "duration":   clip.duration,
+                "mediaOffset": getattr(clip, 'mediaOffset', 0),
+                "volume":     getattr(clip, 'volume', 1.0),
+                "streamUrl":  f"/assets/{clip.assetId}/stream",
+            })
+    return {"clips": result}
+
+
+
+
+# Export  
+
+class ExportStartRequest(BaseModel):
+    outputPath:   str
+    width:        int   = 1920
+    height:       int   = 1080
+    fps:          float = 30.0
+    codec:        str   = "auto"
+    videoBitrate: str   = "8M"
+    audioBitrate: str   = "192k"
+    formatId:     str   = "mp4-1080"
+
+@app.post("/export/start")
+def exportStart(req: ExportStartRequest):
+    import threading
+    from backend.encoder.encoder import ExportJob, run_export
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    job = ExportJob(req.dict())
+    _exportJobs[job.jobId] = job
+    t = threading.Thread(target=run_export, args=(job, engine.compositor, tl), daemon=True)
+    t.start()
+    return {"jobId": job.jobId, "total": job.total}
+
+@app.get("/export/progress/{jobId}")
+def exportProgress(jobId: str):
+    job = _exportJobs.get(jobId)
+    if job is None:
+        raise HTTPException(404, "Job not found")
+    return job.toDict()
+
+@app.post("/export/cancel/{jobId}")
+def exportCancel(jobId: str):
+    job = _exportJobs.get(jobId)
+    if job is None:
+        raise HTTPException(404, "Job not found")
+    job.cancel()
+    return {"status": "cancelled"}
 
 
 # System fonts  

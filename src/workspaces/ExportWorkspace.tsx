@@ -1,52 +1,87 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import './ExportWorkspace.css'
+import { exportApi, type ExportProgress } from '../api/toolsApi'
 
-interface Format { id: string; label: string; icon: string; desc: string }
-interface ExportProp { label: string; options?: string[] }
+interface Format { id: string; label: string; icon: string; desc: string; w: number; h: number }
 
 const FORMATS: Format[] = [
-  { id: 'mp4-1080', label: 'MP4 1080p',  icon: '▶', desc: 'H.264, AAC audio' },
-  { id: 'mp4-4k', label: 'MP4 4K', icon: '▶', desc: 'H.264, High Bitrate' },
-  { id: 'shorts', label: 'YT Shorts',  icon: '▷', desc: '1080×1920, 60s max' },
-  { id: 'reels', label: 'IG Reels',   icon: '◈', desc: '1080×1920, AAC' },
-  { id: 'gif', label: 'GIF', icon: '◉', desc: 'Animated, 480p' },
-  { id: 'webm', label: 'WebM', icon: '▸', desc: 'VP9, open format' },
+  { id: 'mp4-1080',  label: 'MP4 1080p',   icon: '▶', desc: 'H.264, AAC audio',     w: 1920, h: 1080 },
+  { id: 'mp4-4k',    label: 'MP4 4K',      icon: '▶', desc: 'H.264, High Bitrate',  w: 3840, h: 2160 },
+  { id: 'shorts',    label: 'YT Shorts',   icon: '▷', desc: '1080×1920, 60s max',   w: 1080, h: 1920 },
+  { id: 'reels',     label: 'IG Reels',    icon: '◈', desc: '1080×1920, AAC',        w: 1080, h: 1920 },
+  { id: 'gif',       label: 'GIF',         icon: '◉', desc: 'Animated, 480p',        w:  854, h:  480 },
+  { id: 'webm',      label: 'WebM',        icon: '▸', desc: 'VP9, open format',      w: 1920, h: 1080 },
 ]
 
-const AI_TOGGLES: string[] = ['Auto Captions','Color Grade','Noise Reduce','Sharpness']
-const FPS_OPTIONS: string[] = ['24 fps','30 fps','60 fps']
-const RES_OPTIONS: string[] = ['1920×1080','3840×2160','1080×1920','1280×720']
+const FPS_OPTIONS = ['24', '30', '60']
 
 export default function ExportWorkspace() {
-  const [selected, setSelected] = useState<string>('mp4-1080')
-  const [quality, setQuality] = useState<number>(85)
-  const [fps, setFps] = useState<string>('30 fps')
-  const [exporting, setExporting] = useState<boolean>(false)
-  const [progress,  setProgress]  = useState<number>(0)
+  const [selected,    setSelected]    = useState<string>('mp4-1080')
+  const [fps,         setFps]         = useState<string>('30')
+  const [outputPath,  setOutputPath]  = useState<string>('C:\\Users\\Videos\\fade_export.mp4')
+  const [jobId,       setJobId]       = useState<string | null>(null)
+  const [progress,    setProgress]    = useState<ExportProgress | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fmt = FORMATS.find(f => f.id === selected)
+  const fmt = FORMATS.find(f => f.id === selected)!
 
-  function startExport(): void {
-    setExporting(true)
-    setProgress(0)
-    const interval = setInterval(() => {
-      setProgress(p => {
-        if (p >= 100) { clearInterval(interval); setExporting(false); return 100 }
-        return p + 2
-      })
-    }, 80)
+  const stopPoll = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
   }
+
+  useEffect(() => stopPoll, [])
+
+  async function startExport() {
+    try {
+      const res = await exportApi.start({
+        outputPath,
+        width:  fmt.w,
+        height: fmt.h,
+        fps:    parseFloat(fps),
+        formatId: selected,
+      })
+      setJobId(res.jobId)
+      setProgress({ jobId: res.jobId, frame: 0, total: res.total, percent: 0, done: false, error: null, path: null })
+      pollRef.current = setInterval(async () => {
+        try {
+          const p = await exportApi.progress(res.jobId)
+          setProgress(p)
+          if (p.done) stopPoll()
+        } catch { stopPoll() }
+      }, 500)
+    } catch (err: any) {
+      alert(`Export failed: ${err.message}`)
+    }
+  }
+
+  async function cancelExport() {
+    if (!jobId) return
+    await exportApi.cancel(jobId)
+    stopPoll()
+    setProgress(null)
+    setJobId(null)
+  }
+
+  function browseOutput() {
+    const ipc = (window as any).electronAPI
+    if (ipc?.showSaveDialog) {
+      ipc.showSaveDialog({ filters: [{ name: 'Video', extensions: ['mp4', 'webm'] }] })
+        .then((p: string | undefined) => { if (p) setOutputPath(p) })
+    }
+  }
+
+  const exporting = !!jobId && !progress?.done
+  const pct       = progress?.percent ?? 0
 
   return (
     <div className="export-ws">
-      {/* Left */}
       <div className="export-ws__left">
         <h2>Export Format</h2>
         <div className="export-formats">
           {FORMATS.map(f => (
             <div key={f.id}
               className={`export-fmt${selected === f.id ? ' export-fmt--active' : ''}`}
-              onClick={() => setSelected(f.id)}>
+              onClick={() => !exporting && setSelected(f.id)}>
               <span className="export-fmt__icon">{f.icon}</span>
               <div>
                 <div className="export-fmt__label">{f.label}</div>
@@ -58,70 +93,58 @@ export default function ExportWorkspace() {
         </div>
       </div>
 
-      {/* Right */}
       <div className="export-ws__right">
         <h2>Export Settings</h2>
         <div className="export-props">
 
           <div className="export-prop">
-            <label>Format</label>
-            <div className="export-prop__value">{fmt?.label}</div>
-          </div>
-
-          <div className="export-prop">
-            <label>Quality — {quality}%</label>
-            <input type="range" min={10} max={100} value={quality}
-              onChange={e => setQuality(Number(e.target.value))} />
+            <label>Resolution</label>
+            <div className="export-prop__value">{fmt.w} × {fmt.h}</div>
           </div>
 
           <div className="export-prop">
             <label>Frame Rate</label>
-            <select value={fps} onChange={e => setFps(e.target.value)}>
-              {FPS_OPTIONS.map(r => <option key={r}>{r}</option>)}
+            <select value={fps} onChange={e => setFps(e.target.value)} disabled={exporting}>
+              {FPS_OPTIONS.map(r => <option key={r} value={r}>{r} fps</option>)}
             </select>
           </div>
 
           <div className="export-prop">
-            <label>Resolution</label>
-            <select>{RES_OPTIONS.map(r => <option key={r}>{r}</option>)}</select>
-          </div>
-
-          <div className="export-prop">
-            <label>AI Effects</label>
-            <div className="export-toggles">
-              {AI_TOGGLES.map(t => (
-                <label key={t} className="export-toggle">
-                  <input type="checkbox" defaultChecked={t === 'Auto Captions'} />
-                  {t}
-                </label>
-              ))}
-            </div>
+            <label>Encoder</label>
+            <div className="export-prop__value">Auto (NVENC → QSV → x264)</div>
           </div>
 
           <div className="export-prop">
             <label>Output Path</label>
             <div className="export-path">
-              <input readOnly value="C:\Users\Videos\fade_export.mp4" />
-              <button>Browse</button>
+              <input readOnly value={outputPath} />
+              <button onClick={browseOutput} disabled={exporting}>Browse</button>
             </div>
           </div>
         </div>
 
-        {exporting && (
+        {progress && (
           <div className="export-progress">
             <div className="export-progress__bar">
-              <div className="export-progress__fill" style={{ width: `${progress}%` }} />
+              <div className="export-progress__fill" style={{ width: `${pct}%` }} />
             </div>
-            <span>{progress}% — Rendering frames...</span>
+            {progress.done && !progress.error && (
+              <span className="export-done">✓ Done — {progress.path}</span>
+            )}
+            {progress.error && (
+              <span className="export-error">✗ {progress.error}</span>
+            )}
+            {!progress.done && (
+              <span>{pct}% — frame {progress.frame} / {progress.total}</span>
+            )}
           </div>
         )}
 
         <div className="export-actions">
-          <button className="export-btn export-btn--secondary">Preview</button>
-          <button className="export-btn export-btn--primary"
-            onClick={startExport} disabled={exporting}>
-            {exporting ? `Exporting ${progress}%…` : '⬇ Export Video'}
-          </button>
+          {exporting
+            ? <button className="export-btn export-btn--cancel" onClick={cancelExport}>✕ Cancel</button>
+            : <button className="export-btn export-btn--primary" onClick={startExport}>⬇ Export Video</button>
+          }
         </div>
       </div>
     </div>

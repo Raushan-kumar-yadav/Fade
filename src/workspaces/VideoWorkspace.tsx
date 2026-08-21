@@ -6,40 +6,11 @@ import Timeline        from './timeline/Timeline'
 import ViewportWidget  from './viewport/ViewportWidget'
 import LibraryPanel    from './library/LibraryPanel'
 import InspectorPanel  from './inspector/InspectorPanel'
+import EffectsPanel    from './inspector/EffectsPanel'
 import { addClipToTimeline, type AssetItem } from '../api/useApi'
 import { useTool, isShapeTool } from '../context/toolContext'
 import TextToolPanel   from './tools/TextToolPanel'
 import ShapeToolPanel  from './tools/ShapeToolPanel'
-
-// ── Effects panel ─────────────────────────────────────────────────────────────
-
-function EffectsPanel() {
-  const [active, setActive] = React.useState<string | null>(null)
-  const EFFECTS = [
-    { name: 'Blur Out',       icon: '⬚' },
-    { name: 'Zoom In',        icon: '⊕' },
-    { name: 'Fade In',        icon: '◐' },
-    { name: 'Newton Bounce',  icon: '↗' },
-    { name: 'Vignette',       icon: '◉' },
-    { name: 'Drop Shadow',    icon: '▣' },
-    { name: 'Color Grade',    icon: '◈' },
-    { name: 'Speed Ramp',     icon: '⚡' },
-  ]
-  return (
-    <div className="vp">
-      <div className="vp__list">
-        {EFFECTS.map(fx => (
-          <div key={fx.name}
-               className={`vp__item vp__item--effect${active === fx.name ? ' vp__item--active' : ''}`}
-               onClick={() => setActive(fx.name)}>
-            <span className="vp__icon">{fx.icon}</span>
-            {fx.name}
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 // ── Tool creation panel ───────────────────────────────────────────────────────
 

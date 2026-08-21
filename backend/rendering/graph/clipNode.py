@@ -2,6 +2,7 @@ from __future__ import annotations
 import skia
 from backend.rendering.graph.baseNode import BaseNode, RenderResult
 from backend.rendering.renderContext import RenderContext
+from backend.rendering.nodes.effectNode import applyEffects
 from backend.timeline.clips.baseClip import BaseClip
 
 
@@ -23,8 +24,8 @@ class ClipNode(BaseNode):
 
         canvas = ctx.canvas
         if opacity < 1.0:
-            # saveLayerAlpha(bounds, alpha): bounds=None means full canvas,
-            # alpha is an integer 0-255 (not float).
+            
+             
             canvas.saveLayerAlpha(None, int(round(opacity * 255)))
         else:
             canvas.save()
@@ -34,11 +35,13 @@ class ClipNode(BaseNode):
 
         try:
             if masks:
-                # Compositing with masks via maskNode
+                # Compositing with masks  
                 from backend.rendering.nodes.maskNode import apply_masks
                 apply_masks(canvas, clip, lambda: clip.render(canvas, frame))
             else:
                 clip.render(canvas, frame)
+            
+            applyEffects(canvas, clip, frame)
         except Exception as e:
             print(f"[ClipNode] render error for {clip.clipId}: {e}")
             import traceback; traceback.print_exc()

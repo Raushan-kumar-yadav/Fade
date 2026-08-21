@@ -30,6 +30,25 @@ export default function App() {
     return () => { document.body.style.cursor = '' }
   }, [activeTool])
 
+  useEffect(() => {
+    const port = (window as any).__FADE_PORT__ ?? 8000
+    const base  = `http://127.0.0.1:${port}`
+    const onKey = async (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        await fetch(`${base}/history/undo`, { method: 'POST' })
+        window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+      } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
+        e.preventDefault()
+        await fetch(`${base}/history/redo`, { method: 'POST' })
+        window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   const workspaces: Record<TabId, React.FC> = {
     home:   HomeWorkspace,
     ai:     AIWorkspace,

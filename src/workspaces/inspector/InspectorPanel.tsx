@@ -519,7 +519,6 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
         )}
       </div>
 
-      {/* Inline keyframe track panel */}
       {showTrack && param.isAnimated && (
         <KFTrackPanel
           clipId={clipId}
@@ -534,7 +533,7 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
   );
 }
 
-// ── Group header ──────────────────────────────────────────────────────────────
+// ── Group header ───────────────────────────────────────────────────────────────
 
 function GroupHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
@@ -762,7 +761,7 @@ export default function InspectorPanel() {
           );
         })}
 
-        {/* Masks section — shows when clip has masks */}
+        {/* Masks section */}
         <MasksPanel clipId={data.clipId} />
       </div>
     </div>

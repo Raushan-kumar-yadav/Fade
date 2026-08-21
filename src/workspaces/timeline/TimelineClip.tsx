@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef } from "react";
+import React, { memo, useCallback, useRef, useEffect, useState } from "react";
 import { useSelection } from "../../context/selectionContext";
 import {
   useTimeline,
@@ -6,6 +6,7 @@ import {
   mapBackendTracksPreservingOrder,
 } from "./TimelineContext";
 import { moveClip, trimClip, fetchTimeline, splitClip } from "../../api/useApi";
+import { waveformApi } from "../../api/toolsApi";
 import {
   type Clip,
   type Track,
@@ -32,13 +33,40 @@ const TimelineClip = memo(function TimelineClip({
   const { zoomX, selectedTool, interaction } = state;
 
   const clipRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [peaks, setPeaks] = useState<number[]>([]);
+
+  const x     = clip.startFrame * zoomX;
+  const width  = Math.max(clip.duration * zoomX, 4);
+  const color  = CLIP_COLORS[clip.type];
+
+  useEffect(() => {
+    if (!clip.assetId) return;
+    let cancelled = false;
+    waveformApi.get(clip.assetId, 200)
+      .then(d => { if (!cancelled) setPeaks(d.peaks); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [clip.assetId]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || peaks.length === 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    const barW = W / peaks.length;
+    for (let i = 0; i < peaks.length; i++) {
+      const h = peaks[i] * H;
+      ctx.fillRect(i * barW, (H - h) / 2, Math.max(1, barW - 0.5), h);
+    }
+  }, [peaks, width]);
+
   const isMeMoving =
     interaction?.mode === "move" && interaction.clipId === clip.id;
-
-  // Derived geometry
-  const x = clip.startFrame * zoomX;
-  const width = Math.max(clip.duration * zoomX, 4);
-  const color = CLIP_COLORS[clip.type];
 
   // Cursor based on tool
   const getCursor = useCallback(
@@ -295,7 +323,15 @@ const TimelineClip = memo(function TimelineClip({
       <div className="tl-clip__trim tl-clip__trim--left" />
       <div className="tl-clip__trim tl-clip__trim--right" />
 
-      {/* Label */}
+      {peaks.length > 0 && (
+        <canvas
+          ref={canvasRef}
+          width={Math.max(1, Math.round(width))}
+          height={Math.max(1, trackHeight - 10)}
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.6 }}
+        />
+      )}
+
       <span className="tl-clip__label">{clip.name}</span>
     </div>
   );

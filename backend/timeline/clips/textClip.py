@@ -12,14 +12,14 @@ class TextStyle:
     # Content
     text: str   = "New Text"
     # Font
-    fontFamily:     str   = "Arial"
-    fontSize:       float = 48.0
-    bold:           bool  = False
-    italic:         bool  = False
+    fontFamily: str   = "Arial"
+    fontSize: float = 48.0
+    bold: bool  = False
+    italic: bool  = False
     # Layout
-    alignment:      str   = "left"      # left | center | right
-    lineHeight:     float = 1.2
-    letterSpacing:  float = 0.0
+    alignment: str   = "left"      # left | center | right
+    lineHeight: float = 1.2
+    letterSpacing: float = 0.0
     wordSpacing:    float = 0.0
     maxWidth:       float = 0.0         # 0 = no wrap
     allCaps:        bool  = False
@@ -34,7 +34,7 @@ class TextStyle:
     shadowOffsetX:  float = 4.0
     shadowOffsetY:  float = 4.0
     shadowBlur:     float = 6.0
-    # Background box (like Qteee TextBackgroundSettings)
+    # Background box  
     bgEnabled:      bool  = False
     bgColor:        list  = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.5])
     bgPaddingX:     float = 20.0
@@ -56,10 +56,10 @@ class TextStyle:
 @dataclass
 class MaskLayer:
     """Single mask — mirrors clipMask.hpp."""
-    maskId:    str   = field(default_factory=lambda: str(uuid.uuid4()))
-    name:      str   = "Mask 1"
-    shape:     str   = "rect"          # rect | ellipse | bezier
-    mode:      str   = "add"           # add | subtract
+    maskId: str   = field(default_factory=lambda: str(uuid.uuid4()))
+    name: str   = "Mask 1"
+    shape: str   = "rect"          # rect | ellipse | bezier
+    mode: str   = "add"           # add | subtract
     inverted:  bool  = False
     feather:   float = 0.0             # blur sigma
     opacity:   float = 1.0
@@ -94,7 +94,7 @@ class TextClip(BaseClip):
         self.style:  TextStyle   = style or TextStyle()
         self.masks:  list[MaskLayer] = []
 
-    # ── Render (called by ClipNode) ─────────────────────────────────────────
+    # ── Render (called by ClipNode)  
 
     def applyParam(self, key: str, val: float) -> None:
         super().applyParam(key, val)

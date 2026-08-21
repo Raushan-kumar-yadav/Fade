@@ -19,9 +19,17 @@ export function MaskPanel({ clipId, masks, onUpdate }: MaskPanelProps) {
       feather: 0,
       opacity: 1,
       points:  shape === 'rect'
-        ? [{ x: -100, y: -60 }, { x: 100, y: -60 }, { x: 100, y: 60 }, { x: -100, y: 60 }]
+        ? [
+            { x: -100, y: -60, inX: 0, inY: 0, outX: 0, outY: 0 },
+            { x:  100, y: -60, inX: 0, inY: 0, outX: 0, outY: 0 },
+            { x:  100, y:  60, inX: 0, inY: 0, outX: 0, outY: 0 },
+            { x: -100, y:  60, inX: 0, inY: 0, outX: 0, outY: 0 },
+          ]
         : shape === 'ellipse'
-        ? [{ x: -100, y: -60 }, { x: 100, y: 60 }]
+        ? [
+            { x: -100, y: -60, inX: 0, inY: 0, outX: 0, outY: 0 },
+            { x:  100, y:  60, inX: 0, inY: 0, outX: 0, outY: 0 },
+          ]
         : [],
     });
     onUpdate();

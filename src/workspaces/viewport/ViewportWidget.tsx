@@ -7,6 +7,7 @@ import {
 import { useTool } from '../../context/toolContext';
 import { useSelection } from '../../context/selectionContext';
 import OverlayCanvas from './OverlayCanvas';
+import { AudioEngine, type AudioClipInfo } from './audioEngine';
 import './ViewportWidget.css';
 
 function framesToTimecode(frame: number, fps = 30): string {
@@ -17,7 +18,7 @@ function framesToTimecode(frame: number, fps = 30): string {
   return [mm, ss, fr].map(n => String(n).padStart(2, '0')).join(':');
 }
 
-// ── SVG icons ──────────────────────────────────────────────────────────────────
+// SVG icons  
 
 const IconPrev = () => (
   <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
@@ -65,6 +66,7 @@ export default function ViewportWidget() {
   // The canvas receives decoded  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const audioRef = useRef<AudioEngine | null>(null);
 
   // Pending bitmap for next animation frame 
   const pendingBitmapRef = useRef<ImageBitmap | null>(null);
@@ -133,6 +135,8 @@ export default function ViewportWidget() {
 
         // Dispatch zero-lag custom event so Timeline updates immediately
         window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
+        // Tick audio engine for drift correction
+        audioRef.current?.tick(frameNum);
 
         // Decode off-main-thread using createImageBitmap
         const imgBytes = ev.data.slice(5);
@@ -183,6 +187,36 @@ export default function ViewportWidget() {
     };
   }, []);
 
+  // ── Audio engine: create, load clips, keep in sync ────────────────────────
+  useEffect(() => {
+    const port = (window as any).__FADE_PORT__ ?? 8000
+    const engine = new AudioEngine(fps, port)
+    audioRef.current = engine
+
+    async function loadClips() {
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/timeline/audio-clips`)
+        if (r.ok) {
+          const d = await r.json()
+          engine.setFps(fps)
+          engine.update(d.clips as AudioClipInfo[])
+        }
+      } catch { /* backend not ready */ }
+    }
+
+    loadClips()
+    const pollId = setInterval(loadClips, 3000)  // re-sync every 3s
+    const onTracksChanged = () => loadClips()
+    window.addEventListener('fade:tracks-changed', onTracksChanged)
+
+    return () => {
+      clearInterval(pollId)
+      window.removeEventListener('fade:tracks-changed', onTracksChanged)
+      engine.destroy()
+      audioRef.current = null
+    }
+  }, [])  // mount-only; fps updated via engine.setFps()
+
   //   Poll playback state 
   useEffect(() => {
     let id: ReturnType<typeof setInterval> | null = null;
@@ -218,25 +252,28 @@ export default function ViewportWidget() {
   const togglePlay = useCallback(async () => {
     if (isPlaying) {
       await playbackPause();
+      audioRef.current?.pause();
       setIsPlaying(false);
     } else {
       await playbackPlay();
+      audioRef.current?.play(currentFrame);
       setIsPlaying(true);
     }
-  }, [isPlaying]);
+  }, [isPlaying, currentFrame]);
 
   const stepFrame = useCallback(async (dir: 1 | -1) => {
-    if (isPlaying) { await playbackPause(); setIsPlaying(false); }
+    if (isPlaying) { await playbackPause(); audioRef.current?.pause(); setIsPlaying(false); }
     const next = Math.max(0, Math.min(totalFrames - 1, currentFrame + dir));
     await playbackSeek(next);
+    audioRef.current?.seek(next);
     setCurrentFrame(next);
   }, [isPlaying, currentFrame, totalFrames]);
 
-  // On scrub 
   const handleScrub = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = parseInt(e.target.value, 10);
-    if (isPlaying) { await playbackPause(); setIsPlaying(false); }
+    if (isPlaying) { await playbackPause(); audioRef.current?.pause(); setIsPlaying(false); }
     await playbackSeek(f);
+    audioRef.current?.seek(f);
     setCurrentFrame(f);
   }, [isPlaying]);
 
@@ -285,24 +322,19 @@ export default function ViewportWidget() {
 
   useEffect(() => { fitToFrame(); }, [fitToFrame]);
 
-  // Scroll to zoom  
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
-    // Only zoom when Ctrl is held  
-    if (!e.ctrlKey && !spaceDown.current) {
-       
-      return;
-    }
+  // Scroll to zoom — native listener required so e.preventDefault() works
+  // (React attaches onWheel as passive by default which blocks preventDefault)
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (!e.ctrlKey && !spaceDown.current) return;
     e.preventDefault();
     const el = containerRef.current;
     if (!el) return;
-    const rect  = el.getBoundingClientRect();
+    const rect   = el.getBoundingClientRect();
     const mouseX = e.clientX - rect.left - rect.width  / 2;
     const mouseY = e.clientY - rect.top  - rect.height / 2;
-
     const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
     setVpZoom(prev => {
       const next = Math.max(0.05, Math.min(8, prev * factor));
-      // Adjust pan so zoom stays centred on mouse position
       const ratio = next / prev;
       setVpPan(p => ({
         x: mouseX + (p.x - mouseX) * ratio,
@@ -311,6 +343,13 @@ export default function ViewportWidget() {
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   // Middle-mouse drag to pan
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -381,7 +420,6 @@ export default function ViewportWidget() {
         className="vw-canvas"
         ref={containerRef}
         aria-label="Video preview area"
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

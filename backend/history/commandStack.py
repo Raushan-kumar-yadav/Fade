@@ -237,3 +237,74 @@ class RemoveTrackCommand(Command):
     @property
     def description(self) -> str:
         return f"Remove track '{self._track.name}'"
+
+
+class SetParamCommand(Command):
+    """Undo/redo a single animatable parameter change on any clip."""
+
+    def __init__(self, clip, key: str, old_val: float, new_val: float, frame: int = -1) -> None:
+        self._clip    = clip
+        self._key     = key
+        self._old_val = old_val
+        self._new_val = new_val
+        self._frame   = frame
+
+    def _apply(self, value: float) -> None:
+        if hasattr(self._clip, '_anim_params') and self._key in self._clip._anim_params:
+            ap = self._clip._anim_params[self._key]
+            if self._frame >= 0:
+                ap.addKeyframe(self._frame, value)
+            else:
+                ap.setBaseValue(value)
+        else:
+            self._clip.applyParam(self._key, value)
+
+    def execute(self) -> None:
+        self._apply(self._new_val)
+
+    def undo(self) -> None:
+        self._apply(self._old_val)
+
+    @property
+    def description(self) -> str:
+        return f"Set {self._key} = {self._new_val:.3f}"
+
+
+class AddKeyframeCommand(Command):
+    def __init__(self, ap, frame: int, value: float) -> None:
+        self._ap    = ap
+        self._frame = frame
+        self._value = value
+        self._had   = ap.hasKeyframe(frame)
+        self._old   = ap.track.evaluateAt(frame, ap.baseValue) if self._had else None
+
+    def execute(self) -> None:
+        self._ap.addKeyframe(self._frame, self._value)
+
+    def undo(self) -> None:
+        if self._had and self._old is not None:
+            self._ap.addKeyframe(self._frame, self._old)
+        else:
+            self._ap.removeKeyframe(self._frame)
+
+    @property
+    def description(self) -> str:
+        return f"Add keyframe at {self._frame}"
+
+
+class DeleteKeyframeCommand(Command):
+    def __init__(self, ap, frame: int) -> None:
+        self._ap    = ap
+        self._frame = frame
+        self._value = ap.track.evaluateAt(frame, ap.baseValue) if ap.hasKeyframe(frame) else None
+
+    def execute(self) -> None:
+        self._ap.removeKeyframe(self._frame)
+
+    def undo(self) -> None:
+        if self._value is not None:
+            self._ap.addKeyframe(self._frame, self._value)
+
+    @property
+    def description(self) -> str:
+        return f"Delete keyframe at {self._frame}"

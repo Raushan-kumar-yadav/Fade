@@ -200,52 +200,86 @@ export default function OverlayCanvas({
     const bpts = pts.map(({ x, y, inX, inY, outX, outY }) => ({ x, y, inX, inY, outX, outY }));
 
     if (mode === 'pen') {
-      // Pen clip mode: create or update
       if (!penClipId.current) {
         const clip: any = await penApi.add(startFrame, duration, bpts, isClosed);
         penClipId.current = clip.clipId;
-        // Notify timeline so it refreshes tracks
         window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         onDone?.(clip.clipId);
       } else {
         await penApi.updatePoints(penClipId.current, bpts, isClosed);
       }
     } else if (mode === 'mask') {
-      // Mask mode: need a target clip
       const targetClipId = maskClipId.current ?? clipId;
       if (!targetClipId) return;
 
       if (!createdMaskId.current) {
-        // First commit — create the mask
-        const result: any = await maskApi.add(targetClipId, {
+        // First commit — create the mask; use result.maskId (new stable field)
+        const result = await maskApi.add(targetClipId, {
           shape: 'bezier', mode: 'add', points: bpts,
         });
-        const newMaskId = result?.masks?.[result.masks.length - 1]?.maskId;
-        createdMaskId.current = newMaskId ?? null;
-        // Signal inspector to refresh mask list
+        createdMaskId.current = result.maskId ?? null;
+        console.log('[OverlayCanvas] mask created', result.maskId, 'pts', bpts.length);
         window.dispatchEvent(new CustomEvent('fade:masks-changed', { detail: targetClipId }));
         onDone?.(targetClipId);
       } else {
-        // Update existing mask
+        // Subsequent commits — update the existing mask
         await maskApi.update(targetClipId, createdMaskId.current, { points: bpts, shape: 'bezier' });
+        console.log('[OverlayCanvas] mask updated', createdMaskId.current, 'pts', bpts.length);
       }
     }
   }, [mode, clipId, maskId, startFrame, duration, onDone]);
+
+  // ── Load existing mask on mount (mask mode) ───────────────────────────────
+  // When the user re-selects the pen-mask tool for a clip that already has a
+  // mask, fetch the existing points so the path is visible immediately.
+  useEffect(() => {
+    if (mode !== 'mask' || !clipId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { masks } = await maskApi.list(clipId);
+        if (cancelled || masks.length === 0) return;
+        // Use the maskId prop if given, otherwise take the last mask
+        const target = maskId
+          ? masks.find(m => m.maskId === maskId)
+          : masks[masks.length - 1];
+        if (!target || target.shape !== 'bezier') return;
+        const pts = (target.points ?? []).map((p, i) => ({
+          id: `loaded-${i}`,
+          x: p.x, y: p.y,
+          inX: p.inX ?? 0, inY: p.inY ?? 0,
+          outX: p.outX ?? 0, outY: p.outY ?? 0,
+        }));
+        if (pts.length === 0) return;
+        setPoints(pts);
+        setClosed(true);
+        createdMaskId.current = target.maskId;
+        console.log('[OverlayCanvas] loaded existing mask', target.maskId, 'pts', pts.length);
+      } catch (err) {
+        console.warn('[OverlayCanvas] could not load existing mask', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mode, clipId, maskId]);
 
   const onPenClick = useCallback((e: React.MouseEvent) => {
     if (mode !== 'pen' && mode !== 'mask') return;
     const target = e.target as Element;
     if (target.closest('circle') || target.getAttribute('data-anchor')) return;
 
-    // ── Sub-mode routing ──────────────────────────────────────────────────
     if (penSubMode === 'pen:add') {
       if (closed) return;
       const { x, y } = getDC(e);
       const id = crypto.randomUUID();
-      setPoints(prev => [...prev, { id, x, y, inX: 0, inY: 0, outX: 0, outY: 0 }]);
+      const newPt = { id, x, y, inX: 0, inY: 0, outX: 0, outY: 0 };
+      // Compute full updated list immediately so commitPoints has all N points
+      // (mouseUp fires BEFORE click, so we can't rely on onPenUp having the new point)
+      const newPoints = [...points, newPt];
+      setPoints(newPoints);
+      commitPoints(newPoints, closed);
     }
     // Other sub-modes (select, handle, delete, curve) handle via anchor events
-  }, [mode, closed, getDC, penSubMode]);
+  }, [mode, closed, getDC, penSubMode, points, commitPoints]);
 
   const onDblClick = useCallback(() => {
     if ((mode === 'pen' || mode === 'mask') && points.length >= 2) setClosed(true);
@@ -319,9 +353,15 @@ export default function OverlayCanvas({
   }, [penSubMode, onDragStart]);
 
   const onPenUp = useCallback(async () => {
+    const wasDragging = dragging !== null;
     setDragging(null);
-    await commitPoints(points, closed);
-  }, [points, closed, commitPoints]);
+    // Only commit on mouseUp when finishing a handle-drag.
+    // Plain clicks are handled inside onPenClick (which fires after mouseUp)
+    // so that the new point is included in the commit.
+    if (wasDragging) {
+      await commitPoints(points, closed);
+    }
+  }, [dragging, points, closed, commitPoints]);
 
   useEffect(() => {
     if (closed && points.length >= 2) commitPoints(points, true);

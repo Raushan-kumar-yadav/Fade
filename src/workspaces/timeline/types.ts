@@ -33,6 +33,7 @@ export interface Clip {
   duration: number;
   type: ClipType;
   isSelected: boolean;
+  assetId?: string;
 }
 
 export interface Track {

@@ -20,7 +20,8 @@ def _build_mask_path(mask: "MaskLayer") -> skia.Path:
             x2 = max(p["x"] for p in pts)
             y2 = max(p["y"] for p in pts)
         else:
-            x1, y1, x2, y2 = -50, -50, 50, 50
+            # No points yet 
+            x1, y1, x2, y2 = 0, 0, 1920, 1080
         path = skia.Path()
         path.addRect(skia.Rect.MakeLTRB(x1, y1, x2, y2))
         return path
@@ -32,15 +33,17 @@ def _build_mask_path(mask: "MaskLayer") -> skia.Path:
             x2 = max(p["x"] for p in pts)
             y2 = max(p["y"] for p in pts)
         else:
-            x1, y1, x2, y2 = -50, -50, 50, 50
+            # No points yet  
+            x1, y1, x2, y2 = 0, 0, 1920, 1080
         path = skia.Path()
         path.addOval(skia.Rect.MakeLTRB(x1, y1, x2, y2))
         return path
 
-    # bezier  
+    # bezier
     n = len(pts)
     if n < 2:
-        return skia.Path()
+        # Fewer than 2 points  
+        return None
 
     path = skia.Path()
     path.moveTo(pts[0]["x"], pts[0]["y"])
@@ -83,9 +86,11 @@ def _build_mask_path(mask: "MaskLayer") -> skia.Path:
 
 
 def apply_masks(canvas: skia.Canvas, clip, draw_content_fn) -> None:
-     
     masks = getattr(clip, "masks", [])
-    if not masks:
+
+    # Only count masks that have geometry to render
+    effective = [m for m in masks if m.points or m.shape in ("rect", "ellipse")]
+    if not effective:
         draw_content_fn()
         return
 
@@ -93,10 +98,12 @@ def apply_masks(canvas: skia.Canvas, clip, draw_content_fn) -> None:
     canvas.saveLayer(None, None)
     draw_content_fn()
 
-    for mask in masks:
+    for mask in effective:
         path = _build_mask_path(mask)
+        if path is None:
+            # bezier with < 2 pts 
+            continue
 
-        # Feather 
         mask_paint = skia.Paint()
         mask_paint.setAntiAlias(True)
         alpha = int(mask.opacity * 255)
@@ -109,10 +116,8 @@ def apply_masks(canvas: skia.Canvas, clip, draw_content_fn) -> None:
             )
 
         if mask.mode == "subtract":
-            # Subtract 
             mask_paint.setBlendMode(skia.BlendMode.kDstOut)
         else:
-            # Add 
             mask_paint.setBlendMode(skia.BlendMode.kDstIn)
 
         canvas.drawPath(path, mask_paint)
