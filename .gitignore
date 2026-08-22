@@ -1,7 +1,30 @@
+# Node / Electron
 node_modules
 dist
 dist-electron
+
+# Python
 .venv
 *.pyc
 __pycache__
+
+# C++ build output
 renderer/build
+native/build
+
+# C++ precompiled dependencies (binary / generated — not for git)
+renderer/deps/skia/lib/
+renderer/deps/ffmpeg/lib/
+renderer/deps/ffmpeg/bin/
+
+# Large binary files
+*.lib
+*.dll
+*.dll.a
+*.pdb
+*.obj
+*.node
+
+# Generated / scratch
+Fade_Architecture_Blueprint.pdf
+*.pdf
