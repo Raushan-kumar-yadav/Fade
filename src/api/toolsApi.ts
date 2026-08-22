@@ -7,9 +7,9 @@ const base = () => `http://127.0.0.1:${port()}`;
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${base()}${path}`, {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(body),
+    body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
@@ -19,7 +19,7 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${base()}${path}`, {
     method:  'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(body),
+    body: JSON.stringify(body),
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();

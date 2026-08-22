@@ -171,6 +171,12 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         {&clip, std::move(result.rgba), result.width, result.height});
   }
 
+  // Force GPU for multi-clip compositing. CPU Raster does software bilinear
+  // filtering (~900ms/frame at 1080p). GPU does it in ~2ms with HW textures.
+  if (decoded.size() > 1)
+    needsGpu = true;
+
+
   if (!needsGpu) {
 
     SkImageInfo cpuInfo = SkImageInfo::MakeN32Premul(m_width, m_height);
