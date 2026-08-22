@@ -87,7 +87,11 @@ target_compile_definitions(render_engine PRIVATE
     NOMINMAX
     VK_USE_PLATFORM_WIN32_KHR
     SK_VULKAN
-    # Do NOT set _ITERATOR_DEBUG_LEVEL — let /MDd default it to 2 (matching skia.lib)
+    # Match skia.lib build (is_debug=false). Without these, SkLoadUserConfig.h
+    # defines SK_DEBUG because /MDd does not define NDEBUG, activating NVRefCnt
+    # destructor asserts that crash on valid Release-mode refcount patterns.
+    SK_RELEASE
+    NDEBUG
 )
 
 if(MSVC)
