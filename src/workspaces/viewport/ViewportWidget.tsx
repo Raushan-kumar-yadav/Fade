@@ -3,6 +3,7 @@ import {
   openPreviewSocket,
   playbackPlay, playbackPause, playbackSeek,
   getPlaybackState, frameUrl, setPreviewScale,
+  setPlaybackSpeed, setPlaybackInOut,
 } from '../../api/useApi';
 import { useTool } from '../../context/toolContext';
 import { useSelection } from '../../context/selectionContext';
@@ -60,8 +61,11 @@ export default function ViewportWidget() {
   const [connected, setConnected] = useState(false);
   const [retryCount, setRetryCount]   = useState(0);
   const [resScale, setResScale] = useState<number>(0.5);
-  // 'jpeg'  
   const [previewFormat, setPreviewFormat] = useState<'jpeg' | 'png'>('png');
+  const [speed, setSpeed] = useState(1.0);
+  const [inPoint,  setInPoint]  = useState<number | null>(null);
+  const [outPoint, setOutPoint] = useState<number | null>(null);
+  const loopActive = inPoint !== null && outPoint !== null;
 
   // The canvas receives decoded  
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -182,6 +186,9 @@ export default function ViewportWidget() {
           setIsPlaying(data.playing);
           setFps(data.fps);
           setTotalFrames(data.totalFrames ?? 1800);
+          if (data.speed !== undefined) setSpeed(data.speed);
+          if (data.inPoint  !== undefined) setInPoint(data.inPoint);
+          if (data.outPoint !== undefined) setOutPoint(data.outPoint);
         } catch { /* backend restarting */ }
       }, 200);
     }
@@ -239,6 +246,35 @@ export default function ViewportWidget() {
     const scale = parseFloat(e.target.value);
     setResScale(scale);
     try { await setPreviewScale(scale); } catch { /* backend */ }
+  }, []);
+
+  const handleSpeedChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const s = parseFloat(e.target.value);
+    setSpeed(s);
+    audioRef.current?.setRate(s);
+    try { await setPlaybackSpeed(s); } catch { /* backend */ }
+  }, []);
+
+  const handleSetInPoint = useCallback(async () => {
+    const f = currentFrame;
+    const newOut = outPoint !== null && outPoint <= f ? null : outPoint;
+    setInPoint(f);
+    if (newOut !== outPoint) setOutPoint(newOut);
+    try { await setPlaybackInOut(f, newOut !== outPoint ? newOut : outPoint); } catch {}
+  }, [currentFrame, outPoint]);
+
+  const handleSetOutPoint = useCallback(async () => {
+    const f = currentFrame;
+    const newIn = inPoint !== null && inPoint >= f ? null : inPoint;
+    setOutPoint(f);
+    if (newIn !== inPoint) setInPoint(newIn);
+    try { await setPlaybackInOut(newIn !== inPoint ? newIn : inPoint, f); } catch {}
+  }, [currentFrame, inPoint]);
+
+  const handleClearInOut = useCallback(async () => {
+    setInPoint(null);
+    setOutPoint(null);
+    try { await setPlaybackInOut(null, null); } catch {}
   }, []);
 
   const handleFormatToggle = useCallback(async () => {
@@ -334,13 +370,18 @@ export default function ViewportWidget() {
   // Space key for pan mode
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !(e.target as HTMLElement).matches('input,textarea,select')) {
+      if ((e.target as HTMLElement).matches('input,textarea,select')) return;
+      if (e.code === 'Space') {
         e.preventDefault();
         spaceDown.current = true;
       }
-      if (e.code === 'KeyF' && !(e.target as HTMLElement).matches('input,textarea,select')) {
-        fitToFrame();
-      }
+      if (e.code === 'KeyF') fitToFrame();
+      // I = set in-point, O = set out-point
+      if (e.code === 'KeyI' && !e.altKey) handleSetInPoint();
+      if (e.code === 'KeyO' && !e.altKey) handleSetOutPoint();
+      // Alt+I / Alt+O = clear
+      if (e.code === 'KeyI' && e.altKey) handleClearInOut();
+      if (e.code === 'KeyO' && e.altKey) handleClearInOut();
     };
     const up = (e: KeyboardEvent) => {
       if (e.code === 'Space') {
@@ -354,7 +395,7 @@ export default function ViewportWidget() {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup',   up);
     };
-  }, [fitToFrame]);
+  }, [fitToFrame, handleSetInPoint, handleSetOutPoint, handleClearInOut]);
 
   // Track rendered canvas size for OverlayCanvas
   useEffect(() => {
@@ -435,6 +476,16 @@ export default function ViewportWidget() {
 
       {/* Scrub bar */}
       <div className="vw-scrub">
+        {/* In/Out region highlight */}
+        {loopActive && (
+          <div
+            className="vw-scrub__loop-region"
+            style={{
+              left:  `${(inPoint!  / Math.max(1, totalFrames - 1)) * 100}%`,
+              width: `${((outPoint! - inPoint!) / Math.max(1, totalFrames - 1)) * 100}%`,
+            }}
+          />
+        )}
         <input
           type="range"
           className="vw-scrub__bar"
@@ -462,6 +513,54 @@ export default function ViewportWidget() {
           <button id="vw-next-frame" className="vw-btn" title="Next frame" onClick={() => stepFrame(1)}>
             <IconNext />
           </button>
+          {/* Speed selector */}
+          <select
+            id="vw-speed-select"
+            className="vw-speed-select"
+            value={speed}
+            onChange={handleSpeedChange}
+            title="Playback speed"
+            aria-label="Playback speed"
+          >
+            <option value={0.25}>0.25×</option>
+            <option value={0.5}>0.5×</option>
+            <option value={1.0}>1×</option>
+            <option value={2.0}>2×</option>
+          </select>
+        </div>
+        {/* In/Out point controls */}
+        <div className="vw-controls__inout">
+          <button
+            id="vw-set-in"
+            className={`vw-btn vw-inout-btn${inPoint !== null ? ' vw-inout-btn--active' : ''}`}
+            title={`Set In-point (I)${inPoint !== null ? ' — frame ' + inPoint : ''}`}
+            onClick={handleSetInPoint}
+          >
+            IN
+          </button>
+          {loopActive && (
+            <span className="vw-inout-label">
+              {inPoint}–{outPoint}
+            </span>
+          )}
+          <button
+            id="vw-set-out"
+            className={`vw-btn vw-inout-btn${outPoint !== null ? ' vw-inout-btn--active' : ''}`}
+            title={`Set Out-point (O)${outPoint !== null ? ' — frame ' + outPoint : ''}`}
+            onClick={handleSetOutPoint}
+          >
+            OUT
+          </button>
+          {loopActive && (
+            <button
+              id="vw-clear-inout"
+              className="vw-btn vw-inout-clear"
+              title="Clear loop region (Alt+I or Alt+O)"
+              onClick={handleClearInOut}
+            >
+              ✕
+            </button>
+          )}
         </div>
         <div className="vw-controls__right">
           {/* Zoom indicator + reset */}

@@ -8,22 +8,36 @@ export interface ElectronAPI {
   getPort:      () => Promise<number | null>
 
   // ── Native render engine ───────────────────────────────────────────────────
-  // Returns true if render_engine.node is loaded and working
   isNativeRender: () => Promise<boolean>
-
-  // Seek to a specific frame — C++ fetches layout from Python, composites, writes SharedArrayBuffer
   renderSeek:  (frame: number) => void
   renderPlay:  () => void
   renderPause: () => void
-
-  // Get the raw SharedArrayBuffer — call once and cache; it's the same buffer every frame
   getRenderBuffer: () => Promise<ArrayBuffer | null>
-
-  // Subscribe to frame-ready events from the C++ compositor
   onFrameReady: (cb: (frameNum: number) => void) => () => void
-
-  // Stats for debugging
   getRenderStats: () => Promise<{ width: number; height: number; fps: number; bufferSize: number } | null>
+
+  // ── Export ─────────────────────────────────────────────────────────────────
+  startExport: (config: {
+    outputPath: string
+    width: number
+    height: number
+    fps: number
+    codec?: string
+    videoBitrate?: string
+  }) => void
+  onExportProgress: (cb: (p: {
+    frame: number
+    total: number
+    done: boolean
+    error: string
+  }) => void) => () => void   // returns cleanup fn
+  cancelExport: () => void
+
+  // ── File dialogs ────────────────────────────────────────────────────────────
+  showSaveDialog: (opts?: {
+    filters?: { name: string; extensions: string[] }[]
+    defaultPath?: string
+  }) => Promise<string | undefined>
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -37,7 +51,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getPort: (): Promise<number | null> => ipcRenderer.invoke('backend:get-port'),
 
-  // ── Native render engine ───────────────────────────────────────────────────
+  // ── Native render engine ─────────────────────────────────────────────────────
   isNativeRender: (): Promise<boolean> => ipcRenderer.invoke('render:is-native'),
 
   renderSeek:  (frame: number): void => ipcRenderer.send('render:seek', frame),
@@ -51,7 +65,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onFrameReady: (cb: (frameNum: number) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, frameNum: number) => cb(frameNum)
     ipcRenderer.on('render:frame-ready', handler)
-    // Return cleanup function
     return () => ipcRenderer.removeListener('render:frame-ready', handler)
   },
+
+  // ── Export ─────────────────────────────────────────────────────────────────
+  startExport: (config: any): void => ipcRenderer.send('export:start', config),
+
+  onExportProgress: (cb: (p: any) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, p: any) => cb(p)
+    ipcRenderer.on('export:progress', handler)
+    return () => ipcRenderer.removeListener('export:progress', handler)
+  },
+
+  cancelExport: (): void => ipcRenderer.send('export:cancel'),
+
+  // ── File dialogs ───────────────────────────────────────────────────────────
+  showSaveDialog: (opts?: any): Promise<string | undefined> =>
+    ipcRenderer.invoke('dialog:save', opts),
+
 } satisfies ElectronAPI)

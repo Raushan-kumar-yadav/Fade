@@ -926,20 +926,46 @@ def seek(req: SeekRequest):
     return {"frame": engine.currentFrame}
 
 
+
 @app.get("/playback/state")
 def playbackState():
     prj = engine.project
     return {
-        "frame": engine.currentFrame,
-        "playing": engine._playing,
-        "fps": prj.fps if prj else 30.0,
+        "frame":       engine.currentFrame,
+        "playing":     engine._playing,
+        "fps":         prj.fps if prj else 30.0,
         "totalFrames": prj.totalFrame if prj else 1800,
+        "speed":       engine._speed,
+        "inPoint":     engine._inPoint,
+        "outPoint":    engine._outPoint,
     }
+
+
+class SpeedRequest(BaseModel):
+    speed: float  # 0.25 | 0.5 | 1.0 | 2.0
+
+@app.post("/playback/speed")
+def setPlaybackSpeed(req: SpeedRequest):
+    engine.setSpeed(req.speed)
+    return {"speed": engine._speed}
+
+
+class InOutRequest(BaseModel):
+    inPoint:  int | None = None
+    outPoint: int | None = None
+
+@app.post("/playback/inout")
+def setInOut(req: InOutRequest):
+    engine.setInPoint(req.inPoint)
+    engine.setOutPoint(req.outPoint)
+    return {"inPoint": engine._inPoint, "outPoint": engine._outPoint}
 
 
 @app.get("/perf")
 def perfStats():
     return engine.perfStats()
+
+
 
 
  

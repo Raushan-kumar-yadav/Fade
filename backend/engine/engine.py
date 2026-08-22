@@ -18,6 +18,9 @@ class Engine:
 
         self._playing = False
         self._currentFrame = 0
+        self._speed: float = 1.0          # playback speed multiplier
+        self._inPoint: int  | None = None  # loop in-point (frame), None = disabled
+        self._outPoint: int | None = None  # loop out-point (frame), None = disabled
 
         self.commandStack: CommandStack = CommandStack()
 
@@ -94,6 +97,22 @@ class Engine:
             self.pause()
         else:
             self.play()
+
+    def setSpeed(self, speed: float) -> None:
+        """Set playback speed multiplier: 0.25, 0.5, 1.0, 2.0."""
+        self._speed = max(0.1, min(4.0, speed))
+        if self._pipeline:
+            self._pipeline.set_speed(self._speed)
+
+    def setInPoint(self, frame: int | None) -> None:
+        self._inPoint = frame
+        if self._pipeline:
+            self._pipeline.set_in_out(self._inPoint, self._outPoint)
+
+    def setOutPoint(self, frame: int | None) -> None:
+        self._outPoint = frame
+        if self._pipeline:
+            self._pipeline.set_in_out(self._inPoint, self._outPoint)
 
     #    Pipeline management  
 

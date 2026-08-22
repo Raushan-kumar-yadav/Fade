@@ -212,8 +212,29 @@ export function openPreviewSocket(
 /** Set decode resolution scale: 1.0=full, 0.5=half, 0.25=quarter, 0.125=eighth */
 export async function setPreviewScale(scale: number): Promise<void> {
   await fetch(`${base()}/preview/scale`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scale }),
+  });
+}
+
+/** Set playback speed: 0.25, 0.5, 1.0, 2.0 */
+export async function setPlaybackSpeed(speed: number): Promise<void> {
+  await fetch(`${base()}/playback/speed`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ speed }),
+  });
+}
+
+/** Set in/out loop points. Pass null to clear. */
+export async function setPlaybackInOut(
+  inPoint: number | null,
+  outPoint: number | null,
+): Promise<void> {
+  await fetch(`${base()}/playback/inout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ inPoint, outPoint }),
   });
 }

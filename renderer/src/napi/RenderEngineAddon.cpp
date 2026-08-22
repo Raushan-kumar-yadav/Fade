@@ -51,9 +51,22 @@ int  g_width           = 1920;
 int  g_height          = 1080;
 float g_fps            = 30.f;
 
-// NAPI threadsafe function for firing JS callback
+// NAPI threadsafe function for firing JS frame-ready callback
 Napi::ThreadSafeFunction g_tsfn;
 std::atomic<bool>        g_tsfnActive{false};
+
+// ── Export state ─────────────────────────────────────────────────────────────
+std::atomic<bool> g_exporting{false};
+std::atomic<bool> g_exportCancel{false};
+Napi::ThreadSafeFunction g_exportTsfn;
+std::atomic<bool> g_exportTsfnActive{false};
+
+struct ExportProgress {
+    int frame;
+    int total;
+    bool done;
+    std::string error;
+};
 
 // ── WinHTTP GET helper ────────────────────────────────────────────────────────
 
@@ -247,6 +260,133 @@ Napi::Value GetStats(const Napi::CallbackInfo& info) {
     return obj;
 }
 
+// ── Export NAPI functions ─────────────────────────────────────────────────────
+
+// startExport(config, progressCallback)
+// config: { outputPath, width, height, fps, totalFrames, codec?, videoBitrate? }
+// progressCallback: ({ frame, total, done, error }) => void
+Napi::Value StartExport(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+
+    if (info.Length() < 2 || !info[0].IsObject() || !info[1].IsFunction()) {
+        Napi::TypeError::New(env, "startExport(config, progressCallback)").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    if (g_exporting.load()) {
+        Napi::Error::New(env, "Export already in progress").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    auto cfg         = info[0].As<Napi::Object>();
+    std::string out  = cfg.Get("outputPath").As<Napi::String>().Utf8Value();
+    int  width       = cfg.Get("width").As<Napi::Number>().Int32Value();
+    int  height      = cfg.Get("height").As<Napi::Number>().Int32Value();
+    float fps        = cfg.Get("fps").As<Napi::Number>().FloatValue();
+    int  total       = cfg.Get("totalFrames").As<Napi::Number>().Int32Value();
+    std::string codec   = cfg.Has("codec")        ? cfg.Get("codec").As<Napi::String>().Utf8Value()        : "libx264";
+    std::string videoBr = cfg.Has("videoBitrate") ? cfg.Get("videoBitrate").As<Napi::String>().Utf8Value() : "8M";
+
+    // Set up threadsafe progress callback
+    if (g_exportTsfnActive.load()) {
+        g_exportTsfn.Release();
+        g_exportTsfnActive.store(false);
+    }
+    g_exportTsfn = Napi::ThreadSafeFunction::New(
+        env, info[1].As<Napi::Function>(), "ExportProgress", 0, 1);
+    g_exportTsfnActive.store(true);
+
+    g_exporting.store(true);
+    g_exportCancel.store(false);
+
+    // Capture by value for the detached thread
+    std::thread([out, width, height, fps, total, codec, videoBr]() {
+        // Build FFmpeg rawvideo pipe command
+        char fpsStr[32]; std::snprintf(fpsStr, sizeof(fpsStr), "%.4f", (double)fps);
+        char dimStr[64]; std::snprintf(dimStr, sizeof(dimStr), "%dx%d", width, height);
+
+        std::string cmd =
+            std::string("ffmpeg -y") +
+            " -f rawvideo -vcodec rawvideo -pix_fmt rgba" +
+            " -s " + dimStr +
+            " -r " + fpsStr +
+            " -i pipe:0" +
+            " -c:v " + codec +
+            " -pix_fmt yuv420p" +
+            " -b:v " + videoBr +
+            " -movflags +faststart" +
+            " \"" + out + "\"";
+
+        FILE* pipe = _popen(cmd.c_str(), "wb");
+        if (!pipe) {
+            if (g_exportTsfnActive.load()) {
+                auto* p = new ExportProgress{0, total, true, "Failed to open FFmpeg pipe"};
+                g_exportTsfn.NonBlockingCall(p, [](Napi::Env e, Napi::Function cb, ExportProgress* ep) {
+                    auto obj = Napi::Object::New(e);
+                    obj.Set("frame", 0); obj.Set("total", ep->total);
+                    obj.Set("done", true); obj.Set("error", ep->error);
+                    cb.Call({obj}); delete ep;
+                });
+            }
+            g_exporting.store(false);
+            return;
+        }
+
+        std::string errMsg;
+        bool cancelled = false;
+
+        for (int f = 0; f < total; f++) {
+            if (g_exportCancel.load()) { cancelled = true; break; }
+
+            // GPU composite → RGBA bytes
+            std::vector<uint8_t> rgba;
+            if (g_compositor) {
+                rgba = g_compositor->exportFrameSync(static_cast<int64_t>(f));
+            }
+            if (rgba.empty()) {
+                // black frame fallback
+                rgba.assign(static_cast<size_t>(width) * height * 4, 0);
+            }
+
+            fwrite(rgba.data(), 1, rgba.size(), pipe);
+
+            // Report progress every 10 frames or on last frame
+            if (g_exportTsfnActive.load() && (f % 10 == 0 || f == total - 1)) {
+                auto* p = new ExportProgress{f + 1, total, false, ""};
+                g_exportTsfn.NonBlockingCall(p, [](Napi::Env e, Napi::Function cb, ExportProgress* ep) {
+                    auto obj = Napi::Object::New(e);
+                    obj.Set("frame", ep->frame); obj.Set("total", ep->total);
+                    obj.Set("done", false);       obj.Set("error", "");
+                    cb.Call({obj}); delete ep;
+                });
+            }
+        }
+
+        _pclose(pipe);
+
+        // Final done event
+        if (g_exportTsfnActive.load()) {
+            std::string finalErr = cancelled ? "Cancelled" : errMsg;
+            auto* p = new ExportProgress{cancelled ? 0 : total, total, true, finalErr};
+            g_exportTsfn.NonBlockingCall(p, [](Napi::Env e, Napi::Function cb, ExportProgress* ep) {
+                auto obj = Napi::Object::New(e);
+                obj.Set("frame", ep->frame); obj.Set("total", ep->total);
+                obj.Set("done", true);        obj.Set("error", ep->error);
+                cb.Call({obj}); delete ep;
+            });
+        }
+
+        g_exporting.store(false);
+    }).detach();
+
+    return env.Undefined();
+}
+
+// cancelExport()
+Napi::Value CancelExport(const Napi::CallbackInfo& info) {
+    g_exportCancel.store(true);
+    return info.Env().Undefined();
+}
+
 // ── Addon registration ────────────────────────────────────────────────────────
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -258,6 +398,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("getSharedBuffer",       Napi::Function::New(env, GetSharedBuffer));
     exports.Set("setFrameReadyCallback", Napi::Function::New(env, SetFrameReadyCallback));
     exports.Set("getStats",              Napi::Function::New(env, GetStats));
+    exports.Set("startExport",           Napi::Function::New(env, StartExport));
+    exports.Set("cancelExport",          Napi::Function::New(env, CancelExport));
     return exports;
 }
 

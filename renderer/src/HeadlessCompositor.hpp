@@ -59,6 +59,10 @@ public:
   // Seek to a specific frame (renders one frame immediately)
   void seek(int64_t frame);
 
+  // Export API: synchronous frame render → raw RGBA bytes (w*h*4).
+  // Blocks until composited. Do NOT call during play loop.
+  std::vector<uint8_t> exportFrameSync(int64_t frameNum);
+
   // Access the output buffer (BGRA, width*height*4 bytes)
   uint8_t *getBuffer() const { return m_buffer.get(); }
   size_t getBufferSize() const { return m_bufferSize; }
@@ -91,6 +95,7 @@ private:
 
   // Apply SkSL effects to a clip image
   sk_sp<SkImage> applyEffects(sk_sp<SkImage> src, const ClipDesc &clip);
+  std::vector<uint8_t> exortFramesync(int64_t frameNum);
 
   //   Members
   int m_width;
@@ -103,15 +108,12 @@ private:
   // Per-file decoder cache
   std::unordered_map<std::string, std::unique_ptr<ClipDecoder>> m_decoders;
 
-  // Skia offscreen surface (Vulkan-backed)
+  // Skia offscreen surface
   sk_sp<SkSurface> m_surface;
 
-    // Output CPU buffer — this is the SharedArrayBuffer exposed to Electron
-    // JS ALWAYS reads from m_buffer. C++ renders into m_renderBuffer, then
-    // memcpy → m_buffer before signaling. Eliminates clear-during-read tearing.
-    std::unique_ptr<uint8_t[]> m_buffer;        // front: JS reads this
-    std::unique_ptr<uint8_t[]> m_renderBuffer;  // back:  C++ writes this
-    size_t m_bufferSize = 0;
+  std::unique_ptr<uint8_t[]> m_buffer;       // front: JS reads
+  std::unique_ptr<uint8_t[]> m_renderBuffer; // back:  C++ writes
+  size_t m_bufferSize = 0;
 
   std::atomic<bool> m_playing{false};
   std::atomic<int64_t> m_currentFrame{0};
@@ -129,7 +131,6 @@ private:
   void closeTcp();   // called on shutdown
   int m_pythonPort = 8001;
 
-  SOCKET m_frameSock = INVALID_SOCKET; // persistent, reused every frame
-  std::mutex
-      m_tcpMutex; // serialize send+recv — seek() threads run concurrently
+  SOCKET m_frameSock = INVALID_SOCKET;
+  std::mutex m_tcpMutex; // serialize send+recv
 };

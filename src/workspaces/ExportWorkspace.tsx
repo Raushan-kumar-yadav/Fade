@@ -31,13 +31,57 @@ export default function ExportWorkspace() {
 
   useEffect(() => stopPoll, [])
 
+  // Cleanup ref for the onExportProgress listener
+  const cleanupRef = useRef<(() => void) | null>(null)
+
   async function startExport() {
+    const api = (window as any).electronAPI
+
+    // ── Native GPU export path ─────────────────────────────────────────────
+    if (api?.startExport && api?.onExportProgress) {
+      setJobId('native')
+      setProgress({ jobId: 'native', frame: 0, total: 0, percent: 0, done: false, error: null, path: null })
+
+      // Detach any previous listener
+      cleanupRef.current?.()
+      cleanupRef.current = api.onExportProgress(
+        (p: { frame: number; total: number; done: boolean; error: string }) => {
+          const pct = p.total > 0 ? Math.round((p.frame / p.total) * 100) : 0
+          setProgress({
+            jobId: 'native',
+            frame:   p.frame,
+            total:   p.total,
+            percent: pct,
+            done:    p.done,
+            error:   p.error || null,
+            path:    p.done && !p.error ? outputPath : null,
+          })
+          if (p.done) {
+            cleanupRef.current?.()
+            cleanupRef.current = null
+            setJobId(null)
+          }
+        }
+      )
+
+      api.startExport({
+        outputPath,
+        width:        fmt.w,
+        height:       fmt.h,
+        fps:          parseFloat(fps),
+        codec:        'auto',   // main.ts will resolve to libx264/nvenc/qsv
+        videoBitrate: '8M',
+      })
+      return
+    }
+
+    // ── Python software-render fallback ────────────────────────────────────
     try {
       const res = await exportApi.start({
         outputPath,
-        width:  fmt.w,
-        height: fmt.h,
-        fps:    parseFloat(fps),
+        width:    fmt.w,
+        height:   fmt.h,
+        fps:      parseFloat(fps),
         formatId: selected,
       })
       setJobId(res.jobId)
@@ -55,20 +99,29 @@ export default function ExportWorkspace() {
   }
 
   async function cancelExport() {
-    if (!jobId) return
-    await exportApi.cancel(jobId)
-    stopPoll()
+    const api = (window as any).electronAPI
+    if (jobId === 'native') {
+      api?.cancelExport()
+      cleanupRef.current?.()
+      cleanupRef.current = null
+    } else if (jobId) {
+      await exportApi.cancel(jobId)
+      stopPoll()
+    }
     setProgress(null)
     setJobId(null)
   }
 
   function browseOutput() {
-    const ipc = (window as any).electronAPI
-    if (ipc?.showSaveDialog) {
-      ipc.showSaveDialog({ filters: [{ name: 'Video', extensions: ['mp4', 'webm'] }] })
-        .then((p: string | undefined) => { if (p) setOutputPath(p) })
+    const api = (window as any).electronAPI
+    if (api?.showSaveDialog) {
+      api.showSaveDialog({
+        filters:     [{ name: 'Video', extensions: ['mp4', 'webm'] }],
+        defaultPath: outputPath,
+      }).then((p: string | undefined) => { if (p) setOutputPath(p) })
     }
   }
+
 
   const exporting = !!jobId && !progress?.done
   const pct       = progress?.percent ?? 0

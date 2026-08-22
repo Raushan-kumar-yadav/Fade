@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import fs from 'fs'
@@ -10,8 +10,7 @@ let detectedPort:  number | null = null
 let appQuitting  = false
 let pyKilledByUs = false
 
-// ── Native render engine addon (C++ NAPI) ─────────────────────────────────────
-// Loaded lazily — graceful fallback if not yet compiled
+ // Loaded lazily  
 type RenderEngine = {
   initialize(w: number, h: number, fps: number, effectsDir?: string, port?: number): void
   seekFrame(n: number): void
@@ -21,6 +20,12 @@ type RenderEngine = {
   getSharedBuffer(): ArrayBuffer
   setFrameReadyCallback(fn: (frameNum: number) => void): void
   getStats(): { width: number; height: number; fps: number; bufferSize: number }
+  //   Export  
+  startExport(config: {
+    outputPath: string; width: number; height: number;
+    fps: number; totalFrames: number; codec?: string; videoBitrate?: string;
+  }, progressCb: (p: { frame: number; total: number; done: boolean; error: string }) => void): void
+  cancelExport(): void
 }
 
 let renderEngine: RenderEngine | null = null
@@ -57,8 +62,7 @@ function initRenderEngine(pythonPort: number): void {
 }
 
 
-// GPU stability — prevents exit_code=34 (GPU TDR timeout)
-// createImageBitmap can overload the GPU compositor; force software raster for 2D canvas
+ 
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
 app.commandLine.appendSwitch('disable-dev-shm-usage')
 app.commandLine.appendSwitch('no-sandbox')
@@ -169,7 +173,7 @@ ipcMain.on('window:close', () => mainWindow?.close())
 
 ipcMain.handle('backend:get-port', () => detectedPort)
 
-// ── Native render engine IPC ──────────────────────────────────────────────────
+//   Native render engine IPC  
 ipcMain.on('render:seek', (_, frame: number) => renderEngine?.seekFrame(frame))
 ipcMain.on('render:play',  () => renderEngine?.play())
 ipcMain.on('render:pause', () => renderEngine?.pause())
@@ -177,10 +181,72 @@ ipcMain.handle('render:get-buffer', () => renderEngine?.getSharedBuffer() ?? nul
 ipcMain.handle('render:get-stats',  () => renderEngine?.getStats() ?? null)
 ipcMain.handle('render:is-native',  () => renderEngine !== null)
 
+//   Export IPC  
+ipcMain.on('export:start', async (_event, config) => {
+  if (!renderEngine) {
+    // Native engine not available  
+    mainWindow?.webContents.send('export:progress', {
+      frame: 0, total: 0, done: true,
+      error: 'Native render engine not loaded — use Python export fallback'
+    })
+    return
+  }
+
+  // Resolve totalFrames from Python /playback/state if not provided
+  let totalFrames: number = config.totalFrames ?? 0
+  if (!totalFrames && detectedPort) {
+    try {
+      const { default: http } = await import('http')
+      const data: string = await new Promise((resolve, reject) => {
+        http.get(`http://127.0.0.1:${detectedPort}/playback/state`, res => {
+          let body = ''
+          res.on('data', (c: Buffer) => { body += c.toString() })
+          res.on('end', () => resolve(body))
+        }).on('error', reject)
+      })
+      const state = JSON.parse(data)
+      totalFrames = state.totalFrames ?? 1800
+    } catch {
+      totalFrames = 1800
+    }
+  }
+
+  const exportConfig = { ...config, totalFrames }
+  console.log('[Export] Starting GPU export:', exportConfig.outputPath, `(${totalFrames} frames)`)
+
+  // Pause play-loop  
+  renderEngine.pause()
+
+  renderEngine.startExport(
+    exportConfig,
+    (progress: { frame: number; total: number; done: boolean; error: string }) => {
+      mainWindow?.webContents.send('export:progress', progress)
+      if (progress.done) {
+        console.log('[Export] Done:', progress.error || exportConfig.outputPath)
+      }
+    }
+  )
+})
+
+ipcMain.on('export:cancel', () => {
+  renderEngine?.cancelExport()
+  console.log('[Export] Cancelled')
+})
+
+//   File dialogs  
+ipcMain.handle('dialog:save', async (_event, opts) => {
+  if (!mainWindow) return undefined
+  const result = await dialog.showSaveDialog(mainWindow, {
+    filters: opts?.filters ?? [{ name: 'Video', extensions: ['mp4'] }],
+    defaultPath: opts?.defaultPath,
+  })
+  return result.canceled ? undefined : result.filePath
+})
+
 // Lifecycle  
 
 app.whenReady().then(() => {
-  loadRenderEngine()   // try to load native addon (graceful if not built)
+  loadRenderEngine()   // try to load native addon  
   createWindow()
   startPython()
 })

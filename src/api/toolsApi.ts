@@ -133,15 +133,15 @@ export interface MaskRequest {
 }
 
 export interface MaskInfo {
-  maskId:     string;
-  name:       string;
-  shape:      string;
-  mode:       string;
+  maskId: string;
+  name: string;
+  shape: string;
+  mode: string;
   inverted:   boolean;
   feather:    number;
   opacity:    number;
   pointCount: number;
-  points:     BezierPoint[];   // full path — used by OverlayCanvas to reload existing mask
+  points:     BezierPoint[];   // full path  
 }
 
 export interface AddMaskResponse {
@@ -166,10 +166,10 @@ export const maskApi = {
 export interface EffectParam { value: number; min: number; max: number; }
 export interface EffectInfo {
   effectId: string;
-  name:     string;
-  type:     string;
+  name: string;
+  type: string;
   enabled:  boolean;
-  params:   Record<string, [number, number, number]>;  // [value, min, max]
+  params: Record<string, [number, number, number]>;  // [value, min, max]
 }
 
 export const effectsApi = {
@@ -187,23 +187,23 @@ export const effectsApi = {
 
 export interface ExportSettings {
   outputPath:   string;
-  width?:       number;
-  height?:      number;
-  fps?:         number;
-  codec?:       string;
+  width?: number;
+  height?: number;
+  fps?: number;
+  codec?: string;
   videoBitrate?: string;
   audioBitrate?: string;
   formatId?:    string;
 }
 
 export interface ExportProgress {
-  jobId:   string;
+  jobId: string;
   frame:   number;
-  total:   number;
+  total: number;
   percent: number;
-  done:    boolean;
-  error:   string | null;
-  path:    string | null;
+  done: boolean;
+  error: string | null;
+  path: string | null;
 }
 
 export const exportApi = {

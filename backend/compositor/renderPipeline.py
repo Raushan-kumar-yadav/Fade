@@ -46,7 +46,11 @@ class RenderPipeline:
         self._lock = threading.Lock()
         self._target_frame = 0     
         self._playing = False
-        self._seek_version = 0     
+        self._seek_version = 0
+        self._speed: float = 1.0          # playback rate multiplier
+        self._in_point: int | None = None  # loop region start (None = disabled)
+        self._out_point: int | None = None # loop region end
+        self._frame_accum: float = 0.0    # fractional frame accumulator for sub-1x speed
 
          
         self._timeline: Optional["Timeline"] = None
@@ -76,6 +80,7 @@ class RenderPipeline:
             self._target_frame = frame
             self._playing      = True
             self._seek_version += 1
+            self._frame_accum  = 0.0
         self._flush()
 
     def notify_pause(self) -> None:
@@ -88,16 +93,42 @@ class RenderPipeline:
         with self._lock:
             self._target_frame = frame
             self._seek_version += 1
+            self._frame_accum  = 0.0
         self._flush()
 
-    def advance_playhead(self) -> None:
-        """Called by engine after consuming a frame to move the target forward."""
+    def set_speed(self, speed: float) -> None:
+        """Set playback speed (0.25–4.0). Thread-safe."""
         with self._lock:
-            if self._playing:
-                self._target_frame += 1
-                if self._target_frame >= self._total_frames:
-                    self._target_frame = 0
-                    self._playing = False
+            self._speed = max(0.1, min(4.0, speed))
+            self._frame_accum = 0.0
+
+    def set_in_out(self, in_point: int | None, out_point: int | None) -> None:
+        """Set loop in/out points. Pass None to disable looping."""
+        with self._lock:
+            self._in_point  = in_point
+            self._out_point = out_point
+
+    def advance_playhead(self) -> None:
+        """Called by engine after consuming a frame. Advances by speed frames,
+        loops at out-point if set, or wraps at total_frames."""
+        with self._lock:
+            if not self._playing:
+                return
+            # Accumulate fractional frames for sub-1x speeds
+            self._frame_accum += self._speed
+            steps = int(self._frame_accum)
+            self._frame_accum -= steps
+            if steps < 1:
+                return  # not yet time to advance
+
+            next_frame = self._target_frame + steps
+            # Loop region: bounce back to in_point when out_point reached
+            if self._out_point is not None and next_frame > self._out_point:
+                next_frame = self._in_point if self._in_point is not None else 0
+            elif next_frame >= self._total_frames:
+                next_frame = 0
+                self._playing = False
+            self._target_frame = next_frame
 
     def get_frame(self, timeout: float = 0.0) -> Optional[_ReadyFrame]:
         """Non-blocking fetch of the next ready frame. Returns None if empty."""

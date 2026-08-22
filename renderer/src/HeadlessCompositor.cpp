@@ -1,5 +1,6 @@
 #include "HeadlessCompositor.hpp"
 #include "core/api/Logger.hpp"
+#include "napi/FrameDescriptor.hpp"
 #include "rendering/DrawPen.hpp"
 #include "rendering/DrawShape.hpp"
 #include "rendering/DrawText.hpp"
@@ -12,10 +13,13 @@
 #include <core/SkPaint.h>
 #include <core/SkRect.h>
 #include <core/SkSamplingOptions.h>
+#include <cstdint>
+#include <cstring>
 #include <effects/SkRuntimeEffect.h>
 #include <gpu/ganesh/GrDirectContext.h>
 #include <gpu/ganesh/SkSurfaceGanesh.h>
-
+#include <mutex>
+#include <vector>
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -33,7 +37,7 @@
 #define LOG_ERROR(m) std::cerr << "[HeadlessCompositor][ERR] " << m << "\n"
 #endif
 
-// ── Constructor / destructor
+// ── Constructor
 
 HeadlessCompositor::HeadlessCompositor(int width, int height, float fps,
                                        const std::string &effectsDir)
@@ -81,7 +85,7 @@ void HeadlessCompositor::shutdown() {
   if (m_playThread.joinable())
     m_playThread.join();
 
-  // Flush all in-flight GPU work before releasing resources
+  // Flush all in-flight
   if (m_skia && m_skia->getDirectContext()) {
     m_skia->getDirectContext()->flushAndSubmit();
   }
@@ -175,7 +179,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   // filtering (~900ms/frame at 1080p). GPU does it in ~2ms with HW textures.
   if (decoded.size() > 1)
     needsGpu = true;
-
 
   if (!needsGpu) {
 
@@ -564,4 +567,38 @@ std::string HeadlessCompositor::fetchFrameJson(int64_t frameNum) {
     return {};
   }
   return json;
+}
+
+// ── Export: synchronous per-frame render
+// ────────────────────────────────────── Called by the NAPI export thread.
+// Fetches frame descriptor from Python via the existing persistent TCP socket,
+// composites on the GPU, returns raw RGBA bytes.
+std::vector<uint8_t> HeadlessCompositor::exportFrameSync(int64_t frameNum) {
+  // 1. Fetch frame descriptor (same TCP path used during preview playback)
+  std::string json = fetchFrameJson(frameNum);
+  if (json.empty()) {
+    // Return a black frame so FFmpeg always gets valid pixel data
+    return std::vector<uint8_t>(static_cast<size_t>(m_width) * m_height * 4, 0);
+  }
+
+  // 2. Parse JSON → FrameDescriptor
+  FrameDescriptor fd = parseFrameDescriptor(json);
+  if (!fd.valid) {
+    return std::vector<uint8_t>(static_cast<size_t>(m_width) * m_height * 4, 0);
+  }
+
+  // 3. Composite via the existing GPU render path.
+  //    m_renderMutex serialises against the play-loop.
+  {
+    std::lock_guard<std::mutex> lk(m_renderMutex);
+    doRender(fd);
+    // doRender: GPU composite → memcpy m_renderBuffer → m_buffer → fire
+    // callback. Callback is safe to fire here; it just sends a NAPI event
+    // (ignored during export).
+  }
+
+  // 4. Copy pixels from front buffer and return
+  std::vector<uint8_t> out(m_bufferSize);
+  std::memcpy(out.data(), m_buffer.get(), m_bufferSize);
+  return out;
 }

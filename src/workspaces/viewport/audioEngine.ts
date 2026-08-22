@@ -23,6 +23,7 @@ export class AudioEngine {
   private fps   = 30
   private port  = 8000
   private _playing = false
+  private _rate   = 1.0
 
   constructor(fps: number, port: number) {
     this.fps  = fps
@@ -30,6 +31,14 @@ export class AudioEngine {
   }
 
   setFps(fps: number) { this.fps = fps }
+
+  /** Set playback speed (0.25, 0.5, 1.0, 2.0). Applied to all active audio elements. */
+  setRate(rate: number) {
+    this._rate = rate
+    for (const { el } of this.nodes.values()) {
+      el.playbackRate = rate
+    }
+  }
 
   /** Replace the full set of audio clips from the backend. */
   update(clips: AudioClipInfo[]) {
@@ -68,10 +77,9 @@ export class AudioEngine {
       const clipRelFrame = frame - clip.startFrame
       if (clipRelFrame < 0 || clipRelFrame >= clip.duration) {
         if (!el.paused) el.pause()
-        return
+        continue  // was 'return' — must continue to seek remaining clips
       }
       const targetSec = (clipRelFrame + clip.mediaOffset) / this.fps
-      // Only seek if more than 100ms off to avoid stuttering
       if (Math.abs(el.currentTime - targetSec) > 0.1) {
         el.currentTime = targetSec
       }
@@ -88,6 +96,7 @@ export class AudioEngine {
         if (Math.abs(el.currentTime - targetSec) > 0.15) {
           el.currentTime = targetSec
         }
+        el.playbackRate = this._rate
         el.play().catch(() => {})
       }
     }
@@ -110,10 +119,12 @@ export class AudioEngine {
 
       if (inRange) {
         const targetSec = (clipRelFrame + clip.mediaOffset) / this.fps
-        // Drift correction: if >200ms off, re-sync
-        if (Math.abs(el.currentTime - targetSec) > 0.2) {
+        // Drift correction threshold scales with playback rate
+        const driftThreshold = 0.2 / Math.max(0.1, this._rate)
+        if (Math.abs(el.currentTime - targetSec) > driftThreshold) {
           el.currentTime = targetSec
         }
+        if (el.playbackRate !== this._rate) el.playbackRate = this._rate
         if (el.paused) {
           el.play().catch(() => {})
         }
