@@ -209,6 +209,81 @@ def _get_frame_data(frame: int) -> dict:
             if clip_type == "solid":
                 c = getattr(clip, "color", [0.5, 0.5, 0.5, 1.0])
                 clip_data["color"] = {"r": c[0], "g": c[1], "b": c[2], "a": c[3]}
+
+            elif clip_type == "text":
+                style = getattr(clip, "style", None)
+                if style is not None:
+                    clip_data["textStyle"] = {
+                        "text":           getattr(style, "text",           "New Text"),
+                        "fontFamily":     getattr(style, "fontFamily",     "Arial"),
+                        "fontSize":       float(getattr(style, "fontSize",  48.0)),
+                        "bold":           bool(getattr(style, "bold",       False)),
+                        "italic":         bool(getattr(style, "italic",     False)),
+                        "alignment":      getattr(style, "alignment",      "left"),
+                        "lineHeight":     float(getattr(style, "lineHeight", 1.2)),
+                        "letterSpacing":  float(getattr(style, "letterSpacing", 0.0)),
+                        "allCaps":        bool(getattr(style, "allCaps",    False)),
+                        # Fill
+                        "color":          list(getattr(style, "color",      [1,1,1,1])),
+                        # Stroke
+                        "strokeColor":    list(getattr(style, "strokeColor", [0,0,0,1])),
+                        "strokeWidth":    float(getattr(style, "strokeWidth", 0.0)),
+                        # Shadow
+                        "shadowEnabled":  bool(getattr(style, "shadowEnabled", False)),
+                        "shadowColor":    list(getattr(style, "shadowColor",   [0,0,0,0.6])),
+                        "shadowOffsetX":  float(getattr(style, "shadowOffsetX", 4.0)),
+                        "shadowOffsetY":  float(getattr(style, "shadowOffsetY", 4.0)),
+                        "shadowBlur":     float(getattr(style, "shadowBlur",    6.0)),
+                        # Background box
+                        "bgEnabled":      bool(getattr(style, "bgEnabled",    False)),
+                        "bgColor":        list(getattr(style, "bgColor",      [0,0,0,0.5])),
+                        "bgPaddingX":     float(getattr(style, "bgPaddingX",  20.0)),
+                        "bgPaddingY":     float(getattr(style, "bgPaddingY",  10.0)),
+                        "bgCornerRadius": float(getattr(style, "bgCornerRadius", 0.0)),
+                    }
+
+            elif clip_type == "shape":
+                style = getattr(clip, "style", None)
+                if style is not None:
+                    clip_data["shapeStyle"] = {
+                        "shapeType":      getattr(style, "shapeType",     "rect"),
+                        # Rect
+                        "width":          float(getattr(style, "width",          200.0)),
+                        "height":         float(getattr(style, "height",         120.0)),
+                        "cornerRadius":   float(getattr(style, "cornerRadius",     0.0)),
+                        # Circle / Ellipse
+                        "radiusX":        float(getattr(style, "radiusX",        100.0)),
+                        "radiusY":        float(getattr(style, "radiusY",         80.0)),
+                        # Star
+                        "outerRadius":    float(getattr(style, "outerRadius",    100.0)),
+                        "innerRadius":    float(getattr(style, "innerRadius",     40.0)),
+                        "numPoints":      int(getattr(style, "numPoints",          5)),
+                        # Polygon
+                        "numSides":       int(getattr(style, "numSides",           6)),
+                        "polygonRadius":  float(getattr(style, "polygonRadius",  100.0)),
+                        # Line
+                        "x1": float(getattr(style, "x1", -100.0)),
+                        "y1": float(getattr(style, "y1",    0.0)),
+                        "x2": float(getattr(style, "x2",  100.0)),
+                        "y2": float(getattr(style, "y2",    0.0)),
+                        # Arc
+                        "arcStartAngle":  float(getattr(style, "arcStartAngle",   0.0)),
+                        "arcSweepAngle":  float(getattr(style, "arcSweepAngle", 180.0)),
+                        "arcRadius":      float(getattr(style, "arcRadius",      100.0)),
+                        # Fill
+                        "fillColor":      list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])),
+                        "fillOpacity":    float(getattr(style, "fillOpacity",   1.0)),
+                        # Stroke
+                        "strokeColor":    list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])),
+                        "strokeWidth":    float(getattr(style, "strokeWidth",   0.0)),
+                        # Shadow
+                        "shadowEnabled":  bool(getattr(style, "shadowEnabled", False)),
+                        "shadowColor":    list(getattr(style, "shadowColor",  [0, 0, 0, 0.75])),
+                        "shadowAngle":    float(getattr(style, "shadowAngle",  135.0)),
+                        "shadowDistance": float(getattr(style, "shadowDistance", 10.0)),
+                        "shadowBlur":     float(getattr(style, "shadowBlur",    5.0)),
+                    }
+
             clips_out.append(clip_data)
 
     return {"frame": frame, "fps": fps, "width": width, "height": height, "clips": clips_out}

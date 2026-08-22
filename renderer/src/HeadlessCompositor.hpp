@@ -11,7 +11,16 @@
 #include <core/SkColorSpace.h>
 #include <core/SkColorType.h>
 #include <core/SkImageInfo.h>
+#include <core/SkPath.h>
+#include <core/SkRRect.h>
+#include <core/SkFont.h>
+#include <core/SkTypeface.h>
+#include <core/SkFontMgr.h>
+#include <core/SkFontStyle.h>
+#include <core/SkTextBlob.h>
 #include <effects/SkRuntimeEffect.h>
+#include <effects/SkImageFilters.h>
+#include <effects/SkMaskFilter.h>
 #include <gpu/ganesh/GrDirectContext.h>
 #include <gpu/ganesh/SkSurfaceGanesh.h>
 
@@ -87,8 +96,11 @@ private:
     // ── Core render ──────────────────────────────────────────────────────────
     void doRender(const FrameDescriptor& fd);
 
-    // Draw a single clip onto canvas (useGpu=true enables SkSL effects)
+    // Draw a video/image clip onto canvas
     void drawClipOnCanvas(SkCanvas* canvas, const ClipDesc& clip, const uint8_t* rgba, int imgW, int imgH, bool useGpu);
+
+    // Text and shape clips are drawn by fade::drawing::drawText / fade::drawing::drawShape
+    // (see renderer/src/rendering/DrawText.hpp + DrawShape.hpp)
 
     // Apply SkSL effects to a clip image
     sk_sp<SkImage> applyEffects(sk_sp<SkImage> src, const ClipDesc& clip);

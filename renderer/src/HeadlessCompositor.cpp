@@ -1,6 +1,7 @@
 #include "HeadlessCompositor.hpp"
-// EffectRegistry removed — applyEffects uses inline
-// SkRuntimeEffect::MakeForShader
+#include "rendering/DrawText.hpp"
+#include "rendering/DrawShape.hpp"
+#include "core/api/Logger.hpp"
 
 #include <core/SkBlendMode.h>
 #include <core/SkCanvas.h>
@@ -13,16 +14,15 @@
 #include <gpu/ganesh/GrDirectContext.h>
 #include <gpu/ganesh/SkSurfaceGanesh.h>
 
-// Winsock2 for persistent TCP frame socket (replaces WinHTTP)
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
-// winsock2 is included via HeadlessCompositor.hpp
 
 #include <chrono>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
+
 
 #ifndef LOG_INFO
 #define LOG_INFO(m) std::cout << "[HeadlessCompositor] " << m << "\n"
@@ -137,7 +137,10 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   std::vector<ClipPixels> decoded;
 
   for (const auto &clip : fd.clips) {
-    if (clip.type == ClipDesc::Type::Solid) {
+    // Skip video/image decode for generative clip types
+    if (clip.type == ClipDesc::Type::Solid ||
+        clip.type == ClipDesc::Type::Text  ||
+        clip.type == ClipDesc::Type::Shape) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
     }
@@ -172,6 +175,14 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           canvas->drawRect(SkRect::MakeWH(m_width, m_height), p);
           continue;
         }
+        if (cp.clip->type == ClipDesc::Type::Text) {
+          fade::drawing::drawText(canvas, *cp.clip, m_width, m_height);
+          continue;
+        }
+        if (cp.clip->type == ClipDesc::Type::Shape) {
+          fade::drawing::drawShape(canvas, *cp.clip, m_width, m_height);
+          continue;
+        }
         if (cp.rgba.empty())
           continue;
         drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
@@ -195,6 +206,14 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           {cp.clip->solidR, cp.clip->solidG, cp.clip->solidB, cp.clip->solidA});
       p.setAlphaf(cp.clip->opacity);
       canvas->drawRect(SkRect::MakeWH(m_width, m_height), p);
+      continue;
+    }
+    if (cp.clip->type == ClipDesc::Type::Text) {
+      fade::drawing::drawText(canvas, *cp.clip, m_width, m_height);
+      continue;
+    }
+    if (cp.clip->type == ClipDesc::Type::Shape) {
+      fade::drawing::drawShape(canvas, *cp.clip, m_width, m_height);
       continue;
     }
     if (cp.rgba.empty())
@@ -288,10 +307,13 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
 
 sk_sp<SkImage> HeadlessCompositor::applyEffects(sk_sp<SkImage> src,
                                                 const ClipDesc &clip) {
-
   (void)clip;
   return src;
 }
+
+// Text  → fade::drawing::drawText()   in rendering/DrawText.cpp
+// Shape → fade::drawing::drawShape()  in rendering/DrawShape.cpp
+
 
 //   Playback
 

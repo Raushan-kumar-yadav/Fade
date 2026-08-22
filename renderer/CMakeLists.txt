@@ -38,6 +38,10 @@ set(SOURCES
     src/napi/RenderEngineAddon.cpp
     src/HeadlessCompositor.cpp
 
+    # ── Drawing modules (text, shape) ──────────────────────────────────────────
+    src/rendering/DrawText.cpp
+    src/rendering/DrawShape.cpp
+
     # ── Vulkan GPU (Qt-free) ───────────────────────────────────────────────────
     src/gpu/vulkan/device/DeviceContext.cpp
     src/gpu/vulkan/memory/Buffer.cpp
