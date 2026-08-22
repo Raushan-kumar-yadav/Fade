@@ -23,14 +23,15 @@ const DESIGN_W = 1920;
 const DESIGN_H = 1080;
 
 interface Props {
-  mode:        OverlayMode;
-  clipId?:     string;
-  maskId?:     string;
-  width:       number;   // display pixel width of the canvas area
-  height:      number;   // display pixel height of the canvas area
-  startFrame?: number;
-  duration?:   number;
-  onDone?:     (clipId: string) => void;
+  mode:         OverlayMode;
+  clipId?:      string;
+  maskId?:      string;
+  width:        number;   // display pixel width
+  height:       number;   // display pixel height
+  startFrame?:  number;
+  duration?:    number;
+  currentFrame?: number;  // playhead frame (for keyframe recording)
+  onDone?:      (clipId: string) => void;
 }
 
 interface PtState extends BezierPoint { id: string; }
@@ -54,7 +55,7 @@ function designCoord(e: React.MouseEvent, svg: SVGSVGElement): { x: number; y: n
 
 export default function OverlayCanvas({
   mode, clipId, maskId, width, height,
-  startFrame = 0, duration = 150, onDone,
+  startFrame = 0, duration = 150, currentFrame = 0, onDone,
 }: Props) {
   const { activeTool, penSubMode, penOutputMode } = useTool();
 
@@ -64,8 +65,12 @@ export default function OverlayCanvas({
   const [dragging, setDragging] = useState<DragTarget>(null);
   const [selectedIdx, setSelectedIdx] = useState<Set<number>>(new Set());
   const penClipId  = useRef<string | null>(clipId ?? null);
-  const maskClipId = useRef<string | null>(clipId ?? null);   // target clip for mask
-  const createdMaskId = useRef<string | null>(maskId ?? null); // backend mask id
+  const maskClipId = useRef<string | null>(clipId ?? null);
+  const createdMaskId = useRef<string | null>(maskId ?? null);
+
+  // ── Path keyframe state ────────────────────────────────────────────────────
+  const [pathKfFlash, setPathKfFlash] = useState<'idle'|'ok'|'err'>('idle');
+  const [pathKfFrames, setPathKfFrames] = useState<number[]>([]);
 
   // ── Shape-draw state ──────────────────────────────────────────────────────
   const [shapeStart, setShapeStart] = useState<{ x: number; y: number } | null>(null);
@@ -433,7 +438,30 @@ export default function OverlayCanvas({
     ? 'crosshair'
     : 'default';
 
+  // ── Add Path Keyframe ──────────────────────────────────────────────────────
+  const addPathKeyframe = useCallback(async () => {
+    const localFrame = currentFrame - startFrame; // convert to clip-local frame
+    try {
+      let res: any;
+      if (mode === 'pen' && penClipId.current) {
+        res = await penApi.addPathKeyframe(penClipId.current, localFrame);
+      } else if (mode === 'mask' && maskClipId.current && createdMaskId.current) {
+        res = await maskApi.addPathKeyframe(maskClipId.current, createdMaskId.current, localFrame);
+      } else {
+        return;
+      }
+      setPathKfFrames(res.keyframes ?? []);
+      setPathKfFlash('ok');
+      setTimeout(() => setPathKfFlash('idle'), 1200);
+    } catch (err) {
+      console.error('[OverlayCanvas] addPathKeyframe error', err);
+      setPathKfFlash('err');
+      setTimeout(() => setPathKfFlash('idle'), 1200);
+    }
+  }, [mode, currentFrame, startFrame]);
+
   return (
+    <div style={{ position: 'relative', width, height }}>
     <svg
       ref={svgRef}
       className={`overlay-canvas overlay-canvas--${mode}`}
@@ -613,6 +641,62 @@ export default function OverlayCanvas({
         </text>
       )}
     </svg>
+
+    {/* ── Path Keyframe HUD button ────────────────────────────────────────── */}
+    {(mode === 'pen' || mode === 'mask') && (
+      <div style={{
+        position: 'absolute', top: 10, right: 10,
+        display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6,
+        pointerEvents: 'all',
+        zIndex: 20,
+      }}>
+        <button
+          title={`Record path shape at frame ${currentFrame} as a keyframe`}
+          onClick={addPathKeyframe}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '5px 12px',
+            background: pathKfFlash === 'ok'
+              ? 'rgba(34,197,94,0.92)'
+              : pathKfFlash === 'err'
+              ? 'rgba(239,68,68,0.92)'
+              : 'rgba(20,20,35,0.88)',
+            border: `1.5px solid ${
+              pathKfFlash === 'ok' ? '#22c55e'
+              : pathKfFlash === 'err' ? '#ef4444'
+              : 'rgba(99,102,241,0.7)'}`,
+            borderRadius: 7,
+            color: '#fff',
+            fontSize: 12,
+            fontFamily: 'Inter, sans-serif',
+            fontWeight: 600,
+            cursor: 'pointer',
+            backdropFilter: 'blur(6px)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+            transition: 'background 0.2s, border-color 0.2s',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          🔑&nbsp;
+          {pathKfFlash === 'ok' ? 'Keyframe added ✓'
+           : pathKfFlash === 'err' ? 'Error ✗'
+           : `Add Path Keyframe`}
+        </button>
+        {/* Show existing keyframe count */}
+        {pathKfFrames.length > 0 && (
+          <div style={{
+            fontSize: 11, color: 'rgba(160,160,255,0.85)',
+            fontFamily: 'Inter, monospace',
+            background: 'rgba(10,10,20,0.7)',
+            padding: '2px 8px', borderRadius: 5,
+          }}>
+            {pathKfFrames.length} path keyframe{pathKfFrames.length !== 1 ? 's' : ''}
+            {' '}· frames [{pathKfFrames.join(', ')}]
+          </div>
+        )}
+      </div>
+    )}
+    </div>
   );
 }
 

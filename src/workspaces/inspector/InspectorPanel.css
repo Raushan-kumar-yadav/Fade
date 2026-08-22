@@ -550,3 +550,49 @@
   flex-shrink: 0;
 }
 .insp-mask-row__del:hover { color: #f87171; background: rgba(248,113,113,0.1); }
+
+/* -- Inline Inspector Effects ----------------------------------- */
+
+.insp-effect {
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.02);
+}
+.insp-effect__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(112,112,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.insp-effect__check {
+  accent-color: #7070ff;
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.insp-effect__name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: #c0c0e8;
+  letter-spacing: 0.02em;
+}
+.insp-effect__del {
+  background: transparent;
+  border: none;
+  color: #5050a0;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: color 0.15s, background 0.15s;
+}
+.insp-effect__del:hover { color: #ff6060; background: rgba(255,96,96,0.12); }
+.insp-effect__params {
+  padding: 8px 10px 4px;
+}

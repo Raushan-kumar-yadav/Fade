@@ -283,3 +283,147 @@
   font-size: 40px;
   opacity: 0.3;
 }
+
+/* -- Vec2 / Vec4 Param Groups ----------------------------------- */
+
+.efx-param-group {
+  margin-bottom: 10px;
+}
+.efx-param-group__label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #7070ff;
+  margin-bottom: 4px;
+  padding: 0 2px;
+}
+.efx-param__label--sub {
+  color: #6060a0 !important;
+  font-size: 10px !important;
+  width: 16px !important;
+}
+
+/* Vec4 color row */
+.efx-vec4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.06);
+  margin-bottom: 4px;
+}
+.efx-vec4__swatch {
+  width: 36px;
+  height: 28px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  background: transparent;
+  padding: 2px;
+  outline: 2px solid rgba(255,255,255,0.15);
+}
+.efx-vec4__swatch::-webkit-color-swatch-wrapper { padding: 0; border-radius: 4px; }
+.efx-vec4__swatch::-webkit-color-swatch { border: none; border-radius: 4px; }
+.efx-vec4__hex {
+  font-size: 11px;
+  color: #9090b8;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.08em;
+  flex-shrink: 0;
+}
+
+/* Toggle button */
+.efx-param--toggle { align-items: center; }
+.efx-toggle {
+  padding: 3px 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: #6060a0;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  transition: all 0.15s ease;
+}
+.efx-toggle--on {
+  background: rgba(112, 112, 255, 0.2);
+  border-color: #7070ff;
+  color: #a0a0ff;
+}
+
+/* Effect type badge */
+.efx-applied__type-badge {
+  font-size: 10px;
+  color: #5050a0;
+  background: rgba(80,80,160,0.15);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: auto;
+  margin-right: 6px;
+}
+
+/* No params placeholder */
+.efx-applied__no-params {
+  font-size: 12px;
+  color: #44445a;
+  padding: 8px 12px;
+  font-style: italic;
+}
+
+/* Browser footer */
+.efx-browser__footer {
+  font-size: 10px;
+  color: #44445a;
+  text-align: center;
+  padding: 8px;
+  border-top: 1px solid rgba(255,255,255,0.04);
+}
+.efx-browser__hint-icon {
+  cursor: help;
+  color: #5050a0;
+  font-size: 14px;
+}
+.efx-browser__empty {
+  padding: 24px;
+  text-align: center;
+  color: #44445a;
+  font-size: 12px;
+}
+
+/* Empty drop state */
+.efx-empty--drop {
+  color: #7070ff !important;
+  border: 2px dashed #7070ff;
+  border-radius: 10px;
+}
+.efx-empty--drop .efx-empty__icon {
+  opacity: 0.8 !important;
+}
+
+/* -- Timeline Clip — Effect Drop Zone --------------------------- */
+.tl-clip--effect-drop {
+  outline: 2px dashed #7070ff !important;
+  outline-offset: -2px;
+}
+.tl-clip__effect-drop-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(112, 112, 255, 0.25);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+  border-radius: 4px;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}

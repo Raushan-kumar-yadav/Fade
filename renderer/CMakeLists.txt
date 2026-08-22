@@ -38,10 +38,11 @@ set(SOURCES
     src/napi/RenderEngineAddon.cpp
     src/HeadlessCompositor.cpp
 
-    # ── Drawing modules (text, shape, pen) ──────────────────────────────────────
+    # ── Drawing modules (text, shape, pen, svg) ───────────────────────────────────────
     src/rendering/DrawText.cpp
     src/rendering/DrawShape.cpp
     src/rendering/DrawPen.cpp
+    src/rendering/DrawSvg.cpp
 
     # ── Vulkan GPU (Qt-free) ───────────────────────────────────────────────────
     src/gpu/vulkan/device/DeviceContext.cpp
@@ -73,6 +74,9 @@ target_include_directories(render_engine PRIVATE
     ${DEPS}/skia                        # skia internal (include/core/...)
     ${DEPS}/skia/include                # skia external API (core/SkCanvas.h etc.)
     ${DEPS}/skia/modules/skcms          # skcms.h required by SkColorSpace.h
+    ${DEPS}/skia/modules/svg/include    # SkSVGDOM.h (SVG clip rendering)
+    ${DEPS}/skia/modules/skresources/include  # SkResources.h (SkSVGDOM dep)
+    ${DEPS}/skia/modules/skshaper/include     # SkShaper_factory.h (SkSVGDOM dep)
     ${DEPS}/vma                         # vk_mem_alloc.h
     ${Vulkan_INCLUDE_DIRS}
     ${CMAKE_JS_INC}                     # Node.js headers
@@ -111,6 +115,14 @@ target_link_libraries(render_engine PRIVATE
     ${CMAKE_JS_LIB}
     ${Vulkan_LIBRARIES}
     "${DEPS}/skia/lib/skia.lib"
+    # ── Skia SVG module (SkSVGDOM + SkSVGBuilder symbols) ──────────────────
+    "${DEPS}/skia/lib/svg.lib"
+    "${DEPS}/skia/lib/skresources.lib"
+    "${DEPS}/skia/lib/skshaper.lib"
+    "${DEPS}/skia/lib/skunicode_core.lib"
+    "${DEPS}/skia/lib/skunicode_icu.lib"
+    "${DEPS}/skia/lib/harfbuzz.lib"
+    "${DEPS}/skia/lib/icu.lib"
     "${FFMPEG_LIB_DIR}/avcodec.lib"
     "${FFMPEG_LIB_DIR}/avformat.lib"
     "${FFMPEG_LIB_DIR}/avutil.lib"

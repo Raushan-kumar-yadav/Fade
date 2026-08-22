@@ -6,7 +6,7 @@ import {
   mapBackendTracksPreservingOrder,
 } from "./TimelineContext";
 import { moveClip, trimClip, fetchTimeline, splitClip } from "../../api/useApi";
-import { waveformApi } from "../../api/toolsApi";
+import { waveformApi, effectsApi } from "../../api/toolsApi";
 import {
   type Clip,
   type Track,
@@ -295,6 +295,36 @@ const TimelineClip = memo(function TimelineClip({
     ],
   );
 
+  // Effect drop support — accepts drag from EffectsPanel library
+  const [effectDropOver, setEffectDropOver] = useState(false);
+
+  const handleEffectDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/fade-effect')) {
+      e.preventDefault();
+      e.stopPropagation();
+      setEffectDropOver(true);
+    }
+  }, []);
+
+  const handleEffectDragLeave = useCallback(() => setEffectDropOver(false), []);
+
+  const handleEffectDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setEffectDropOver(false);
+    const effectType = e.dataTransfer.getData('application/fade-effect');
+    if (!effectType || !clip.id) return;
+    try {
+      await effectsApi.add(clip.id, effectType);
+      // Select this clip so inspector shows the new effect
+      dispatch({ type: 'SELECT_CLIP', clipId: clip.id, trackId: track.id, multi: false });
+      setSelected({ clipId: clip.id, clipName: clip.name, clipType: clip.type, trackIndex });
+      window.dispatchEvent(new CustomEvent('fade:effects-changed', { detail: clip.id }));
+    } catch (err) {
+      console.error('[TimelineClip] effect drop failed', err);
+    }
+  }, [clip.id, clip.name, clip.type, track.id, trackIndex, dispatch, setSelected]);
+
   // Render
   const isSelected = clip.isSelected;
   const dimForGhost = isMeMoving;
@@ -302,7 +332,7 @@ const TimelineClip = memo(function TimelineClip({
   return (
     <div
       ref={clipRef}
-      className={`tl-clip ${isSelected ? "tl-clip--selected" : ""} ${dimForGhost ? "tl-clip--ghost-dim" : ""}`}
+      className={`tl-clip ${isSelected ? "tl-clip--selected" : ""} ${dimForGhost ? "tl-clip--ghost-dim" : ""} ${effectDropOver ? "tl-clip--effect-drop" : ""}`}
       style={{
         left: x,
         width,
@@ -316,6 +346,9 @@ const TimelineClip = memo(function TimelineClip({
         const localX = e.clientX - e.currentTarget.getBoundingClientRect().left;
         e.currentTarget.style.cursor = getCursor(localX);
       }}
+      onDragOver={handleEffectDragOver}
+      onDragLeave={handleEffectDragLeave}
+      onDrop={handleEffectDrop}
       title={clip.name}
       role="button"
       aria-label={`Clip: ${clip.name}`}
@@ -330,6 +363,10 @@ const TimelineClip = memo(function TimelineClip({
           height={Math.max(1, trackHeight - 10)}
           style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.6 }}
         />
+      )}
+
+      {effectDropOver && (
+        <div className="tl-clip__effect-drop-hint">+ Drop Effect</div>
       )}
 
       <span className="tl-clip__label">{clip.name}</span>

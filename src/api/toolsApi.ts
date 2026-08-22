@@ -118,6 +118,11 @@ export const penApi = {
     post('/clips/pen', { startFrame, duration, points, isClosed, style }),
   updatePoints: (clipId: string, points: BezierPoint[], isClosed?: boolean) =>
     patch(`/clips/pen/${clipId}/points`, { points, isClosed }),
+  /** Snapshot current path as an animation keyframe at `frame`. */
+  addPathKeyframe: (clipId: string, frame: number, interp = 'bezier') =>
+    post(`/clips/pen/${clipId}/path-keyframe`, { frame, interp }),
+  removePathKeyframe: (clipId: string, frame: number) =>
+    del(`/clips/pen/${clipId}/path-keyframe/${frame}`),
 };
 
 //   Mask  
@@ -159,17 +164,30 @@ export const maskApi = {
     patch(`/clips/${clipId}/mask/${maskId}`, req),
   remove: (clipId: string, maskId: string) =>
     del(`/clips/${clipId}/mask/${maskId}`),
+  /** Snapshot current mask path as an animation keyframe at `frame`. */
+  addPathKeyframe: (clipId: string, maskId: string, frame: number, interp = 'bezier') =>
+    post(`/clips/${clipId}/mask/${maskId}/path-keyframe`, { frame, interp }),
+  removePathKeyframe: (clipId: string, maskId: string, frame: number) =>
+    del(`/clips/${clipId}/mask/${maskId}/path-keyframe/${frame}`),
 };
 
 //   Effects
 
-export interface EffectParam { value: number; min: number; max: number; }
+export interface EffectParamDef {
+  value: number | number[];
+  min: number | number[];
+  max: number | number[];
+  type: 'FloatSlider' | 'Vec2Input' | 'Vec4Input' | 'ToggleBool' | 'IntSlider';
+  displayName: string;
+}
+
 export interface EffectInfo {
   effectId: string;
   name: string;
   type: string;
   enabled:  boolean;
-  params: Record<string, [number, number, number]>;  // [value, min, max]
+  params: Record<string, EffectParamDef>;
+  paramTypes?: 'typed';
 }
 
 export const effectsApi = {
@@ -177,7 +195,7 @@ export const effectsApi = {
     fetch(`${base()}/clips/${clipId}/effects`).then(r => r.json()),
   add:    (clipId: string, effectType: string): Promise<EffectInfo> =>
     post(`/clips/${clipId}/effects`, { effectType }),
-  patch:  (clipId: string, effectId: string, body: { enabled?: boolean; params?: Record<string, number> }) =>
+  patch:  (clipId: string, effectId: string, body: { enabled?: boolean; params?: Record<string, number | number[]> }) =>
     patch(`/clips/${clipId}/effects/${effectId}`, body),
   remove: (clipId: string, effectId: string) =>
     del(`/clips/${clipId}/effects/${effectId}`),

@@ -30,9 +30,12 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
+#include <unordered_map>
+#include <vector>
 
-#include <winsock2.h> // persistent TCP socket
+#include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 
@@ -44,28 +47,22 @@ public:
                      const std::string &effectsDir = "");
   ~HeadlessCompositor();
 
-  // Non-copyable
   HeadlessCompositor(const HeadlessCompositor &) = delete;
   HeadlessCompositor &operator=(const HeadlessCompositor &) = delete;
 
-  // Called from NAPI bridge — enqueues a render request
   void renderFrame(const FrameDescriptor &fd);
 
-  // Playback control
   void play();
   void pause();
   bool isPlaying() const { return m_playing.load(); }
 
-  // Seek to a specific frame (renders one frame immediately)
   void seek(int64_t frame);
 
-  // Export API: synchronous frame render → raw RGBA bytes (w*h*4).
-  // Blocks until composited. Do NOT call during play loop.
+  // Export: synchronous frame render → raw RGBA bytes.
   std::vector<uint8_t> exportFrameSync(int64_t frameNum);
 
-  // Access the output buffer (BGRA, width*height*4 bytes)
   uint8_t *getBuffer() const { return m_buffer.get(); }
-  size_t getBufferSize() const { return m_bufferSize; }
+  size_t   getBufferSize() const { return m_bufferSize; }
 
   void setFrameReadyCallback(FrameReadyCallback cb) {
     m_onFrameReady = std::move(cb);
@@ -77,60 +74,78 @@ public:
     }
   }
 
-  int width() const { return m_width; }
-  int height() const { return m_height; }
-  float fps() const { return m_fps; }
+  int   width()  const { return m_width;  }
+  int   height() const { return m_height; }
+  float fps()    const { return m_fps;    }
 
 private:
-  //   Initialization
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
   void init(const std::string &effectsDir);
   void shutdown();
-
-  //   Core render
   void doRender(const FrameDescriptor &fd);
 
-  // Draw a video/image clip onto canvas
+  // ── Per-clip draw ─────────────────────────────────────────────────────────
+  // Draw decoded video/image pixels onto the main canvas, applying SkSL effects.
   void drawClipOnCanvas(SkCanvas *canvas, const ClipDesc &clip,
-                        const uint8_t *rgba, int imgW, int imgH, bool useGpu);
+                        const uint8_t *rgba, int imgW, int imgH,
+                        bool useGpu, int64_t frame = 0);
 
-  // Apply SkSL effects to a clip image
-  sk_sp<SkImage> applyEffects(sk_sp<SkImage> src, const ClipDesc &clip);
-  std::vector<uint8_t> exortFramesync(int64_t frameNum);
+  // ── SkSL effect pipeline ──────────────────────────────────────────────────
+  // Load + compile a SkSL shader by typeId, cached after first compile.
+  sk_sp<SkRuntimeEffect> getOrCompileEffect(const std::string &typeId);
 
-  //   Members
-  int m_width;
-  int m_height;
+  // Apply one effect pass (Qteee SkRuntimeShaderBuilder pattern).
+  sk_sp<SkImage> applyOneEffect(sk_sp<SkImage> src,
+                                const EffectParam &ep, int64_t frame);
+
+  // Chain all effects on a clip in order.
+  sk_sp<SkImage> applyEffects(sk_sp<SkImage> src,
+                              const ClipDesc &clip, int64_t frame = 0);
+
+  // Rasterise a generative clip (Text/Shape/Pen/Solid/SVG) to an SkImage
+  // so SkSL shaders can sample it via the "source" child.
+  sk_sp<SkImage> renderGenerativeToImage(const ClipDesc &clip);
+
+  // ── Members ───────────────────────────────────────────────────────────────
+  int   m_width;
+  int   m_height;
   float m_fps;
 
-  std::unique_ptr<DeviceContext> m_device;
-  std::unique_ptr<SkiaContext> m_skia;
+  // Directory that contains <typeId>.json manifests and <name>.sksl shaders.
+  std::string m_skslDir;
 
-  // Per-file decoder cache
+  std::unique_ptr<DeviceContext> m_device;
+  std::unique_ptr<SkiaContext>   m_skia;
+
+  // Per-file video decoder cache
   std::unordered_map<std::string, std::unique_ptr<ClipDecoder>> m_decoders;
 
-  // Skia offscreen surface
+  // SkSL runtime-effect cache: typeId → compiled SkRuntimeEffect
+  std::unordered_map<std::string, sk_sp<SkRuntimeEffect>> m_effectCache;
+
+  // Main compositing surface
   sk_sp<SkSurface> m_surface;
 
-  std::unique_ptr<uint8_t[]> m_buffer;       // front: JS reads
-  std::unique_ptr<uint8_t[]> m_renderBuffer; // back:  C++ writes
+  std::unique_ptr<uint8_t[]> m_buffer;       // front buffer: JS reads
+  std::unique_ptr<uint8_t[]> m_renderBuffer; // back  buffer: C++ writes
   size_t m_bufferSize = 0;
 
-  std::atomic<bool> m_playing{false};
-  std::atomic<int64_t> m_currentFrame{0};
-  std::atomic<uint64_t> m_seekGeneration{0}; // incremented on each seek
-  std::thread m_playThread;
-  FrameReadyCallback m_onFrameReady;
-  std::mutex m_renderMutex;
+  std::atomic<bool>     m_playing{false};
+  std::atomic<int64_t>  m_currentFrame{0};
+  std::atomic<uint64_t> m_seekGeneration{0};
+  std::thread            m_playThread;
+  FrameReadyCallback     m_onFrameReady;
+  std::mutex             m_renderMutex;
 
-  // immediately
-  std::mutex m_sleepMutex;
+  std::mutex              m_sleepMutex;
   std::condition_variable m_sleepCv;
 
+  // ── TCP frame-data channel to Python ─────────────────────────────────────
   std::string fetchFrameJson(int64_t frameNum);
-  bool connectTcp(); // lazy-connect once
-  void closeTcp();   // called on shutdown
-  int m_pythonPort = 8001;
+  bool connectTcp();
+  void closeTcp();
 
-  SOCKET m_frameSock = INVALID_SOCKET;
-  std::mutex m_tcpMutex; // serialize send+recv
+  int    m_pythonPort = 8001;
+  SOCKET m_frameSock  = INVALID_SOCKET;
+  std::mutex m_tcpMutex;
 };

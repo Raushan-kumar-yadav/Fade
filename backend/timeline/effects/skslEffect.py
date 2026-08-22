@@ -1,12 +1,4 @@
-"""
-SkSL RuntimeEffect system.
-
-Loads .json manifests + .sksl shaders from the sksl/ subdirectory and
-executes them via skia.RuntimeShaderBuilder, giving each effect access to
-the current canvas pixels as a 'source' uniform shader.
-
-Special multi-pass effects (e.g. DeepGlow) are handled by subclasses.
-"""
+ 
 from __future__ import annotations
 import json
 import struct
@@ -19,7 +11,7 @@ import skia
 SKSL_DIR = Path(__file__).parent / "sksl"
 
 
-# ── Manifest loader ───────────────────────────────────────────────────────────
+#   Manifest loader  
 
 @lru_cache(maxsize=32)
 def _load_manifest(typeId: str) -> dict:
@@ -38,7 +30,7 @@ def _compile_sksl(typeId: str) -> skia.RuntimeEffect:
     return effect
 
 
-# ── Param helpers ─────────────────────────────────────────────────────────────
+#   Param helpers  
 
 def _default_params(manifest: dict) -> dict:
     out = {}
@@ -53,7 +45,7 @@ def _param_range(manifest: dict, pid: str) -> tuple:
             mn = p.get("min", 0.0)
             mx = p.get("max", 1.0)
             if isinstance(mn, list):
-                return (0.0, 1.0)   # vec — return scalar range for UI
+                return (0.0, 1.0)   # vec 
             return (mn, mx)
     return (0.0, 1.0)
 
@@ -75,7 +67,7 @@ def _apply_uniforms(builder: skia.RuntimeShaderBuilder, param_values: dict,
             v = val if isinstance(val, list) else [1.0, 1.0, 1.0, 1.0]
             builder.setUniform(pid, [float(v[0]), float(v[1]), float(v[2]), float(v[3])])
 
-    # Inject time uniforms if the shader declares them
+    # Inject time uniforms if the shader 
     try:
         builder.setUniform("time", float(frame) / max(fps, 1.0))
     except Exception:
@@ -94,17 +86,17 @@ def _snapshot_as_shader(canvas: skia.Canvas) -> skia.Shader | None:
     return img.makeShader(skia.TileMode.kClamp, skia.TileMode.kClamp)
 
 
-# ── Base SkSL Effect ──────────────────────────────────────────────────────────
+#   Base SkSL Effect  
 
 class SkslEffect:
     def __init__(self, typeId: str) -> None:
-        self.effectId    = str(uuid.uuid4())
-        self.typeId      = typeId
-        self.enabled     = True
-        self._manifest   = _load_manifest(typeId)
-        self.name        = self._manifest["displayName"]
-        self._values     = _default_params(self._manifest)
-        self._fps        = 30.0
+        self.effectId = str(uuid.uuid4())
+        self.typeId = typeId
+        self.enabled = True
+        self._manifest = _load_manifest(typeId)
+        self.name = self._manifest["displayName"]
+        self._values = _default_params(self._manifest)
+        self._fps = 30.0
 
     def setFps(self, fps: float) -> None:
         self._fps = fps
@@ -131,6 +123,41 @@ class SkslEffect:
         except Exception as e:
             print(f"[SkslEffect:{self.typeId}] {e}")
 
+    #   GPU compositor    
+
+    def getSkslTypeId(self) -> str:
+        """Return the bare typeId """
+        return self.typeId
+
+    def needsGpuEffect(self) -> bool:
+         
+        return self.enabled
+
+    def getUniformValues(self, frame: int) -> dict:
+        
+        out: dict = {}
+        for p in self._manifest.get("params", []):
+            pid   = p["id"]
+            ptype = p.get("type", "FloatSlider")
+            val   = self._values.get(pid, p.get("default", 0.0))
+
+            if ptype in ("FloatSlider", "ToggleBool"):
+                out[pid] = float(val)
+            elif ptype == "Vec2Input":
+                v = val if isinstance(val, list) else [0.0, 0.0]
+                out[pid] = [float(v[0]), float(v[1])]
+            elif ptype == "Vec4Input":
+                v = val if isinstance(val, list) else [1.0, 1.0, 1.0, 1.0]
+                out[pid] = [float(v[0]), float(v[1]), float(v[2]), float(v[3])]
+
+        # System time uniforms  
+        t = float(frame) / max(self._fps, 1.0)
+        out["time"]  = t
+        out["iTime"] = t
+        out["frame"] = float(frame)
+        out["_frame"] = float(frame)
+        return out
+
     def params(self) -> dict:
         out = {}
         for p in self._manifest.get("params", []):
@@ -140,7 +167,7 @@ class SkslEffect:
             mn, mx = _param_range(self._manifest, pid)
             if ptype in ("FloatSlider", "ToggleBool"):
                 out[pid] = (float(val), float(mn), float(mx))
-            # vec types are exposed as separate scalar channels
+            # vec types are exposed 
             elif ptype == "Vec2Input":
                 v = val if isinstance(val, list) else [0.0, 0.0]
                 out[f"{pid}_x"] = (float(v[0]), -4000.0, 4000.0)
@@ -175,11 +202,11 @@ class SkslEffect:
     def toDict(self) -> dict:
         return {
             "effectId": self.effectId,
-            "typeId":   self.typeId,
-            "name":     self.name,
-            "enabled":  self.enabled,
-            "type":     f"sksl:{self.typeId}",
-            "values":   self._values,
+            "typeId": self.typeId,
+            "name": self.name,
+            "enabled": self.enabled,
+            "type": f"sksl:{self.typeId}",
+            "values": self._values,
         }
 
     @classmethod
@@ -193,15 +220,10 @@ class SkslEffect:
         return e
 
 
-# ── Deep Glow (3-stage pipeline) ──────────────────────────────────────────────
+#   Deep Glow   
 
 class DeepGlowEffect(SkslEffect):
-    """
-    3-stage AE-style Deep Glow:
-      Stage 1  threshold extraction  (deep_glow.sksl)
-      Stage 2  Gaussian blur         (ImageFilters.Blur)
-      Stage 3  composite             (deep_glow_composite.sksl)
-    """
+    
 
     def __init__(self) -> None:
         super().__init__("deep_glow")
@@ -220,9 +242,9 @@ class DeepGlowEffect(SkslEffect):
             orig_img = surf.makeImageSnapshot()
             orig_shader = orig_img.makeShader(skia.TileMode.kClamp, skia.TileMode.kClamp)
 
-            # ── Stage 1: threshold extraction ─────────────────────────
+            #  threshold extraction 
             stage1_surf = skia.Surface(w, h)
-            stage1_cv   = stage1_surf.getCanvas()
+            stage1_cv = stage1_surf.getCanvas()
             stage1_cv.clear(skia.Color4f(0, 0, 0, 0))
 
             thresh_effect = _compile_sksl("deep_glow")
@@ -233,7 +255,7 @@ class DeepGlowEffect(SkslEffect):
             p1 = skia.Paint(); p1.setShader(thresh_shader)
             stage1_cv.drawPaint(p1)
 
-            # ── Stage 2: blur the threshold result ────────────────────
+            #  blur the threshold result  
             radius = float(self._values.get("radius", 40.0))
             blur_filter = skia.ImageFilters.Blur(radius, radius)
             stage2_surf = skia.Surface(w, h)
@@ -246,23 +268,23 @@ class DeepGlowEffect(SkslEffect):
             stage2_cv.drawImage(stage1_img, 0, 0)
             stage2_cv.restore()
 
-            # ── Stage 3: composite blurred glow over original ─────────
-            glow_img    = stage2_surf.makeImageSnapshot()
+            #   composite blurred glow      
+            glow_img = stage2_surf.makeImageSnapshot()
             glow_shader = glow_img.makeShader(skia.TileMode.kClamp, skia.TileMode.kClamp)
 
             comp_effect  = _compile_sksl("deep_glow_composite")
             comp_builder = skia.RuntimeShaderBuilder(comp_effect)
-            comp_builder.setChild("source",   orig_shader)
-            comp_builder.setChild("bloom",     glow_shader)
+            comp_builder.setChild("source", orig_shader)
+            comp_builder.setChild("bloom", glow_shader)
 
             # Pass through scalar params from deep_glow manifest
             intensity  = float(self._values.get("intensity",  2.0))
             blend_mode = float(self._values.get("blendMode",  0.0))
-            opacity    = float(self._values.get("opacity",    1.0))
+            opacity = float(self._values.get("opacity",    1.0))
             try:
                 comp_builder.setUniform("intensity",  intensity)
                 comp_builder.setUniform("blendMode",  blend_mode)
-                comp_builder.setUniform("opacity",    opacity)
+                comp_builder.setUniform("opacity", opacity)
             except Exception:
                 pass
 
@@ -277,7 +299,7 @@ class DeepGlowEffect(SkslEffect):
             print(f"[DeepGlow] {e}")
 
 
-# ── Registry ──────────────────────────────────────────────────────────────────
+#   Registry  
 
 def _make_sksl(typeId: str) -> "SkslEffect":
     if typeId == "deep_glow":
@@ -295,12 +317,12 @@ for mid in sorted(SKSL_MANIFEST_IDS):
     try:
         m = _load_manifest(mid)
         SKSL_META.append({
-            "type":        f"sksl:{mid}",
-            "name":        m["displayName"],
-            "icon":        "◈",
-            "category":    m.get("category", "Other"),
-            "desc":        f"GPU shader — {m.get('category','')}",
-            "isSksl":      True,
+            "type": f"sksl:{mid}",
+            "name": m["displayName"],
+            "icon": "◈",
+            "category": m.get("category", "Other"),
+            "desc": f"GPU shader — {m.get('category','')}",
+            "isSksl": True,
         })
     except Exception:
         pass

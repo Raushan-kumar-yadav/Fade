@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSelection } from '../../context/selectionContext';
 import { inspectorApi, type ParamRow, type ClipParams, type KFDef } from '../../api/inspectorApi';
-import { maskApi, type MaskInfo } from '../../api/toolsApi';
+import { maskApi, effectsApi, type MaskInfo, type EffectInfo, type EffectParamDef } from '../../api/toolsApi';
 import './InspectorPanel.css';
 
 
@@ -763,7 +763,102 @@ export default function InspectorPanel() {
 
         {/* Masks section */}
         <MasksPanel clipId={data.clipId} />
+
+        {/* Effects section */}
+        <InspectorEffectsPanel clipId={data.clipId} />
       </div>
+    </div>
+  );
+}
+
+// ── Inspector Effects Panel (inline, compact) ─────────────────────────────────
+
+function InspectorEffectsPanel({ clipId }: { clipId: string }) {
+  const [effects, setEffects] = useState<EffectInfo[]>([]);
+  const [open, setOpen] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await effectsApi.list(clipId);
+      setEffects(r.effects ?? []);
+    } catch { setEffects([]); }
+  }, [clipId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const targetId = (e as CustomEvent<string>).detail;
+      if (!targetId || targetId === clipId) load();
+    };
+    window.addEventListener('fade:effects-changed', handler);
+    return () => window.removeEventListener('fade:effects-changed', handler);
+  }, [clipId, load]);
+
+  if (effects.length === 0) return null;
+
+  return (
+    <div className="insp-group">
+      <GroupHeader
+        label={`Effects (${effects.length})`}
+        open={open}
+        onToggle={() => setOpen(o => !o)}
+      />
+      {open && (
+        <div className="insp-group__body">
+          {effects.map(eff => (
+            <div key={eff.effectId} className="insp-effect">
+              <div className="insp-effect__header">
+                <input
+                  type="checkbox"
+                  checked={eff.enabled}
+                  onChange={async () => {
+                    await effectsApi.patch(clipId, eff.effectId, { enabled: !eff.enabled });
+                    load();
+                  }}
+                  className="insp-effect__check"
+                />
+                <span className="insp-effect__name">{eff.name}</span>
+                <button
+                  className="insp-effect__del"
+                  onClick={async () => { await effectsApi.remove(clipId, eff.effectId); load(); }}
+                  title="Remove effect"
+                >✕</button>
+              </div>
+              <div className="insp-effect__params">
+                {Object.entries(eff.params)
+                  .filter(([, def]: [string, EffectParamDef]) =>
+                    def.type === 'FloatSlider' || def.type === 'ToggleBool' || def.type === 'IntSlider')
+                  .map(([pid, def]: [string, EffectParamDef]) => {
+                    const val = Array.isArray(def.value) ? (def.value as number[])[0] : def.value as number;
+                    const min = Array.isArray(def.min) ? (def.min as number[])[0] : def.min as number;
+                    const max = Array.isArray(def.max) ? (def.max as number[])[0] : def.max as number;
+                    const pct = ((val - min) / (max - min)) * 100;
+                    return (
+                      <div key={pid} className="efx-param">
+                        <label className="efx-param__label">{def.displayName}</label>
+                        <div className="efx-param__track">
+                          <div className="efx-param__fill" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+                          <input
+                            type="range" min={min} max={max} step={(max - min) / 400}
+                            defaultValue={val}
+                            className="efx-param__slider"
+                            onMouseUp={async e => {
+                              const v = parseFloat((e.target as HTMLInputElement).value);
+                              await effectsApi.patch(clipId, eff.effectId, { params: { [pid]: v } });
+                              load();
+                            }}
+                          />
+                        </div>
+                        <span className="efx-param__val">{val.toFixed(2)}</span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

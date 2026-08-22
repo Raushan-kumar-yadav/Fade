@@ -3,19 +3,20 @@
 #include "napi/FrameDescriptor.hpp"
 #include "rendering/DrawPen.hpp"
 #include "rendering/DrawShape.hpp"
+#include "rendering/DrawSvg.hpp"
 #include "rendering/DrawText.hpp"
 
 #include <core/SkBlendMode.h>
 #include <core/SkCanvas.h>
-#include <core/SkData.h>
-#include <core/SkImage.h> // SkImages::RasterFromData
+#include <core/SkColorSpace.h>
+#include <core/SkImage.h>
 #include <core/SkM44.h>
 #include <core/SkPaint.h>
 #include <core/SkRect.h>
 #include <core/SkSamplingOptions.h>
 #include <cstdint>
-#include <cstring>
 #include <effects/SkRuntimeEffect.h>
+#include <fstream>
 #include <gpu/ganesh/GrDirectContext.h>
 #include <gpu/ganesh/SkSurfaceGanesh.h>
 #include <mutex>
@@ -41,7 +42,7 @@
 
 HeadlessCompositor::HeadlessCompositor(int width, int height, float fps,
                                        const std::string &effectsDir)
-    : m_width(width), m_height(height), m_fps(fps) {
+    : m_width(width), m_height(height), m_fps(fps), m_skslDir(effectsDir) {
   init(effectsDir);
 }
 
@@ -155,7 +156,8 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     if (clip.type == ClipDesc::Type::Solid ||
         clip.type == ClipDesc::Type::Text ||
         clip.type == ClipDesc::Type::Shape ||
-        clip.type == ClipDesc::Type::Pen) {
+        clip.type == ClipDesc::Type::Pen ||
+        clip.type == ClipDesc::Type::Svg) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
     }
@@ -175,8 +177,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         {&clip, std::move(result.rgba), result.width, result.height});
   }
 
-  // Force GPU for multi-clip compositing. CPU Raster does software bilinear
-  // filtering (~900ms/frame at 1080p). GPU does it in ~2ms with HW textures.
   if (decoded.size() > 1)
     needsGpu = true;
 
@@ -210,6 +210,10 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           fade::drawing::drawPen(canvas, *cp.clip, m_width, m_height);
           continue;
         }
+        if (cp.clip->type == ClipDesc::Type::Svg) {
+          fade::drawing::drawSvg(canvas, *cp.clip, m_width, m_height);
+          continue;
+        }
         if (cp.rgba.empty())
           continue;
         drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
@@ -234,33 +238,59 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   canvas->clear(SK_ColorBLACK);
 
   for (const auto &cp : decoded) {
-    if (cp.clip->type == ClipDesc::Type::Solid) {
+    const ClipDesc &cl = *cp.clip;
+    const bool hasEffects = !cl.effects.empty();
+
+    // For generative clips with effects: render to an intermediate image first,
+    // run the SkSL chain on it, then composite the result.
+    const bool isGenerative = (cl.type == ClipDesc::Type::Solid  ||
+                               cl.type == ClipDesc::Type::Text   ||
+                               cl.type == ClipDesc::Type::Shape  ||
+                               cl.type == ClipDesc::Type::Pen    ||
+                               cl.type == ClipDesc::Type::Svg);
+
+    if (isGenerative && hasEffects) {
+      auto genImg = renderGenerativeToImage(cl);
+      if (genImg) {
+        genImg = applyEffects(genImg, cl, fd.frame);
+        SkPaint p;
+        p.setAlphaf(cl.opacity);
+        canvas->drawImage(genImg, 0, 0,
+                          SkSamplingOptions(SkFilterMode::kLinear), &p);
+      }
+      continue;
+    }
+
+    if (cl.type == ClipDesc::Type::Solid) {
       SkPaint p;
-      p.setColor4f(
-          {cp.clip->solidR, cp.clip->solidG, cp.clip->solidB, cp.clip->solidA});
-      p.setAlphaf(cp.clip->opacity);
+      p.setColor4f({cl.solidR, cl.solidG, cl.solidB, cl.solidA});
+      p.setAlphaf(cl.opacity);
       canvas->drawRect(SkRect::MakeWH(m_width, m_height), p);
       continue;
     }
-    if (cp.clip->type == ClipDesc::Type::Text) {
-      fade::drawing::drawText(canvas, *cp.clip, m_width, m_height);
+    if (cl.type == ClipDesc::Type::Text) {
+      fade::drawing::drawText(canvas, cl, m_width, m_height);
       continue;
     }
-    if (cp.clip->type == ClipDesc::Type::Shape) {
-      fade::drawing::drawShape(canvas, *cp.clip, m_width, m_height);
+    if (cl.type == ClipDesc::Type::Shape) {
+      fade::drawing::drawShape(canvas, cl, m_width, m_height);
       continue;
     }
-    if (cp.clip->type == ClipDesc::Type::Pen) {
-      fade::drawing::drawPen(canvas, *cp.clip, m_width, m_height);
+    if (cl.type == ClipDesc::Type::Pen) {
+      fade::drawing::drawPen(canvas, cl, m_width, m_height);
+      continue;
+    }
+    if (cl.type == ClipDesc::Type::Svg) {
+      fade::drawing::drawSvg(canvas, cl, m_width, m_height);
       continue;
     }
     if (cp.rgba.empty())
       continue;
-    drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
-                     /*useGpu=*/true);
+    drawClipOnCanvas(canvas, cl, cp.rgba.data(), cp.imgW, cp.imgH,
+                     /*useGpu=*/true, fd.frame);
   }
 
-  // GPU sync + readback → m_renderBuffer, then flip to m_buffer
+  // GPU sync
   m_skia->getDirectContext()->flushAndSubmit();
   SkImageInfo readInfo = SkImageInfo::Make(
       m_width, m_height, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
@@ -279,7 +309,8 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
 void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
                                           const ClipDesc &clip,
                                           const uint8_t *rgba, int imgW,
-                                          int imgH, bool useGpu) {
+                                          int imgH, bool useGpu,
+                                          int64_t frame) {
   // Use actual decoded dimensions
   if (imgW <= 0 || imgH <= 0) {
     imgW = m_width;
@@ -300,7 +331,7 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
 
   // Apply SkSL effects (GPU-side only)
   if (useGpu && !clip.effects.empty())
-    img = applyEffects(img, clip);
+    img = applyEffects(img, clip, frame);
 
   // Build transform matrix
   canvas->save();
@@ -348,10 +379,195 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
 
 //   SkSL effect chain
 
+// ── Load and compile a single SkSL shader, with caching ──────────────────────
+sk_sp<SkRuntimeEffect> HeadlessCompositor::getOrCompileEffect(const std::string& typeId) {
+  auto it = m_effectCache.find(typeId);
+  if (it != m_effectCache.end())
+    return it->second;
+
+  // Try to read  <skslDir>/<typeId>.sksl
+  // First resolve the manifest to get the actual shader filename
+  std::string manifestPath = m_skslDir + "/" + typeId + ".json";
+  std::string shaderFile   = typeId + ".sksl";  // fallback
+  {
+    std::ifstream mf(manifestPath);
+    if (mf.good()) {
+      std::string content((std::istreambuf_iterator<char>(mf)),
+                           std::istreambuf_iterator<char>());
+      // Minimal JSON parse: look for "shader":
+      auto pos = content.find("\"shader\"");
+      if (pos != std::string::npos) {
+        auto c1 = content.find('"', pos + 9);
+        auto c2 = content.find('"', c1 + 1);
+        if (c1 != std::string::npos && c2 != std::string::npos)
+          shaderFile = content.substr(c1 + 1, c2 - c1 - 1);
+      }
+    }
+  }
+
+  std::string skslPath = m_skslDir + "/" + shaderFile;
+  std::ifstream f(skslPath);
+  if (!f.good()) {
+    LOG_ERROR("SkSL file not found: " << skslPath);
+    return nullptr;
+  }
+  std::string src((std::istreambuf_iterator<char>(f)),
+                   std::istreambuf_iterator<char>());
+
+  auto [effect, err] = SkRuntimeEffect::MakeForShader(SkString(src.c_str()));
+  if (!effect) {
+    LOG_ERROR("SkSL compile error [" << typeId << "]: " << err.c_str());
+    m_effectCache[typeId] = nullptr;
+    return nullptr;
+  }
+  LOG_INFO("Compiled SkSL: " << typeId);
+  m_effectCache[typeId] = effect;
+  return effect;
+}
+
+// ── Apply a single effect pass (Qteee SkRuntimeShaderBuilder pattern) ────────
+sk_sp<SkImage> HeadlessCompositor::applyOneEffect(sk_sp<SkImage> src,
+                                                  const EffectParam& ep,
+                                                  int64_t frame) {
+  if (!src) return src;
+
+  // Strip optional "sksl:" prefix — typeId is e.g. "gaussian_blur"
+  std::string tid = ep.typeId;
+  if (tid.rfind("sksl:", 0) == 0) tid = tid.substr(5);
+
+  sk_sp<SkRuntimeEffect> effect = getOrCompileEffect(tid);
+  if (!effect) return src;
+
+  // ── Qteee pattern: use SkRuntimeShaderBuilder ─────────────────────────────
+  // (same as EffectInstance::apply in Qteee-Vulkan)
+  SkRuntimeShaderBuilder builder(effect);
+
+  // Bind "source" child (primary input)
+  auto srcShader = src->makeShader(SkSamplingOptions(SkFilterMode::kLinear));
+  // Bind every declared child to the source (handles "source", "_originalSource", etc.)
+  for (const auto& ch : effect->children()) {
+    // ch.name is std::string_view — convert to std::string for builder.child()
+    try { builder.child(std::string(ch.name)) = srcShader; } catch (...) {}
+  }
+
+  // Push user-set uniform values from the frame descriptor
+  for (const auto& uv : ep.uniforms) {
+    if (!effect->findUniform(uv.id.c_str())) continue;
+    const size_t n = uv.values.size();
+    if      (n == 1) builder.uniform(uv.id.c_str()) = uv.values[0];
+    else if (n == 2) builder.uniform(uv.id.c_str()) = SkV2{uv.values[0], uv.values[1]};
+    else if (n == 3) builder.uniform(uv.id.c_str()) = SkV3{uv.values[0], uv.values[1], uv.values[2]};
+    else if (n >= 4) builder.uniform(uv.id.c_str()) = SkV4{uv.values[0], uv.values[1], uv.values[2], uv.values[3]};
+  }
+
+  // Inject Qteee-style system uniforms (only if declared in the shader)
+  auto tryFloat = [&](const char* name, float val) {
+    if (effect->findUniform(name)) builder.uniform(name) = val;
+  };
+  auto tryVec2 = [&](const char* name, float x, float y) {
+    if (effect->findUniform(name)) builder.uniform(name) = SkV2{x, y};
+  };
+
+  const float t = static_cast<float>(frame) / std::max(m_fps, 1.f);
+  tryFloat("_frame",       static_cast<float>(frame));
+  tryFloat("frame",        static_cast<float>(frame));
+  tryFloat("time",         t);
+  tryFloat("iTime",        t);
+  tryFloat("_clipWidth",   static_cast<float>(src->width()));
+  tryFloat("_clipHeight",  static_cast<float>(src->height()));
+  tryVec2 ("iResolution",  static_cast<float>(src->width()),
+                           static_cast<float>(src->height()));
+  tryVec2 ("resolution",   static_cast<float>(src->width()),
+                           static_cast<float>(src->height()));
+
+  auto shader = builder.makeShader();
+  if (!shader) {
+    LOG_ERROR("SkRuntimeShaderBuilder::makeShader() failed for [" << tid << "]");
+    return src;
+  }
+
+  // ── Render into offscreen GPU surface (Qteee: SkSurfaces::RenderTarget) ───
+  const int w = src->width();
+  const int h = src->height();
+  SkImageInfo info = SkImageInfo::Make(w, h, kRGBA_8888_SkColorType,
+                                       kPremul_SkAlphaType);
+  GrDirectContext* grCtx = m_skia ? m_skia->getDirectContext() : nullptr;
+
+  sk_sp<SkSurface> offscreen;
+  if (grCtx)
+    offscreen = SkSurfaces::RenderTarget(grCtx, skgpu::Budgeted::kYes, info);
+  if (!offscreen)
+    offscreen = SkSurfaces::Raster(info);  // CPU fallback
+  if (!offscreen) {
+    LOG_ERROR("Cannot create offscreen surface for effect [" << tid << "]");
+    return src;
+  }
+
+  SkPaint paint;
+  paint.setShader(shader);
+  offscreen->getCanvas()->clear(SK_ColorTRANSPARENT);
+  offscreen->getCanvas()->drawPaint(paint);
+
+  if (grCtx) grCtx->flushAndSubmit();
+
+  return offscreen->makeImageSnapshot();
+}
+
+// ── Chain all effects on a clip ───────────────────────────────────────────────
 sk_sp<SkImage> HeadlessCompositor::applyEffects(sk_sp<SkImage> src,
-                                                const ClipDesc &clip) {
-  (void)clip;
-  return src;
+                                                const ClipDesc& clip,
+                                                int64_t frame) {
+  if (clip.effects.empty()) return src;
+  sk_sp<SkImage> img = src;
+  for (const auto& ep : clip.effects)
+    img = applyOneEffect(img, ep, frame);
+  return img;
+}
+
+// ── Render a generative clip to an SkImage (for SkSL effect input) ───────────
+// Text, Shape, Pen, Solid, SVG are all drawn to an offscreen surface so that
+// SkSL shaders get a proper pixel buffer to sample from via "source".
+sk_sp<SkImage> HeadlessCompositor::renderGenerativeToImage(const ClipDesc& clip) {
+  SkImageInfo info = SkImageInfo::MakeN32Premul(m_width, m_height,
+                                                SkColorSpace::MakeSRGB());
+  sk_sp<SkSurface> surf;
+  if (m_skia && m_skia->getDirectContext())
+    surf = SkSurfaces::RenderTarget(m_skia->getDirectContext(),
+                                    skgpu::Budgeted::kYes, info);
+  if (!surf)
+    surf = SkSurfaces::Raster(info);
+  if (!surf) return nullptr;
+
+  SkCanvas* cv = surf->getCanvas();
+  cv->clear(SK_ColorTRANSPARENT);
+
+  switch (clip.type) {
+    case ClipDesc::Type::Solid: {
+      SkPaint p;
+      p.setColor4f({clip.solidR, clip.solidG, clip.solidB, clip.solidA});
+      cv->drawRect(SkRect::MakeWH(m_width, m_height), p);
+      break;
+    }
+    case ClipDesc::Type::Text:
+      fade::drawing::drawText(cv, clip, m_width, m_height);
+      break;
+    case ClipDesc::Type::Shape:
+      fade::drawing::drawShape(cv, clip, m_width, m_height);
+      break;
+    case ClipDesc::Type::Pen:
+      fade::drawing::drawPen(cv, clip, m_width, m_height);
+      break;
+    case ClipDesc::Type::Svg:
+      fade::drawing::drawSvg(cv, clip, m_width, m_height);
+      break;
+    default:
+      break;
+  }
+
+  if (m_skia && m_skia->getDirectContext())
+    m_skia->getDirectContext()->flushAndSubmit();
+
+  return surf->makeImageSnapshot();
 }
 
 //   Playback
@@ -569,35 +785,24 @@ std::string HeadlessCompositor::fetchFrameJson(int64_t frameNum) {
   return json;
 }
 
-// ── Export: synchronous per-frame render
-// ────────────────────────────────────── Called by the NAPI export thread.
-// Fetches frame descriptor from Python via the existing persistent TCP socket,
-// composites on the GPU, returns raw RGBA bytes.
 std::vector<uint8_t> HeadlessCompositor::exportFrameSync(int64_t frameNum) {
-  // 1. Fetch frame descriptor (same TCP path used during preview playback)
+
   std::string json = fetchFrameJson(frameNum);
   if (json.empty()) {
-    // Return a black frame so FFmpeg always gets valid pixel data
+
     return std::vector<uint8_t>(static_cast<size_t>(m_width) * m_height * 4, 0);
   }
 
-  // 2. Parse JSON → FrameDescriptor
   FrameDescriptor fd = parseFrameDescriptor(json);
   if (!fd.valid) {
     return std::vector<uint8_t>(static_cast<size_t>(m_width) * m_height * 4, 0);
   }
 
-  // 3. Composite via the existing GPU render path.
-  //    m_renderMutex serialises against the play-loop.
   {
     std::lock_guard<std::mutex> lk(m_renderMutex);
     doRender(fd);
-    // doRender: GPU composite → memcpy m_renderBuffer → m_buffer → fire
-    // callback. Callback is safe to fire here; it just sends a NAPI event
-    // (ignored during export).
   }
 
-  // 4. Copy pixels from front buffer and return
   std::vector<uint8_t> out(m_bufferSize);
   std::memcpy(out.data(), m_buffer.get(), m_bufferSize);
   return out;

@@ -82,6 +82,28 @@ export async function addClipToTimeline(
   }
 }
 
+export async function addSvgClipToTimeline(
+  filepath: string,
+  trackIndex: number,
+  startFrame: number,
+  duration: number,
+  displayW = 0,
+  displayH = 0,
+): Promise<{ clipId: string; startFrame: number; duration: number } | null> {
+  try {
+    const r = await fetch(`${base()}/timeline/add-svg-clip`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filepath, trackIndex, startFrame, duration, displayW, displayH }),
+    });
+    if (!r.ok) return null;
+    return r.json();
+  } catch {
+    return null;
+  }
+}
+
+
 export async function moveClip(
   clipId: string,
   startFrame: number,

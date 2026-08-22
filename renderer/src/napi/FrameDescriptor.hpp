@@ -37,7 +37,7 @@ struct ClipDesc {
     std::vector<EffectParam> effects;
 
     // Clip type
-    enum class Type { Video, Image, Solid, Shape, Text, Pen } type = Type::Video;
+    enum class Type { Video, Image, Solid, Shape, Text, Pen, Svg } type = Type::Video;
 
     // For Solid clips
     float solidR = 0.5f, solidG = 0.5f, solidB = 0.5f, solidA = 1.f;
@@ -118,7 +118,16 @@ struct ClipDesc {
         float shadowAngle = 135.f, shadowDistance = 10.f, shadowBlur = 5.f;
     } pen;
 
-    // Raw RGBA pixel data (unused for text/shape/pen)
+    // ── SVG style ─────────────────────────────────────────────────────────
+    struct SvgDesc {
+        // Display size — 0 means "use canvas size"
+        float displayW  = 0.f;
+        float displayH  = 0.f;
+        // Optional tint / recolor (applied as a saveLayer color filter)
+        bool  tintEnabled = false;
+        float tintR = 1.f, tintG = 1.f, tintB = 1.f, tintA = 1.f;
+    } svg;
+
     const uint8_t* rawRGBA     = nullptr;
     size_t         rawRGBASize = 0;
 };
@@ -171,6 +180,7 @@ inline FrameDescriptor parseFrameDescriptor(const std::string& jsonStr) {
             else if (typeStr == "shape")  cd.type = ClipDesc::Type::Shape;
             else if (typeStr == "text")   cd.type = ClipDesc::Type::Text;
             else if (typeStr == "pen")    cd.type = ClipDesc::Type::Pen;
+            else if (typeStr == "svg")    cd.type = ClipDesc::Type::Svg;
             else                          cd.type = ClipDesc::Type::Video;
 
             if (cd.type == ClipDesc::Type::Solid && c.contains("color")) {
@@ -292,6 +302,20 @@ inline FrameDescriptor parseFrameDescriptor(const std::string& jsonStr) {
                 auto shc = s.value("shadowColor", nlohmann::json::array({0,0,0,0.75}));
                 p.shadowR = shc.size()>0?float(shc[0]):0.f; p.shadowG = shc.size()>1?float(shc[1]):0.f;
                 p.shadowB = shc.size()>2?float(shc[2]):0.f; p.shadowA = shc.size()>3?float(shc[3]):0.75f;
+            }
+
+            // ── SVG style ─────────────────────────────────────────────────────────
+            if (cd.type == ClipDesc::Type::Svg && c.contains("svgStyle")) {
+                auto& s  = c["svgStyle"];
+                auto& sv = cd.svg;
+                sv.displayW     = s.value("displayW",     0.f);
+                sv.displayH     = s.value("displayH",     0.f);
+                sv.tintEnabled  = s.value("tintEnabled",  false);
+                auto tc = s.value("tintColor", nlohmann::json::array({1,1,1,1}));
+                sv.tintR = tc.size()>0 ? float(tc[0]) : 1.f;
+                sv.tintG = tc.size()>1 ? float(tc[1]) : 1.f;
+                sv.tintB = tc.size()>2 ? float(tc[2]) : 1.f;
+                sv.tintA = tc.size()>3 ? float(tc[3]) : 1.f;
             }
 
             for (const auto& e : c.value("effects", nlohmann::json::array())) {

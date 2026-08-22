@@ -4,6 +4,8 @@ import uuid
 from dataclasses import dataclass, field
 from backend.timeline.clips.baseClip import BaseClip
 from backend.animation.transform import Transform
+from backend.animation.animPath import AnimPathProperty, PathVertex
+from backend.animation.animatableProperty import AnimatableProperty, Vec2Property
 
 
 @dataclass
@@ -53,29 +55,130 @@ class TextStyle:
         return obj
 
 
-@dataclass
 class MaskLayer:
-    """Single mask — mirrors clipMask.hpp."""
-    maskId: str   = field(default_factory=lambda: str(uuid.uuid4()))
-    name: str   = "Mask 1"
-    shape: str   = "rect"          # rect | ellipse | bezier
-    mode: str   = "add"           # add | subtract
-    inverted:  bool  = False
-    feather:   float = 0.0             # blur sigma
-    opacity:   float = 1.0
-    # Bezier points: [{x, y, inX, inY, outX, outY}]
-    points:    list  = field(default_factory=list)
+    """
+    Single mask layer.
+    Mirrors Qteee clipMask exactly:
+      maskPath   ≡  AnimatableProperty<MaskPathSnapshot>  (AnimPathProperty)
+      feather    ≡  AnimatableProperty<float>
+      opacity    ≡  AnimatableProperty<float>
+      expansion  ≡  AnimatableProperty<float>
+      size       ≡  AnimatableProperty<float>
+      position   ≡  AnimatableProperty<glm::vec2>  (Vec2Property)
+      rotation   ≡  AnimatableProperty<float>
+    """
 
+    def __init__(
+        self,
+        maskId:   str  = None,
+        name:     str  = "Mask 1",
+        shape:    str  = "rect",    # rect | ellipse | bezier
+        mode:     str  = "add",     # add | subtract
+        inverted: bool = False,
+    ) -> None:
+        self.maskId:   str  = maskId or str(uuid.uuid4())
+        self.name:     str  = name
+        self.shape:    str  = shape
+        self.mode:     str  = mode
+        self.inverted: bool = inverted
+
+        # Animatable scalar/vec properties (≡ clipMask member fields)
+        self.feather:   AnimatableProperty = AnimatableProperty(0.0)
+        self.opacity:   AnimatableProperty = AnimatableProperty(1.0)
+        self.expansion: AnimatableProperty = AnimatableProperty(0.0)
+        self.size:      AnimatableProperty = AnimatableProperty(100.0)
+        self.position:  Vec2Property       = Vec2Property(0.0, 0.0)
+        self.rotation:  AnimatableProperty = AnimatableProperty(0.0)
+
+        # Animated bezier path (≡ clipMask::m_maskPath)
+        self.maskPath: AnimPathProperty = AnimPathProperty()
+
+    # ── Legacy `points` property ─────────────────────────────────────────────
+    @property
+    def points(self) -> list[PathVertex]:
+        """Evaluated vertices from the current frame snapshot."""
+        return self.maskPath.get().vertices
+
+    # ── Evaluation (≡ clipMask::update) ──────────────────────────────────────
+    def evaluateAll(self, frame: int) -> None:
+        """Tick all animatable properties (≡ clipMask::update)."""
+        self.feather.update(frame)
+        self.opacity.update(frame)
+        self.expansion.update(frame)
+        self.size.update(frame)
+        self.position.update(frame)
+        self.rotation.update(frame)
+        self.maskPath.update(frame)
+
+    # ── Serialisation ─────────────────────────────────────────────────────────
     def toDict(self) -> dict:
-        return self.__dict__.copy()
+        def _ap(p: AnimatableProperty) -> dict:
+            d: dict = {"base": p.baseValue}
+            if p.isAnimated:
+                d["animated"] = True
+                d["keyframes"] = [
+                    {"frame": kf.frame, "value": kf.value,
+                     "interp": kf.interp.value}
+                    for kf in p.track.keyframes()
+                ]
+            return d
+
+        return {
+            "maskId":    self.maskId,
+            "name":      self.name,
+            "shape":     self.shape,
+            "mode":      self.mode,
+            "inverted":  self.inverted,
+            "feather":   _ap(self.feather),
+            "opacity":   _ap(self.opacity),
+            "expansion": _ap(self.expansion),
+            "size":      _ap(self.size),
+            "position":  {"x": self.position.x.baseValue,
+                          "y": self.position.y.baseValue},
+            "rotation":  _ap(self.rotation),
+            "maskPath":  self.maskPath.toDict(),
+        }
 
     @classmethod
     def fromDict(cls, d: dict) -> "MaskLayer":
-        obj = cls()
-        for k, v in d.items():
-            if hasattr(obj, k):
-                setattr(obj, k, v)
-        return obj
+        from backend.animation.keyframe import Keyframe, Interpolation
+
+        ml = cls(
+            maskId   = d.get("maskId"),
+            name     = d.get("name",     "Mask 1"),
+            shape    = d.get("shape",    "rect"),
+            mode     = d.get("mode",     "add"),
+            inverted = d.get("inverted", False),
+        )
+
+        def _load(prop: AnimatableProperty, v) -> None:
+            if isinstance(v, (int, float)):
+                prop.setBaseValue(float(v))
+                return
+            prop.setBaseValue(v.get("base", prop.baseValue))
+            if v.get("animated"):
+                prop.setAnimated(True)
+                for kd in v.get("keyframes", []):
+                    kf = Keyframe(kd["frame"], kd["value"],
+                                  Interpolation(kd.get("interp", "bezier")))
+                    prop.track.insertKeyframe(kf)
+
+        _load(ml.feather,   d.get("feather",   0.0))
+        _load(ml.opacity,   d.get("opacity",   1.0))
+        _load(ml.expansion, d.get("expansion", 0.0))
+        _load(ml.size,      d.get("size",      100.0))
+        _load(ml.rotation,  d.get("rotation",  0.0))
+
+        pos = d.get("position", {})
+        if isinstance(pos, dict):
+            ml.position.setBase(pos.get("x", 0.0), pos.get("y", 0.0))
+
+        # Support new "maskPath", old "path", and legacy "points" list
+        raw = d.get("maskPath", d.get("path", d.get("points", [])))
+        ml.maskPath = AnimPathProperty.fromDict(
+            raw if isinstance(raw, (dict, list)) else []
+        )
+        return ml
 
 
 class TextClip(BaseClip):
@@ -129,6 +232,13 @@ class TextClip(BaseClip):
         before = len(self.masks)
         self.masks = [m for m in self.masks if m.maskId != maskId]
         return len(self.masks) < before
+
+    def evaluateAll(self, frame: int) -> None:
+        """Tick transform + mask path animations."""
+        super().evaluateAll(frame)
+        lf = self.localFrame(frame)
+        for mask in self.masks:
+            mask.evaluateAll(lf)
 
     def getMask(self, maskId: str) -> MaskLayer | None:
         return next((m for m in self.masks if m.maskId == maskId), None)

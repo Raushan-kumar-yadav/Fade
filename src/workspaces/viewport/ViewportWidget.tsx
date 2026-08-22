@@ -446,12 +446,16 @@ export default function ViewportWidget() {
                 clipId={selected.clipId}
                 width={1920}
                 height={1080}
+                currentFrame={currentFrame}
+                startFrame={selected.startFrame ?? 0}
+                duration={selected.duration ?? 150}
               />
             ) : (
               <OverlayCanvas
                 mode="pen"
                 width={1920}
                 height={1080}
+                currentFrame={currentFrame}
               />
             )
           )}

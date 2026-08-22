@@ -6,14 +6,16 @@ const TYPE_ICON: Record<string, string> = {
   video: '▶',
   image: '🖼',
   audio: '♪',
+  svg:   '⬡',
   subtitle: '✎',
   unknown:  '?',
 };
 
 const TYPE_COLOR: Record<string, string> = {
-  video: 'var(--accent-blue)',
-  image: 'var(--accent-green)',
-  audio: 'var(--accent-purple)',
+  video:   'var(--accent-blue)',
+  image:   'var(--accent-green)',
+  audio:   'var(--accent-purple)',
+  svg:     'var(--accent-teal, #0dcfb4)',
   unknown: 'var(--text-muted)',
 };
 
@@ -115,7 +117,7 @@ export default function LibraryPanel({ onAddToTimeline }: Props) {
           type="file"
           hidden
           multiple
-          accept="video/*,image/*,audio/*"
+          accept="video/*,image/*,audio/*,.svg"
           onChange={handleFileSelect}
         />
       </div>

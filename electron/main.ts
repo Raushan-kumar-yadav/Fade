@@ -46,15 +46,20 @@ function loadRenderEngine(): void {
   }
 }
 
-function initRenderEngine(pythonPort: number): void {
+function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps = 30): void {
   if (!renderEngine) return
-  const effectsDir = path.join(__dirname, '..', 'backend', 'media', 'effects')
+
+  // SkSL shaders live at:  <projectRoot>/backend/timeline/effects/sksl/
+  const projectRoot = path.join(__dirname, '..')
+  const effectsDir  = path.join(projectRoot, 'backend', 'timeline', 'effects', 'sksl')
+                          .replace(/\\/g, '/')  // C++ std::ifstream prefers forward slashes
+
   try {
-    renderEngine.initialize(1920, 1080, 30, effectsDir, pythonPort)
+    renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
     renderEngine.setFrameReadyCallback((frameNum: number) => {
       mainWindow?.webContents.send('render:frame-ready', frameNum)
     })
-    console.log('[RenderEngine] Initialized, python port:', pythonPort)
+    console.log('[RenderEngine] Initialized — effectsDir:', effectsDir, 'port:', pythonPort)
   } catch (e) {
     console.error('[RenderEngine] Initialize error:', e)
     renderEngine = null
@@ -192,7 +197,7 @@ ipcMain.on('export:start', async (_event, config) => {
     return
   }
 
-  // Resolve totalFrames from Python /playback/state if not provided
+  // Resolve totalFrames from Python 
   let totalFrames: number = config.totalFrames ?? 0
   if (!totalFrames && detectedPort) {
     try {

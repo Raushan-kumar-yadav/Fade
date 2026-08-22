@@ -10,8 +10,7 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS",  "1")
 faulthandler.enable()
 
 import sys
-# 1ms GIL timeslice: with 3 competing threads (uvicorn + 1 decode worker + TCP),
-# TCP gets GIL within 2ms worst case. Default 5ms causes 10-20ms waits.
+ 
 sys.setswitchinterval(0.001)
 
 import asyncio
@@ -58,10 +57,7 @@ async def lifespan(app: FastAPI):
 
     asyncio.create_task(engine.startPreviewLoop())
 
-    # ── TCP frame server in its own OS thread + event loop ────────────────
-    # Running in a SEPARATE event loop from uvicorn's loop means PyAVDecoder's
-    # GIL spikes (in the uvicorn thread) don't block TCP responses.
-    # Python's GIL timeslice is 5ms → TCP responses within 5ms worst case.
+     
     _HTTP_PORT = int(os.environ.get("BACKEND_PORT", 8000))
     _TCP_PORT  = _HTTP_PORT + 1
 
@@ -69,9 +65,7 @@ async def lifespan(app: FastAPI):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        # N+1 prefetch: after serving frame N, precompute N+1 while C++ renders N.
-        # Since C++ takes 25-50ms to decode+render, this gives plenty of time
-        # to compute N+1 before it's needed — making most requests instant cache hits.
+         
         _prefetch: dict[int, bytes] = {}
 
         async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -88,10 +82,7 @@ async def lifespan(app: FastAPI):
                             data    = _get_frame_data(frame_num)
                             payload = _json.dumps(data).encode("utf-8")
                         except Exception as exc:
-                            # Never let an exception leave the TCP handler —
-                            # C++ is waiting for exactly (4+N) bytes; any
-                            # unhandled exception would leave it hanging or
-                            # reading the next request's header as JSON.
+                             
                             import traceback
                             traceback.print_exc()
                             # Return an empty-clips descriptor so C++ gets a
@@ -138,7 +129,40 @@ async def lifespan(app: FastAPI):
     _tcp_thread.start()
 
     yield
-    # Shutdown — daemon thread exits automatically with the process
+    # Shutdown  
+
+
+def _serialize_effects(clip, frame: int) -> list:
+     
+    out = []
+    for eff in getattr(clip, "effects", []):
+        try:
+            if not getattr(eff, "enabled", True):
+                continue
+            type_id = getattr(eff, "typeId", None) or getattr(eff, "effectType", None)
+            if not type_id:
+                continue  # Python-only effect, no GPU equivalent
+
+            # Prefer getUniformValues(frame) (SkslEffect API)
+            if hasattr(eff, "getUniformValues") and callable(eff.getUniformValues):
+                uniforms_dict = eff.getUniformValues(frame) or {}
+            elif hasattr(eff, "uniforms"):
+                uniforms_dict = eff.uniforms or {}
+            else:
+                uniforms_dict = {}
+
+            # Convert flat {id: scalar_or_list} → [{id, values}]
+            uniforms_list = []
+            for k, v in uniforms_dict.items():
+                if isinstance(v, list):
+                    uniforms_list.append({"id": k, "values": [float(x) for x in v]})
+                else:
+                    uniforms_list.append({"id": k, "values": [float(v)]})
+
+            out.append({"typeId": type_id, "uniforms": uniforms_list})
+        except Exception as _e:
+            print(f"[effects] serialization error for {type(eff).__name__}: {_e}")
+    return out
 
 
 def _get_frame_data(frame: int) -> dict:
@@ -169,6 +193,11 @@ def _get_frame_data(frame: int) -> dict:
                 source_frame = clip.sourceFrame(frame)
             except Exception:
                 source_frame = 0
+            # Bake all animated properties at this frame before reading them
+            try:
+                clip.evaluateAll(frame)
+            except Exception:
+                pass
             try:
                 opacity = float(clip.transform.opacity.get())
             except Exception:
@@ -180,36 +209,24 @@ def _get_frame_data(frame: int) -> dict:
                 blend_mode = int(bm.get()) if hasattr(bm, "get") else int(bm) if bm else 0
             t = clip.transform
             try:
+                px, py = t.position.get()
+                sx, sy = t.scale.get()
+                rot    = t.rotation.get()
+                ax, ay = t.anchor.get()
                 transform_dict = {
-                    "x":        float(t.x.get()        if hasattr(t.x, "get")        else t.x),
-                    "y":        float(t.y.get()        if hasattr(t.y, "get")        else t.y),
-                    "scaleX":   float(t.scaleX.get()   if hasattr(t.scaleX, "get")   else t.scaleX),
-                    "scaleY":   float(t.scaleY.get()   if hasattr(t.scaleY, "get")   else t.scaleY),
-                    "rotation": float(t.rotation.get() if hasattr(t.rotation, "get") else t.rotation),
-                    "anchorX":  float(t.anchorX.get()  if hasattr(t.anchorX, "get")  else t.anchorX),
-                    "anchorY":  float(t.anchorY.get()  if hasattr(t.anchorY, "get")  else t.anchorY),
+                    "x":        float(px),
+                    "y":        float(py),
+                    "scaleX":   float(sx),
+                    "scaleY":   float(sy),
+                    "rotation": float(rot),
+                    "anchorX":  float(ax),
+                    "anchorY":  float(ay),
                 }
             except Exception:
                 transform_dict = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
-                                  "rotation": 0, "anchorX": 0.5, "anchorY": 0.5}
-            effects_out = []
-            for eff in getattr(clip, "effects", []):
-                try:
-                    uniforms = {}
-                    if hasattr(eff, "getUniformValues"):
-                        uniforms = eff.getUniformValues(frame) or {}
-                    elif hasattr(eff, "uniforms"):
-                        uniforms = eff.uniforms or {}
-                    type_id = getattr(eff, "typeId", getattr(eff, "effectType", "unknown"))
-                    effects_out.append({
-                        "typeId": type_id,
-                        "uniforms": [
-                            {"id": k, "values": v if isinstance(v, list) else [v]}
-                            for k, v in uniforms.items()
-                        ],
-                    })
-                except Exception:
-                    pass
+                                  "rotation": 0, "anchorX": 0.0, "anchorY": 0.0}
+
+            effects_out = _serialize_effects(clip, frame)
             clip_data: dict = {
                 "clipId":      clip_id,
                 "file":        filepath,
@@ -228,23 +245,23 @@ def _get_frame_data(frame: int) -> dict:
                 style = getattr(clip, "style", None)
                 if style is not None:
                     clip_data["textStyle"] = {
-                        "text":           getattr(style, "text",           "New Text"),
-                        "fontFamily":     getattr(style, "fontFamily",     "Arial"),
-                        "fontSize":       float(getattr(style, "fontSize",  48.0)),
-                        "bold":           bool(getattr(style, "bold",       False)),
-                        "italic":         bool(getattr(style, "italic",     False)),
-                        "alignment":      getattr(style, "alignment",      "left"),
-                        "lineHeight":     float(getattr(style, "lineHeight", 1.2)),
+                        "text": getattr(style, "text", "New Text"),
+                        "fontFamily": getattr(style, "fontFamily", "Arial"),
+                        "fontSize":float(getattr(style, "fontSize",  48.0)),
+                        "bold": bool(getattr(style, "bold",       False)),
+                        "italic": bool(getattr(style, "italic",     False)),
+                        "alignment": getattr(style, "alignment",      "left"),
+                        "lineHeight": float(getattr(style, "lineHeight", 1.2)),
                         "letterSpacing":  float(getattr(style, "letterSpacing", 0.0)),
-                        "allCaps":        bool(getattr(style, "allCaps",    False)),
+                        "allCaps": bool(getattr(style, "allCaps",    False)),
                         # Fill
-                        "color":          list(getattr(style, "color",      [1,1,1,1])),
+                        "color": list(getattr(style, "color",      [1,1,1,1])),
                         # Stroke
-                        "strokeColor":    list(getattr(style, "strokeColor", [0,0,0,1])),
-                        "strokeWidth":    float(getattr(style, "strokeWidth", 0.0)),
+                        "strokeColor": list(getattr(style, "strokeColor", [0,0,0,1])),
+                        "strokeWidth": float(getattr(style, "strokeWidth", 0.0)),
                         # Shadow
                         "shadowEnabled":  bool(getattr(style, "shadowEnabled", False)),
-                        "shadowColor":    list(getattr(style, "shadowColor",   [0,0,0,0.6])),
+                        "shadowColor": list(getattr(style, "shadowColor",   [0,0,0,0.6])),
                         "shadowOffsetX":  float(getattr(style, "shadowOffsetX", 4.0)),
                         "shadowOffsetY":  float(getattr(style, "shadowOffsetY", 4.0)),
                         "shadowBlur":     float(getattr(style, "shadowBlur",    6.0)),
@@ -262,16 +279,16 @@ def _get_frame_data(frame: int) -> dict:
                     clip_data["shapeStyle"] = {
                         "shapeType":      getattr(style, "shapeType",     "rect"),
                         # Rect
-                        "width":          float(getattr(style, "width",          200.0)),
-                        "height":         float(getattr(style, "height",         120.0)),
+                        "width": float(getattr(style, "width", 200.0)),
+                        "height": float(getattr(style, "height", 120.0)),
                         "cornerRadius":   float(getattr(style, "cornerRadius",     0.0)),
                         # Circle / Ellipse
-                        "radiusX":        float(getattr(style, "radiusX",        100.0)),
-                        "radiusY":        float(getattr(style, "radiusY",         80.0)),
+                        "radiusX": float(getattr(style, "radiusX", 100.0)),
+                        "radiusY": float(getattr(style, "radiusY", 80.0)),
                         # Star
-                        "outerRadius":    float(getattr(style, "outerRadius",    100.0)),
-                        "innerRadius":    float(getattr(style, "innerRadius",     40.0)),
-                        "numPoints":      int(getattr(style, "numPoints",          5)),
+                        "outerRadius": float(getattr(style, "outerRadius",    100.0)),
+                        "innerRadius": float(getattr(style, "innerRadius", 40.0)),
+                        "numPoints": int(getattr(style, "numPoints", 5)),
                         # Polygon
                         "numSides":       int(getattr(style, "numSides",           6)),
                         "polygonRadius":  float(getattr(style, "polygonRadius",  100.0)),
@@ -285,31 +302,30 @@ def _get_frame_data(frame: int) -> dict:
                         "arcSweepAngle":  float(getattr(style, "arcSweepAngle", 180.0)),
                         "arcRadius":      float(getattr(style, "arcRadius",      100.0)),
                         # Fill
-                        "fillColor":      list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])),
-                        "fillOpacity":    float(getattr(style, "fillOpacity",   1.0)),
+                        "fillColor": list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])),
+                        "fillOpacity": float(getattr(style, "fillOpacity",   1.0)),
                         # Stroke
-                        "strokeColor":    list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])),
-                        "strokeWidth":    float(getattr(style, "strokeWidth",   0.0)),
+                        "strokeColor": list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])),
+                        "strokeWidth": float(getattr(style, "strokeWidth",   0.0)),
                         # Shadow
                         "shadowEnabled":  bool(getattr(style, "shadowEnabled", False)),
-                        "shadowColor":    list(getattr(style, "shadowColor",  [0, 0, 0, 0.75])),
-                        "shadowAngle":    float(getattr(style, "shadowAngle",  135.0)),
+                        "shadowColor": list(getattr(style, "shadowColor",  [0, 0, 0, 0.75])),
+                        "shadowAngle": float(getattr(style, "shadowAngle",  135.0)),
                         "shadowDistance": float(getattr(style, "shadowDistance", 10.0)),
-                        "shadowBlur":     float(getattr(style, "shadowBlur",    5.0)),
+                        "shadowBlur": float(getattr(style, "shadowBlur",    5.0)),
                     }
 
             elif clip_type == "pen":
-                # Serialize bezier points + stroke/fill appearance
-                # Mirrors Qteee-Vulkan CustomPathData + ShapeDrawNode pattern
+              
                 style  = getattr(clip, "style",    None)
                 points = getattr(clip, "points",   [])
                 clip_data["penStyle"] = {
                     "isClosed": bool(getattr(clip, "isClosed", False)),
                     "points": [
                         {
-                            "x":    float(getattr(p, "x",    0.0)),
-                            "y":    float(getattr(p, "y",    0.0)),
-                            "inX":  float(getattr(p, "inX",  0.0)),
+                            "x": float(getattr(p, "x",    0.0)),
+                            "y": float(getattr(p, "y",    0.0)),
+                            "inX": float(getattr(p, "inX",  0.0)),
                             "inY":  float(getattr(p, "inY",  0.0)),
                             "outX": float(getattr(p, "outX", 0.0)),
                             "outY": float(getattr(p, "outY", 0.0)),
@@ -317,18 +333,57 @@ def _get_frame_data(frame: int) -> dict:
                         for p in points
                     ],
                     # Stroke / fill (same fields as ShapeStyle)
-                    "fillColor":      list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])) if style else [0.4, 0.4, 1.0, 1.0],
-                    "fillOpacity":    float(getattr(style, "fillOpacity",   1.0))                if style else 1.0,
-                    "strokeColor":    list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])) if style else [1.0, 1.0, 1.0, 1.0],
-                    "strokeWidth":    float(getattr(style, "strokeWidth",   2.0))                if style else 2.0,
-                    "shadowEnabled":  bool(getattr(style, "shadowEnabled", False))               if style else False,
-                    "shadowColor":    list(getattr(style, "shadowColor",  [0, 0, 0, 0.75]))       if style else [0, 0, 0, 0.75],
-                    "shadowAngle":    float(getattr(style, "shadowAngle",  135.0))               if style else 135.0,
-                    "shadowDistance": float(getattr(style, "shadowDistance", 10.0))              if style else 10.0,
-                    "shadowBlur":     float(getattr(style, "shadowBlur",    5.0))                if style else 5.0,
+                    "fillColor": list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])) if style else [0.4, 0.4, 1.0, 1.0],
+                    "fillOpacity": float(getattr(style, "fillOpacity",   1.0)) if style else 1.0,
+                    "strokeColor": list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])) if style else [1.0, 1.0, 1.0, 1.0],
+                    "strokeWidth": float(getattr(style, "strokeWidth",   2.0)) if style else 2.0,
+                    "shadowEnabled": bool(getattr(style, "shadowEnabled", False)) if style else False,
+                    "shadowColor": list(getattr(style, "shadowColor",  [0, 0, 0, 0.75])) if style else [0, 0, 0, 0.75],
+                    "shadowAngle": float(getattr(style, "shadowAngle",  135.0)) if style else 135.0,
+                    "shadowDistance": float(getattr(style, "shadowDistance", 10.0)) if style else 10.0,
+                    "shadowBlur": float(getattr(style, "shadowBlur",    5.0)) if style else 5.0,
                 }
 
+            elif clip_type == "svg":
+                 
+                clip_data["file"] = getattr(clip, "filepath", clip_data.get("file", ""))
+                clip_data["svgStyle"] = {
+                    "displayW": float(getattr(clip, "displayW",    0.0)),
+                    "displayH": float(getattr(clip, "displayH",    0.0)),
+                    "tintEnabled": bool(getattr(clip, "tintEnabled",  False)),
+                    "tintColor":   list(getattr(clip, "tintColor",    [1.0, 1.0, 1.0, 1.0])),
+                }
+
+            #   Masks  
+            raw_masks = getattr(clip, "masks", [])
+            if raw_masks:
+                masks_out = []
+                lf = frame - clip.startFrame  # local frame for mask evaluation
+                for m in raw_masks:
+                    # Tick all mask animations  
+                    if hasattr(m, "evaluateAll"):
+                        m.evaluateAll(lf)
+                    # Collect evaluated vertices from AnimPathProperty
+                    pts = m.maskPath.getFlatList() if hasattr(m, "maskPath") else []
+                    masks_out.append({
+                        "maskId": m.maskId,
+                        "shape": m.shape,
+                        "mode": m.mode,
+                        "inverted": m.inverted,
+                        "feather": float(m.feather.get()) if hasattr(m.feather, "get") else float(m.feather),
+                        "opacity": float(m.opacity.get()) if hasattr(m.opacity, "get") else float(m.opacity),
+                        "expansion": float(m.expansion.get()) if hasattr(m.expansion, "get") else 0.0,
+                        "size": float(m.size.get())      if hasattr(m.size,      "get") else 100.0,
+                        "posX": float(m.position.x.get()) if hasattr(m, "position") else 0.0,
+                        "posY": float(m.position.y.get()) if hasattr(m, "position") else 0.0,
+                        "rotation":  float(m.rotation.get()) if hasattr(m, "rotation") and hasattr(m.rotation, "get") else 0.0,
+                        "points":    pts,
+                    })
+                clip_data["masks"] = masks_out
+
             clips_out.append(clip_data)
+
+
 
 
     return {"frame": frame, "fps": fps, "width": width, "height": height, "clips": clips_out}
@@ -425,9 +480,7 @@ def postSettings(payload: SettingsPayload):
     return _get_settings()
 
 
-# ── Native render engine frame descriptor ──────────────────────────────────────
-# Called by the C++ NAPI addon (render_engine.node) to get the clip layout.
-# Returns JSON that HeadlessCompositor uses to know what to decode & composite.
+ 
 
 @app.get("/render/frame/{frame}")
 def getRenderFrame(frame: int):
@@ -446,12 +499,12 @@ def getRenderFrame(frame: int):
     height = int(proj.height)  if proj else 1080
 
     clips_out = []
-    for track in reversed(tl.tracks):   # bottom track first → C++ composites in order
+    for track in reversed(tl.tracks):   # bottom track first
         for clip in track.clips:
             if not clip.overlaps(frame):
                 continue
 
-            # ── Resolve correct attribute names from VideoClip / BaseClip ──
+            #   Resolve correct attribute names 
             clip_id   = getattr(clip, "clipId", "")
             clip_type = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
 
@@ -471,6 +524,12 @@ def getRenderFrame(frame: int):
                 print(f"[FRAME] ERROR sourceFrame clip={clip_id}: {e}\n{traceback.format_exc()}", flush=True)
                 source_frame = 0
 
+       
+            try:
+                clip.evaluateAll(frame)
+            except Exception:
+                pass
+
             # opacity lives on transform as an AnimatableProperty
             try:
                 opacity = float(clip.transform.opacity.get())
@@ -487,41 +546,28 @@ def getRenderFrame(frame: int):
                 else:
                     blend_mode = int(blend_mode) if blend_mode else 0
 
-            # transform spatial fields
+            
             t = clip.transform
             try:
+                px, py = t.position.get()
+                sx, sy = t.scale.get()
+                rot    = t.rotation.get()
+                ax, ay = t.anchor.get()
                 transform_dict = {
-                    "x":        float(t.x.get()        if hasattr(t.x, "get")        else t.x),
-                    "y":        float(t.y.get()        if hasattr(t.y, "get")        else t.y),
-                    "scaleX":   float(t.scaleX.get()   if hasattr(t.scaleX, "get")   else t.scaleX),
-                    "scaleY":   float(t.scaleY.get()   if hasattr(t.scaleY, "get")   else t.scaleY),
-                    "rotation": float(t.rotation.get() if hasattr(t.rotation, "get") else t.rotation),
-                    "anchorX":  float(t.anchorX.get()  if hasattr(t.anchorX, "get")  else t.anchorX),
-                    "anchorY":  float(t.anchorY.get()  if hasattr(t.anchorY, "get")  else t.anchorY),
+                    "x":        float(px),
+                    "y":        float(py),
+                    "scaleX":   float(sx),
+                    "scaleY":   float(sy),
+                    "rotation": float(rot),
+                    "anchorX":  float(ax),
+                    "anchorY":  float(ay),
                 }
             except Exception:
                 transform_dict = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
-                                  "rotation": 0, "anchorX": 0.5, "anchorY": 0.5}
+                                  "rotation": 0, "anchorX": 0.0, "anchorY": 0.0}
 
-            # effects — wrap in try so a bad effect doesn't break the frame
-            effects_out = []
-            for eff in getattr(clip, "effects", []):
-                try:
-                    uniforms = {}
-                    if hasattr(eff, "getUniformValues"):
-                        uniforms = eff.getUniformValues(frame) or {}
-                    elif hasattr(eff, "uniforms"):
-                        uniforms = eff.uniforms or {}
-                    type_id = getattr(eff, "typeId", getattr(eff, "effectType", "unknown"))
-                    effects_out.append({
-                        "typeId": type_id,
-                        "uniforms": [
-                            {"id": k, "values": v if isinstance(v, list) else [v]}
-                            for k, v in uniforms.items()
-                        ],
-                    })
-                except Exception:
-                    pass
+
+            effects_out = _serialize_effects(clip, frame)
 
             clip_data: dict = {
                 "clipId":      clip_id,
@@ -539,12 +585,21 @@ def getRenderFrame(frame: int):
                 c = getattr(clip, "color", [0.5, 0.5, 0.5, 1.0])
                 clip_data["color"] = {"r": c[0], "g": c[1], "b": c[2], "a": c[3]}
 
+            elif clip_type == "svg":
+                clip_data["file"] = getattr(clip, "filepath", clip_data.get("file", ""))
+                clip_data["svgStyle"] = {
+                    "displayW":    float(getattr(clip, "displayW",    0.0)),
+                    "displayH":    float(getattr(clip, "displayH",    0.0)),
+                    "tintEnabled": bool(getattr(clip, "tintEnabled",  False)),
+                    "tintColor":   list(getattr(clip, "tintColor",    [1.0, 1.0, 1.0, 1.0])),
+                }
+
             clips_out.append(clip_data)
             print(f"[FRAME]   clip={clip_id} type={clip_type} srcFrame={source_frame} file={filepath!r}", flush=True)
 
     result = {
         "frame":  frame,
-        "fps":    fps,
+        "fps": fps,
         "width":  width,
         "height": height,
         "clips":  clips_out,
@@ -582,7 +637,10 @@ def _mediaType(filepath: str) -> str:
         return "image"
     if ext in {".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a"}:
         return "audio"
+    if ext == ".svg":
+        return "svg"
     return "unknown"
+
 
 
 @app.get("/library/assets")
@@ -698,6 +756,55 @@ def addClip(req: AddClipRequest):
         "duration": clip.duration,
         "assetId": req.assetId,
         "type": "video",
+    }
+
+
+class AddSvgClipRequest(BaseModel):
+    filepath: str
+    trackIndex: int
+    startFrame: int
+    duration: int
+    displayW: float = 0.0
+    displayH: float = 0.0
+
+
+@app.post("/timeline/add-svg-clip")
+def addSvgClip(req: AddSvgClipRequest):
+    """Add an SVG clip directly from a file path. No asset decoding needed."""
+    from backend.timeline.clips.svgClip import SvgClip
+
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+
+    if not os.path.exists(req.filepath):
+        raise HTTPException(404, f"SVG file not found: {req.filepath}")
+
+    if req.trackIndex >= len(tl.tracks):
+        raise HTTPException(400, f"Track index {req.trackIndex} out of range")
+
+    track = tl.tracks[req.trackIndex]
+
+    clip = SvgClip(
+        filepath   = req.filepath,
+        startFrame = req.startFrame,
+        duration   = req.duration,
+        displayW   = req.displayW,
+        displayH   = req.displayH,
+    )
+
+    from backend.history.commandStack import AddClipCommand
+    cmd = AddClipCommand(track, clip)
+    engine.commandStack.execute(cmd)
+    _clipTrackMap[clip.clipId] = req.trackIndex
+
+    return {
+        "clipId":     clip.clipId,
+        "trackId":    track.trackId,
+        "startFrame": clip.startFrame,
+        "duration":   clip.duration,
+        "filepath":   clip.filepath,
+        "type":       "svg",
     }
 
 
@@ -1199,16 +1306,22 @@ class PenClipRequest(BaseModel):
 @app.post("/clips/pen")
 def addPenClip(req: PenClipRequest):
     import uuid
+    from backend.animation.animPath import PathVertex
     tl    = _active_timeline()
     track = _top_empty_track(req.startFrame, req.duration)
     clip  = PenClip(
-        clipId = str(uuid.uuid4()),
+        clipId     = str(uuid.uuid4()),
         startFrame = req.startFrame,
-        duration = req.duration,
-        isClosed = req.isClosed,
-        points = [BezierPoint.fromDict(p) for p in req.points],
-        style = ShapeStyle.fromDict(req.style),
+        duration   = req.duration,
+        isClosed   = req.isClosed,
+        style      = ShapeStyle.fromDict(req.style),
     )
+    for p in req.points:
+        clip.addPoint(
+            x=float(p.get("x", 0)), y=float(p.get("y", 0)),
+            inX=float(p.get("inX", 0)), inY=float(p.get("inY", 0)),
+            outX=float(p.get("outX", 0)), outY=float(p.get("outY", 0)),
+        )
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
     return clip.toDict()
@@ -1224,13 +1337,63 @@ def updatePenPoints(clipId: str, req: PenPointsRequest):
     clip, _ = _find_clip(clipId)
     if not isinstance(clip, PenClip):
         raise HTTPException(400, "Not a pen clip")
-    clip.points = [BezierPoint.fromDict(p) for p in req.points]
+    # Rebuild the base path from the new point list
+    clip.shapePath.vertices.clear()
+    for p in req.points:
+        clip.addPoint(
+            x=float(p.get("x", 0)), y=float(p.get("y", 0)),
+            inX=float(p.get("inX", 0)), inY=float(p.get("inY", 0)),
+            outX=float(p.get("outX", 0)), outY=float(p.get("outY", 0)),
+        )
     if req.isClosed is not None:
         clip.isClosed = req.isClosed
     return clip.toDict()
 
 
-#   Mask  
+# ── Pen Path Keyframe ─────────────────────────────────────────────────────────
+
+class PathKeyframeRequest(BaseModel):
+    frame:  int   = 0
+    interp: str   = "bezier"   # bezier | linear | constant | ease
+
+
+@app.post("/clips/pen/{clipId}/path-keyframe")
+def addPenPathKeyframe(clipId: str, req: PathKeyframeRequest):
+    """
+    Snapshot the pen clip's current base path as an animation keyframe.
+    Mirrors Qteee CustomPathData::syncPointsToBaseValue + addKeyframe pattern.
+    Call this after editing points on the canvas to record the shape at `frame`.
+    """
+    from backend.animation.keyframe import Interpolation
+    clip, _ = _find_clip(clipId)
+    if not isinstance(clip, PenClip):
+        raise HTTPException(400, "Not a pen clip")
+    try:
+        interp = Interpolation(req.interp)
+    except ValueError:
+        interp = Interpolation.Bezier
+    # Sync vertices into base then snapshot
+    clip._syncBase()
+    clip.shapePath.addKeyframe(req.frame, interp=interp)
+    print(f"[penPathKF] clipId={clipId[:8]} frame={req.frame} pts={len(clip.shapePath.vertices)} interp={interp.value}")
+    return {
+        "clipId":   clipId,
+        "frame":    req.frame,
+        "keyframes": clip.shapePath.track.frameIndex(),
+    }
+
+
+@app.delete("/clips/pen/{clipId}/path-keyframe/{frame}")
+def removePenPathKeyframe(clipId: str, frame: int):
+    clip, _ = _find_clip(clipId)
+    if not isinstance(clip, PenClip):
+        raise HTTPException(400, "Not a pen clip")
+    removed = clip.shapePath.removeKeyframe(frame)
+    if not clip.shapePath.track.frameIndex():
+        clip.shapePath.setAnimated(False)
+    return {"removed": removed, "keyframes": clip.shapePath.track.frameIndex()}
+
+
 
 class MaskRequest(BaseModel):
     name: str = "Mask"
@@ -1245,39 +1408,35 @@ class MaskRequest(BaseModel):
 @app.post("/clips/{clipId}/mask")
 def addMask(clipId: str, req: MaskRequest):
     import uuid
+    from backend.animation.animPath import PathVertex
     clip, _ = _find_clip(clipId)
-    # All clips now support masks via BaseClip
     if not hasattr(clip, 'masks'):
         raise HTTPException(400, "Clip type does not support masks")
     mask = MaskLayer(
-        maskId = str(uuid.uuid4()),
-        name = req.name,
-        shape = req.shape,
-        mode = req.mode,
+        maskId   = str(uuid.uuid4()),
+        name     = req.name,
+        shape    = req.shape,
+        mode     = req.mode,
         inverted = req.inverted,
-        feather = req.feather,
-        opacity = req.opacity,
-        points = req.points,
     )
+    # Set feather/opacity base values
+    mask.feather.setBaseValue(req.feather)
+    mask.opacity.setBaseValue(req.opacity)
+    # Build initial path from the request points list
+    if req.points:
+        verts = [PathVertex(
+            x=float(p.get("x",0)), y=float(p.get("y",0)),
+            inX=float(p.get("inX",0)), inY=float(p.get("inY",0)),
+            outX=float(p.get("outX",0)), outY=float(p.get("outY",0)),
+        ) for p in req.points]
+        mask.maskPath.setBase(verts, closed=(req.shape != "bezier" or True))
     clip.addMask(mask)
-    print(f"[addMask] clipId={clipId[:8]} maskId={mask.maskId[:8]} shape={mask.shape} pts={len(mask.points)} mode={mask.mode}")
+    print(f"[addMask] clipId={clipId[:8]} maskId={mask.maskId[:8]} shape={mask.shape} "
+          f"pts={len(mask.points)} mode={mask.mode}")
     return {
         "clipId": clipId,
         "maskId": mask.maskId,
-        "masks": [
-            {
-                "maskId": m.maskId,
-                "name": m.name,
-                "shape": m.shape,
-                "mode": m.mode,
-                "inverted": m.inverted,
-                "feather": m.feather,
-                "opacity": m.opacity,
-                "points": getattr(m, 'points', []),
-                "pointCount": len(getattr(m, 'points', [])),
-            }
-            for m in clip.masks
-        ],
+        "masks": [m.toDict() for m in clip.masks],
     }
 
 
@@ -1292,19 +1451,64 @@ class MaskPatchRequest(BaseModel):
 
 @app.patch("/clips/{clipId}/mask/{maskId}")
 def updateMask(clipId: str, maskId: str, req: MaskPatchRequest):
+    from backend.animation.animPath import PathVertex
     clip, _ = _find_clip(clipId)
     mask = getattr(clip, "getMask", lambda _: None)(maskId)
     if mask is None:
         raise HTTPException(404, f"Mask {maskId!r} not found on clip {clipId!r}")
-    for field_name in ("name", "mode", "inverted", "feather", "opacity", "points"):
-        v = getattr(req, field_name)
-        if v is not None:
-            print(f"[updateMask] clipId={clipId[:8]} maskId={maskId[:8]} {field_name}={v}")
-            setattr(mask, field_name, v)
+    if req.name     is not None: mask.name = req.name
+    if req.mode     is not None: mask.mode = req.mode
+    if req.inverted is not None: mask.inverted = req.inverted
+    if req.feather  is not None: mask.feather.setBaseValue(req.feather)
+    if req.opacity  is not None: mask.opacity.setBaseValue(req.opacity)
+    if req.points   is not None:
+        verts = [PathVertex(
+            x=float(p.get("x",0)), y=float(p.get("y",0)),
+            inX=float(p.get("inX",0)), inY=float(p.get("inY",0)),
+            outX=float(p.get("outX",0)), outY=float(p.get("outY",0)),
+        ) for p in req.points]
+        mask.maskPath.setBase(verts)
     return clip.toDict()
 
 
+# ── Mask Path Keyframe ────────────────────────────────────────────────────────
+
+@app.post("/clips/{clipId}/mask/{maskId}/path-keyframe")
+def addMaskPathKeyframe(clipId: str, maskId: str, req: PathKeyframeRequest):
+    """Snapshot the mask's current base path as an animation keyframe at `frame`."""
+    from backend.animation.keyframe import Interpolation
+    clip, _ = _find_clip(clipId)
+    mask = getattr(clip, "getMask", lambda _: None)(maskId)
+    if mask is None:
+        raise HTTPException(404, f"Mask {maskId!r} not found")
+    try:
+        interp = Interpolation(req.interp)
+    except ValueError:
+        interp = Interpolation.Bezier
+    mask.maskPath.addKeyframe(req.frame, interp=interp)
+    print(f"[maskPathKF] clipId={clipId[:8]} maskId={maskId[:8]} frame={req.frame} "
+          f"pts={len(mask.maskPath.vertices)} interp={interp.value}")
+    return {
+        "maskId":    maskId,
+        "frame":     req.frame,
+        "keyframes": mask.maskPath.track.frameIndex(),
+    }
+
+
+@app.delete("/clips/{clipId}/mask/{maskId}/path-keyframe/{frame}")
+def removeMaskPathKeyframe(clipId: str, maskId: str, frame: int):
+    clip, _ = _find_clip(clipId)
+    mask = getattr(clip, "getMask", lambda _: None)(maskId)
+    if mask is None:
+        raise HTTPException(404, f"Mask {maskId!r} not found")
+    removed = mask.maskPath.removeKeyframe(frame)
+    if not mask.maskPath.track.frameIndex():
+        mask.maskPath.setAnimated(False)
+    return {"removed": removed, "keyframes": mask.maskPath.track.frameIndex()}
+
+
 @app.delete("/clips/{clipId}/mask/{maskId}")
+
 def removeMask(clipId: str, maskId: str):
     clip, _ = _find_clip(clipId)
     removed = getattr(clip, "removeMask", lambda _: False)(maskId)
@@ -1374,11 +1578,44 @@ def addEffect(clipId: str, req: EffectAddRequest):
 @app.get("/clips/{clipId}/effects")
 def listEffects(clipId: str):
     clip, _ = _find_clip(clipId)
-    return {"effects": [
-        {"effectId": e.effectId, "name": e.name, "enabled": e.enabled,
-         "type": e.toDict().get("type"), "params": e.params()}
-        for e in clip.effects
-    ]}
+    out = []
+    for e in clip.effects:
+        out.append(_effect_to_dict(e))
+    return {"effects": out}
+
+
+def _effect_to_dict(e) -> dict:
+    """Serialize an effect to the full dict the frontend needs."""
+    from backend.timeline.effects.skslEffect import SkslEffect
+    base = {"effectId": e.effectId, "name": e.name, "enabled": e.enabled,
+            "type": getattr(e, "typeId", None) or e.toDict().get("type", "unknown")}
+
+    if isinstance(e, SkslEffect):
+        # SkSL: build typed param descriptors from the manifest
+        params = {}
+        for p in e._manifest.get("params", []):
+            pid   = p["id"]
+            ptype = p.get("type", "FloatSlider")
+            val   = e._values.get(pid, p.get("default", 0.0))
+            minv  = p.get("min", 0.0)
+            maxv  = p.get("max", 1.0)
+            params[pid] = {
+                "value": val, "min": minv, "max": maxv,
+                "type": ptype,
+                "displayName": p.get("displayName", pid),
+            }
+        base["params"] = params
+        base["paramTypes"] = "typed"
+    else:
+        # Legacy effects: params() → {key: (value, min, max)}
+        raw = e.params()
+        base["params"] = {
+            k: {"value": v[0], "min": v[1], "max": v[2],
+                "type": "FloatSlider", "displayName": k.replace("_", " ").title()}
+            for k, v in raw.items()
+        }
+        base["paramTypes"] = "typed"
+    return base
 
 @app.patch("/clips/{clipId}/effects/{effectId}")
 def patchEffect(clipId: str, effectId: str, req: EffectPatchRequest):
@@ -1396,7 +1633,7 @@ def patchEffect(clipId: str, effectId: str, req: EffectPatchRequest):
                 eff._resolveVecParam(k, v) or eff.setParam(k, v)
             else:
                 eff.setParam(k, float(v))
-    return {"effectId": eff.effectId, "params": eff.params()}
+    return _effect_to_dict(eff)
 
 @app.delete("/clips/{clipId}/effects/{effectId}")
 def removeEffect(clipId: str, effectId: str):

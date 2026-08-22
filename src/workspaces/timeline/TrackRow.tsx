@@ -2,7 +2,7 @@ import React, { memo, useCallback, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, type Clip, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import TimelineClip from './TimelineClip';
-import { addClipToTimeline, type AssetItem } from '../../api/useApi';
+import { addClipToTimeline, addSvgClipToTimeline, type AssetItem } from '../../api/useApi';
 import { useTool, isCreationTool, isShapeTool, shapeTypeOf } from '../../context/toolContext';
 import { useSelection } from '../../context/selectionContext';
 import { textApi, shapeApi, penApi } from '../../api/toolsApi';
@@ -190,12 +190,18 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       duration,
       type:       asset.type === 'audio' ? 'audio'
                 : asset.type === 'image' ? 'image'
+                : asset.type === 'svg'   ? 'svg'
                 : 'video',
       isSelected: false,
     };
     dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: optimisticClip });
 
-    const result = await addClipToTimeline(asset.assetId, trackIndex, frame, duration);
+    let result: { clipId: string; startFrame: number; duration: number } | null = null;
+    if (asset.type === 'svg') {
+      result = await addSvgClipToTimeline(asset.filepath, trackIndex, frame, duration);
+    } else {
+      result = await addClipToTimeline(asset.assetId, trackIndex, frame, duration);
+    }
     if (result) {
       const realClip: Clip = {
         id:         result.clipId,
