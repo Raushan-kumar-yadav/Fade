@@ -1,94 +1,90 @@
 #include "rendering/DrawShape.hpp"
 
-#include <core/SkRRect.h>
-#include <effects/SkMaskFilter.h>
+#include "core/SkBlurTypes.h"
+#include "core/SkM44.h"
+#include "core/SkMaskFilter.h"
+#include "core/SkPath.h"
+#include "include/core/SkPathBuilder.h" // only needed for polygon / star
 
+#include <algorithm>
 #include <cmath>
 
 namespace fade::drawing {
 
 static constexpr float kPI = 3.14159265358979323846f;
 
-//   Path builders
-
 static SkPath buildRect(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
-  SkPath path;
-  SkRect r = SkRect::MakeXYWH(cx - ss.width * 0.5f, cy - ss.height * 0.5f,
-                              ss.width, ss.height);
+  SkRect rect = SkRect::MakeXYWH(cx - ss.width * 0.5f, cy - ss.height * 0.5f,
+                                 ss.width, ss.height);
   if (ss.cornerRadius > 0.f)
-    path.addRoundRect(r, ss.cornerRadius, ss.cornerRadius);
+    return SkPath::RRect(rect, ss.cornerRadius, ss.cornerRadius);
   else
-    path.addRect(r);
-  return path;
+    return SkPath::Rect(rect);
 }
 
 static SkPath buildCircle(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
-  SkPath path;
-  path.addCircle(cx, cy, ss.radiusX);
-  return path;
+  return SkPath::Circle(cx, cy, ss.radiusX);
 }
 
 static SkPath buildEllipse(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
-  SkPath path;
-  path.addOval(SkRect::MakeXYWH(cx - ss.radiusX, cy - ss.radiusY,
-                                ss.radiusX * 2.f, ss.radiusY * 2.f));
-  return path;
+  return SkPath::Oval(SkRect::MakeXYWH(cx - ss.radiusX, cy - ss.radiusY,
+                                       ss.radiusX * 2.f, ss.radiusY * 2.f));
 }
 
 static SkPath buildLine(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
-  SkPath path;
-  path.moveTo(cx + ss.x1, cy + ss.y1);
-  path.lineTo(cx + ss.x2, cy + ss.y2);
-  return path;
+  SkPathBuilder b;
+  b.moveTo(cx + ss.x1, cy + ss.y1);
+  b.lineTo(cx + ss.x2, cy + ss.y2);
+  return b.detach();
 }
 
 static SkPath buildArc(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
-  SkPath path;
+  SkPathBuilder b;
   SkRect oval = SkRect::MakeXYWH(cx - ss.arcRadius, cy - ss.arcRadius,
                                  ss.arcRadius * 2.f, ss.arcRadius * 2.f);
-  path.addArc(oval, ss.arcStartAngle, ss.arcSweepAngle);
-  return path;
+  b.addArc(oval, ss.arcStartAngle, ss.arcSweepAngle);
+  return b.detach();
 }
 
 // Regular N-sided polygon
 static SkPath buildPolygon(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
-  SkPath path;
-  const float step = 2.f * kPI / (float)ss.numSides;
-  const float startAngle = -kPI * 0.5f;
-  for (int i = 0; i < ss.numSides; ++i) {
-    float a = startAngle + (float)i * step;
-    float px = cx + ss.polygonRadius * std::cos(a);
-    float py = cy + ss.polygonRadius * std::sin(a);
+  int numSides = std::max(3, ss.numSides);
+  float r = ss.polygonRadius;
+  if (r <= 0.f)
+    return SkPath{};
+
+  SkPathBuilder b;
+  for (int i = 0; i < numSides; ++i) {
+    float angle = i * (2.f * kPI / numSides) - (kPI / 2.f);
+    float x = cx + std::cos(angle) * r;
+    float y = cy + std::sin(angle) * r;
     if (i == 0)
-      path.moveTo(px, py);
+      b.moveTo(x, y);
     else
-      path.lineTo(px, py);
+      b.lineTo(x, y);
   }
-  path.close();
-  return path;
+  b.close();
+  return b.detach();
 }
 
 // N-pointed star
 static SkPath buildStar(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
-  SkPath path;
+  SkPathBuilder b;
   const int pts = ss.numPoints * 2;
-  const float step = 2.f * kPI / (float)pts;
-  const float startAngle = -kPI * 0.5f;
   for (int i = 0; i < pts; ++i) {
     float r = (i % 2 == 0) ? ss.outerRadius : ss.innerRadius;
-    float a = startAngle + (float)i * step;
-    float px = cx + r * std::cos(a);
-    float py = cy + r * std::sin(a);
+    float angle = (i * kPI / ss.numPoints) - (kPI / 2.f);
+    float x = cx + std::cos(angle) * r;
+    float y = cy + std::sin(angle) * r;
     if (i == 0)
-      path.moveTo(px, py);
+      b.moveTo(x, y);
     else
-      path.lineTo(px, py);
+      b.lineTo(x, y);
   }
-  path.close();
-  return path;
+  b.close();
+  return b.detach();
 }
 
-// Dispatch to the correct builder
 static SkPath buildPath(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
   if (ss.shapeType == "rect")
     return buildRect(ss, cx, cy);
@@ -104,16 +100,15 @@ static SkPath buildPath(const ClipDesc::ShapeDesc &ss, float cx, float cy) {
     return buildPolygon(ss, cx, cy);
   else if (ss.shapeType == "star")
     return buildStar(ss, cx, cy);
-  return SkPath{}; // unknown
+  return SkPath{};
 }
-
-// Public API
 
 void drawShape(SkCanvas *canvas, const ClipDesc &clip, int canvasW,
                int canvasH) {
   const ClipDesc::ShapeDesc &ss = clip.shape;
+  const float opacity = clip.opacity;
 
-  //   Apply clip transform
+  //  Apply clip-level transform
   canvas->save();
   {
     const auto &t = clip.transform;
@@ -125,54 +120,50 @@ void drawShape(SkCanvas *canvas, const ClipDesc &clip, int canvasW,
     canvas->translate(-cx, -cy);
   }
 
-  // Shape origin defaults to canvas center
+  // Shape origin = canvas center
   const float cx = (float)canvasW * 0.5f;
   const float cy = (float)canvasH * 0.5f;
 
-  //   Build path
   const SkPath path = buildPath(ss, cx, cy);
 
-  //   Shadow pass
+  //   Drop shadow
   if (ss.shadowEnabled) {
-    const float rad = ss.shadowAngle * kPI / 180.f;
-    const float dx = ss.shadowDistance * std::cos(rad);
-    const float dy = ss.shadowDistance * std::sin(rad);
+    float angleRad = ss.shadowAngle * (kPI / 180.f);
+    float sdx = std::cos(angleRad) * ss.shadowDistance;
+    float sdy = std::sin(angleRad) * ss.shadowDistance;
 
     SkPaint shadowPaint;
-    shadowPaint.setColor4f(
-        {ss.shadowR, ss.shadowG, ss.shadowB, ss.shadowA * clip.opacity});
-    shadowPaint.setAntiAlias(true);
     shadowPaint.setStyle(SkPaint::kFill_Style);
+    shadowPaint.setColor4f(
+        {ss.shadowR, ss.shadowG, ss.shadowB, ss.shadowA * opacity});
+    shadowPaint.setAntiAlias(true);
     shadowPaint.setMaskFilter(
         SkMaskFilter::MakeBlur(kNormal_SkBlurStyle, ss.shadowBlur * 0.5f));
 
     canvas->save();
-    canvas->translate(dx, dy);
+    canvas->translate(sdx, sdy);
     canvas->drawPath(path, shadowPaint);
     canvas->restore();
   }
 
-  //   Fill pass
-
+  //   Fill
   const bool isLine = (ss.shapeType == "line");
-  if (!isLine) {
+  if (!isLine && ss.fillOpacity > 0.f) {
     SkPaint fillPaint;
-    fillPaint.setColor4f({ss.fillR, ss.fillG, ss.fillB,
-                          ss.fillA * ss.fillOpacity * clip.opacity});
     fillPaint.setStyle(SkPaint::kFill_Style);
+    fillPaint.setColor4f(
+        {ss.fillR, ss.fillG, ss.fillB, ss.fillA * ss.fillOpacity * opacity});
     fillPaint.setAntiAlias(true);
     canvas->drawPath(path, fillPaint);
   }
 
-  //   Stroke pass
+  //   Stroke
   if (ss.strokeWidth > 0.f) {
     SkPaint strokePaint;
-    strokePaint.setColor4f(
-        {ss.strokeR, ss.strokeG, ss.strokeB, ss.strokeA * clip.opacity});
     strokePaint.setStyle(SkPaint::kStroke_Style);
     strokePaint.setStrokeWidth(ss.strokeWidth);
-    strokePaint.setStrokeCap(SkPaint::kRound_Cap);
-    strokePaint.setStrokeJoin(SkPaint::kRound_Join);
+    strokePaint.setColor4f(
+        {ss.strokeR, ss.strokeG, ss.strokeB, ss.strokeA * opacity});
     strokePaint.setAntiAlias(true);
     canvas->drawPath(path, strokePaint);
   }

@@ -84,8 +84,21 @@ async def lifespan(app: FastAPI):
                     # Fast path: serve from prefetch cache
                     payload = _prefetch.pop(frame_num, None)
                     if payload is None:
-                        data    = _get_frame_data(frame_num)
-                        payload = _json.dumps(data).encode("utf-8")
+                        try:
+                            data    = _get_frame_data(frame_num)
+                            payload = _json.dumps(data).encode("utf-8")
+                        except Exception as exc:
+                            # Never let an exception leave the TCP handler —
+                            # C++ is waiting for exactly (4+N) bytes; any
+                            # unhandled exception would leave it hanging or
+                            # reading the next request's header as JSON.
+                            import traceback
+                            traceback.print_exc()
+                            # Return an empty-clips descriptor so C++ gets a
+                            # valid framed response and skips this frame cleanly.
+                            fallback = {"frame": frame_num, "fps": 30, "width": 1920,
+                                        "height": 1080, "clips": []}
+                            payload = _json.dumps(fallback).encode("utf-8")
 
                     writer.write(struct.pack("<I", len(payload)) + payload)
                     await writer.drain()
@@ -101,6 +114,7 @@ async def lifespan(app: FastAPI):
                     # Keep cache small — evict anything older than current-2
                     for old in [k for k in _prefetch if k < frame_num - 1]:
                         del _prefetch[old]
+
 
             except (asyncio.IncompleteReadError, ConnectionResetError, BrokenPipeError):
                 pass
@@ -284,7 +298,38 @@ def _get_frame_data(frame: int) -> dict:
                         "shadowBlur":     float(getattr(style, "shadowBlur",    5.0)),
                     }
 
+            elif clip_type == "pen":
+                # Serialize bezier points + stroke/fill appearance
+                # Mirrors Qteee-Vulkan CustomPathData + ShapeDrawNode pattern
+                style  = getattr(clip, "style",    None)
+                points = getattr(clip, "points",   [])
+                clip_data["penStyle"] = {
+                    "isClosed": bool(getattr(clip, "isClosed", False)),
+                    "points": [
+                        {
+                            "x":    float(getattr(p, "x",    0.0)),
+                            "y":    float(getattr(p, "y",    0.0)),
+                            "inX":  float(getattr(p, "inX",  0.0)),
+                            "inY":  float(getattr(p, "inY",  0.0)),
+                            "outX": float(getattr(p, "outX", 0.0)),
+                            "outY": float(getattr(p, "outY", 0.0)),
+                        }
+                        for p in points
+                    ],
+                    # Stroke / fill (same fields as ShapeStyle)
+                    "fillColor":      list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])) if style else [0.4, 0.4, 1.0, 1.0],
+                    "fillOpacity":    float(getattr(style, "fillOpacity",   1.0))                if style else 1.0,
+                    "strokeColor":    list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])) if style else [1.0, 1.0, 1.0, 1.0],
+                    "strokeWidth":    float(getattr(style, "strokeWidth",   2.0))                if style else 2.0,
+                    "shadowEnabled":  bool(getattr(style, "shadowEnabled", False))               if style else False,
+                    "shadowColor":    list(getattr(style, "shadowColor",  [0, 0, 0, 0.75]))       if style else [0, 0, 0, 0.75],
+                    "shadowAngle":    float(getattr(style, "shadowAngle",  135.0))               if style else 135.0,
+                    "shadowDistance": float(getattr(style, "shadowDistance", 10.0))              if style else 10.0,
+                    "shadowBlur":     float(getattr(style, "shadowBlur",    5.0))                if style else 5.0,
+                }
+
             clips_out.append(clip_data)
+
 
     return {"frame": frame, "fps": fps, "width": width, "height": height, "clips": clips_out}
 

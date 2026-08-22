@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -36,7 +37,7 @@ struct ClipDesc {
     std::vector<EffectParam> effects;
 
     // Clip type
-    enum class Type { Video, Image, Solid, Shape, Text } type = Type::Video;
+    enum class Type { Video, Image, Solid, Shape, Text, Pen } type = Type::Video;
 
     // For Solid clips
     float solidR = 0.5f, solidG = 0.5f, solidB = 0.5f, solidA = 1.f;
@@ -96,7 +97,28 @@ struct ClipDesc {
         float shadowAngle = 135.f, shadowDistance = 10.f, shadowBlur = 5.f;
     } shape;
 
-    // Raw RGBA pixel data (unused for text/shape)
+    // ── Pen / custom path (mirrors Qteee-Vulkan CustomPathData + BezierPoint) ─
+    struct BezierPt {
+        float x = 0.f, y = 0.f;
+        float inX  = 0.f, inY  = 0.f;   // in-tangent relative offset
+        float outX = 0.f, outY = 0.f;   // out-tangent relative offset
+    };
+    struct PenDesc {
+        bool                   isClosed    = false;
+        std::vector<BezierPt>  points;
+        // Fill
+        float fillR = 0.4f, fillG = 0.4f, fillB = 1.f, fillA = 1.f;
+        float fillOpacity = 1.f;
+        // Stroke
+        float strokeR = 1.f, strokeG = 1.f, strokeB = 1.f, strokeA = 1.f;
+        float strokeWidth = 2.f;
+        // Shadow
+        bool  shadowEnabled  = false;
+        float shadowR = 0.f, shadowG = 0.f, shadowB = 0.f, shadowA = 0.75f;
+        float shadowAngle = 135.f, shadowDistance = 10.f, shadowBlur = 5.f;
+    } pen;
+
+    // Raw RGBA pixel data (unused for text/shape/pen)
     const uint8_t* rawRGBA     = nullptr;
     size_t         rawRGBASize = 0;
 };
@@ -148,6 +170,7 @@ inline FrameDescriptor parseFrameDescriptor(const std::string& jsonStr) {
             else if (typeStr == "solid")  cd.type = ClipDesc::Type::Solid;
             else if (typeStr == "shape")  cd.type = ClipDesc::Type::Shape;
             else if (typeStr == "text")   cd.type = ClipDesc::Type::Text;
+            else if (typeStr == "pen")    cd.type = ClipDesc::Type::Pen;
             else                          cd.type = ClipDesc::Type::Video;
 
             if (cd.type == ClipDesc::Type::Solid && c.contains("color")) {
@@ -237,6 +260,38 @@ inline FrameDescriptor parseFrameDescriptor(const std::string& jsonStr) {
                 auto shc = s.value("shadowColor", nlohmann::json::array({0,0,0,0.75}));
                 sh.shadowR = shc.size()>0?float(shc[0]):0.f; sh.shadowG = shc.size()>1?float(shc[1]):0.f;
                 sh.shadowB = shc.size()>2?float(shc[2]):0.f; sh.shadowA = shc.size()>3?float(shc[3]):0.75f;
+            }
+
+            // ── Pen style ─────────────────────────────────────────────────
+            if (cd.type == ClipDesc::Type::Pen && c.contains("penStyle")) {
+                auto& s  = c["penStyle"];
+                auto& p  = cd.pen;
+                p.isClosed   = s.value("isClosed", false);
+                for (const auto& jpt : s.value("points", nlohmann::json::array())) {
+                    ClipDesc::BezierPt bp;
+                    bp.x    = jpt.value("x",    0.f);
+                    bp.y    = jpt.value("y",    0.f);
+                    bp.inX  = jpt.value("inX",  0.f);
+                    bp.inY  = jpt.value("inY",  0.f);
+                    bp.outX = jpt.value("outX", 0.f);
+                    bp.outY = jpt.value("outY", 0.f);
+                    p.points.push_back(bp);
+                }
+                auto fc = s.value("fillColor", nlohmann::json::array({0.4,0.4,1,1}));
+                p.fillR = fc.size()>0?float(fc[0]):0.4f; p.fillG = fc.size()>1?float(fc[1]):0.4f;
+                p.fillB = fc.size()>2?float(fc[2]):1.f;  p.fillA = fc.size()>3?float(fc[3]):1.f;
+                p.fillOpacity  = s.value("fillOpacity",  1.f);
+                p.strokeWidth  = s.value("strokeWidth",  2.f);
+                auto stc = s.value("strokeColor", nlohmann::json::array({1,1,1,1}));
+                p.strokeR = stc.size()>0?float(stc[0]):1.f; p.strokeG = stc.size()>1?float(stc[1]):1.f;
+                p.strokeB = stc.size()>2?float(stc[2]):1.f; p.strokeA = stc.size()>3?float(stc[3]):1.f;
+                p.shadowEnabled  = s.value("shadowEnabled",  false);
+                p.shadowAngle    = s.value("shadowAngle",    135.f);
+                p.shadowDistance = s.value("shadowDistance", 10.f);
+                p.shadowBlur     = s.value("shadowBlur",     5.f);
+                auto shc = s.value("shadowColor", nlohmann::json::array({0,0,0,0.75}));
+                p.shadowR = shc.size()>0?float(shc[0]):0.f; p.shadowG = shc.size()>1?float(shc[1]):0.f;
+                p.shadowB = shc.size()>2?float(shc[2]):0.f; p.shadowA = shc.size()>3?float(shc[3]):0.75f;
             }
 
             for (const auto& e : c.value("effects", nlohmann::json::array())) {

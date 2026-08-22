@@ -1,7 +1,9 @@
 #include "HeadlessCompositor.hpp"
-#include "rendering/DrawText.hpp"
-#include "rendering/DrawShape.hpp"
 #include "core/api/Logger.hpp"
+#include "rendering/DrawPen.hpp"
+#include "rendering/DrawShape.hpp"
+#include "rendering/DrawText.hpp"
+
 
 #include <core/SkBlendMode.h>
 #include <core/SkCanvas.h>
@@ -23,7 +25,6 @@
 #include <stdexcept>
 #include <thread>
 
-
 #ifndef LOG_INFO
 #define LOG_INFO(m) std::cout << "[HeadlessCompositor] " << m << "\n"
 #endif
@@ -32,7 +33,6 @@
 #endif
 
 // ── Constructor / destructor
-// ──────────────────────────────────────────────────
 
 HeadlessCompositor::HeadlessCompositor(int width, int height, float fps,
                                        const std::string &effectsDir)
@@ -62,10 +62,13 @@ void HeadlessCompositor::init(const std::string &effectsDir) {
   if (!m_surface)
     throw std::runtime_error("HeadlessCompositor: SkSurface creation failed");
 
-  //  Allocate SharedArrayBuffer
+  //  Allocate front buffer (SharedArrayBuffer — JS reads this)
   m_bufferSize = static_cast<size_t>(m_width) * m_height * 4;
   m_buffer = std::make_unique<uint8_t[]>(m_bufferSize);
   std::memset(m_buffer.get(), 0, m_bufferSize);
+  // Back buffer — C++ renders here; memcpy to m_buffer before signaling JS
+  m_renderBuffer = std::make_unique<uint8_t[]>(m_bufferSize);
+  std::memset(m_renderBuffer.get(), 0, m_bufferSize);
 
   LOG_INFO("Initialized " << m_width << "x" << m_height << " @ " << m_fps
                           << "fps");
@@ -100,10 +103,16 @@ void HeadlessCompositor::renderFrame(const FrameDescriptor &fd) {
 void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
 
   //   ULTRA-FAST PATH
-  // sws_scale writes RGBA directly into m_buffer
+  // sws_scale writes RGBA directly into m_buffer — video/image only
+  // Generative clip types (Solid, Text, Shape) must NOT enter this path
+  // because they have no file to decode.
   if (fd.clips.size() == 1) {
     const auto &clip = fd.clips[0];
-    if (clip.type != ClipDesc::Type::Solid && clip.effects.empty()) {
+    const bool isGenerative = (clip.type == ClipDesc::Type::Solid ||
+                               clip.type == ClipDesc::Type::Text ||
+                               clip.type == ClipDesc::Type::Shape ||
+                               clip.type == ClipDesc::Type::Pen);
+    if (!isGenerative && clip.effects.empty()) {
       const auto &t = clip.transform;
       bool isIdentity =
           (t.x == 0 && t.y == 0 && t.rotation == 0 && t.scaleX == 1.0f &&
@@ -114,9 +123,11 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           decoder =
               std::make_unique<ClipDecoder>(clip.file, m_device.get(), 1.0f);
 
-        // Direct decode: sws_scale → m_buffer (no vector, no memcpy, no Skia)
-        if (decoder->decodeFrameDirect(clip.sourceFrame, m_buffer.get(),
+        // Direct decode: sws_scale → m_renderBuffer (double-buffered)
+        if (decoder->decodeFrameDirect(clip.sourceFrame, m_renderBuffer.get(),
                                        m_width, m_height)) {
+          // Flip: atomic copy to front buffer before signaling JS
+          std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
           if (m_onFrameReady)
             m_onFrameReady(fd.frame);
           return;
@@ -139,8 +150,14 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   for (const auto &clip : fd.clips) {
     // Skip video/image decode for generative clip types
     if (clip.type == ClipDesc::Type::Solid ||
-        clip.type == ClipDesc::Type::Text  ||
-        clip.type == ClipDesc::Type::Shape) {
+        clip.type == ClipDesc::Type::Text ||
+        clip.type == ClipDesc::Type::Shape ||
+        clip.type == ClipDesc::Type::Pen) {
+      decoded.push_back({&clip, {}, 0, 0});
+      continue;
+    }
+    // Safety: never try to open an empty path — would crash the decoder
+    if (clip.file.empty()) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
     }
@@ -158,8 +175,8 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   if (!needsGpu) {
 
     SkImageInfo cpuInfo = SkImageInfo::Make(
-        m_width, m_height, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
-    auto cpuSurface = SkSurfaces::WrapPixels(cpuInfo, m_buffer.get(),
+        m_width, m_height, kRGBA_8888_SkColorType, kPremul_SkAlphaType);
+    auto cpuSurface = SkSurfaces::WrapPixels(cpuInfo, m_renderBuffer.get(),
                                              static_cast<size_t>(m_width) * 4);
 
     if (cpuSurface) {
@@ -183,12 +200,19 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           fade::drawing::drawShape(canvas, *cp.clip, m_width, m_height);
           continue;
         }
+        if (cp.clip->type == ClipDesc::Type::Pen) {
+          fade::drawing::drawPen(canvas, *cp.clip, m_width, m_height);
+          continue;
+        }
         if (cp.rgba.empty())
           continue;
         drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
                          /*useGpu=*/false);
       }
-      // CPU surface
+      // Flip: copy fully-composed frame to front buffer, then signal JS.
+      // JS reads m_buffer; C++ wrote to m_renderBuffer — no race.
+      cpuSurface.reset();  // flush WrapPixels surface before memcpy
+      std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
       if (m_onFrameReady)
         m_onFrameReady(fd.frame);
       return;
@@ -216,23 +240,28 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       fade::drawing::drawShape(canvas, *cp.clip, m_width, m_height);
       continue;
     }
+    if (cp.clip->type == ClipDesc::Type::Pen) {
+      fade::drawing::drawPen(canvas, *cp.clip, m_width, m_height);
+      continue;
+    }
     if (cp.rgba.empty())
       continue;
     drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
                      /*useGpu=*/true);
   }
 
-  // GPU sync + readback
+  // GPU sync + readback → m_renderBuffer, then flip to m_buffer
   m_skia->getDirectContext()->flushAndSubmit();
-  // kRGBA_8888: matches JS ImageData format
   SkImageInfo readInfo = SkImageInfo::Make(
       m_width, m_height, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
-  bool ok = m_surface->readPixels(readInfo, m_buffer.get(),
+  bool ok = m_surface->readPixels(readInfo, m_renderBuffer.get(),
                                   static_cast<size_t>(m_width) * 4, 0, 0);
   if (!ok) {
     LOG_ERROR("readPixels failed for frame " << fd.frame);
     return;
   }
+  // Flip: JS reads m_buffer, C++ wrote m_renderBuffer — no race
+  std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
   if (m_onFrameReady)
     m_onFrameReady(fd.frame);
 }
@@ -313,7 +342,6 @@ sk_sp<SkImage> HeadlessCompositor::applyEffects(sk_sp<SkImage> src,
 
 // Text  → fade::drawing::drawText()   in rendering/DrawText.cpp
 // Shape → fade::drawing::drawShape()  in rendering/DrawShape.cpp
-
 
 //   Playback
 
@@ -491,13 +519,19 @@ void HeadlessCompositor::closeTcp() {
 }
 
 std::string HeadlessCompositor::fetchFrameJson(int64_t frameNum) {
+  // Serialize the full send+recv transaction.
+  // seek() spawns concurrent threads — without this lock they interleave
+  // their uint32_t writes and reads on the shared socket, producing garbled
+  // JSON.
+  std::lock_guard<std::mutex> tcpLock(m_tcpMutex);
+
   // Lazy connect on first call
   if (m_frameSock == INVALID_SOCKET) {
     if (!connectTcp())
       return {};
   }
 
-  // Send
+  // Send: 4-byte LE frame number
   uint32_t req = static_cast<uint32_t>(frameNum);
   if (send(m_frameSock, reinterpret_cast<char *>(&req), 4, 0) != 4) {
     LOG_ERROR("TCP send failed — reconnecting next frame");
@@ -506,7 +540,7 @@ std::string HeadlessCompositor::fetchFrameJson(int64_t frameNum) {
     return {};
   }
 
-  // Receive
+  // Receive: 4-byte LE payload length
   uint32_t payLen = 0;
   if (tcpRecvAll(m_frameSock, reinterpret_cast<char *>(&payLen), 4) != 4) {
     closesocket(m_frameSock);

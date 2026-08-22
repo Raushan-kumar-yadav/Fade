@@ -267,7 +267,10 @@ std::shared_ptr<DecodedFrame> HWVideoDecoder::decodeFrame(int64_t targetFrame) {
         decoded->height = dstH;
         decoded->isStatic = false;
 
-        if (!m_swsCtx || m_srcWidth != srcW || m_srcHeight != srcH ||
+        // Re-enter allocation block if sws exists (from decodeFrameDirect) but
+        // m_rgbFrame/m_rgbBuffer were never allocated (direct-decode skips them).
+        if (!m_swsCtx || !m_rgbFrame || !m_rgbBuffer ||
+            m_srcWidth != srcW || m_srcHeight != srcH ||
             m_width != dstW || m_height != dstH) {
           if (m_swsCtx)
             sws_freeContext(m_swsCtx);
@@ -283,6 +286,11 @@ std::shared_ptr<DecodedFrame> HWVideoDecoder::decodeFrame(int64_t targetFrame) {
           m_swsCtx = sws_getContext(
               srcW, srcH, (AVPixelFormat)cpuFrame->format, dstW, dstH,
               AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+          // Some NV12 variants fail with FAST_BILINEAR — try BILINEAR fallback
+          if (!m_swsCtx)
+              m_swsCtx = sws_getContext(
+                  srcW, srcH, (AVPixelFormat)cpuFrame->format, dstW, dstH,
+                  AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr, nullptr);
           m_rgbFrame = av_frame_alloc();
           int numBytes =
               av_image_get_buffer_size(AV_PIX_FMT_RGBA, dstW, dstH, 1);
@@ -310,12 +318,14 @@ std::shared_ptr<DecodedFrame> HWVideoDecoder::decodeFrame(int64_t targetFrame) {
           }
         } else {
           LOG_ERROR("HWVideoDecoder: sws_scale context setup failed");
+          decoded->valid = false;
           decoded = nullptr;
         }
 
         av_frame_free(&cpuFrame);
+        // NOTE: frame was already released via av_frame_unref() above — do NOT
+        // call av_frame_free(&frame) here, only free the shell allocation.
         av_frame_free(&frame);
-
       } else {
 
         // SOFTWARE FALLBACK inside HWVideoDecoder
@@ -328,8 +338,7 @@ std::shared_ptr<DecodedFrame> HWVideoDecoder::decodeFrame(int64_t targetFrame) {
         decoded->height = dstH;
         decoded->isStatic = false;
 
-        if (!m_swsCtx || m_srcWidth != srcW || m_srcHeight != srcH ||
-            m_width != dstW || m_height != dstH) {
+        if (!m_swsCtx || !m_rgbFrame || !m_rgbBuffer || m_srcWidth != srcW || m_srcHeight != srcH || m_width != dstW || m_height != dstH) {
           if (m_swsCtx)
             sws_freeContext(m_swsCtx);
           if (m_rgbBuffer)
@@ -344,6 +353,10 @@ std::shared_ptr<DecodedFrame> HWVideoDecoder::decodeFrame(int64_t targetFrame) {
           m_swsCtx = sws_getContext(
               srcW, srcH, (AVPixelFormat)frame->format, dstW, dstH,
               AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+          if (!m_swsCtx)
+              m_swsCtx = sws_getContext(
+                  srcW, srcH, (AVPixelFormat)frame->format, dstW, dstH,
+                  AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr, nullptr);
           m_rgbFrame = av_frame_alloc();
           int numBytes =
               av_image_get_buffer_size(AV_PIX_FMT_RGBA, dstW, dstH, 1);
@@ -375,7 +388,9 @@ std::shared_ptr<DecodedFrame> HWVideoDecoder::decodeFrame(int64_t targetFrame) {
         av_frame_free(&frame); // cope to RAM
       }
 
-      decoded->valid = true;
+      // Only mark valid if we successfully decoded pixels
+      if (decoded)
+        decoded->valid = true;
       m_lastDecodedFrame = current_frame_idx;
 
       // Log what was actually decoded vs what was requested
@@ -485,14 +500,17 @@ bool HWVideoDecoder::decodeFrameDirect(int64_t targetFrame, uint8_t* dstBuffer,
         int srcH = cpuFrame->height;
 
         // Ensure sws context matches (src → dst)
-        if (!m_swsCtx || m_srcWidth != srcW || m_srcHeight != srcH ||
-            m_width != dstW || m_height != dstH) {
+        if (!m_swsCtx || !m_rgbFrame || !m_rgbBuffer || m_srcWidth != srcW || m_srcHeight != srcH || m_width != dstW || m_height != dstH) {
           if (m_swsCtx) sws_freeContext(m_swsCtx);
           m_srcWidth = srcW; m_srcHeight = srcH;
           m_width = dstW; m_height = dstH;
           m_swsCtx = sws_getContext(
               srcW, srcH, (AVPixelFormat)cpuFrame->format, dstW, dstH,
               AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+          if (!m_swsCtx)
+              m_swsCtx = sws_getContext(
+                  srcW, srcH, (AVPixelFormat)cpuFrame->format, dstW, dstH,
+                  AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr, nullptr);
         }
 
         if (m_swsCtx) {
@@ -510,14 +528,17 @@ bool HWVideoDecoder::decodeFrameDirect(int64_t targetFrame, uint8_t* dstBuffer,
         int srcW = frame->width;
         int srcH = frame->height;
 
-        if (!m_swsCtx || m_srcWidth != srcW || m_srcHeight != srcH ||
-            m_width != dstW || m_height != dstH) {
+        if (!m_swsCtx || !m_rgbFrame || !m_rgbBuffer || m_srcWidth != srcW || m_srcHeight != srcH || m_width != dstW || m_height != dstH) {
           if (m_swsCtx) sws_freeContext(m_swsCtx);
           m_srcWidth = srcW; m_srcHeight = srcH;
           m_width = dstW; m_height = dstH;
           m_swsCtx = sws_getContext(
               srcW, srcH, (AVPixelFormat)frame->format, dstW, dstH,
               AV_PIX_FMT_RGBA, SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+          if (!m_swsCtx)
+              m_swsCtx = sws_getContext(
+                  srcW, srcH, (AVPixelFormat)frame->format, dstW, dstH,
+                  AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr, nullptr);
         }
 
         if (m_swsCtx) {
