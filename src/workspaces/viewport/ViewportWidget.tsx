@@ -65,127 +65,78 @@ export default function ViewportWidget() {
 
   // The canvas receives decoded  
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<AudioEngine | null>(null);
 
-  // Pending bitmap for next animation frame 
-  const pendingBitmapRef = useRef<ImageBitmap | null>(null);
-  const rafIdRef = useRef<number>(0);
-  // Local frame ref updated on every WS message  
+  // Local frame ref updated on every native frame event  
   const frameNumRef = useRef<number>(0);
   // Throttled React state update  
   const lastStateFrameRef = useRef<number>(-1);
-  // Track current incoming format  
-  const pendingFormatRef  = useRef<'jpeg' | 'png'>('jpeg');
 
-  //   WebSocket preview stream 
+  // ── Native render engine (C++ Vulkan compositor) ──────────────────────────
+  const [isNativeRender, setIsNativeRender] = useState(false);
+  const nativeBufferRef  = useRef<ArrayBuffer | null>(null);
+  const nativeWidthRef   = useRef(1920);
+  const nativeHeightRef  = useRef(1080);
+
+  // Check if native addon is available and cache the SharedArrayBuffer
   useEffect(() => {
-    let destroyed = false;
-    let wsInst: WebSocket | null = null;
+    const api = (window as any).electronAPI;
+    if (!api?.isNativeRender) return;
+    api.isNativeRender().then(async (isNative: boolean) => {
+      if (!isNative) return;
+      setIsNativeRender(true);
+      const buf = await api.getRenderBuffer();
+      if (buf) nativeBufferRef.current = buf;
+      const stats = await api.getRenderStats();
+      if (stats) {
+        nativeWidthRef.current  = stats.width;
+        nativeHeightRef.current = stats.height;
+      }
+    });
+  }, []);
 
-    // RAF loop 
-    function rafLoop() {
-      rafIdRef.current = requestAnimationFrame(rafLoop);
-      const bmp = pendingBitmapRef.current;
-      if (!bmp) return;
-      pendingBitmapRef.current = null;
+  // Subscribe to frame-ready events from C++ compositor
+  useEffect(() => {
+    if (!isNativeRender) return;
+    const api = (window as any).electronAPI;
+    if (!api?.onFrameReady) return;
+
+    const cleanup = api.onFrameReady(async (frameNum: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      // alpha  
-      const ctx2d = canvas.getContext('2d', { alpha: true });
-      if (!ctx2d) return;
-      if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
-        canvas.width  = bmp.width;
-        canvas.height = bmp.height;
+
+      // Get fresh pixel buffer from native compositor (Buffer copy per frame)
+      const buf: ArrayBuffer | null = await api.getRenderBuffer();
+      if (!buf) return;
+
+      const w = nativeWidthRef.current;
+      const h = nativeHeightRef.current;
+      if (canvas.width !== w)  canvas.width  = w;
+      if (canvas.height !== h) canvas.height = h;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const rgba = new Uint8ClampedArray(buf, 0, w * h * 4);
+      ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
+
+      frameNumRef.current = frameNum;
+      window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
+      audioRef.current?.tick(frameNum);
+
+      if (frameNum !== lastStateFrameRef.current) {
+        lastStateFrameRef.current = frameNum;
+        setCurrentFrame(frameNum);
       }
-      // Always clear before drawing  
-      
-      ctx2d.clearRect(0, 0, canvas.width, canvas.height);
-      ctx2d.drawImage(bmp, 0, 0);
-      bmp.close();   // release GPU/CPU memory immediately
+    });
 
-      // Throttle React setState  
-      const frame = frameNumRef.current;
-      if (frame !== lastStateFrameRef.current) {
-        lastStateFrameRef.current = frame;
-        setCurrentFrame(frame);
-      }
-    }
-    rafIdRef.current = requestAnimationFrame(rafLoop);
+    return cleanup;
+  }, [isNativeRender]);
 
-    function connect(port: number) {
-      if (destroyed) return;
-      const url = `ws://127.0.0.1:${port}/ws/preview`;
-      const ws  = new WebSocket(url);
-      wsInst = ws;
-      wsRef.current = ws;
-
-      ws.binaryType = 'arraybuffer';
-      ws.onopen    = () => { if (!destroyed) { setConnected(true); setRetryCount(0); } };
-      ws.onmessage = (ev: MessageEvent<ArrayBuffer>) => {
-        if (ev.data.byteLength < 6) return;   
-
-        // Parse header 
-        const view = new DataView(ev.data);
-        const frameNum = view.getUint32(0, false);
-        const fmtByte  = view.getUint8(4);
-        const mime = fmtByte === 1 ? 'image/png' : 'image/jpeg';
-        pendingFormatRef.current = fmtByte === 1 ? 'png' : 'jpeg';
-        frameNumRef.current = frameNum;
-
-        // Dispatch zero-lag custom event so Timeline updates immediately
-        window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
-        // Tick audio engine for drift correction
-        audioRef.current?.tick(frameNum);
-
-        // Decode off-main-thread using createImageBitmap
-        const imgBytes = ev.data.slice(5);
-        const blob = new Blob([imgBytes], { type: mime });
-        createImageBitmap(blob).then((bmp) => {
-          // Drop previous pending bitmap if it wasn't consumed (frame-skip)
-          pendingBitmapRef.current?.close();
-          pendingBitmapRef.current = bmp;
-        }).catch(() => {/* decode error, skip frame */});
-      };
-      ws.onerror = () => {  };
-      ws.onclose = () => {
-        if (destroyed) return;
-        setConnected(false);
-        setRetryCount(n => n + 1);
-        // Retry after  
-        setTimeout(() => connect(port), 2000);
-      };
-    }
-
-   
-    function tryConnect(port: number) {
-      const t = setTimeout(() => connect(port), 150);
-      return () => clearTimeout(t);
-    }
-
-    let cleanup = () => {};
-
-    const knownPort: number | null = (window as any).__FADE_PORT__;
-    if (knownPort) {
-      cleanup = tryConnect(knownPort);
-    } else {
-      const handler = (e: Event) => {
-        const port = (e as CustomEvent<number>).detail;
-        cleanup = tryConnect(port);
-      };
-      window.addEventListener('fade:port', handler, { once: true });
-      cleanup = () => window.removeEventListener('fade:port', handler);
-    }
-
-    return () => {
-      destroyed = true;
-      cancelAnimationFrame(rafIdRef.current);
-      pendingBitmapRef.current?.close();
-      pendingBitmapRef.current = null;
-      cleanup();
-      wsInst?.close();
-    };
-  }, []);
+  // WebSocket preview path removed — native C++ compositor is the sole renderer.
+  // The C++ play loop fetches frame descriptors via TCP, decodes video with
+  // D3D11VA HW decoder, composites with Skia/Vulkan, and pushes pixels to the
+  // viewport via onFrameReady. No Python-side rendering or WS streaming needed.
 
   // ── Audio engine: create, load clips, keep in sync ────────────────────────
   useEffect(() => {
@@ -250,32 +201,39 @@ export default function ViewportWidget() {
   //   Controls  
 
   const togglePlay = useCallback(async () => {
+    const api = (window as any).electronAPI;
     if (isPlaying) {
       await playbackPause();
+      if (isNativeRender) api?.renderPause();
       audioRef.current?.pause();
       setIsPlaying(false);
     } else {
       await playbackPlay();
+      if (isNativeRender) api?.renderPlay();
       audioRef.current?.play(currentFrame);
       setIsPlaying(true);
     }
-  }, [isPlaying, currentFrame]);
+  }, [isPlaying, currentFrame, isNativeRender]);
 
   const stepFrame = useCallback(async (dir: 1 | -1) => {
-    if (isPlaying) { await playbackPause(); audioRef.current?.pause(); setIsPlaying(false); }
+    const api = (window as any).electronAPI;
+    if (isPlaying) { await playbackPause(); if (isNativeRender) api?.renderPause(); audioRef.current?.pause(); setIsPlaying(false); }
     const next = Math.max(0, Math.min(totalFrames - 1, currentFrame + dir));
     await playbackSeek(next);
+    if (isNativeRender) api?.renderSeek(next);
     audioRef.current?.seek(next);
     setCurrentFrame(next);
-  }, [isPlaying, currentFrame, totalFrames]);
+  }, [isPlaying, currentFrame, totalFrames, isNativeRender]);
 
   const handleScrub = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const api = (window as any).electronAPI;
     const f = parseInt(e.target.value, 10);
-    if (isPlaying) { await playbackPause(); audioRef.current?.pause(); setIsPlaying(false); }
+    if (isPlaying) { await playbackPause(); if (isNativeRender) api?.renderPause(); audioRef.current?.pause(); setIsPlaying(false); }
     await playbackSeek(f);
+    if (isNativeRender) api?.renderSeek(f);
     audioRef.current?.seek(f);
     setCurrentFrame(f);
-  }, [isPlaying]);
+  }, [isPlaying, isNativeRender]);
 
   const handleResChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const scale = parseFloat(e.target.value);
@@ -286,7 +244,6 @@ export default function ViewportWidget() {
   const handleFormatToggle = useCallback(async () => {
     const next = previewFormat === 'jpeg' ? 'png' : 'jpeg';
     setPreviewFormat(next);
-    pendingFormatRef.current = next;
     try {
       const port = (window as any).__FADE_PORT__ ?? 8000;
       await fetch(`http://127.0.0.1:${port}/preview/format`, {
@@ -468,7 +425,7 @@ export default function ViewportWidget() {
           )}
         </div>{/* /vw-stage */}
 
-        {!connected && (
+        {!connected && !isNativeRender && (
           <div className="vw-canvas__overlay">
             <div className="vw-canvas__spinner" />
             <p>{retryCount === 0 ? 'Connecting to engine…' : `Engine starting… (retry ${retryCount})`}</p>
@@ -540,7 +497,11 @@ export default function ViewportWidget() {
           >
             {previewFormat === 'jpeg' ? 'JPG' : 'PNG'}
           </button>
-          <div className={`vw-ws-dot${connected ? ' vw-ws-dot--ok' : ''}`} title={connected ? 'Engine connected' : 'Connecting…'} />
+          <div className={`vw-ws-dot${connected || isNativeRender ? ' vw-ws-dot--ok' : ''}`}
+               title={isNativeRender ? 'Native GPU compositor active' : connected ? 'Engine connected' : 'Connecting…'} />
+          {isNativeRender && (
+            <span className="vw-gpu-badge" title="Vulkan/Skia native render active">GPU</span>
+          )}
           <button id="vw-fullscreen" className="vw-btn" title="Toggle fullscreen" onClick={() => setIsFullscreen(f => !f)}>
             <IconFullscreen />
           </button>

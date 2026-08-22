@@ -1,0 +1,191 @@
+ 
+from __future__ import annotations
+import threading
+import queue
+import time
+import struct
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.compositor.compositor import Compositor
+    from backend.timeline.timeline import Timeline
+
+
+# Number of pre-composited frames 
+LOOKAHEAD = 4
+
+
+class _ReadyFrame:
+    __slots__ = ("frame_num", "data")
+
+    def __init__(self, frame_num: int, data: bytes) -> None:
+        self.frame_num = frame_num
+        self.data      = data
+
+
+_SENTINEL = object()
+
+
+class RenderPipeline:
+     
+
+    def __init__(
+        self,
+        compositor: "Compositor",
+        total_frames: int,
+        fps: float,
+    ) -> None:
+        self._compositor = compositor
+        self._total_frames = total_frames
+        self._fps = fps
+
+        # Ring buffer 
+        self._ready: queue.Queue[_ReadyFrame | object] = queue.Queue(maxsize=LOOKAHEAD + 1)
+
+        # Shared state with the engine  
+        self._lock = threading.Lock()
+        self._target_frame = 0     
+        self._playing = False
+        self._seek_version = 0     
+
+         
+        self._timeline: Optional["Timeline"] = None
+
+        self._stopped = False
+        self._thread  = threading.Thread(
+            target=self._worker,
+            name="RenderPipeline",
+            daemon=True,
+        )
+        self._thread.start()
+
+    #   Engine API  
+
+    def set_timeline(self, tl: "Timeline") -> None:
+        changed = False
+        with self._lock:
+            if self._timeline is not tl:
+                self._timeline = tl
+                changed = True
+        if changed:
+            self._flush()
+
+
+    def notify_play(self, frame: int) -> None:
+        with self._lock:
+            self._target_frame = frame
+            self._playing      = True
+            self._seek_version += 1
+        self._flush()
+
+    def notify_pause(self) -> None:
+        with self._lock:
+            self._playing = False
+            self._seek_version += 1
+        self._flush()
+
+    def notify_seek(self, frame: int) -> None:
+        with self._lock:
+            self._target_frame = frame
+            self._seek_version += 1
+        self._flush()
+
+    def advance_playhead(self) -> None:
+        """Called by engine after consuming a frame to move the target forward."""
+        with self._lock:
+            if self._playing:
+                self._target_frame += 1
+                if self._target_frame >= self._total_frames:
+                    self._target_frame = 0
+                    self._playing = False
+
+    def get_frame(self, timeout: float = 0.0) -> Optional[_ReadyFrame]:
+        """Non-blocking fetch of the next ready frame. Returns None if empty."""
+        try:
+            item = self._ready.get_nowait()
+            if item is _SENTINEL:
+                return None
+            return item   
+        except queue.Empty:
+            return None
+
+    def get_frame_blocking(self, timeout: float = 0.05) -> Optional[_ReadyFrame]:
+         
+        try:
+            item = self._ready.get(timeout=timeout)
+            if item is _SENTINEL:
+                return None
+            return item   
+        except queue.Empty:
+            return None
+
+    def stop(self) -> None:
+        self._stopped = True
+        self._flush()
+        self._thread.join(timeout=2.0)
+
+    #   Internal  
+
+    def _flush(self) -> None:
+         
+        try:
+            while True:
+                self._ready.get_nowait()
+        except queue.Empty:
+            pass
+
+    def _worker(self) -> None:
+        while not self._stopped:
+            with self._lock:
+                tl = self._timeline
+                playing = self._playing
+                target  = self._target_frame
+                version = self._seek_version
+
+            if tl is None:
+                time.sleep(0.02)
+                continue
+
+            # if paused 
+            frames_to_render = LOOKAHEAD if playing else 1
+
+            rendered = 0
+            while rendered < frames_to_render and not self._stopped:
+                # skip current frame if seeked 
+                with self._lock:
+                    if self._seek_version != version:
+                        break
+                    frame = self._target_frame + rendered
+
+                if frame >= self._total_frames:
+                    break
+
+                # dont over fill the buffer 
+                if self._ready.full():
+                    # seek 
+                    time.sleep(0.002)
+                    with self._lock:
+                        if self._seek_version != version:
+                            break
+                    continue
+
+                try:
+                    data = self._compositor.compositeFramePng(tl, frame)
+                    fmt_byte = 1 if self._compositor.getPreviewFormat() == 'png' else 0
+                    header = struct.pack('>IB', frame, fmt_byte)
+                    ready = _ReadyFrame(frame, header + data)
+
+                    # skip this if race condition 
+                    try:
+                        self._ready.put_nowait(ready)
+                        rendered += 1
+                    except queue.Full:
+                        pass
+
+                except Exception as e:
+                    print(f"[RenderPipeline] frame {frame} error: {e}")
+                    rendered += 1  # skip damaged frame
+
+            if not playing:
+                # Paused 
+                time.sleep(0.03)

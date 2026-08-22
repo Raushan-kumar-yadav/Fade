@@ -1,32 +1,35 @@
 {
-  "name": "fade",
-  "version": "1.0.0",
-  "description": "AI Video Editor - SIH",
-  "main": "dist-electron/main.js",
-  "scripts": {
-    "predev": "node scripts/killports.js",
-    "build:electron": "tsc -p tsconfig.node.json",
-    "dev": "concurrently \"vite\" \"npm run build:electron && wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
-    "build": "vite build && npm run build:electron",
-    "start": "electron ."
-  },
-  "dependencies": {
-    "allotment": "^1.20.5",
-    "flexlayout-react": "^0.10.5",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@types/node": "^26.2.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^4.2.0",
-    "concurrently": "^8.2.0",
-    "cross-env": "^7.0.3",
-    "electron": "^29.0.0",
-    "tsx": "^4.23.12",
-    "typescript": "^7.0.2",
-    "vite": "^5.1.0",
-    "wait-on": "^7.2.0"
-  }
+    "name":  "fade",
+    "version":  "1.0.0",
+    "description":  "AI Video Editor - SIH",
+    "main":  "dist-electron/main.js",
+    "scripts":  {
+                    "predev":  "node scripts/killports.js",
+                    "build:electron":  "tsc -p tsconfig.node.json",
+                    "dev":  "concurrently \"vite\" \"npm run build:electron \u0026\u0026 wait-on tcp:5173 \u0026\u0026 cross-env NODE_ENV=development electron .\"",
+                    "build":  "vite build \u0026\u0026 npm run build:electron",
+                    "start":  "electron .",
+                    "build:native":  "cmake-js compile --directory renderer --out renderer/build"
+                },
+    "dependencies":  {
+                         "allotment":  "^1.20.5",
+                         "flexlayout-react":  "^0.10.5",
+                         "react":  "^18.2.0",
+                         "react-dom":  "^18.2.0"
+                     },
+    "devDependencies":  {
+                            "@types/node":  "^26.2.0",
+                            "@types/react":  "^19.2.18",
+                            "@types/react-dom":  "^19.2.4",
+                            "@vitejs/plugin-react":  "^4.2.0",
+                            "cmake-js":  "^8.0.0",
+                            "concurrently":  "^8.2.0",
+                            "cross-env":  "^7.0.3",
+                            "electron":  "^29.0.0",
+                            "node-addon-api":  "^8.9.2",
+                            "tsx":  "^4.23.12",
+                            "typescript":  "^7.0.2",
+                            "vite":  "^5.1.0",
+                            "wait-on":  "^7.2.0"
+                        }
 }

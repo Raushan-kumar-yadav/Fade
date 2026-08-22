@@ -1,16 +1,4 @@
-"""
-PyAV-based video decoder.
-
-Decodes video frames directly using libavcodec in-process (no subprocess pipe).
-Frames are decoded directly in memory with no OS pipe overhead.
-
-Key advantages over FFmpegVideoDecoder (subprocess):
-  - No OS pipe overhead: frame data never leaves Python's process memory
-  - No 2MB/frame read() bottleneck
-  - No extra swscale CPU conversion; libav's reformat() is hardware-assisted
-  - Seeking is instant via av.container.seek()
-  - No subprocess spawn cost on seek
-"""
+ 
 
 from __future__ import annotations
 import threading
@@ -28,27 +16,27 @@ from backend.media.decoder.ffmpegDecoder import DecodedFrameFF, _probe
 class PyAVDecoder:
     """In-process libav decoder. No subprocess pipe."""
 
-    SEEK_FWD_THRESH: int = 60   # 2s sequential reads before seeking
+    SEEK_FWD_THRESH: int = 60   
 
     def __init__(self, filepath: str, fps: float = 0.0, scale_factor: float = 0.5) -> None:
         if not AV_AVAILABLE:
             raise RuntimeError("PyAV not installed. Run: pip install av")
 
-        self._filepath     = filepath
+        self._filepath = filepath
         self._scale_factor = max(0.125, min(1.0, scale_factor))
-        self._lock         = threading.Lock()
+        self._lock = threading.Lock()
 
-        info               = _probe(filepath)
-        self._fps          = info["fps"] or fps or 30.0
-        self._width_src    = info["width"]
-        self._height_src   = info["height"]
+        info = _probe(filepath)
+        self._fps  = info["fps"] or fps or 30.0
+        self._width_src  = info["width"]
+        self._height_src = info["height"]
         self._total_frames = info["nb_frames"] or int(round(info["duration"] * self._fps))
 
         self._width  = max(2, round(self._width_src  * self._scale_factor) // 2 * 2)
         self._height = max(2, round(self._height_src * self._scale_factor) // 2 * 2)
 
         self._container = av.open(filepath)
-        self._stream    = self._container.streams.video[0]
+        self._stream = self._container.streams.video[0]
         self._stream.thread_type = "AUTO"
         self._stream.codec_context.thread_count = 0   # use all cores
 
@@ -120,10 +108,10 @@ class PyAVDecoder:
                         return None
                     return DecodedFrameFF(
                         frameNumber = frame_number,
-                        width       = self._width,
-                        height      = self._height,
-                        dataRGBA    = raw,
-                        valid       = True,
+                        width = self._width,
+                        height = self._height,
+                        dataRGBA = raw,
+                        valid = True,
                     )
         except Exception as e:
             print(f"[PyAVDecoder] error frame={frame_number}: {e}")
@@ -135,8 +123,12 @@ class PyAVDecoder:
                 out = frame.reformat(width=self._width, height=self._height, format="bgra")
             else:
                 out = frame.reformat(format="bgra")
+             
+            import time
+            time.sleep(0)
             return bytes(out.to_ndarray().tobytes())
         except Exception as e:
             print(f"[PyAVDecoder] conversion error: {e}")
             return None
+
 

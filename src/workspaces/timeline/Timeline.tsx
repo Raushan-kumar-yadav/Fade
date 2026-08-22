@@ -278,6 +278,9 @@ function TimelineInner() {
     (frame: number) => {
       dispatch({ type: "SEEK", frame });
       playbackSeek(frame).catch(() => {});
+      // Also tell C++ compositor so it renders the seeked frame
+      const api = (window as any).electronAPI;
+      api?.renderSeek(frame);
     },
     [dispatch],
   );

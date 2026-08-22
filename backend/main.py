@@ -9,12 +9,20 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS",  "1")
 
 faulthandler.enable()
 
+import sys
+# 1ms GIL timeslice: with 3 competing threads (uvicorn + 1 decode worker + TCP),
+# TCP gets GIL within 2ms worst case. Default 5ms causes 10-20ms waits.
+sys.setswitchinterval(0.001)
+
 import asyncio
 import socket
+import struct
+import json as _json
+import threading
 import uuid
 from contextlib import asynccontextmanager
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -49,8 +57,161 @@ async def lifespan(app: FastAPI):
         tl.addTrack(AudioTrack("Audio 1"))
 
     asyncio.create_task(engine.startPreviewLoop())
+
+    # ── TCP frame server in its own OS thread + event loop ────────────────
+    # Running in a SEPARATE event loop from uvicorn's loop means PyAVDecoder's
+    # GIL spikes (in the uvicorn thread) don't block TCP responses.
+    # Python's GIL timeslice is 5ms → TCP responses within 5ms worst case.
+    _HTTP_PORT = int(os.environ.get("BACKEND_PORT", 8000))
+    _TCP_PORT  = _HTTP_PORT + 1
+
+    def _run_tcp_server():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        # N+1 prefetch: after serving frame N, precompute N+1 while C++ renders N.
+        # Since C++ takes 25-50ms to decode+render, this gives plenty of time
+        # to compute N+1 before it's needed — making most requests instant cache hits.
+        _prefetch: dict[int, bytes] = {}
+
+        async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+            print("[TCP] C++ frame client connected", flush=True)
+            try:
+                while True:
+                    header = await reader.readexactly(4)
+                    frame_num = struct.unpack("<I", header)[0]
+
+                    # Fast path: serve from prefetch cache
+                    payload = _prefetch.pop(frame_num, None)
+                    if payload is None:
+                        data    = _get_frame_data(frame_num)
+                        payload = _json.dumps(data).encode("utf-8")
+
+                    writer.write(struct.pack("<I", len(payload)) + payload)
+                    await writer.drain()
+
+                    # Precompute N+1 immediately (C++ still decoding+rendering current frame)
+                    nxt = frame_num + 1
+                    if nxt not in _prefetch:
+                        try:
+                            d = _get_frame_data(nxt)
+                            _prefetch[nxt] = _json.dumps(d).encode("utf-8")
+                        except Exception:
+                            pass
+                    # Keep cache small — evict anything older than current-2
+                    for old in [k for k in _prefetch if k < frame_num - 1]:
+                        del _prefetch[old]
+
+            except (asyncio.IncompleteReadError, ConnectionResetError, BrokenPipeError):
+                pass
+            finally:
+                try:
+                    writer.close()
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+                print("[TCP] C++ frame client disconnected", flush=True)
+
+        async def _serve():
+            server = await asyncio.start_server(_handle_client, "127.0.0.1", _TCP_PORT)
+            print(f"[TCP] Frame server listening on 127.0.0.1:{_TCP_PORT}", flush=True)
+            async with server:
+                await server.serve_forever()
+
+        loop.run_until_complete(_serve())
+
+    _tcp_thread = threading.Thread(target=_run_tcp_server, daemon=True, name="tcp-frame-server")
+    _tcp_thread.start()
+
     yield
-    # Shutdown 
+    # Shutdown — daemon thread exits automatically with the process
+
+
+def _get_frame_data(frame: int) -> dict:
+    """Core logic shared by HTTP endpoint and TCP frame server."""
+    tl = engine.activeTimeline if engine else None
+    if tl is None:
+        return {"frame": frame, "fps": 30.0, "width": 1920, "height": 1080, "clips": []}
+
+    proj   = engine.project
+    fps    = float(proj.fps)    if proj else 30.0
+    width  = int(proj.width)    if proj else 1920
+    height = int(proj.height)   if proj else 1080
+
+    clips_out = []
+    for track in reversed(tl.tracks):
+        for clip in track.clips:
+            if not clip.overlaps(frame):
+                continue
+            clip_id   = getattr(clip, "clipId", "")
+            clip_type = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
+            filepath  = getattr(clip, "filepath", "")
+            if not filepath:
+                asset_id = getattr(clip, "assetId", "")
+                asset    = _library.get(asset_id)
+                if asset:
+                    filepath = getattr(asset, "filepath", "")
+            try:
+                source_frame = clip.sourceFrame(frame)
+            except Exception:
+                source_frame = 0
+            try:
+                opacity = float(clip.transform.opacity.get())
+            except Exception:
+                opacity = 1.0
+            try:
+                blend_mode = int(clip.blendMode.get())
+            except Exception:
+                bm = getattr(clip, "blendMode", 0)
+                blend_mode = int(bm.get()) if hasattr(bm, "get") else int(bm) if bm else 0
+            t = clip.transform
+            try:
+                transform_dict = {
+                    "x":        float(t.x.get()        if hasattr(t.x, "get")        else t.x),
+                    "y":        float(t.y.get()        if hasattr(t.y, "get")        else t.y),
+                    "scaleX":   float(t.scaleX.get()   if hasattr(t.scaleX, "get")   else t.scaleX),
+                    "scaleY":   float(t.scaleY.get()   if hasattr(t.scaleY, "get")   else t.scaleY),
+                    "rotation": float(t.rotation.get() if hasattr(t.rotation, "get") else t.rotation),
+                    "anchorX":  float(t.anchorX.get()  if hasattr(t.anchorX, "get")  else t.anchorX),
+                    "anchorY":  float(t.anchorY.get()  if hasattr(t.anchorY, "get")  else t.anchorY),
+                }
+            except Exception:
+                transform_dict = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
+                                  "rotation": 0, "anchorX": 0.5, "anchorY": 0.5}
+            effects_out = []
+            for eff in getattr(clip, "effects", []):
+                try:
+                    uniforms = {}
+                    if hasattr(eff, "getUniformValues"):
+                        uniforms = eff.getUniformValues(frame) or {}
+                    elif hasattr(eff, "uniforms"):
+                        uniforms = eff.uniforms or {}
+                    type_id = getattr(eff, "typeId", getattr(eff, "effectType", "unknown"))
+                    effects_out.append({
+                        "typeId": type_id,
+                        "uniforms": [
+                            {"id": k, "values": v if isinstance(v, list) else [v]}
+                            for k, v in uniforms.items()
+                        ],
+                    })
+                except Exception:
+                    pass
+            clip_data: dict = {
+                "clipId":      clip_id,
+                "file":        filepath,
+                "sourceFrame": source_frame,
+                "opacity":     opacity,
+                "blendMode":   blend_mode,
+                "type":        clip_type,
+                "transform":   transform_dict,
+                "effects":     effects_out,
+            }
+            if clip_type == "solid":
+                c = getattr(clip, "color", [0.5, 0.5, 0.5, 1.0])
+                clip_data["color"] = {"r": c[0], "g": c[1], "b": c[2], "a": c[3]}
+            clips_out.append(clip_data)
+
+    return {"frame": frame, "fps": fps, "width": width, "height": height, "clips": clips_out}
 
 
 #   FastAPI app  
@@ -101,6 +262,7 @@ def _get_settings() -> dict:
         "prefetchRadius": _comp.PREFETCH_RADIUS,
         "batchSize": DecodeScheduler.BATCH_SIZE,
         "decoderMode": _DECODER_MODE,
+        "hwMode": __import__('backend.media.decoder.ffmpegDecoder', fromlist=['_HwProbe'])._HwProbe._result or "pending",
     }
 
 
@@ -121,6 +283,9 @@ def postSettings(payload: SettingsPayload):
 
     if payload.previewScale is not None:
         engine.setPreviewScale(payload.previewScale)
+        # Re-probe hw decode at new resolution
+        from backend.media.decoder.ffmpegDecoder import _HwProbe
+        _HwProbe.reset()
 
     if payload.jpegQuality is not None:
         q = max(1, min(100, payload.jpegQuality))
@@ -139,6 +304,134 @@ def postSettings(payload: SettingsPayload):
 
     return _get_settings()
 
+
+# ── Native render engine frame descriptor ──────────────────────────────────────
+# Called by the C++ NAPI addon (render_engine.node) to get the clip layout.
+# Returns JSON that HeadlessCompositor uses to know what to decode & composite.
+
+@app.get("/render/frame/{frame}")
+def getRenderFrame(frame: int):
+    import time, traceback
+    _t0 = time.perf_counter()
+    print(f"[FRAME] >> request frame={frame}", flush=True)
+
+    tl = engine.activeTimeline if engine else None
+    if tl is None:
+        print(f"[FRAME] << frame={frame} | no timeline | clips=0 | dt={1000*(time.perf_counter()-_t0):.1f}ms", flush=True)
+        return {"frame": frame, "fps": 30.0, "width": 1920, "height": 1080, "clips": []}
+
+    proj = engine.project
+    fps    = float(proj.fps)   if proj else 30.0
+    width  = int(proj.width)   if proj else 1920
+    height = int(proj.height)  if proj else 1080
+
+    clips_out = []
+    for track in reversed(tl.tracks):   # bottom track first → C++ composites in order
+        for clip in track.clips:
+            if not clip.overlaps(frame):
+                continue
+
+            # ── Resolve correct attribute names from VideoClip / BaseClip ──
+            clip_id   = getattr(clip, "clipId", "")
+            clip_type = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
+
+            # filepath: VideoClip stores it via the asset, fall back to direct attr
+            filepath = getattr(clip, "filepath", "")
+            if not filepath:
+                asset_id = getattr(clip, "assetId", "")
+                # look up in _library if possible
+                asset = _library.get(asset_id)
+                if asset:
+                    filepath = getattr(asset, "filepath", "")
+
+            # sourceFrame: requires scheduler — guard gracefully
+            try:
+                source_frame = clip.sourceFrame(frame)
+            except Exception as e:
+                print(f"[FRAME] ERROR sourceFrame clip={clip_id}: {e}\n{traceback.format_exc()}", flush=True)
+                source_frame = 0
+
+            # opacity lives on transform as an AnimatableProperty
+            try:
+                opacity = float(clip.transform.opacity.get())
+            except Exception:
+                opacity = 1.0
+
+            # blendMode is an AnimatableProperty on VideoClip
+            try:
+                blend_mode = int(clip.blendMode.get())
+            except Exception:
+                blend_mode = getattr(clip, "blendMode", 0)
+                if hasattr(blend_mode, "get"):
+                    blend_mode = int(blend_mode.get())
+                else:
+                    blend_mode = int(blend_mode) if blend_mode else 0
+
+            # transform spatial fields
+            t = clip.transform
+            try:
+                transform_dict = {
+                    "x":        float(t.x.get()        if hasattr(t.x, "get")        else t.x),
+                    "y":        float(t.y.get()        if hasattr(t.y, "get")        else t.y),
+                    "scaleX":   float(t.scaleX.get()   if hasattr(t.scaleX, "get")   else t.scaleX),
+                    "scaleY":   float(t.scaleY.get()   if hasattr(t.scaleY, "get")   else t.scaleY),
+                    "rotation": float(t.rotation.get() if hasattr(t.rotation, "get") else t.rotation),
+                    "anchorX":  float(t.anchorX.get()  if hasattr(t.anchorX, "get")  else t.anchorX),
+                    "anchorY":  float(t.anchorY.get()  if hasattr(t.anchorY, "get")  else t.anchorY),
+                }
+            except Exception:
+                transform_dict = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
+                                  "rotation": 0, "anchorX": 0.5, "anchorY": 0.5}
+
+            # effects — wrap in try so a bad effect doesn't break the frame
+            effects_out = []
+            for eff in getattr(clip, "effects", []):
+                try:
+                    uniforms = {}
+                    if hasattr(eff, "getUniformValues"):
+                        uniforms = eff.getUniformValues(frame) or {}
+                    elif hasattr(eff, "uniforms"):
+                        uniforms = eff.uniforms or {}
+                    type_id = getattr(eff, "typeId", getattr(eff, "effectType", "unknown"))
+                    effects_out.append({
+                        "typeId": type_id,
+                        "uniforms": [
+                            {"id": k, "values": v if isinstance(v, list) else [v]}
+                            for k, v in uniforms.items()
+                        ],
+                    })
+                except Exception:
+                    pass
+
+            clip_data: dict = {
+                "clipId":      clip_id,
+                "file":        filepath,
+                "sourceFrame": source_frame,
+                "opacity":     opacity,
+                "blendMode":   blend_mode,
+                "type":        clip_type,
+                "transform":   transform_dict,
+                "effects":     effects_out,
+            }
+
+            # Solid clip colour
+            if clip_type == "solid":
+                c = getattr(clip, "color", [0.5, 0.5, 0.5, 1.0])
+                clip_data["color"] = {"r": c[0], "g": c[1], "b": c[2], "a": c[3]}
+
+            clips_out.append(clip_data)
+            print(f"[FRAME]   clip={clip_id} type={clip_type} srcFrame={source_frame} file={filepath!r}", flush=True)
+
+    result = {
+        "frame":  frame,
+        "fps":    fps,
+        "width":  width,
+        "height": height,
+        "clips":  clips_out,
+    }
+    dt_ms = 1000 * (time.perf_counter() - _t0)
+    print(f"[FRAME] << frame={frame} | clips={len(clips_out)} | dt={dt_ms:.1f}ms", flush=True)
+    return result
 
 
 @app.get("/project")
@@ -576,17 +869,8 @@ def getPreviewFormat():
     return {"format": engine.getPreviewFormat()}
 
 
-#   WebSocket preview  
-
-@app.websocket("/ws/preview")
-async def previewStream(ws: WebSocket):
-    await ws.accept()
-    try:
-        while True:
-            jpeg = await engine.frameQueue.get()
-            await ws.send_bytes(jpeg)
-    except WebSocketDisconnect:
-        pass
+# WebSocket preview endpoint removed — C++ compositor is the sole renderer.
+# Python only serves TCP frame descriptors (JSON) and HTTP API endpoints.
 
 
 #   Entry point  

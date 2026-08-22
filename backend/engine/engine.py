@@ -4,33 +4,36 @@ import struct
 from backend.project.project import Project
 from backend.timeline.timeline import Timeline
 from backend.compositor.compositor import Compositor
+from backend.compositor.renderPipeline import RenderPipeline
 from backend.media.scheduler.decodeScheduler import DecodeScheduler
 from backend.history.commandStack import CommandStack
 
 
 class Engine:
-    
+
     def __init__(self) -> None:
-        self.project: Project | None    = None
-        self.compositor: Compositor | None = None
+        self.project: Project | None     = None
+        self.compositor: Compositor | None  = None
         self.scheduler: DecodeScheduler | None = None
 
         self._playing = False
         self._currentFrame = 0
 
         self.commandStack: CommandStack = CommandStack()
-        self.frameQueue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=3)
-        self._loopTask: asyncio.Task | None   = None
+
+        self._pipeline: RenderPipeline | None = None
+        self._lastTimelineId: int = 0  # tracks structural changes
 
     # Project lifecycle  
 
     def newProject(
         self,
         name: str = "Untitled Project",
-        width: int  = 1920,
+        width: int = 1920,
         height: int = 1080,
         fps: float  = 30.0,
     ) -> Project:
+        self._stop_pipeline()
         self.project = Project(name=name, width=width, height=height, fps=fps)
         self.scheduler = DecodeScheduler()
         self.compositor = Compositor(width=width, height=height, fps=fps)
@@ -39,6 +42,7 @@ class Engine:
         return self.project
 
     def loadProject(self, path: str) -> Project:
+        self._stop_pipeline()
         self.project = Project.load(path)
         if self.project.timelines:
             self.scheduler  = DecodeScheduler()
@@ -55,7 +59,7 @@ class Engine:
             raise RuntimeError("No active project")
         return self.project.save(path)
 
-    # Active timeline shortcut  
+    # Helpers  
 
     @property
     def activeTimeline(self) -> Timeline | None:
@@ -63,23 +67,27 @@ class Engine:
             return self.project.timelines[0]
         return None
 
-    # Playback control  
-
     @property
     def currentFrame(self) -> int:
         return self._currentFrame
 
+    #   Playback control  
+
     def play(self) -> None:
         self._playing = True
+        if self._pipeline:
+            self._pipeline.notify_play(self._currentFrame)
 
     def pause(self) -> None:
         self._playing = False
+        if self._pipeline:
+            self._pipeline.notify_pause()
 
     def seek(self, frame: int) -> None:
         if self.project:
-            self._currentFrame = max(
-                0, min(frame, self.project.totalFrame - 1)
-            )
+            self._currentFrame = max(0, min(frame, self.project.totalFrame - 1))
+        if self._pipeline:
+            self._pipeline.notify_seek(self._currentFrame)
 
     def togglePlay(self) -> None:
         if self._playing:
@@ -87,78 +95,36 @@ class Engine:
         else:
             self.play()
 
-    #   Preview loop    
+    #    Pipeline management  
+
+    def _stop_pipeline(self) -> None:
+        if self._pipeline:
+            self._pipeline.stop()
+            self._pipeline = None
+
+    def _ensure_pipeline(self) -> None:
+        if self._pipeline is not None:
+            return
+        if self.compositor is None or self.project is None:
+            return
+        tl = self.activeTimeline
+        self._pipeline = RenderPipeline(
+            compositor = self.compositor,
+            total_frames = self.project.totalFrame,
+            fps = self.project.fps,
+        )
+        if tl:
+            self._pipeline.set_timeline(tl)
+            self._pipeline.notify_seek(self._currentFrame)
+
+     
 
     async def startPreviewLoop(self) -> None:
-        if self.project is None or self.compositor is None:
-            return
-
-        interval    = 1.0 / self.project.fps
-        _skip_count = 0
-
          
-        loop = asyncio.get_event_loop()
-        next_tick  = loop.time()
-
         while True:
-            t0 = loop.time()
+            await asyncio.sleep(3600)  # sleep forever
 
-            if self.activeTimeline:
-                try:
-                    #  Update prefetch target  
-                    self.compositor.prefetchForFrame(
-                        self.activeTimeline,
-                        self._currentFrame,
-                    )
-
-                    #  Render from cache  
-                    png = await asyncio.to_thread(
-                        self.compositor.compositeFramePng,
-                        self.activeTimeline,
-                        self._currentFrame,
-                    )
-                    _skip_count = 0
-
-                    rendered_frame = self._currentFrame
-
-                    if self._playing:
-                        self._currentFrame += 1
-                        if self._currentFrame >= self.project.totalFrame:
-                            self._currentFrame = 0
-                            self._playing = False
-
-                    # Header 
-                    fmt_byte = 1 if (self.compositor and self.compositor.getPreviewFormat() == 'png') else 0
-                    header = struct.pack('>IB', rendered_frame, fmt_byte)
-                    try:
-                        self.frameQueue.put_nowait(header + png)
-                    except asyncio.QueueFull:
-                        pass
-
-                except Exception as exc:
-                    _skip_count += 1
-                    if _skip_count <= 3:
-                        print(f"[Engine] render error frame {self._currentFrame}: {exc}")
-                    next_tick += interval
-                    await asyncio.sleep(max(0.0, next_tick - loop.time()))
-                    continue
-
-            # Advance the monotonic anchor
-            next_tick += interval if self._playing else 0.1
-
-            # Sleep exactly to the next tick  
-            now = loop.time()
-            sleep_for = next_tick - now
-            if sleep_for <= 0:
-                # running behind  
-                next_tick = now
-                await asyncio.sleep(0)   
-            else:
-                await asyncio.sleep(sleep_for)
-
-
-
-    #   Single frame  
+    # Single-frame API  
 
     def renderFramePng(self, frame: int) -> bytes:
         if self.compositor is None or self.activeTimeline is None:
@@ -170,27 +136,25 @@ class Engine:
             return b""
         return self.compositor.renderThumbnail(self.activeTimeline, frame, w, h)
 
-    #   Preview scale 
+    # Preview scale  
 
     def setPreviewScale(self, scale: float) -> None:
-        
         if self.compositor is None or self.scheduler is None:
             return
         new_scale = max(0.125, min(1.0, scale))
         self.scheduler._previewScale = new_scale
-        # Reopen all active decoders  
         for clipId in list(self.scheduler._pumpToContent.keys()):
             contentId = self.scheduler._pumpToContent.get(clipId, "")
             self.scheduler._decoderPool.reopen(clipId, new_scale)
-             
             with self.scheduler._lock:
                 self.scheduler._lastDecoded[clipId]  = -1
                 self.scheduler._targetFrames[clipId] = 0
-            # Evict all cached frames for this content
             if contentId:
                 self.scheduler._frameCache.evictClip(contentId)
+         
+        if self._pipeline:
+            self._pipeline.notify_seek(self._currentFrame)
         print(f"[Engine] Preview scale -> {new_scale} ({int(new_scale*100)}%)")
-
 
     def getPreviewScale(self) -> float:
         if self.scheduler is None:
@@ -198,9 +162,10 @@ class Engine:
         return getattr(self.scheduler, '_previewScale', 1.0)
 
     def setPreviewFormat(self, fmt: str) -> None:
-        """Switch between 'jpeg' (fast, no alpha) and 'png' (slower, alpha ok)."""
         if self.compositor:
             self.compositor.setPreviewFormat(fmt)
+        if self._pipeline:
+            self._pipeline.notify_seek(self._currentFrame)
 
     def getPreviewFormat(self) -> str:
         if self.compositor:

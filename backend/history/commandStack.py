@@ -160,9 +160,9 @@ class SplitClipCommand(Command):
     def __init__(self, track, clip, globalFrame: int,
                  scheduler=None, asset=None, fps: float = 30.0) -> None:
         self._track = track
-        self._original     = clip
+        self._original = clip
         self._globalFrame  = globalFrame
-        self._scheduler    = scheduler
+        self._scheduler = scheduler
         self._asset = asset
         self._fps = fps
         self._rightClip    = None
@@ -171,7 +171,7 @@ class SplitClipCommand(Command):
     def execute(self) -> None:
         from backend.timeline.clips.videoClip import VideoClip
 
-        clip       = self._original
+        clip = self._original
         splitLocal = self._globalFrame - clip.startFrame
 
         if splitLocal <= 0 or splitLocal >= clip.duration:
@@ -182,9 +182,9 @@ class SplitClipCommand(Command):
 
         right = VideoClip(
             startFrame = self._globalFrame,
-            duration   = self._origDuration - splitLocal,
-            assetId    = clip.assetId,
-            color      = getattr(clip, 'color', (74, 144, 226, 255)),
+            duration = self._origDuration - splitLocal,
+            assetId = clip.assetId,
+            color = getattr(clip, 'color', (74, 144, 226, 255)),
         )
         self._rightClip = right
         self._track.addClip(right)
@@ -225,8 +225,8 @@ class AddTrackCommand(Command):
 class RemoveTrackCommand(Command):
     def __init__(self, timeline, track) -> None:
         self._timeline = timeline
-        self._track    = track
-        self._index    = timeline.tracks.index(track)
+        self._track = track
+        self._index = timeline.tracks.index(track)
 
     def execute(self) -> None:
         self._timeline.removeTrack(self._track.trackId)
@@ -240,14 +240,14 @@ class RemoveTrackCommand(Command):
 
 
 class SetParamCommand(Command):
-    """Undo/redo a single animatable parameter change on any clip."""
+    """Undo/redo command stack"""
 
     def __init__(self, clip, key: str, old_val: float, new_val: float, frame: int = -1) -> None:
-        self._clip    = clip
-        self._key     = key
+        self._clip = clip
+        self._key = key
         self._old_val = old_val
         self._new_val = new_val
-        self._frame   = frame
+        self._frame = frame
 
     def _apply(self, value: float) -> None:
         if hasattr(self._clip, '_anim_params') and self._key in self._clip._anim_params:

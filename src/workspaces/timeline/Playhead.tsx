@@ -34,6 +34,9 @@ const Playhead = memo(function Playhead({ scrollLeft, contentLeft }: Props) {
         lastSeekFrame.current = newFrame;
         dispatch({ type: 'SEEK', frame: newFrame });
         playbackSeek(newFrame).catch(() => {});
+        // Also tell C++ compositor
+        const api = (window as any).electronAPI;
+        api?.renderSeek(newFrame);
       }
     };
     const onUp = () => {

@@ -320,3 +320,20 @@
   border-color: #f59e0b99;
   box-shadow: 0 0 10px #f59e0b66;
 }
+
+/* -- Native GPU badge ------------------------------------------------------- */
+.vw-gpu-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: #fff;
+  user-select: none;
+  animation: vw-gpu-pulse 2s ease-in-out infinite;
+}
+@keyframes vw-gpu-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.75; }
+}

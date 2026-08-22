@@ -4,3 +4,4 @@ dist-electron
 .venv
 *.pyc
 __pycache__
+renderer/build
