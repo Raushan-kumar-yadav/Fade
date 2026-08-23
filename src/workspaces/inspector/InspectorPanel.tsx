@@ -631,20 +631,29 @@ export default function InspectorPanel() {
   const [groups, setGroups]   = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    const handler = (e: Event) => setCF((e as CustomEvent<number>).detail);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const handler = (e: Event) => {
+      const frame = (e as CustomEvent<number>).detail;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => setCF(frame), 200);
+    };
     window.addEventListener('fade:frame', handler);
     window.addEventListener('fade:seek',  handler);
     return () => {
+      if (timer) clearTimeout(timer);
       window.removeEventListener('fade:frame', handler);
       window.removeEventListener('fade:seek',  handler);
     };
   }, []);
 
+  const currentFrameRef = useRef(currentFrame);
+  currentFrameRef.current = currentFrame;
+
   const refresh = useCallback(async () => {
     if (!selected || selected.type !== 'clip') { setData(null); return; }
     setLoading(true);
     try {
-      const d = await inspectorApi.getParams(selected.clipId, currentFrame);
+      const d = await inspectorApi.getParams(selected.clipId, currentFrameRef.current);
       setData(d);
       setGroups(prev => {
         const next = { ...prev };
@@ -654,7 +663,7 @@ export default function InspectorPanel() {
     } catch (err) {
       console.error('[Inspector] fetch error', err);
     } finally { setLoading(false); }
-  }, [selected, currentFrame]);
+  }, [selected]);
 
   useEffect(() => { refresh(); }, [selected?.type === 'clip' ? selected.clipId : null, currentFrame]);
 
