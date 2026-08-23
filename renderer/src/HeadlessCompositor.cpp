@@ -177,6 +177,14 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         {&clip, std::move(result.rgba), result.width, result.height});
   }
 
+  // Any generative clip with effects also needs GPU
+  for (const auto &cp : decoded) {
+    if (!cp.clip->effects.empty()) {
+      needsGpu = true;
+      break;
+    }
+  }
+
   if (decoded.size() > 1)
     needsGpu = true;
 

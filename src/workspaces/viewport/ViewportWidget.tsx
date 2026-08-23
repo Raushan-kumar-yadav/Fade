@@ -201,6 +201,18 @@ export default function ViewportWidget() {
     return () => { if (id) clearInterval(id); };
   }, []);
 
+  // Re-render current frame when inspector changes a param
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    const handler = () => {
+      const f = frameNumRef.current;
+      playbackSeek(f).catch(() => {});
+      if (isNativeRender) api?.renderSeek(f);
+    };
+    window.addEventListener('fade:render-now', handler);
+    return () => window.removeEventListener('fade:render-now', handler);
+  }, [isNativeRender]);
+
   //   Controls  
 
   const togglePlay = useCallback(async () => {

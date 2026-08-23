@@ -235,9 +235,29 @@ export const exportApi = {
 
 //   Waveform
 
+async function _pollWaveform(
+  assetId: string,
+  bins: number,
+  attempts = 0,
+): Promise<{ peaks: number[]; bins: number }> {
+  const r = await fetch(`${base()}/assets/${assetId}/waveform?bins=${bins}`);
+  if (r.ok) {
+    const d = await r.json();
+    if (d.status === 'done') return { peaks: d.peaks, bins: d.bins };
+    if (d.status === 'pending') throw new Error('still_pending');
+  }
+  if (r.status === 202) {
+    // pending — retry with exponential backoff up to ~30s
+    if (attempts > 8) throw new Error('waveform timeout');
+    const delay = Math.min(500 * Math.pow(1.6, attempts), 8000);
+    await new Promise(res => setTimeout(res, delay));
+    return _pollWaveform(assetId, bins, attempts + 1);
+  }
+  throw new Error(`waveform error ${r.status}`);
+}
+
 export const waveformApi = {
-  get: (assetId: string, bins = 200): Promise<{ peaks: number[]; bins: number }> =>
-    fetch(`${base()}/assets/${assetId}/waveform?bins=${bins}`).then(r => r.json()),
+  get: (assetId: string, bins = 200) => _pollWaveform(assetId, bins),
 };
 
 //   Fonts  

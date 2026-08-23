@@ -5,12 +5,19 @@ function port(): number { return (window as any).__FADE_PORT__ ?? 8000; }
 const base = () => `http://127.0.0.1:${port()}`;
 
 async function patchTextStyle(clipId: string, style: Record<string, unknown>) {
-  await fetch(`${base()}/clips/text/${clipId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ style }),
-  });
-  window.dispatchEvent(new CustomEvent('fade:render-now'));
+  try {
+    const r = await fetch(`${base()}/clips/text/${clipId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ style }),
+    });
+    if (r.ok) {
+      // Only trigger re-render after the server has confirmed the update
+      window.dispatchEvent(new CustomEvent('fade:render-now'));
+    }
+  } catch {
+    // backend not ready
+  }
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

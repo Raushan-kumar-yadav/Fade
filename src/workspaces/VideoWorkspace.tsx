@@ -12,6 +12,7 @@ import { useTool, isShapeTool } from '../context/toolContext'
 import TextToolPanel   from './tools/TextToolPanel'
 import ShapeToolPanel  from './tools/ShapeToolPanel'
 import TransitionPanel from './inspector/TransitionPanel'
+import WorkerProgress  from './worker/WorkerProgress'
 
 // ── Tool creation panel ───────────────────────────────────────────────────────
 
@@ -113,13 +114,14 @@ export default function VideoWorkspace() {
       case 'effects':   return <EffectsPanel />
       case 'transitions': return <TransitionPanel />
       case 'tools':     return <ToolPanel />
-      default:          return <div className="vp" />
+      default: return <div className="vp" />
     }
   }
 
   return (
     <div className="video-ws">
       <FlexLayout.Layout model={model} factory={factory} realtimeResize />
+      <WorkerProgress />
     </div>
   )
 }

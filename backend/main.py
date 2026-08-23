@@ -31,10 +31,12 @@ from backend.media.asset.mediaAsset import MediaAsset
 from backend.timeline.tracks.videoTrack import VideoTrack
 from backend.timeline.tracks.audioTrack import AudioTrack
 from backend.timeline.clips.videoClip import VideoClip
+from backend.timeline.clips.audioClip import AudioClip
 from backend.history.commandStack import (
     MoveClipCommand, TrimClipCommand, SplitClipCommand,
     RemoveClipCommand,
 )
+from backend.worker.worker_bus import bus as _worker_bus
 
 engine = Engine()
 
@@ -54,6 +56,12 @@ async def lifespan(app: FastAPI):
         for name in ["Video 1", "Video 2", "Video 3"]:
             tl.addTrack(VideoTrack(name))
         tl.addTrack(AudioTrack("Audio 1"))
+
+    # Start sandbox worker (waveforms, future Whisper)
+    try:
+        _worker_bus.start()
+    except Exception as _e:
+        print(f"[main] sandbox worker failed to start: {_e}", flush=True)
 
     asyncio.create_task(engine.startPreviewLoop())
 
@@ -129,7 +137,11 @@ async def lifespan(app: FastAPI):
     _tcp_thread.start()
 
     yield
-    # Shutdown  
+    # Shutdown
+    try:
+        _worker_bus.stop()
+    except Exception:
+        pass
 
 
 def _serialize_effects(clip, frame: int) -> list:
@@ -781,7 +793,6 @@ class SplitClipRequest(BaseModel):
     clipId: str
     frame: int       # global timeline frame at which to split
 
-
 @app.post("/timeline/add-clip")
 def addClip(req: AddClipRequest):
     tl = engine.activeTimeline
@@ -799,8 +810,8 @@ def addClip(req: AddClipRequest):
 
     clip = VideoClip(
         startFrame = req.startFrame,
-        duration = req.duration,
-        assetId = req.assetId,
+        duration   = req.duration,
+        assetId    = req.assetId,
     )
 
     # Wire scheduler so the clip can decode immediately
@@ -813,13 +824,44 @@ def addClip(req: AddClipRequest):
     engine.commandStack.execute(cmd)
     _clipTrackMap[clip.clipId] = req.trackIndex
 
+    # Auto-create linked AudioClip if the video has an embedded audio stream
+    audio_clip_id: str | None = None
+    try:
+        if asset.hasAudio:
+            # Find first AudioTrack (auto-create if none)
+            audio_track = next(
+                (t for t in tl.tracks if getattr(t, 'isAudio', lambda: False)()),
+                None,
+            )
+            if audio_track is None:
+                audio_track = AudioTrack("Audio 1")
+                tl.addTrack(audio_track)
+
+            aclip = AudioClip(
+                startFrame  = req.startFrame,
+                duration    = req.duration,
+                assetId     = req.assetId,
+                mediaOffset = 0,
+                volume      = 1.0,
+            )
+            audio_cmd = AddClipCommand(audio_track, aclip)
+            engine.commandStack.execute(audio_cmd)
+            _clipTrackMap[aclip.clipId] = tl.tracks.index(audio_track)
+            audio_clip_id = aclip.clipId
+
+            # Kick off async waveform generation (non-blocking)
+            _worker_bus.submit_waveform(req.assetId, asset.filepath)
+    except Exception as _e:
+        print(f"[addClip] audio linking error: {_e}", flush=True)
+
     return {
-        "clipId": clip.clipId,
-        "trackId": track.trackId,
-        "startFrame": clip.startFrame,
-        "duration": clip.duration,
-        "assetId": req.assetId,
-        "type": "video",
+        "clipId":      clip.clipId,
+        "trackId":     track.trackId,
+        "startFrame":  clip.startFrame,
+        "duration":    clip.duration,
+        "assetId":     req.assetId,
+        "type":        "video",
+        "audioClipId": audio_clip_id,
     }
 
 
@@ -1818,16 +1860,64 @@ def deleteTransition(transId: str):
     raise HTTPException(404, f"Transition {transId!r} not found")
 
 
-# Waveform  
+# Waveform
+
+from fastapi.responses import JSONResponse
 
 @app.get("/assets/{assetId}/waveform")
 def getWaveform(assetId: str, bins: int = 200):
     asset = _library.get(assetId)
     if asset is None:
         raise HTTPException(404, f"Asset {assetId!r} not found")
-    from backend.audio.mixer import extract_waveform
-    peaks = extract_waveform(asset.filepath, bins)
-    return {"assetId": assetId, "bins": len(peaks), "peaks": peaks}
+
+    # Fast path: already cached
+    from backend.worker import waveform_cache
+    cached = waveform_cache.get(assetId)
+    if cached:
+        if cached["status"] == "done":
+            return {"assetId": assetId, "status": "done",
+                    "bins": cached["bins"], "peaks": cached["peaks"]}
+        if cached["status"] == "pending":
+            return JSONResponse({"assetId": assetId, "status": "pending"}, status_code=202)
+        if cached["status"] == "error":
+            return JSONResponse({"assetId": assetId, "status": "error",
+                                 "message": cached.get("message", "")}, status_code=500)
+
+    # Not in cache yet — kick off async generation
+    _worker_bus.submit_waveform(assetId, asset.filepath, bins)
+    return JSONResponse({"assetId": assetId, "status": "pending"}, status_code=202)
+
+
+@app.get("/worker/status")
+def workerStatus():
+    return {
+        "alive":      _worker_bus.is_alive(),
+        "queueDepth": _worker_bus.queue_depth(),
+    }
+
+
+@app.get("/worker/jobs")
+def workerJobs():
+    """Return all tracked background jobs from the waveform cache."""
+    from backend.worker import waveform_cache as _wc
+    jobs = []
+    cache = _wc._cache  # direct dict read (thread-safe enough for display)
+    for asset_id, entry in list(cache.items()):
+        asset = _library.get(asset_id)
+        label = asset.filename if asset else asset_id[:12]
+        status = entry.get("status", "pending")
+        jobs.append({
+            "id":     asset_id,
+            "type":   "waveform",
+            "label":  label,
+            "status": status,
+            "message": entry.get("message", ""),
+        })
+    # Sort: running/pending first, done last
+    order = {"pending": 0, "running": 1, "error": 2, "done": 3}
+    jobs.sort(key=lambda j: order.get(j["status"], 9))
+    return jobs
+
 
 
 @app.get("/assets/{assetId}/stream")
