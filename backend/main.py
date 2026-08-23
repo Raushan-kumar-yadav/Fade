@@ -315,13 +315,13 @@ def _get_frame_data(frame: int) -> dict:
                         "polygonRadius":  float(getattr(style, "polygonRadius",  100.0)),
                         # Line
                         "x1": float(getattr(style, "x1", -100.0)),
-                        "y1": float(getattr(style, "y1",    0.0)),
+                        "y1": float(getattr(style, "y1", 0.0)),
                         "x2": float(getattr(style, "x2",  100.0)),
-                        "y2": float(getattr(style, "y2",    0.0)),
+                        "y2": float(getattr(style, "y2", 0.0)),
                         # Arc
-                        "arcStartAngle":  float(getattr(style, "arcStartAngle",   0.0)),
-                        "arcSweepAngle":  float(getattr(style, "arcSweepAngle", 180.0)),
-                        "arcRadius":      float(getattr(style, "arcRadius",      100.0)),
+                        "arcStartAngle": float(getattr(style, "arcStartAngle",   0.0)),
+                        "arcSweepAngle": float(getattr(style, "arcSweepAngle", 180.0)),
+                        "arcRadius": float(getattr(style, "arcRadius",      100.0)),
                         # Fill
                         "fillColor": list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])),
                         "fillOpacity": float(getattr(style, "fillOpacity",   1.0)),
@@ -338,22 +338,22 @@ def _get_frame_data(frame: int) -> dict:
 
             elif clip_type == "pen":
               
-                style  = getattr(clip, "style",    None)
-                points = getattr(clip, "points",   [])
+                style  = getattr(clip, "style", None)
+                points = getattr(clip, "points", [])
                 clip_data["penStyle"] = {
                     "isClosed": bool(getattr(clip, "isClosed", False)),
                     "points": [
                         {
-                            "x": float(getattr(p, "x",    0.0)),
-                            "y": float(getattr(p, "y",    0.0)),
-                            "inX": float(getattr(p, "inX",  0.0)),
+                            "x": float(getattr(p, "x", 0.0)),
+                            "y": float(getattr(p, "y", 0.0)),
+                            "inX": float(getattr(p, "inX", 0.0)),
                             "inY":  float(getattr(p, "inY",  0.0)),
                             "outX": float(getattr(p, "outX", 0.0)),
                             "outY": float(getattr(p, "outY", 0.0)),
                         }
                         for p in points
                     ],
-                    # Stroke / fill (same fields as ShapeStyle)
+                    # Stroke / fill  
                     "fillColor": list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])) if style else [0.4, 0.4, 1.0, 1.0],
                     "fillOpacity": float(getattr(style, "fillOpacity",   1.0)) if style else 1.0,
                     "strokeColor": list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])) if style else [1.0, 1.0, 1.0, 1.0],
@@ -362,29 +362,29 @@ def _get_frame_data(frame: int) -> dict:
                     "shadowColor": list(getattr(style, "shadowColor",  [0, 0, 0, 0.75])) if style else [0, 0, 0, 0.75],
                     "shadowAngle": float(getattr(style, "shadowAngle",  135.0)) if style else 135.0,
                     "shadowDistance": float(getattr(style, "shadowDistance", 10.0)) if style else 10.0,
-                    "shadowBlur": float(getattr(style, "shadowBlur",    5.0)) if style else 5.0,
+                    "shadowBlur": float(getattr(style, "shadowBlur", 5.0)) if style else 5.0,
                 }
 
             elif clip_type == "svg":
                  
                 clip_data["file"] = getattr(clip, "filepath", clip_data.get("file", ""))
                 clip_data["svgStyle"] = {
-                    "displayW": float(getattr(clip, "displayW",    0.0)),
-                    "displayH": float(getattr(clip, "displayH",    0.0)),
+                    "displayW": float(getattr(clip, "displayW", 0.0)),
+                    "displayH": float(getattr(clip, "displayH", 0.0)),
                     "tintEnabled": bool(getattr(clip, "tintEnabled",  False)),
-                    "tintColor":   list(getattr(clip, "tintColor",    [1.0, 1.0, 1.0, 1.0])),
+                    "tintColor":   list(getattr(clip, "tintColor", [1.0, 1.0, 1.0, 1.0])),
                 }
 
             #   Masks  
             raw_masks = getattr(clip, "masks", [])
             if raw_masks:
                 masks_out = []
-                lf = frame - clip.startFrame  # local frame for mask evaluation
+                lf = frame - clip.startFrame  
                 for m in raw_masks:
                     # Tick all mask animations  
                     if hasattr(m, "evaluateAll"):
                         m.evaluateAll(lf)
-                    # Collect evaluated vertices from AnimPathProperty
+                    # Collect evaluated vertices  
                     pts = m.maskPath.getFlatList() if hasattr(m, "maskPath") else []
                     masks_out.append({
                         "maskId": m.maskId,
@@ -404,37 +404,37 @@ def _get_frame_data(frame: int) -> dict:
 
             clips_out.append(clip_data)
 
-    # ── Transition detection ──────────────────────────────────────────────────
-    # Use timeline-level getTransitionAt so clipA and clipB can be on any track.
+    # Transition detection  
+   
     transition_desc = None
     result = tl.getTransitionAt(frame)
     if result is not None:
         tr, prog, clipA, clipB = result
 
-        # Build the clip descriptor for clipA (outgoing) if not already present
+        # Build the clip descriptor  
         def _build_clip_desc(clip):
-            ctype  = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
-            fpath  = getattr(clip, "filepath", "")
+            ctype = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
+            fpath = getattr(clip, "filepath", "")
             if not fpath:
                 aid  = getattr(clip, "assetId", "")
                 ast  = _library.get(aid)
                 if ast:
                     fpath = getattr(ast, "filepath", "")
-            try:   sf = clip.sourceFrame(frame)
+            try: sf = clip.sourceFrame(frame)
             except Exception: sf = 0
-            try:   clip.evaluateAll(frame)
+            try: clip.evaluateAll(frame)
             except Exception: pass
-            try:   op = float(clip.transform.opacity.get())
+            try: op = float(clip.transform.opacity.get())
             except Exception: op = 1.0
             return {
                 "clipId":      clip.clipId,
-                "file":        fpath,
-                "type":        ctype,
+                "file": fpath,
+                "type": ctype,
                 "sourceFrame": sf,
-                "opacity":     op,
-                "blendMode":   0,
+                "opacity": op,
+                "blendMode": 0,
                 "transform":   {"x":0,"y":0,"scaleX":1,"scaleY":1,"rotation":0,"anchorX":0,"anchorY":0},
-                "effects":     _serialize_effects(clip, frame),
+                "effects": _serialize_effects(clip, frame),
             }
 
         # Ensure both clip descriptors are in clips_out
@@ -444,27 +444,27 @@ def _get_frame_data(frame: int) -> dict:
         if clipB.clipId not in ids_in_out:
             clips_out.append(_build_clip_desc(clipB))
 
-        # Build transition descriptor (progress + shader-specific uniforms)
+        # Build transition descriptor  
         uniforms = [{"id": "progress", "values": [prog]}]
         for pid, pdef in tr.params().items():
             uniforms.append({"id": pid, "values": [float(pdef["value"])]})
         uniforms.append({"id": "resolution", "values": [float(width), float(height)]})
 
         transition_desc = {
-            "typeId":    tr.typeId,
-            "transId":   tr.transId,
-            "clipA_id":  clipA.clipId,
-            "clipB_id":  clipB.clipId,
-            "progress":  prog,
-            "uniforms":  uniforms,
+            "typeId": tr.typeId,
+            "transId": tr.transId,
+            "clipA_id": clipA.clipId,
+            "clipB_id": clipB.clipId,
+            "progress": prog,
+            "uniforms": uniforms,
         }
 
     result_dict: dict = {
-        "frame":  frame,
-        "fps":    fps,
-        "width":  width,
+        "frame": frame,
+        "fps": fps,
+        "width": width,
         "height": height,
-        "clips":  clips_out,
+        "clips": clips_out,
     }
     if transition_desc:
         result_dict["transition"] = transition_desc
@@ -585,9 +585,9 @@ def getRenderFrame(frame: int):
         return {"frame": frame, "fps": 30.0, "width": 1920, "height": 1080, "clips": []}
 
     proj = engine.project
-    fps    = float(proj.fps)   if proj else 30.0
-    width  = int(proj.width)   if proj else 1920
-    height = int(proj.height)  if proj else 1080
+    fps    = float(proj.fps) if proj else 30.0
+    width  = int(proj.width) if proj else 1920
+    height = int(proj.height) if proj else 1080
 
     clips_out = []
     for track in reversed(tl.tracks):   # bottom track first
@@ -596,10 +596,10 @@ def getRenderFrame(frame: int):
                 continue
 
             #   Resolve correct attribute names 
-            clip_id   = getattr(clip, "clipId", "")
+            clip_id = getattr(clip, "clipId", "")
             clip_type = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
 
-            # filepath: VideoClip stores it via the asset, fall back to direct attr
+            # filepath: 
             filepath = getattr(clip, "filepath", "")
             if not filepath:
                 asset_id = getattr(clip, "assetId", "")
@@ -608,7 +608,7 @@ def getRenderFrame(frame: int):
                 if asset:
                     filepath = getattr(asset, "filepath", "")
 
-            # sourceFrame: requires scheduler — guard gracefully
+            # sourceFrame 
             try:
                 source_frame = clip.sourceFrame(frame)
             except Exception as e:
@@ -621,13 +621,13 @@ def getRenderFrame(frame: int):
             except Exception:
                 pass
 
-            # opacity lives on transform as an AnimatableProperty
+            # opacity lives on transform  
             try:
                 opacity = float(clip.transform.opacity.get())
             except Exception:
                 opacity = 1.0
 
-            # blendMode is an AnimatableProperty on VideoClip
+            # blendMode  
             try:
                 blend_mode = int(clip.blendMode.get())
             except Exception:
@@ -645,13 +645,13 @@ def getRenderFrame(frame: int):
                 rot    = t.rotation.get()
                 ax, ay = t.anchor.get()
                 transform_dict = {
-                    "x":        float(px),
-                    "y":        float(py),
-                    "scaleX":   float(sx),
-                    "scaleY":   float(sy),
+                    "x": float(px),
+                    "y": float(py),
+                    "scaleX": float(sx),
+                    "scaleY": float(sy),
                     "rotation": float(rot),
-                    "anchorX":  float(ax),
-                    "anchorY":  float(ay),
+                    "anchorX": float(ax),
+                    "anchorY": float(ay),
                 }
             except Exception:
                 transform_dict = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
@@ -661,14 +661,14 @@ def getRenderFrame(frame: int):
             effects_out = _serialize_effects(clip, frame)
 
             clip_data: dict = {
-                "clipId":      clip_id,
-                "file":        filepath,
+                "clipId": clip_id,
+                "file": filepath,
                 "sourceFrame": source_frame,
-                "opacity":     opacity,
-                "blendMode":   blend_mode,
-                "type":        clip_type,
-                "transform":   transform_dict,
-                "effects":     effects_out,
+                "opacity": opacity,
+                "blendMode": blend_mode,
+                "type": clip_type,
+                "transform": transform_dict,
+                "effects": effects_out,
             }
 
             # Solid clip colour
@@ -679,10 +679,10 @@ def getRenderFrame(frame: int):
             elif clip_type == "svg":
                 clip_data["file"] = getattr(clip, "filepath", clip_data.get("file", ""))
                 clip_data["svgStyle"] = {
-                    "displayW":    float(getattr(clip, "displayW",    0.0)),
-                    "displayH":    float(getattr(clip, "displayH",    0.0)),
+                    "displayW": float(getattr(clip, "displayW",    0.0)),
+                    "displayH": float(getattr(clip, "displayH",    0.0)),
                     "tintEnabled": bool(getattr(clip, "tintEnabled",  False)),
-                    "tintColor":   list(getattr(clip, "tintColor",    [1.0, 1.0, 1.0, 1.0])),
+                    "tintColor": list(getattr(clip, "tintColor",    [1.0, 1.0, 1.0, 1.0])),
                 }
 
             clips_out.append(clip_data)
@@ -691,9 +691,9 @@ def getRenderFrame(frame: int):
     result = {
         "frame":  frame,
         "fps": fps,
-        "width":  width,
+        "width": width,
         "height": height,
-        "clips":  clips_out,
+        "clips": clips_out,
     }
     dt_ms = 1000 * (time.perf_counter() - _t0)
     print(f"[FRAME] << frame={frame} | clips={len(clips_out)} | dt={dt_ms:.1f}ms", flush=True)
@@ -775,7 +775,7 @@ def importAsset(req: ImportRequest):
     )
     _library[assetId] = asset
 
-    # Eagerly probe for audio and kick off waveform generation
+    # Eagerly  
     has_audio = asset.hasAudio
     if has_audio:
         try:
@@ -841,21 +841,21 @@ def addClip(req: AddClipRequest):
     from backend.media.asset.baseAsset import MediaType
 
     if asset.mediaType == MediaType.image:
-        # ── Image clip: decodes once, no scheduler needed ──────────────
+        # Image clip 
         from backend.timeline.clips.imageClip import ImageClip
         clip = ImageClip(
             startFrame = req.startFrame,
-            duration   = req.duration,
-            assetId    = req.assetId,
-            filepath   = asset.filepath,
+            duration = req.duration,
+            assetId = req.assetId,
+            filepath = asset.filepath,
         )
         clip_type = "image"
     else:
-        # ── Video (or audio) clip ──────────────────────────────────────
+        # Video clip  
         clip = VideoClip(
             startFrame = req.startFrame,
-            duration   = req.duration,
-            assetId    = req.assetId,
+            duration = req.duration,
+            assetId = req.assetId,
         )
         # Wire scheduler so the clip can decode immediately
         if engine.scheduler:
@@ -876,13 +876,13 @@ def addClip(req: AddClipRequest):
             print(f"[addClip] waveform submit error: {_e}", flush=True)
 
     return {
-        "clipId":      clip.clipId,
-        "trackId":     track.trackId,
-        "startFrame":  clip.startFrame,
-        "duration":    clip.duration,
-        "assetId":     req.assetId,
-        "type":        clip_type,
-        "hasAudio":    asset.hasAudio,
+        "clipId": clip.clipId,
+        "trackId": track.trackId,
+        "startFrame": clip.startFrame,
+        "duration": clip.duration,
+        "assetId": req.assetId,
+        "type": clip_type,
+        "hasAudio": asset.hasAudio,
     }
 
 
@@ -913,11 +913,11 @@ def addSvgClip(req: AddSvgClipRequest):
     track = tl.tracks[req.trackIndex]
 
     clip = SvgClip(
-        filepath   = req.filepath,
+        filepath = req.filepath,
         startFrame = req.startFrame,
-        duration   = req.duration,
-        displayW   = req.displayW,
-        displayH   = req.displayH,
+        duration = req.duration,
+        displayW = req.displayW,
+        displayH = req.displayH,
     )
 
     from backend.history.commandStack import AddClipCommand
@@ -926,12 +926,12 @@ def addSvgClip(req: AddSvgClipRequest):
     _clipTrackMap[clip.clipId] = req.trackIndex
 
     return {
-        "clipId":     clip.clipId,
-        "trackId":    track.trackId,
+        "clipId": clip.clipId,
+        "trackId": track.trackId,
         "startFrame": clip.startFrame,
-        "duration":   clip.duration,
-        "filepath":   clip.filepath,
-        "type":       "svg",
+        "duration": clip.duration,
+        "filepath": clip.filepath,
+        "type": "svg",
     }
 
 
@@ -1026,8 +1026,8 @@ def splitClip(req: SplitClipRequest):
             cmd = SplitClipCommand(
                 track, clip, req.frame,
                 scheduler = engine.scheduler,
-                asset     = asset,
-                fps       = fps,
+                asset = asset,
+                fps = fps,
             )
             try:
                 engine.commandStack.execute(cmd)
@@ -1042,7 +1042,7 @@ def splitClip(req: SplitClipRequest):
                 "leftClipId":  clip.clipId,
                 "rightClipId": right.clipId if right else None,
                 "splitFrame":  req.frame,
-                "trackId":     track.trackId,
+                "trackId": track.trackId,
             }
 
     raise HTTPException(404, f"Clip {req.clipId!r} not found")
@@ -1165,13 +1165,13 @@ def seek(req: SeekRequest):
 def playbackState():
     prj = engine.project
     return {
-        "frame":       engine.currentFrame,
-        "playing":     engine._playing,
-        "fps":         prj.fps if prj else 30.0,
+        "frame": engine.currentFrame,
+        "playing": engine._playing,
+        "fps": prj.fps if prj else 30.0,
         "totalFrames": prj.totalFrame if prj else 1800,
-        "speed":       engine._speed,
-        "inPoint":     engine._inPoint,
-        "outPoint":    engine._outPoint,
+        "speed": engine._speed,
+        "inPoint": engine._inPoint,
+        "outPoint": engine._outPoint,
     }
 
 
@@ -1249,9 +1249,7 @@ def getPreviewFormat():
     return {"format": engine.getPreviewFormat()}
 
 
-# WebSocket preview endpoint removed — C++ compositor is the sole renderer.
-# Python only serves TCP frame descriptors (JSON) and HTTP API endpoints.
-
+ 
 
 #   Entry point  
 
@@ -1268,9 +1266,9 @@ def _findFreePort(start: int = 8000, end: int = 8010) -> int:
 
   
 
-from backend.timeline.clips.textClip  import TextClip,  TextStyle,  MaskLayer
+from backend.timeline.clips.textClip import TextClip,  TextStyle,  MaskLayer
 from backend.timeline.clips.shapeClip import ShapeClip, ShapeStyle
-from backend.timeline.clips.penClip   import PenClip,   BezierPoint
+from backend.timeline.clips.penClip import PenClip,   BezierPoint
 
 
 def _active_timeline():
