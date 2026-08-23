@@ -1,8 +1,9 @@
 """
 backend/ai/agent.py
 LangGraph ReAct agent that wraps all Fade editor tools.
-Uses Ollama by default (local, free). Switch provider via env var:
-    FADE_AI_PROVIDER=ollama   (default)   model: llama3.2 or qwen2.5
+
+Provider is read from .env (project root) or environment variables:
+    FADE_AI_PROVIDER=ollama   (default)   auto-detects installed model
     FADE_AI_PROVIDER=openai               OPENAI_API_KEY required
     FADE_AI_PROVIDER=groq                 GROQ_API_KEY required
     FADE_AI_PROVIDER=gemini               GOOGLE_API_KEY required
@@ -10,7 +11,18 @@ Uses Ollama by default (local, free). Switch provider via env var:
 from __future__ import annotations
 import os
 import json
+from pathlib import Path
 from typing import Annotated
+
+# ── Load .env from project root ───────────────────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    _env_path = Path(__file__).resolve().parents[2] / ".env"  # Fade/.env
+    load_dotenv(_env_path, override=False)  # won't overwrite already-set vars
+    print(f"[AI Agent] Loaded .env from {_env_path}", flush=True)
+except ImportError:
+    pass  # python-dotenv not installed — env vars used as-is
+
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -81,18 +93,39 @@ def _build_llm():
 
     elif provider == "openai":
         from langchain_openai import ChatOpenAI
+        key = os.environ.get("OPENAI_API_KEY", "")
+        if not key:
+            print("[AI Agent] WARNING: OPENAI_API_KEY not set in .env", flush=True)
         m = model_name or "gpt-4o-mini"
-        return ChatOpenAI(model=m, temperature=0)
+        print(f"[AI Agent] Using OpenAI model: {m}", flush=True)
+        return ChatOpenAI(model=m, temperature=0, api_key=key or None)
 
     elif provider == "groq":
         from langchain_groq import ChatGroq
+        key = os.environ.get("GROQ_API_KEY", "")
+        if not key:
+            print("[AI Agent] WARNING: GROQ_API_KEY not set in .env", flush=True)
         m = model_name or "llama3-8b-8192"
-        return ChatGroq(model=m, temperature=0)
+        print(f"[AI Agent] Using Groq model: {m}", flush=True)
+        return ChatGroq(model=m, temperature=0, groq_api_key=key or None)
 
     elif provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
+        key = os.environ.get("GOOGLE_API_KEY", "")
+        if not key:
+            print("[AI Agent] WARNING: GOOGLE_API_KEY not set in .env", flush=True)
         m = model_name or "gemini-1.5-flash"
-        return ChatGoogleGenerativeAI(model=m, temperature=0)
+        print(f"[AI Agent] Using Gemini model: {m}", flush=True)
+        return ChatGoogleGenerativeAI(model=m, temperature=0, google_api_key=key or None)
+
+    elif provider == "claude":
+        from langchain_anthropic import ChatAnthropic
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not key:
+            print("[AI Agent] WARNING: ANTHROPIC_API_KEY not set in .env", flush=True)
+        m = model_name or "claude-3-5-haiku-20241022"
+        print(f"[AI Agent] Using Claude model: {m}", flush=True)
+        return ChatAnthropic(model=m, temperature=0, anthropic_api_key=key or None)
 
     else:
         raise ValueError(f"Unknown FADE_AI_PROVIDER: {provider}")
