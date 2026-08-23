@@ -79,24 +79,24 @@ interface RingProps {
 }
 
 function Ring({ progress, active, hasError }: RingProps) {
-  const R = 16;
+  const R = 8;
   const C = 2 * Math.PI * R;
   const dash = C * (1 - progress);
   const color = hasError ? '#f87171' : active ? '#6366f1' : '#34d399';
   return (
-    <svg className="wp-ring" width="44" height="44" viewBox="0 0 44 44">
+    <svg className="wp-ring" width="24" height="24" viewBox="0 0 24 24">
       {/* Track */}
-      <circle cx="22" cy="22" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3"/>
+      <circle cx="12" cy="12" r={R} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="2"/>
       {/* Progress arc */}
       <circle
-        cx="22" cy="22" r={R}
+        cx="12" cy="12" r={R}
         fill="none"
         stroke={color}
-        strokeWidth="3"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeDasharray={C}
         strokeDashoffset={dash}
-        transform="rotate(-90 22 22)"
+        transform="rotate(-90 12 12)"
         style={{ transition: 'stroke-dashoffset 0.5s ease, stroke 0.3s' }}
       />
     </svg>
@@ -174,7 +174,7 @@ export default function WorkerProgress() {
 
   return (
     <div className="wp-root" ref={panelRef}>
-      {/* Floating circular button */}
+      {/* Inline titlebar button */}
       <button
         className={`wp-btn${open ? ' wp-btn--open' : ''}${hasActive ? ' wp-btn--active' : ''}`}
         onClick={() => setOpen(o => !o)}
@@ -182,14 +182,8 @@ export default function WorkerProgress() {
         aria-label="Background worker progress"
       >
         <Ring progress={progress} active={hasActive} hasError={hasError} />
-        <span className="wp-btn__icon">
-          {hasError ? (
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M7 2v6M7 10v1" stroke="#f87171" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          ) : (
-            <IconWorker />
-          )}
+        <span className="wp-btn__label">
+          {hasError ? 'Error' : hasActive ? `${status.queueDepth || pending.length} Tasks` : 'Tasks'}
         </span>
         {hasActive && (
           <span className="wp-badge">{status.queueDepth || pending.length}</span>

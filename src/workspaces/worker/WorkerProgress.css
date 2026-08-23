@@ -1,14 +1,310 @@
-/* ── WorkerProgress: floating circular button + panel ─────────────────────── */
+﻿/* â”€â”€ WorkerProgress: inline titlebar button + dropdown panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .wp-root {
-  position: fixed;
-  top: 14px;
-  right: 18px;
-  z-index: 9999;
+  position: relative;          /* NO more fixed â€” lives inline in titlebar */
+  display: flex;
+  align-items: center;
   font-family: 'Inter', 'Segoe UI', sans-serif;
 }
 
-/* ── Button ───────────────────────────────────────────────────────────────── */
+/* â”€â”€ Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.wp-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px 0 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  outline: none;
+  white-space: nowrap;
+  -webkit-app-region: no-drag;
+}
+
+.wp-btn:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.85);
+}
+
+.wp-btn--open {
+  background: rgba(99,102,241,0.15);
+  border-color: rgba(99,102,241,0.4);
+  color: #818cf8;
+}
+
+.wp-btn--active {
+  color: rgba(255,255,255,0.85);
+}
+
+/* Progress ring â€” scaled down to 24px for titlebar */
+.wp-ring {
+  flex-shrink: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.wp-btn__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+/* Active badge â€” repositioned for smaller button */
+.wp-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px;
+  box-shadow: 0 0 0 2px var(--bg-elevated, #1a1a2e);
+  animation: wp-pulse 2s infinite;
+}
+
+@keyframes wp-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px var(--bg-elevated, #1a1a2e), 0 0 0 0 rgba(99,102,241,0.4); }
+  50%       { box-shadow: 0 0 0 2px var(--bg-elevated, #1a1a2e), 0 0 0 4px rgba(99,102,241,0); }
+}
+
+/* â”€â”€ Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.wp-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 310px;
+  border-radius: 12px;
+  background: rgba(12, 12, 22, 0.97);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    0 0 0 1px rgba(99,102,241,0.15),
+    0 16px 48px rgba(0,0,0,0.7);
+  overflow: hidden;
+  animation: wp-panel-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top right;
+  z-index: 9999;
+}
+
+@keyframes wp-panel-in {
+  from { opacity: 0; transform: scale(0.94) translateY(-6px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+.wp-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.wp-panel__title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.9);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.wp-panel__status {
+  font-size: 10px;
+  font-weight: 500;
+  border-radius: 20px;
+  padding: 2px 8px;
+}
+.wp-panel__status.alive {
+  color: #34d399;
+  background: rgba(52,211,153,0.1);
+}
+.wp-panel__status.dead {
+  color: #64748b;
+  background: rgba(100,116,139,0.1);
+}
+
+/* â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.wp-panel__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 16px;
+  color: rgba(255,255,255,0.3);
+  font-size: 12px;
+}
+.wp-panel__empty-icon {
+  font-size: 24px;
+  opacity: 0.4;
+}
+.wp-panel__empty-sub {
+  font-size: 10px;
+  color: rgba(255,255,255,0.2);
+}
+
+/* â”€â”€ Summary bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.wp-panel__summary {
+  padding: 10px 14px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wp-summary-bar {
+  height: 3px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.wp-summary-bar__fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  transition: width 0.5s ease;
+}
+
+.wp-panel__count {
+  font-size: 10px;
+  color: rgba(255,255,255,0.4);
+}
+
+/* â”€â”€ Job list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.wp-panel__jobs {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px 8px;
+}
+
+.wp-panel__jobs::-webkit-scrollbar { width: 3px; }
+.wp-panel__jobs::-webkit-scrollbar-track { background: transparent; }
+.wp-panel__jobs::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+.wp-job {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 6px;
+  border-radius: 7px;
+  transition: background 0.12s;
+}
+.wp-job:hover { background: rgba(255,255,255,0.04); }
+
+.wp-job--done    { opacity: 0.55; }
+.wp-job--error   { opacity: 0.85; }
+.wp-job--pending { opacity: 1; }
+.wp-job--running { opacity: 1; }
+
+.wp-job__icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wp-job__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wp-job__type {
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.wp-job__label {
+  font-size: 11px;
+  color: rgba(255,255,255,0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wp-job__status-text {
+  font-size: 9px;
+  color: rgba(255,255,255,0.25);
+  flex-shrink: 0;
+}
+
+/* Spinner */
+.wp-job-spin {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgba(99,102,241,0.25);
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: wp-spin 0.8s linear infinite;
+}
+
+@keyframes wp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+
+.wp-panel__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 10px;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  margin-top: 2px;
+}
+
+.wp-panel__queue {
+  font-size: 10px;
+  color: rgba(255,255,255,0.3);
+}
+
+.wp-panel__clear {
+  font-size: 10px;
+  color: rgba(99,102,241,0.8);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+.wp-panel__clear:hover {
+  background: rgba(99,102,241,0.12);
+  color: #818cf8;
+}
+
+
+/* â”€â”€ Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .wp-btn {
   position: relative;
@@ -86,7 +382,7 @@
   50%       { box-shadow: 0 0 0 2px rgba(15,15,25,0.9), 0 0 0 6px rgba(99,102,241,0); }
 }
 
-/* ── Panel ────────────────────────────────────────────────────────────────── */
+/* â”€â”€ Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .wp-panel {
   position: absolute;
@@ -142,7 +438,7 @@
   background: rgba(100,116,139,0.1);
 }
 
-/* ── Empty state ──────────────────────────────────────────────────────────── */
+/* â”€â”€ Empty state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .wp-panel__empty {
   display: flex;
@@ -162,7 +458,7 @@
   color: rgba(255,255,255,0.2);
 }
 
-/* ── Summary bar ──────────────────────────────────────────────────────────── */
+/* â”€â”€ Summary bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .wp-panel__summary {
   padding: 10px 16px 6px;
@@ -190,7 +486,7 @@
   color: rgba(255,255,255,0.4);
 }
 
-/* ── Job list ─────────────────────────────────────────────────────────────── */
+/* â”€â”€ Job list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .wp-panel__jobs {
   display: flex;
@@ -274,7 +570,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* ── Footer ───────────────────────────────────────────────────────────────── */
+/* â”€â”€ Footer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 .wp-panel__footer {
   display: flex;

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { ActiveTool } from '../context/toolContext';
+import WorkerProgress from '../workspaces/worker/WorkerProgress';
 import './TitleBar.css';
 import '../workspaces/tools/ToolPanels.css';
 
@@ -158,11 +159,14 @@ export default function TitleBar({ active, onTab, onSettings, activeTool = 'poin
         ))}
       </div>
 
-      {/* Right: window controls */}
-      <div className="titlebar__controls">
-        <button className="wbtn wbtn--min"   onClick={() => api?.minimize()} />
-        <button className="wbtn wbtn--max"   onClick={() => api?.maximize()} />
-        <button className="wbtn wbtn--close" onClick={() => api?.close()}    />
+      {/* Right: worker indicator + window controls */}
+      <div className="titlebar__right">
+        <WorkerProgress />
+        <div className="titlebar__controls">
+          <button className="wbtn wbtn--min"   onClick={() => api?.minimize()} />
+          <button className="wbtn wbtn--max"   onClick={() => api?.maximize()} />
+          <button className="wbtn wbtn--close" onClick={() => api?.close()}    />
+        </div>
       </div>
     </div>
   );
