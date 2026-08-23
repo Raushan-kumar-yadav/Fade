@@ -206,3 +206,131 @@
 }
 .ctrl-btn--play:hover { opacity: 0.85; }
 .ctrl-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+
+/* ── AI badge (provider · model) ─────────────────────── */
+.chat-header-title { display: flex; align-items: center; gap: 8px; }
+.ai-badge {
+  font-size: 10px; font-weight: 500; color: var(--text-3);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 10px; padding: 2px 7px;
+}
+
+/* ── Tool-call step cards ─────────────────────────────── */
+.tool-card {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 8px 10px; border-radius: 8px;
+  font-size: 12px; margin: 2px 0;
+  animation: fadeIn 0.15s ease;
+}
+.tool-card--call {
+  background: rgba(108,99,255,0.12);
+  border: 1px solid rgba(108,99,255,0.3);
+}
+.tool-card--result {
+  background: rgba(0,212,170,0.1);
+  border: 1px solid rgba(0,212,170,0.25);
+}
+.tool-card__icon { font-size: 14px; line-height: 1.4; flex-shrink: 0; }
+.tool-card__name { font-weight: 600; color: var(--text-1); margin-bottom: 3px; }
+.tool-card__args {
+  font-size: 10px; color: var(--text-3);
+  background: rgba(0,0,0,0.2); border-radius: 4px;
+  padding: 4px 6px; margin: 0; overflow-x: auto;
+  max-height: 80px; white-space: pre;
+}
+.tool-card__summary { color: var(--text-2); line-height: 1.5; }
+
+/* ── Thinking dots ─────────────────────────────────────── */
+.ai-thinking {
+  display: flex; gap: 5px; padding: 6px 12px;
+  align-items: center;
+}
+.ai-thinking span {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-3);
+  animation: bounce 1.2s infinite ease-in-out;
+}
+.ai-thinking span:nth-child(2) { animation-delay: 0.2s; }
+.ai-thinking span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Cursor blink ──────────────────────────────────────── */
+.cursor-blink {
+  display: inline-block;
+  animation: blink 0.8s step-end infinite;
+  color: #6c63ff;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ── Error message ─────────────────────────────────────── */
+.chat-msg--error .chat-msg__bubble {
+  background: rgba(220, 53, 69, 0.15);
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  color: #ff6b7a;
+}
+
+/* ── Stop button ───────────────────────────────────────── */
+.chat-send--stop {
+  background: rgba(220, 53, 69, 0.8) !important;
+  color: #fff !important;
+  font-size: 10px !important;
+}
+.chat-send--stop:hover { background: rgb(220, 53, 69) !important; }
+
+/* ── Transcribe bar ────────────────────────────────────── */
+.transcribe-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+  flex-shrink: 0;
+}
+.transcribe-select {
+  flex: 1; min-width: 0;
+  background: var(--bg-surface); color: var(--text-1);
+  border: 1px solid var(--border); border-radius: 5px;
+  padding: 4px 6px; font-size: 11px;
+}
+.transcribe-check {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; color: var(--text-2); white-space: nowrap;
+  cursor: pointer;
+}
+.transcribe-btn {
+  padding: 4px 10px; border-radius: 5px;
+  background: rgba(108,99,255,0.2); border: 1px solid rgba(108,99,255,0.4);
+  color: var(--text-1); font-size: 11px; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s;
+}
+.transcribe-btn:hover:not(:disabled) {
+  background: rgba(108,99,255,0.4);
+}
+.transcribe-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── AI info pane (right side) ─────────────────────────── */
+.ai-info-pane {
+  height: 100%; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-main);
+}
+.ai-info-pane__inner {
+  max-width: 320px; text-align: center; color: var(--text-2);
+}
+.ai-info-icon { font-size: 48px; margin-bottom: 12px; }
+.ai-info-pane__inner h3 { font-size: 18px; color: var(--text-1); margin: 0 0 8px; }
+.ai-info-pane__inner p  { font-size: 13px; margin: 0 0 16px; }
+.ai-info-pane__inner ul {
+  text-align: left; list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ai-info-pane__inner li {
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 12px; font-size: 12px;
+  color: var(--text-2); cursor: default;
+  transition: border-color 0.15s;
+}
+.ai-info-pane__inner li:hover { border-color: #6c63ff; color: var(--text-1); }
+
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }

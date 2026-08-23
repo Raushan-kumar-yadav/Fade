@@ -482,6 +482,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# AI router  
+try:
+    from backend.ai.router import ai_router
+    app.include_router(ai_router, prefix="/ai")
+    print("[main] AI router mounted at /ai", flush=True)
+except ImportError as _ai_err:
+    print(f"[main] AI router not available (missing deps?): {_ai_err}", flush=True)
+
 
 #   Health / Project  
 
