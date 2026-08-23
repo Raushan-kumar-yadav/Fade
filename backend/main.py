@@ -714,6 +714,95 @@ def newProject(name: str = "Untitled Project",
     return {"status": "ok", "project": engine.project.toDict()}
 
 
+class SaveRequest(BaseModel):
+    filepath: str
+
+class LoadRequest(BaseModel):
+    filepath: str
+
+
+@app.post("/project/save")
+def saveProject(req: SaveRequest):
+    """Serialize the active project + timeline to a .fade JSON file."""
+    import json
+    from pathlib import Path
+
+    if engine is None or engine.project is None:
+        raise HTTPException(503, "No active project")
+
+    tl = engine.activeTimeline
+    proj_dict = engine.project.toDict()
+
+    # Embed the full timeline into the project file
+    if tl is not None:
+        proj_dict["timeline"] = tl.toDict()
+
+    # Embed the library asset list (just filepaths — not binary data)
+    proj_dict["library"] = [
+        {"assetId": a.assetId, "filepath": a.filepath,
+         "type": a.__class__.__name__}
+        for a in engine.project.timelines  # timelines field is reused as asset list
+    ] if hasattr(engine.project, "library") else []
+
+    path = Path(req.filepath)
+    if not path.suffix:
+        path = path.with_suffix(".fade")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(proj_dict, indent=2), encoding="utf-8")
+
+    engine.project.filePath = str(path)
+    engine.project.isDirty  = False
+    print(f"[Project] Saved → {path}", flush=True)
+    return {"status": "ok", "filepath": str(path)}
+
+
+@app.post("/project/load")
+def loadProject(req: LoadRequest):
+    """Load a .fade project file and rebuild the full timeline."""
+    import json
+    from pathlib import Path
+    from backend.timeline.timeline import Timeline
+    from backend.project.project import Project
+
+    path = Path(req.filepath)
+    if not path.exists():
+        raise HTTPException(404, f"Project file not found: {path}")
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    proj = Project.fromDict(data)
+    proj.filePath = str(path)
+
+    # Rebuild the timeline
+    tl_data = data.get("timeline")
+    if tl_data:
+        tl = Timeline.fromDict(tl_data)
+        # Re-attach decode schedulers to all video/image clips
+        for track in tl.tracks:
+            for clip in track.clips:
+                if hasattr(clip, "setScheduler") and engine.scheduler:
+                    clip.setScheduler(engine.scheduler, proj.fps)
+    else:
+        from backend.timeline.timeline import Timeline
+        from backend.timeline.tracks.videoTrack import VideoTrack
+        from backend.timeline.tracks.audioTrack import AudioTrack
+        tl = Timeline(name="Sequence 01")
+        tl.addTrack(VideoTrack("Video 1"))
+        tl.addTrack(VideoTrack("Video 2"))
+        tl.addTrack(AudioTrack("Audio 1"))
+
+    # Swap in the loaded project
+    engine.project = proj
+    engine.activeTimeline = tl
+
+    print(f"[Project] Loaded ← {path}", flush=True)
+    return {
+        "status": "ok",
+        "project": proj.toDict(),
+        "timeline": tl.toDict(),
+    }
+
+
 #   Library routes  
 
 class ImportRequest(BaseModel):

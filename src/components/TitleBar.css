@@ -170,3 +170,17 @@
   background: rgba(255,255,255,0.07);
   margin: 4px 6px;
 }
+
+/* Project name in titlebar tabs row */
+.titlebar__project-name {
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  padding: 0 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  opacity: 0.75;
+  cursor: default;
+  user-select: none;
+}

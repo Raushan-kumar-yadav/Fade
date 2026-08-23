@@ -1,22 +1,22 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 export interface ElectronAPI {
-  minimize:     () => void
-  maximize:     () => void
-  close:        () => void
+  minimize: () => void
+  maximize: () => void
+  close: () => void
   onBackendPort: (cb: (port: number) => void) => void
-  getPort:      () => Promise<number | null>
+  getPort: () => Promise<number | null>
 
-  // ── Native render engine ───────────────────────────────────────────────────
+  //   Native render engine  
   isNativeRender: () => Promise<boolean>
-  renderSeek:  (frame: number) => void
-  renderPlay:  () => void
+  renderSeek: (frame: number) => void
+  renderPlay: () => void
   renderPause: () => void
   getRenderBuffer: () => Promise<ArrayBuffer | null>
   onFrameReady: (cb: (frameNum: number) => void) => () => void
   getRenderStats: () => Promise<{ width: number; height: number; fps: number; bufferSize: number } | null>
 
-  // ── Export ─────────────────────────────────────────────────────────────────
+  // export
   startExport: (config: {
     outputPath: string
     width: number
@@ -33,7 +33,7 @@ export interface ElectronAPI {
   }) => void) => () => void   // returns cleanup fn
   cancelExport: () => void
 
-  // ── File dialogs ────────────────────────────────────────────────────────────
+  //     File dialogs  
   showSaveDialog: (opts?: {
     filters?: { name: string; extensions: string[] }[]
     defaultPath?: string
@@ -51,10 +51,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getPort: (): Promise<number | null> => ipcRenderer.invoke('backend:get-port'),
 
-  // ── Native render engine ─────────────────────────────────────────────────────
+  //   Native render engine  
   isNativeRender: (): Promise<boolean> => ipcRenderer.invoke('render:is-native'),
 
-  renderSeek:  (frame: number): void => ipcRenderer.send('render:seek', frame),
+  renderSeek: (frame: number): void => ipcRenderer.send('render:seek', frame),
   renderPlay:  (): void => ipcRenderer.send('render:play'),
   renderPause: (): void => ipcRenderer.send('render:pause'),
 
@@ -68,7 +68,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('render:frame-ready', handler)
   },
 
-  // ── Export ─────────────────────────────────────────────────────────────────
+  //   Export  
   startExport: (config: any): void => ipcRenderer.send('export:start', config),
 
   onExportProgress: (cb: (p: any) => void): (() => void) => {
@@ -79,7 +79,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   cancelExport: (): void => ipcRenderer.send('export:cancel'),
 
-  // ── File dialogs ───────────────────────────────────────────────────────────
+  // File dialogs  
   showSaveDialog: (opts?: any): Promise<string | undefined> =>
     ipcRenderer.invoke('dialog:save', opts),
 

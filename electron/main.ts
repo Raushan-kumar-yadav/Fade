@@ -249,6 +249,16 @@ ipcMain.handle('dialog:save', async (_event, opts) => {
   return result.canceled ? undefined : result.filePath
 })
 
+ipcMain.handle('dialog:open', async (_event, opts) => {
+  if (!mainWindow) return undefined
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: opts?.filters ?? [{ name: 'Fade Project', extensions: ['fade'] }],
+    defaultPath: opts?.defaultPath,
+  })
+  return result.canceled ? undefined : result.filePaths[0]
+})
+
 // Lifecycle  
 
 app.whenReady().then(() => {

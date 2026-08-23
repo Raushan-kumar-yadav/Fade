@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActiveTool } from '../context/toolContext';
 import WorkerProgress from '../workspaces/worker/WorkerProgress';
+import { saveProject, saveProjectTo, loadProject, newProject } from '../api/projectApi';
 import './TitleBar.css';
 import '../workspaces/tools/ToolPanels.css';
 
@@ -79,8 +80,6 @@ function MenuButton({ label, items }: { label: string; items: MenuItem[] }) {
 // ActiveTool re-exported for backwards-compat with App.tsx
 export type { ActiveTool } from '../context/toolContext';
 
-
-
 interface TitleBarProps {
   active:             string;
   onTab:              (id: string) => void;
@@ -89,31 +88,101 @@ interface TitleBarProps {
   onTool?:            (t: ActiveTool) => void;
   onToggleToolbox?:   () => void;
   toolboxOpen?:       boolean;
+  /** Called after a project is loaded so the app can refresh the timeline */
+  onProjectLoaded?:   (result: { project: any; timeline: any }) => void;
 }
 
-export default function TitleBar({ active, onTab, onSettings, activeTool = 'pointer', onTool, onToggleToolbox, toolboxOpen }: TitleBarProps) {
+export default function TitleBar({
+  active, onTab, onSettings,
+  activeTool = 'pointer', onTool,
+  onToggleToolbox, toolboxOpen,
+  onProjectLoaded,
+}: TitleBarProps) {
   const api = window.electronAPI;
 
+  // Track the currently saved path so Ctrl+S can overwrite without re-asking
+  const savedPathRef = useRef<string | null>(null);
+  const [projectName, setProjectName] = useState('Untitled Project');
+
+  // ── Actions ─────────────────────────────────────────────────────────────────
+
+  const handleNew = useCallback(async () => {
+    const proj = await newProject({ name: 'Untitled Project' });
+    if (proj) {
+      savedPathRef.current = null;
+      setProjectName(proj.name);
+    }
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (savedPathRef.current) {
+      await saveProjectTo(savedPathRef.current);
+    } else {
+      const fp = await saveProject(projectName);
+      if (fp) {
+        savedPathRef.current = fp;
+        const name = fp.split(/[\\/]/).pop()?.replace(/\.fade$/, '') ?? projectName;
+        setProjectName(name);
+      }
+    }
+  }, [projectName]);
+
+  const handleSaveAs = useCallback(async () => {
+    const fp = await saveProject(projectName);
+    if (fp) {
+      savedPathRef.current = fp;
+      const name = fp.split(/[\\/]/).pop()?.replace(/\.fade$/, '') ?? projectName;
+      setProjectName(name);
+    }
+  }, [projectName]);
+
+  const handleOpen = useCallback(async () => {
+    const result = await loadProject();
+    if (result) {
+      savedPathRef.current = result.project.filePath ?? null;
+      setProjectName(result.project.name);
+      onProjectLoaded?.(result);
+    }
+  }, [onProjectLoaded]);
+
+  // ── Keyboard shortcuts ───────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      switch (e.key.toLowerCase()) {
+        case 'n': e.preventDefault(); handleNew();   break;
+        case 'o': e.preventDefault(); handleOpen();  break;
+        case 's': e.preventDefault(); handleSave();  break;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleNew, handleOpen, handleSave]);
+
+  // ── Menu items ───────────────────────────────────────────────────────────────
+
   const fileItems: MenuItem[] = [
-    { label: 'New Project',   shortcut: 'Ctrl+N', action: () => {} },
-    { label: 'Open Project',  shortcut: 'Ctrl+O', action: () => {} },
-    { label: 'Save Project',  shortcut: 'Ctrl+S', action: () => {} },
+    { label: 'New Project',   shortcut: 'Ctrl+N',       action: handleNew },
+    { label: 'Open Project…', shortcut: 'Ctrl+O',       action: handleOpen },
+    { label: 'Save Project',  shortcut: 'Ctrl+S',       action: handleSave },
+    { label: 'Save As…',      shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
     { sep: true },
-    { label: 'Import Media',  shortcut: 'Ctrl+I', action: () => {} },
+    { label: 'Import Media',  shortcut: 'Ctrl+I',       action: () => {} },
     { sep: true },
-    { label: 'Quit',          shortcut: 'Alt+F4', action: () => api?.close() },
+    { label: 'Quit',          shortcut: 'Alt+F4',       action: () => api?.close() },
   ];
 
   const editItems: MenuItem[] = [
-    { label: 'Undo',          shortcut: 'Ctrl+Z', action: () => {} },
-    { label: 'Redo',          shortcut: 'Ctrl+Y', action: () => {} },
+    { label: 'Undo',        shortcut: 'Ctrl+Z', action: () => {} },
+    { label: 'Redo',        shortcut: 'Ctrl+Y', action: () => {} },
     { sep: true },
-    { label: 'Cut',           shortcut: 'Ctrl+X', action: () => {} },
-    { label: 'Copy',          shortcut: 'Ctrl+C', action: () => {} },
-    { label: 'Paste',         shortcut: 'Ctrl+V', action: () => {} },
+    { label: 'Cut',         shortcut: 'Ctrl+X', action: () => {} },
+    { label: 'Copy',        shortcut: 'Ctrl+C', action: () => {} },
+    { label: 'Paste',       shortcut: 'Ctrl+V', action: () => {} },
     { sep: true },
-    { label: 'Split Clip',    shortcut: 'S',      action: () => {} },
-    { label: 'Delete Clip',   shortcut: 'Del',    action: () => {} },
+    { label: 'Split Clip',  shortcut: 'S',      action: () => {} },
+    { label: 'Delete Clip', shortcut: 'Del',    action: () => {} },
   ];
 
   return (
@@ -125,8 +194,8 @@ export default function TitleBar({ active, onTab, onSettings, activeTool = 'poin
           <span>FADE</span>
         </div>
         <div className="titlebar__menus">
-          <MenuButton label="File"     items={fileItems} />
-          <MenuButton label="Edit"     items={editItems} />
+          <MenuButton label="File"  items={fileItems} />
+          <MenuButton label="Edit"  items={editItems} />
           <button className="tb-menu__btn" onClick={onSettings}>Settings</button>
         </div>
 
@@ -147,8 +216,15 @@ export default function TitleBar({ active, onTab, onSettings, activeTool = 'poin
         )}
       </div>
 
-      {/* Centre: workspace tabs */}
+      {/* Centre: project name + workspace tabs */}
       <div className="titlebar__tabs">
+        {/* Unsaved indicator dot */}
+        <span
+          className="titlebar__project-name"
+          title={savedPathRef.current ?? 'Unsaved — press Ctrl+S to save'}
+        >
+          {projectName}{!savedPathRef.current ? ' •' : ''}
+        </span>
         {TABS.map(({ id, label }) => (
           <button
             key={id}
