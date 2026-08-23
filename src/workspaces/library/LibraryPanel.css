@@ -132,7 +132,7 @@
 .lib__item:hover .lib__item-del { opacity: 1; }
 .lib__item-del:hover { color: #ff5f5f; }
 
-/* ── Empty / loading states ──────────────────────────────────────────────── */
+/*   Empty / loading states   */
 
 .lib__empty {
   display: flex;
@@ -163,14 +163,14 @@
 
 /* CSS variables fallback for older themes */
 :root {
-  --accent-blue:   #4d9fff;
-  --accent-green:  #4dcc8f;
+  --accent-blue: #4d9fff;
+  --accent-green: #4dcc8f;
   --accent-purple: #a78bfa;
-  --bg-panel:      #1a1a1e;
+  --bg-panel: #1a1a1e;
   --bg-elevated:   #22222a;
-  --bg-hover:      #26262e;
-  --bg-input:      #16161c;
-  --border:        #2e2e3a;
-  --text-primary:  #e8e8ec;
-  --text-muted:    #6b6b7b;
+  --bg-hover: #26262e;
+  --bg-input: #16161c;
+  --border: #2e2e3a;
+  --text-primary: #e8e8ec;
+  --text-muted: #6b6b7b;
 }

@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/ai/tools.py
 All LangChain @tool functions the agent can call.
 Each wraps an existing FastAPI endpoint via httpx loopback.
@@ -242,6 +242,43 @@ def mute_track(track_id: str, muted: bool) -> str:
     _post(f"/timeline/track/{track_id}/mute", {"muted": muted})
     return f"Track {track_id} {'muted' if muted else 'unmuted'}."
 
+# downloader
+
+@tool
+def download_videos(query: str, num_videos: int = 2) -> str:
+    """Search YouTube and download videos into the project media library.
+    
+    Args:
+        query: Search query string, e.g. 'cinematic sunset 4k'.
+        num_videos: Number of top results to download (default 2, max 5).
+    
+    Returns JSON with imported assetIds and duration in frames so you can
+    immediately use place_clip() to add them to the timeline.
+    """
+    num_videos = max(1, min(num_videos, 5))
+    result = _post("/media/download-search", {
+        "query": query,
+        "numVideos": num_videos
+    })
+    return json.dumps(result, indent=2)
+
+@tool
+def place_clip(asset_id: str, track_index: int, start_frame: int, duration: int) -> str:
+    """Place a media asset onto the timeline as a clip.
+    Args:
+        asset_id: The assetId of the media (get this from download_videos or get_library).
+        track_index: The track index to place it on (0-based).
+        start_frame: Timeline frame where the clip starts.
+        duration: Duration of the clip in frames.
+    """
+    result = _post("/timeline/add-clip", {
+        "assetId": asset_id,
+        "trackIndex": track_index,
+        "startFrame": start_frame,
+        "duration": duration
+    })
+    return f"Placed asset {asset_id} on track {track_index} at frame {start_frame} with clipId {result.get('clipId')}."
+
 # all tools list 
 
 ALL_TOOLS = [
@@ -264,4 +301,6 @@ ALL_TOOLS = [
     undo,
     redo,
     mute_track,
+    download_videos,
+    place_clip,
 ]

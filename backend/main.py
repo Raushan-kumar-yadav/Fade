@@ -44,6 +44,7 @@ from backend.history.commandStack import (
     RemoveClipCommand,
 )
 from backend.worker.worker_bus import bus as _worker_bus
+from backend.tools.downloader import YtdlpDownloader
 
 engine = Engine()
 
@@ -862,6 +863,10 @@ class ImportRequest(BaseModel):
     filepath: str
 
 
+class DownloadSearchRequest(BaseModel):
+    query: str
+    numVideos: int = 2
+
 def _mediaType(filepath: str) -> str:
     ext = os.path.splitext(filepath)[1].lower()
     if ext in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}:
@@ -874,6 +879,63 @@ def _mediaType(filepath: str) -> str:
         return "svg"
     return "unknown"
 
+@app.post("/media/download-search")
+def download_search(req: DownloadSearchRequest):
+    """Search YouTube and download top N videos into the global downloads dir."""
+    downloader = YtdlpDownloader()
+    
+    # We will save downloads in the user's home folder ~/.fade/downloads
+    from pathlib import Path
+    downloads_dir = str(Path.home() / ".fade" / "downloads")
+    
+    proj = engine.project
+    fps = float(proj.fps) if proj else 30.0
+    
+    results = downloader.search_and_download(
+        query=req.query,
+        num_videos=req.numVideos,
+        output_dir=downloads_dir,
+        fps=fps,
+    )
+    
+    imported = []
+    for r in results:
+        # Import each downloaded file into the asset library by making a direct call
+        # or just recreating the logic
+        filepath = r["filepath"]
+        
+        # De-duplicate by path
+        existing_asset = None
+        for a in _library.values():
+            if a.filepath == filepath:
+                existing_asset = a
+                break
+                
+        if existing_asset:
+            assetId = existing_asset.assetId
+        else:
+            assetId = str(uuid.uuid4())
+            asset = MediaAsset(
+                filepath=filepath,
+                assetId=assetId,
+            )
+            _library[assetId] = asset
+            
+            # Eagerly submit waveform
+            if asset.hasAudio:
+                try:
+                    _worker_bus.submit_waveform(assetId, filepath)
+                except Exception:
+                    pass
+        
+        imported.append({
+            "assetId": assetId,
+            "filename": os.path.basename(filepath),
+            "title": r["title"],
+            "durationFrames": int(r["duration_sec"] * fps),
+        })
+        
+    return {"assets": imported}
 
 
 @app.get("/library/assets")
