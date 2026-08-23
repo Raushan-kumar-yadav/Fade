@@ -72,9 +72,9 @@ class MaskLayer:
     def __init__(
         self,
         maskId: str  = None,
-        name: str  = "Mask 1",
+        name: str = "Mask 1",
         shape: str  = "rect",    # rect | ellipse | bezier
-        mode: str  = "add",     # add | subtract
+        mode: str = "add",     # add | subtract
         inverted: bool = False,
     ) -> None:
         self.maskId: str  = maskId or str(uuid.uuid4())
@@ -94,15 +94,15 @@ class MaskLayer:
         # Animated bezier path  
         self.maskPath: AnimPathProperty = AnimPathProperty()
 
-    #   Legacy `points` property  
+     
     @property
     def points(self) -> list[PathVertex]:
-        """Evaluated vertices from the current frame snapshot."""
+         
         return self.maskPath.get().vertices
 
     #   Evaluation  
     def evaluateAll(self, frame: int) -> None:
-        """Tick all animatable properties (≡ clipMask::update)."""
+         
         self.feather.update(frame)
         self.opacity.update(frame)
         self.expansion.update(frame)
@@ -133,11 +133,11 @@ class MaskLayer:
             "feather": _ap(self.feather),
             "opacity": _ap(self.opacity),
             "expansion": _ap(self.expansion),
-            "size":      _ap(self.size),
+            "size": _ap(self.size),
             "position":  {"x": self.position.x.baseValue,
                           "y": self.position.y.baseValue},
-            "rotation":  _ap(self.rotation),
-            "maskPath":  self.maskPath.toDict(),
+            "rotation": _ap(self.rotation),
+            "maskPath": self.maskPath.toDict(),
         }
 
     @classmethod
@@ -183,7 +183,7 @@ class MaskLayer:
 
 
 class TextClip(BaseClip):
-    """Skia-rendered text clip. Rendered by TextNode via render()."""
+     
 
     clipType = "text"
 
@@ -248,23 +248,23 @@ class TextClip(BaseClip):
 
     def toDict(self) -> dict:
         return {
-            "clipType":   self.clipType,
-            "clipId":     self.clipId,
+            "clipType": self.clipType,
+            "clipId": self.clipId,
             "startFrame": self.startFrame,
-            "duration":   self.duration,
+            "duration": self.duration,
             "transform":  self.transform.toDict(),
-            "style":      self.style.toDict(),
-            "masks":      [m.toDict() for m in self.masks],
-            "effects":    [e.toDict() for e in self.effects],
+            "style": self.style.toDict(),
+            "masks": [m.toDict() for m in self.masks],
+            "effects": [e.toDict() for e in self.effects],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "TextClip":
         from backend.timeline.effects.skslEffect import SkslEffect
         clip = cls(
-            clipId     = data["clipId"],
+            clipId = data["clipId"],
             startFrame = data["startFrame"],
-            duration   = data["duration"],
+            duration = data["duration"],
             style = TextStyle.fromDict(data.get("style", {})),
         )
         clip.transform = Transform.fromDict(data.get("transform", {}))

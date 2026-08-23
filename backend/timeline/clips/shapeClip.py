@@ -1,21 +1,16 @@
-"""
-ShapeClip — Skia-rendered shape layer.
-
-Shape types: rect / circle / ellipse / star / polygon / line / arc / custom_path
-Mirrors Qteee-Vulkan's ShapeData hierarchy and ShapeClip.
-"""
+ 
 from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from backend.timeline.clips.baseClip import BaseClip
 from backend.animation.transform import Transform
-from backend.timeline.clips.textClip import MaskLayer   # shared mask model
+from backend.timeline.clips.textClip import MaskLayer    
 
 
 @dataclass
 class ShapeStyle:
      
-    shapeType: str   = "rect"     # rect|circle|ellipse|star|polygon|line|arc
+    shapeType: str   = "rect"      
     # Rect / rounded rect
     width: float = 200.0
     height: float = 120.0
@@ -64,7 +59,7 @@ class ShapeStyle:
 
 
 class ShapeClip(BaseClip):
-    """Skia-rendered shape clip. Rendered by ShapeNode via render()."""
+     
 
     clipType = "shape"
 

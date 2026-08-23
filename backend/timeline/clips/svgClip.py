@@ -1,12 +1,4 @@
-"""svgClip.py — SVG clip for Fade's timeline.
-
-Mirrors Qteee-Vulkan svgClip adapted to Python:
-  - Clip type = "svg"
-  - `file` is the absolute path to the .svg file
-  - Optional display size override (displayW / displayH in pixels)
-  - Optional tint color [R, G, B, A] in 0-1 range
-  - Full transform / opacity / blendMode support via BaseClip.Transform
-"""
+ 
 from __future__ import annotations
 
 import os
@@ -33,7 +25,7 @@ class SvgClip(BaseClip):
         )
         self.filepath: str = os.path.normpath(filepath)
 
-        # Display size override — 0 means "use full compositor canvas"
+        # Display size override  
         self.displayW: float = displayW
         self.displayH: float = displayH
 
@@ -41,12 +33,10 @@ class SvgClip(BaseClip):
         self.tintEnabled: bool = False
         self.tintColor: list[float] = [1.0, 1.0, 1.0, 1.0]  # RGBA 0-1
 
-    # ── BaseClip abstract overrides ──────────────────────────────────────────
+    #   BaseClip abstract overrides  
 
     def render(self, canvas, frame: int) -> None:
-        """Python-side render (Skia canvas).
-        The C++ HeadlessCompositor handles SVG; this is a CPU-side fallback.
-        """
+         
         try:
             import skia
         except ImportError:
@@ -58,7 +48,7 @@ class SvgClip(BaseClip):
                 data = f.read()
             if not data:
                 return
-            # Skia Python bindings don't expose SkSVGDOM yet — draw placeholder
+             
             paint = skia.Paint(Color=skia.ColorRED, StrokeWidth=2,
                                Style=skia.Paint.kStroke_Style)
             canvas.drawRect(skia.Rect.MakeXYWH(0, 0, 400, 300), paint)
@@ -83,23 +73,23 @@ class SvgClip(BaseClip):
             return b""
 
     def sourceFrame(self, _frame: int) -> int:
-        return 0  # SVGs are static; no decoding needed
+        return 0  
 
-    # ── Serialisation ────────────────────────────────────────────────────────
+    # Serialisation  
 
     def toDict(self) -> dict:
         return {
-            "clipId":      self.clipId,
-            "type":        self.CLIP_TYPE,
-            "filepath":    self.filepath,
-            "startFrame":  self.startFrame,
-            "duration":    self.duration,
-            "displayW":    self.displayW,
-            "displayH":    self.displayH,
+            "clipId": self.clipId,
+            "type": self.CLIP_TYPE,
+            "filepath": self.filepath,
+            "startFrame": self.startFrame,
+            "duration": self.duration,
+            "displayW": self.displayW,
+            "displayH": self.displayH,
             "tintEnabled": self.tintEnabled,
-            "tintColor":   self.tintColor,
-            "transform":   self.transform.toDict(),   # full keyframe-aware dict
-            "effects":     [e.toDict() for e in self.effects],
+            "tintColor": self.tintColor,
+            "transform": self.transform.toDict(),  
+            "effects": [e.toDict() for e in self.effects],
         }
 
     @classmethod
@@ -107,22 +97,22 @@ class SvgClip(BaseClip):
         from backend.animation.transform import Transform
         from backend.timeline.effects.skslEffect import SkslEffect
         clip = cls(
-            filepath   = data["filepath"],
+            filepath = data["filepath"],
             startFrame = data["startFrame"],
-            duration   = data["duration"],
-            clipId     = data.get("clipId"),
-            displayW   = data.get("displayW", 0.0),
-            displayH   = data.get("displayH", 0.0),
+            duration = data["duration"],
+            clipId = data.get("clipId"),
+            displayW = data.get("displayW", 0.0),
+            displayH    = data.get("displayH", 0.0),
         )
         clip.tintEnabled = data.get("tintEnabled", False)
         clip.tintColor   = data.get("tintColor", [1.0, 1.0, 1.0, 1.0])
 
         t = data.get("transform", {})
-        # New format: full Transform dict (has "position", "scale", etc.)
+        # New format 
         if "position" in t or "scale" in t:
             clip.transform = Transform.fromDict(t)
         else:
-            # Legacy flat format: {x, y, scaleX, scaleY, rotation, opacity, anchorX, anchorY}
+            # Legacy flat format 
             clip.transform.position.setBase(t.get("x", 0.0), t.get("y", 0.0))
             clip.transform.scale.setBase(t.get("scaleX", 1.0), t.get("scaleY", 1.0))
             clip.transform.rotation.setBaseValue(t.get("rotation", 0.0))

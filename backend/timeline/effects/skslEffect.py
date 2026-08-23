@@ -110,7 +110,7 @@ class SkslEffect:
         try:
             effect  = _compile_sksl(self.typeId)
             builder = skia.RuntimeShaderBuilder(effect)
-            src     = _snapshot_as_shader(canvas)
+            src = _snapshot_as_shader(canvas)
             if src:
                 builder.setChild("source", src)
             _apply_uniforms(builder, self._values, self._manifest, frame, self._fps)

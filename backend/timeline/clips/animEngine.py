@@ -1,10 +1,4 @@
-"""
-animEngine.py — Keyframe interpolation engine
-Mirrors Qteee-Vulkan Keyframe.hpp + KeyframeTrack.cpp
-
-Interpolation modes: constant, linear, bezier, ease_in, ease_out, ease_both
-VecTypes: scalar (float), vec2 [x,y], vec3 [r,g,b], vec4 [r,g,b,a], toggle (bool)
-"""
+ 
 from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,9 +10,9 @@ class VecType(int, Enum):
     """Component count / semantic type — mirrors Qteee AnimParamType."""
     toggle = 0   # bool, only stepped keyframes
     scalar = 1   # float
-    vec2   = 2   # [x, y]
-    vec3   = 3   # [r, g, b]
-    vec4   = 4   # [r, g, b, a]
+    vec2 = 2   # [x, y]
+    vec3 = 3   # [r, g, b]
+    vec4 = 4   # [r, g, b, a]
 
 
 class Interp(str, Enum):
@@ -73,7 +67,7 @@ def _cubic_bezier_t(p0: float, p1: float, p2: float, p3: float, t: float) -> flo
 
 def _solve_t_for_x(x: float, x0: float, x1: float, x2: float, x3: float,
                    iterations: int = 12) -> float:
-    """Binary-search for t such that B(t).x == x (Newton's method alternative)."""
+     
     lo, hi = 0.0, 1.0
     for _ in range(iterations):
         mid = (lo + hi) * 0.5
@@ -86,7 +80,7 @@ def _solve_t_for_x(x: float, x0: float, x1: float, x2: float, x3: float,
 
 
 class KeyframeTrack:
-    """Sorted list of keyframes for one scalar parameter component."""
+     
 
     def __init__(self) -> None:
         self._kfs: List[Keyframe] = []
@@ -169,15 +163,15 @@ class KeyframeTrack:
             return k0.value + (k1.value - k0.value) * t
 
         if interp == Interp.bezier:
-            # Control points in (frame, value) space
-            cp0f, cp0v = float(k0.frame),        k0.value
+            # Control points  
+            cp0f, cp0v = float(k0.frame), k0.value
             cp1f = k0.frame + k0.handle_out_f
             cp1v = k0.value + k0.handle_out_v
             cp2f = k1.frame + k1.handle_in_f
             cp2v = k1.value + k1.handle_in_v
-            cp3f, cp3v = float(k1.frame),        k1.value
+            cp3f, cp3v = float(k1.frame), k1.value
 
-            # Solve for t parameter corresponding to current frame on X axis
+             
             bt = _solve_t_for_x(float(frame), cp0f, cp1f, cp2f, cp3f)
             return _cubic_bezier_t(cp0v, cp1v, cp2v, cp3v, bt)
 
@@ -187,14 +181,7 @@ class KeyframeTrack:
 #   Multi-component param  
 
 class AnimParam:
-    """
-    One animatable parameter — scalar, vec2, vec3, vec4, or toggle (bool).
-    Mirrors Qteee-Vulkan AnimatableProperty<T>.
-
-    - scalar  → evaluate() returns float
-    - vec2/3/4 → evaluate() returns List[float]
-    - toggle   → evaluate() returns bool (uses stepped constant interpolation)
-    """
+    
 
     def __init__(self, base_value: Any, vec_type: VecType = VecType.scalar) -> None:
         self._vec_type = vec_type
@@ -224,7 +211,7 @@ class AnimParam:
             KeyframeTrack() for _ in range(self._components)
         ]
 
-    # ── Properties ────────────────────────────────────────────────────────────
+    #   Properties  
 
     @property
     def vec_type(self) -> VecType:
@@ -234,7 +221,7 @@ class AnimParam:
     def components(self) -> int:
         return self._components
 
-    # ── Animation state ───────────────────────────────────────────────────────
+    #   Animation state  
 
     def is_animated(self) -> bool:
         return any(t.is_animated() for t in self._tracks)
@@ -242,7 +229,7 @@ class AnimParam:
     def has_keyframe_at(self, frame: int) -> bool:
         return any(t.has_keyframe_at(frame) for t in self._tracks)
 
-    # ── Keyframe editing ──────────────────────────────────────────────────────
+    #   Keyframe editing  
 
     def add_keyframe(self, frame: int, value: Any,
                      interp: Interp = Interp.linear) -> None:
@@ -281,7 +268,7 @@ class AnimParam:
                 moved = True
         return moved
 
-    # ── Evaluation ────────────────────────────────────────────────────────────
+    #   Evaluation  
 
     def evaluate(self, frame: int) -> Any:
         result = [t.evaluate(frame, self._base[i])
@@ -292,7 +279,7 @@ class AnimParam:
             return result[0]
         return result
 
-    # ── Base value ────────────────────────────────────────────────────────────
+    #   Base value  
 
     def set_base(self, value: Any) -> None:
         if isinstance(value, bool):
@@ -306,7 +293,7 @@ class AnimParam:
                 vals.append(0.0)
             self._base = vals[:self._components]
 
-    # ── Serialization helpers ─────────────────────────────────────────────────
+    #   Serialization helpers  
 
     def keyframes_for_component(self, comp: int = 0) -> List[dict]:
         if comp >= len(self._tracks):
@@ -345,8 +332,8 @@ class AnimParam:
         mapping = {
             VecType.toggle: 'toggle',
             VecType.scalar: 'float',
-            VecType.vec2:   'vec2',
-            VecType.vec3:   'vec3',
-            VecType.vec4:   'vec4',
+            VecType.vec2: 'vec2',
+            VecType.vec3: 'vec3',
+            VecType.vec4: 'vec4',
         }
         return mapping.get(self._vec_type, 'float')

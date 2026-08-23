@@ -179,10 +179,10 @@ class ColorGradeEffect(BaseEffect):
         t   = self.temperature
         tnt = self.tint
         matrix = [
-            1+t,  0,      0,     0, 0,
-            0,    1+tnt,  0,     0, 0,
-            0,    0,      1-t,   0, 0,
-            0,    0,      0,     1, 0,
+            1+t,  0, 0, 0, 0,
+            0, 1+tnt,  0, 0, 0,
+            0, 0, 1-t, 0, 0,
+            0, 0, 0, 1, 0,
         ]
         cf = skia.ColorFilters.Matrix(matrix)
         p  = skia.Paint()
@@ -205,7 +205,7 @@ class ColorGradeEffect(BaseEffect):
 
     def setParam(self, key: str, val: float) -> None:
         if key == "temperature": self.temperature = val
-        elif key == "tint":      self.tint = val
+        elif key == "tint": self.tint = val
 
 
 class SharpenEffect(BaseEffect):

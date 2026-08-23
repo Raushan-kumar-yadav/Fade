@@ -81,7 +81,7 @@ class VideoClip(BaseClip):
             return
         self._lastFrame = frame
         
-        # Call BaseClip.evaluateAll to handle _anim_params routing
+        # Call BaseClip.evaluateAll to handle 
         super().evaluateAll(frame)
 
         lf = self.localFrame(frame)   
@@ -128,25 +128,20 @@ class VideoClip(BaseClip):
         canvas.drawRect(skia.Rect.MakeXYWH(0, 0, 1920, 1080), paint)
 
     def _renderMedia(self, canvas, paint, frame: int) -> None:
-        """
-        Ask the DecodeScheduler for this frame from the shared FrameCache.
-        frame = global timeline frame; convert to local clip frame for cache lookup.
-        On a cache miss, re-uses the last successfully decoded frame so the
-        viewport never shows the solid blue placeholder during playback.
-        """
+         
         import skia
 
         if self._scheduler is None:
             self._renderSolid(canvas, paint)
             return
 
-        # Convert global frame to local frame (0-based from clip start)
+        #   global frame to local  
         localFrame = self.sourceFrame(frame)
 
-        # Fast path: cache lookup by assetId + localFrame
+        #  cache lookup  
         decoded = self._scheduler.tryGetFrame(self.assetId, localFrame)
 
-        # On cache miss, fall back to last valid frame (hold-last-frame)
+        # On cache miss, fall back to last valid frame  
         if not (decoded and decoded.valid):
             decoded = self._lastValidFrame
 
@@ -163,9 +158,9 @@ class VideoClip(BaseClip):
                         canvas.drawImageRect(image, dst, opts, paint)
                         self._lastValidFrame = decoded
                     else:
-                        info   = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
+                        info = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
                         skdata = skia.Data.MakeWithoutCopy(decoded.dataRGBA)
-                        image  = skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
+                        image = skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
                         if image is not None:
                             dst  = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
                             opts = skia.SamplingOptions(skia.FilterMode.kLinear)
@@ -177,13 +172,13 @@ class VideoClip(BaseClip):
                     print(f"[VideoClip] drawImage error frame={frame} local={localFrame}: {e}")
                     self._renderSolid(canvas, paint)
         else:
-            # No frame available at all (clip just loaded) — show solid placeholder
+            # No frame available at all  
             self._renderSolid(canvas, paint)
 
  
 
     def setScheduler(self, scheduler: "DecodeScheduler", fps: float = 30.0) -> None:
-        """Injected by Engine when a clip is added to the timeline."""
+         
         self._scheduler  = scheduler
         self._projectFps = fps
 
@@ -191,7 +186,7 @@ class VideoClip(BaseClip):
 
     def getThumbnail(self, frame: int, width: int = 160, height: int = 90) -> bytes:
         import skia
-        surf   = skia.Surface(width, height)
+        surf = skia.Surface(width, height)
         canvas = surf.getCanvas()
         r, g, b, a = self.color
         canvas.clear(skia.Color(r, g, b, a))
@@ -201,28 +196,28 @@ class VideoClip(BaseClip):
     #   Serialization
 
     def toDict(self) -> dict:
-        from backend.main import _library  # noqa: avoid circular at module level
+        from backend.main import _library  # noqa 
         filepath = ""
         try:
             filepath = _library[self.assetId].filepath if self.assetId in _library else ""
         except Exception:
             pass
         return {
-            "type":       self.CLIP_TYPE,
-            "clipId":     self.clipId,
+            "type": self.CLIP_TYPE,
+            "clipId": self.clipId,
             "startFrame": self.startFrame,
-            "duration":   self.duration,
-            "assetId":    self.assetId,
-            "filepath":   filepath,
-            "color":      list(self.color),
-            "transform":  self.transform.toDict(),
-            "cropLeft":   self.cropLeft.toDict(),
-            "cropRight":  self.cropRight.toDict(),
-            "cropTop":    self.cropTop.toDict(),
+            "duration": self.duration,
+            "assetId": self.assetId,
+            "filepath": filepath,
+            "color": list(self.color),
+            "transform": self.transform.toDict(),
+            "cropLeft": self.cropLeft.toDict(),
+            "cropRight": self.cropRight.toDict(),
+            "cropTop": self.cropTop.toDict(),
             "cropBottom": self.cropBottom.toDict(),
-            "blendMode":  self.blendMode.toDict(),
-            "masks":      [m.toDict() for m in self.masks],
-            "effects":    [e.toDict() for e in self.effects],
+            "blendMode": self.blendMode.toDict(),
+            "masks": [m.toDict() for m in self.masks],
+            "effects": [e.toDict() for e in self.effects],
         }
 
     @classmethod
@@ -233,11 +228,11 @@ class VideoClip(BaseClip):
         from backend.timeline.effects.skslEffect import SkslEffect
 
         c = cls(
-            clipId     = data["clipId"],
+            clipId = data["clipId"],
             startFrame = data["startFrame"],
-            duration   = data["duration"],
-            assetId    = data.get("assetId", ""),
-            color      = tuple(data.get("color", [74, 144, 226, 255])),
+            duration = data["duration"],
+            assetId = data.get("assetId", ""),
+            color = tuple(data.get("color", [74, 144, 226, 255])),
         )
         # Store filepath so asset library can be rebuilt by loadProject
         c.filepath = data.get("filepath", "")
@@ -254,11 +249,11 @@ class VideoClip(BaseClip):
             ap.setBaseValue(float(raw))
             return ap
 
-        c.cropLeft   = _ap("cropLeft",  0.0)
-        c.cropRight  = _ap("cropRight", 0.0)
-        c.cropTop    = _ap("cropTop",   0.0)
+        c.cropLeft = _ap("cropLeft",  0.0)
+        c.cropRight = _ap("cropRight", 0.0)
+        c.cropTop = _ap("cropTop",   0.0)
         c.cropBottom = _ap("cropBottom",0.0)
-        c.blendMode  = _ap("blendMode", 0.0)
+        c.blendMode = _ap("blendMode", 0.0)
 
         c.masks   = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
 

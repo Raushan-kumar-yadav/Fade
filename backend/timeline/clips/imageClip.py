@@ -5,19 +5,7 @@ from backend.animation.animatableProperty import AnimatableProperty
 
 
 class ImageClip(BaseClip):
-    """
-    A still-image clip.
-
-    Decoding strategy
-    -----------------
-    ImageDecoder is called exactly *once* per asset; the result is
-    cached as self._cachedFrame.  On the first render the BGRA
-    bytes are baked into a skia.Image (self._skiaImage) and
-    re-used every frame - zero re-allocation after the first draw.
-
-    The clip does NOT need a DecodeScheduler because there is no
-    temporal sequence to pump; the one and only frame is always valid.
-    """
+    
 
     CLIP_TYPE = "image"
 
@@ -39,14 +27,14 @@ class ImageClip(BaseClip):
         self.filepath = filepath
         self.color    = color
 
-        self.cropLeft   = AnimatableProperty(0.0)
+        self.cropLeft = AnimatableProperty(0.0)
         self.cropRight  = AnimatableProperty(0.0)
-        self.cropTop    = AnimatableProperty(0.0)
+        self.cropTop = AnimatableProperty(0.0)
         self.cropBottom = AnimatableProperty(0.0)
-        self.blendMode  = AnimatableProperty(0.0)
+        self.blendMode = AnimatableProperty(0.0)
 
-        self._cachedFrame     = None
-        self._skiaImage       = None
+        self._cachedFrame = None
+        self._skiaImage = None
         self._decodeAttempted = False
 
     def evaluateAll(self, frame: int) -> None:
@@ -79,7 +67,7 @@ class ImageClip(BaseClip):
     def _buildSkiaImage(decoded):
         try:
             import skia
-            info   = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
+            info = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
             skdata = skia.Data.MakeWithoutCopy(decoded.dataRGBA)
             return skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
         except Exception as e:
@@ -102,7 +90,7 @@ class ImageClip(BaseClip):
 
         if self._skiaImage is not None:
             try:
-                dst  = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
+                dst = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
                 opts = skia.SamplingOptions(skia.FilterMode.kLinear)
                 canvas.drawImageRect(self._skiaImage, dst, opts, paint)
             except Exception as e:
@@ -140,21 +128,21 @@ class ImageClip(BaseClip):
 
     def toDict(self) -> dict:
         return {
-            "type":       self.CLIP_TYPE,
-            "clipId":     self.clipId,
+            "type": self.CLIP_TYPE,
+            "clipId": self.clipId,
             "startFrame": self.startFrame,
-            "duration":   self.duration,
-            "assetId":    self.assetId,
-            "filepath":   self.filepath,
-            "color":      list(self.color),
-            "transform":  self.transform.toDict(),
-            "cropLeft":   self.cropLeft.toDict(),
-            "cropRight":  self.cropRight.toDict(),
-            "cropTop":    self.cropTop.toDict(),
+            "duration": self.duration,
+            "assetId": self.assetId,
+            "filepath": self.filepath,
+            "color": list(self.color),
+            "transform": self.transform.toDict(),
+            "cropLeft": self.cropLeft.toDict(),
+            "cropRight": self.cropRight.toDict(),
+            "cropTop": self.cropTop.toDict(),
             "cropBottom": self.cropBottom.toDict(),
-            "blendMode":  self.blendMode.toDict(),
-            "masks":      [m.toDict() for m in self.masks],
-            "effects":    [e.toDict() for e in self.effects],
+            "blendMode": self.blendMode.toDict(),
+            "masks": [m.toDict() for m in self.masks],
+            "effects": [e.toDict() for e in self.effects],
         }
 
     @classmethod
@@ -164,12 +152,12 @@ class ImageClip(BaseClip):
         from backend.timeline.clips.textClip import MaskLayer
         from backend.timeline.effects.skslEffect import SkslEffect
         c = cls(
-            clipId     = data["clipId"],
+            clipId = data["clipId"],
             startFrame = data["startFrame"],
-            duration   = data["duration"],
-            assetId    = data.get("assetId", ""),
-            filepath   = data.get("filepath", ""),
-            color      = tuple(data.get("color", [80, 80, 80, 255])),
+            duration = data["duration"],
+            assetId = data.get("assetId", ""),
+            filepath = data.get("filepath", ""),
+            color = tuple(data.get("color", [80, 80, 80, 255])),
         )
         if "transform" in data:
             c.transform = Transform.fromDict(data["transform"])
@@ -182,11 +170,11 @@ class ImageClip(BaseClip):
             ap.setBaseValue(float(raw))
             return ap
 
-        c.cropLeft   = _ap("cropLeft",  0.0)
-        c.cropRight  = _ap("cropRight", 0.0)
-        c.cropTop    = _ap("cropTop",   0.0)
+        c.cropLeft = _ap("cropLeft",  0.0)
+        c.cropRight = _ap("cropRight", 0.0)
+        c.cropTop = _ap("cropTop",   0.0)
         c.cropBottom = _ap("cropBottom",0.0)
-        c.blendMode  = _ap("blendMode", 0.0)
+        c.blendMode = _ap("blendMode", 0.0)
         c.masks = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
         for ed in data.get("effects", []):
             if ed.get("type", "").startswith("sksl:") or "typeId" in ed:

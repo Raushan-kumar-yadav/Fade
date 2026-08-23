@@ -1,53 +1,43 @@
-"""
-transition.py — Transition between two adjacent clips on the same track.
-
-A Transition lives at the boundary of two clips:
-  clipA ends, clipB begins.
-  The transition occupies `duration` frames starting from
-  (clipA.endFrame - duration//2) to (clipB.startFrame + duration//2).
-
-Progress within the transition:
-  progress = (frame - transitionStartFrame) / duration   [0.0 → 1.0]
-"""
+ 
 from __future__ import annotations
 import uuid
 
 
 TRANSITION_CATALOG = [
     {
-        "typeId":    "dissolve",
-        "name":      "Dissolve",
-        "icon":      "◌",
+        "typeId": "dissolve",
+        "name": "Dissolve",
+        "icon": "◌",
         "category":  "Basic",
-        "desc":      "Cross-dissolve blend",
+        "desc": "Cross-dissolve blend",
         "params": [
             {"id": "softness", "displayName": "Softness",
              "type": "FloatSlider", "default": 0.0, "min": 0.0, "max": 0.5},
         ],
     },
     {
-        "typeId":   "fade_black",
-        "name":     "Fade to Black",
-        "icon":     "◆",
+        "typeId": "fade_black",
+        "name": "Fade to Black",
+        "icon": "◆",
         "category": "Basic",
-        "desc":     "Dip to black",
+        "desc": "Dip to black",
         "params":   [],
     },
     {
-        "typeId":   "wipe_left",
-        "name":     "Wipe Left",
-        "icon":     "◁",
+        "typeId": "wipe_left",
+        "name": "Wipe Left",
+        "icon": "◁",
         "category": "Wipe",
-        "desc":     "Reveals from left edge",
+        "desc": "Reveals from left edge",
         "params": [
             {"id": "edge_softness", "displayName": "Edge Softness",
              "type": "FloatSlider", "default": 0.02, "min": 0.0, "max": 0.1},
         ],
     },
     {
-        "typeId":   "wipe_right",
-        "name":     "Wipe Right",
-        "icon":     "▷",
+        "typeId": "wipe_right",
+        "name": "Wipe Right",
+        "icon": "▷",
         "category": "Wipe",
         "desc":     "Reveals from right edge",
         "params": [
@@ -56,27 +46,27 @@ TRANSITION_CATALOG = [
         ],
     },
     {
-        "typeId":   "zoom_in",
-        "name":     "Zoom In",
-        "icon":     "⊕",
+        "typeId": "zoom_in",
+        "name": "Zoom In",
+        "icon": "⊕",
         "category": "Motion",
-        "desc":     "Incoming clip zooms in from centre",
+        "desc": "Incoming clip zooms in from centre",
         "params": [
             {"id": "scale_start", "displayName": "Start Scale",
              "type": "FloatSlider", "default": 0.3, "min": 0.05, "max": 0.9},
         ],
     },
     {
-        "typeId":   "slide_left",
-        "name":     "Slide Left",
-        "icon":     "◂",
+        "typeId": "slide_left",
+        "name": "Slide Left",
+        "icon": "◂",
         "category": "Motion",
-        "desc":     "Incoming clip slides in from right",
-        "params":   [],
+        "desc": "Incoming clip slides in from right",
+        "params": [],
     },
 ]
 
-# Map typeId → catalog entry for O(1) lookup
+# Map typeId 
 _CATALOG_MAP: dict[str, dict] = {t["typeId"]: t for t in TRANSITION_CATALOG}
 
 
@@ -85,25 +75,25 @@ class Transition:
 
     def __init__(
         self,
-        typeId:   str   = "dissolve",
-        duration: int   = 30,          # frames
-        clipA_id: str   = "",
-        clipB_id: str   = "",
+        typeId: str = "dissolve",
+        duration: int = 30,         
+        clipA_id: str = "",
+        clipB_id: str = "",
     ) -> None:
-        self.transId  = str(uuid.uuid4())
-        self.typeId   = typeId
+        self.transId = str(uuid.uuid4())
+        self.typeId = typeId
         self.duration = max(1, duration)
         self.clipA_id = clipA_id
         self.clipB_id = clipB_id
 
-        # Runtime param values — initialised from catalog defaults
+        # Runtime param values  
         meta = _CATALOG_MAP.get(typeId, {})
         self._values: dict[str, float] = {
             p["id"]: p["default"]
             for p in meta.get("params", [])
         }
 
-    # ── Geometry helpers ──────────────────────────────────────────────────────
+    # Geometry helpers  
 
     def transitionStart(self, clipA_endFrame: int) -> int:
         """First frame inside the transition zone."""
@@ -120,7 +110,7 @@ class Transition:
             return 1.0
         return max(0.0, min(1.0, (frame - start) / self.duration))
 
-    # ── Param access ──────────────────────────────────────────────────────────
+    #   Param access  
 
     def params(self) -> dict:
         """Return {id: (value, min, max, displayName, type)} for the inspector."""
@@ -129,10 +119,10 @@ class Transition:
         for p in meta.get("params", []):
             pid = p["id"]
             out[pid] = {
-                "value":       self._values.get(pid, p["default"]),
-                "min":         p["min"],
-                "max":         p["max"],
-                "type":        p["type"],
+                "value": self._values.get(pid, p["default"]),
+                "min": p["min"],
+                "max": p["max"],
+                "type": p["type"],
                 "displayName": p["displayName"],
             }
         return out
@@ -140,16 +130,16 @@ class Transition:
     def setParam(self, key: str, val: float) -> None:
         self._values[key] = float(val)
 
-    # ── Serialisation ─────────────────────────────────────────────────────────
+    #   Serialisation  
 
     def toDict(self) -> dict:
         return {
-            "transId":  self.transId,
-            "typeId":   self.typeId,
+            "transId": self.transId,
+            "typeId": self.typeId,
             "duration": self.duration,
             "clipA_id": self.clipA_id,
             "clipB_id": self.clipB_id,
-            "values":   dict(self._values),
+            "values": dict(self._values),
         }
 
     @classmethod
