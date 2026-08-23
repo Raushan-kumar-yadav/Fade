@@ -361,9 +361,9 @@ class ChromaKeyEffect(BaseEffect):
         }
 
     def setParam(self, key: str, val: float) -> None:
-        if   key == "key_r":     self.key_r = val
-        elif key == "key_g":     self.key_g = val
-        elif key == "key_b":     self.key_b = val
+        if   key == "key_r": self.key_r = val
+        elif key == "key_g": self.key_g = val
+        elif key == "key_b": self.key_b = val
         elif key == "threshold": self.threshold = val
         elif key == "softness":  self.softness = val
 

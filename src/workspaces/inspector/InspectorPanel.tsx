@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSelection } from '../../context/selectionContext';
 import { inspectorApi, type ParamRow, type ClipParams, type KFDef } from '../../api/inspectorApi';
 import { maskApi, effectsApi, type MaskInfo, type EffectInfo, type EffectParamDef } from '../../api/toolsApi';
+import EffectsPanel from './EffectsPanel';
+import TransitionPanel from './TransitionPanel';
 import './InspectorPanel.css';
 
 
@@ -638,7 +640,7 @@ export default function InspectorPanel() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!selected) { setData(null); return; }
+    if (!selected || selected.type !== 'clip') { setData(null); return; }
     setLoading(true);
     try {
       const d = await inspectorApi.getParams(selected.clipId, currentFrame);
@@ -653,7 +655,7 @@ export default function InspectorPanel() {
     } finally { setLoading(false); }
   }, [selected, currentFrame]);
 
-  useEffect(() => { refresh(); }, [selected?.clipId, currentFrame]);
+  useEffect(() => { refresh(); }, [selected?.type === 'clip' ? selected.clipId : null, currentFrame]);
 
   // Refresh when a mask is added from OverlayCanvas
   useEffect(() => {
@@ -696,9 +698,13 @@ export default function InspectorPanel() {
     return (
       <div className="insp-empty">
         <div className="insp-empty__icon">⬚</div>
-        <div className="insp-empty__text">Select a clip to inspect</div>
+        <div className="insp-empty__text">Select a clip or transition to inspect</div>
       </div>
     );
+  }
+
+  if (selected.type === 'transition') {
+    return <TransitionPanel selected={selected.data} />;
   }
 
   if (loading && !data) {

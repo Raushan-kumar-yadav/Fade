@@ -11,6 +11,7 @@ import { addClipToTimeline, type AssetItem } from '../api/useApi'
 import { useTool, isShapeTool } from '../context/toolContext'
 import TextToolPanel   from './tools/TextToolPanel'
 import ShapeToolPanel  from './tools/ShapeToolPanel'
+import TransitionPanel from './inspector/TransitionPanel'
 
 // ── Tool creation panel ───────────────────────────────────────────────────────
 
@@ -69,9 +70,10 @@ const layoutJson: FlexLayout.IJsonModel = {
             weight: 30,
             selected: 0,
             children: [
-              { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
-              { type: 'tab', name: 'Effects',   component: 'effects',   enableClose: false },
-              { type: 'tab', name: 'Tools',     component: 'tools',     enableClose: false },
+              { type: 'tab', name: 'Inspector',   component: 'inspector',   enableClose: false },
+              { type: 'tab', name: 'Effects',     component: 'effects',     enableClose: false },
+              { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
+              { type: 'tab', name: 'Tools',       component: 'tools',       enableClose: false },
             ],
           },
         ],
@@ -109,6 +111,7 @@ export default function VideoWorkspace() {
       )
       case 'inspector': return <InspectorPanel />
       case 'effects':   return <EffectsPanel />
+      case 'transitions': return <TransitionPanel />
       case 'tools':     return <ToolPanel />
       default:          return <div className="vp" />
     }

@@ -1,0 +1,15 @@
+// wipe_right.sksl — right wipe: B reveals from right edge
+uniform shader srcA;
+uniform shader srcB;
+uniform float  progress;
+uniform float  edge_softness;
+uniform float2 resolution;
+
+half4 main(float2 xy) {
+    float threshold = (1.0 - progress) * resolution.x;
+    float edge = max(edge_softness * resolution.x, 1.0);
+    float t = clamp((xy.x - threshold + edge * 0.5) / edge, 0.0, 1.0);
+    half4 a = srcA.eval(xy);
+    half4 b = srcB.eval(xy);
+    return mix(a, b, half(t));
+}

@@ -1,0 +1,173 @@
+/* TransitionPanel.css — Transitions inspector panel */
+
+.tr-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100%;
+}
+
+/* ── Catalog ──────────────────────────────────────────────────────────────── */
+
+.tr-panel__catalog {
+  padding: 10px 12px 6px;
+}
+.tr-panel__catalog-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8888bb;
+  margin-bottom: 4px;
+}
+.tr-panel__hint {
+  font-size: 10px;
+  color: #5050a0;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+.tr-panel__cat-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #5050a0;
+  text-transform: uppercase;
+  margin: 8px 0 4px;
+}
+.tr-panel__cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── Catalog card ─────────────────────────────────────────────────────────── */
+
+.tr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 68px;
+  height: 60px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  cursor: grab;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  user-select: none;
+}
+.tr-card:hover {
+  background: rgba(112,112,255,0.14);
+  border-color: rgba(112,112,255,0.35);
+  transform: translateY(-1px);
+}
+.tr-card:active { cursor: grabbing; transform: scale(0.95); }
+.tr-card__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.tr-card__name {
+  font-size: 9px;
+  color: #c0c0e8;
+  text-align: center;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* ── Editor ───────────────────────────────────────────────────────────────── */
+
+.tr-panel__editor {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 10px 12px 8px;
+  background: rgba(255,255,255,0.02);
+}
+.tr-panel__editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.tr-panel__editor-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c0c0f0;
+}
+.tr-panel__del {
+  background: transparent;
+  border: none;
+  color: #5050a0;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.tr-panel__del:hover { color: #ff6060; background: rgba(255,96,96,0.12); }
+
+/* ── Param row ────────────────────────────────────────────────────────────── */
+
+.tr-param {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.tr-param__label {
+  font-size: 10px;
+  color: #8888aa;
+  min-width: 80px;
+  flex-shrink: 0;
+}
+.tr-param__track {
+  flex: 1;
+  position: relative;
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.tr-param__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #7070ff, #a070ff);
+  border-radius: 2px;
+  pointer-events: none;
+}
+.tr-param__slider {
+  position: absolute;
+  inset: -6px 0;
+  width: 100%;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+.tr-param__slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #a080ff;
+  border: 2px solid #1a1a2e;
+  cursor: pointer;
+}
+.tr-param__val {
+  font-size: 10px;
+  color: #8888aa;
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tr-param__select {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  color: #c0c0e8;
+  font-size: 11px;
+  padding: 4px 6px;
+  cursor: pointer;
+  outline: none;
+}
+.tr-param__select:focus { border-color: #7070ff; }

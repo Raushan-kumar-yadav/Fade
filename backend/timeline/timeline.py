@@ -10,6 +10,57 @@ class Timeline:
         self.name = name
         self.tracks: list[BaseTrack] = []
         self.playheadFrame = 0
+        # Timeline-level transitions  
+        self.transitions: list = []   # list[Transition]
+
+    #   Clip lookup 
+
+    def findClip(self, clipId: str):
+        """Return (clip, track) or (None, None)."""
+        for track in self.tracks:
+            for clip in track.clips:
+                if clip.clipId == clipId:
+                    return clip, track
+        return None, None
+
+    #   Transition management  
+
+    def addTransition(self, transition) -> None:
+        """Add or replace the transition for the same clip pair."""
+        self.transitions = [
+            t for t in self.transitions
+            if not (t.clipA_id == transition.clipA_id and
+                    t.clipB_id == transition.clipB_id)
+        ]
+        self.transitions.append(transition)
+
+    def removeTransition(self, transId: str) -> None:
+        self.transitions = [t for t in self.transitions if t.transId != transId]
+
+    def getTransitionAt(self, frame: int):
+         
+        for tr in self.transitions:
+            clipA, _ = self.findClip(tr.clipA_id)
+            clipB, _ = self.findClip(tr.clipB_id)
+            if clipA is None or clipB is None:
+                continue
+            start = tr.transitionStart(clipA.endFrame)
+            end   = tr.transitionEnd(clipA.endFrame)
+            if start <= frame < end:
+                prog = tr.progress(frame, clipA.endFrame)
+                return (tr, prog, clipA, clipB)
+        return None
+
+    def getTransitionsForTrack(self, trackId: str) -> list:
+        """Return transitions where clipA *or* clipB belongs to the given track."""
+        result = []
+        for tr in self.transitions:
+            _, trackA = self.findClip(tr.clipA_id)
+            _, trackB = self.findClip(tr.clipB_id)
+            if (trackA and getattr(trackA, 'trackId', None) == trackId) or \
+               (trackB and getattr(trackB, 'trackId', None) == trackId):
+                result.append(tr)
+        return result
 
     # Track management
 
@@ -32,7 +83,6 @@ class Timeline:
     # Rendering  
 
     def render(self, canvas, frame: int) -> None:
-      
         for track in reversed(self.tracks):
             if not track.muted:
                 track.render(canvas, frame)
@@ -45,14 +95,15 @@ class Timeline:
             "name": self.name,
             "playheadFrame": self.playheadFrame,
             "tracks": [t.toDict() for t in self.tracks],
+            "transitions": [t.toDict() for t in self.transitions],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "Timeline":
         from backend.timeline.tracks.videoTrack import VideoTrack
         from backend.timeline.tracks.audioTrack import AudioTrack
+        from backend.timeline.transitions.transition import Transition
 
-         
         _TRACK_REGISTRY = {
             "video": VideoTrack,
             "audio": AudioTrack,
@@ -68,8 +119,17 @@ class Timeline:
             if trackCls:
                 t.tracks.append(trackCls.fromDict(trackData))
 
-        return t
+        # Load timeline-level transitions
+        for td in data.get("transitions", []):
+            t.transitions.append(Transition.fromDict(td))
 
+        # Back-compat: migrate per-track transitions to timeline level
+        for track in t.tracks:
+            for tr in getattr(track, 'transitions', []):
+                if not any(x.transId == tr.transId for x in t.transitions):
+                    t.transitions.append(tr)
+
+        return t
 
     def __repr__(self) -> str:
         return (

@@ -1,0 +1,20 @@
+// slide_left.sksl — B slides in from the right, pushing A out to the left
+uniform shader srcA;
+uniform shader srcB;
+uniform float  progress;
+uniform float2 resolution;
+
+half4 main(float2 xy) {
+    // A moves left by progress * width
+    float2 aXY = float2(xy.x + progress * resolution.x, xy.y);
+    // B starts at right edge and slides in
+    float2 bXY = float2(xy.x + (progress - 1.0) * resolution.x, xy.y);
+
+    // Sample with clamp-to-edge by checking bounds
+    bool aValid = aXY.x >= 0.0 && aXY.x < resolution.x;
+    bool bValid = bXY.x >= 0.0 && bXY.x < resolution.x;
+
+    if (bValid) return srcB.eval(bXY);
+    if (aValid) return srcA.eval(aXY);
+    return half4(0, 0, 0, 1);
+}

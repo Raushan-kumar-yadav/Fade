@@ -8,7 +8,7 @@ import AudioWorkspace     from './workspaces/AudioWorkspace'
 import ExportWorkspace    from './workspaces/ExportWorkspace'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
-import { SelectionContext, type SelectedClip } from './context/selectionContext'
+import { SelectionContext, type SelectedItem } from './context/selectionContext'
 import ToolboxWidget      from './workspaces/tools/ToolboxWidget'
 import './App.css'
 
@@ -20,7 +20,7 @@ export default function App() {
   const [activeTool,    setActiveTool]    = useState<ActiveTool>('pointer')
   const [lastShapeTool, setLastShapeTool] = useState<ActiveTool>('shape:rect')
   const [showToolbox,   setShowToolbox]   = useState(true)
-  const [selected,      setSelected]      = useState<SelectedClip | null>(null)
+  const [selected,      setSelected]      = useState<SelectedItem | null>(null)
   const [penSubMode,    setPenSubMode]    = useState<PenSubMode>('pen:add')
   const [penOutputMode, setPenOutputMode] = useState<PenOutputMode>('clip')
 

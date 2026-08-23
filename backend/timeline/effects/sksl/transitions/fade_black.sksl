@@ -1,0 +1,17 @@
+// fade_black.sksl — fade to black then fade in
+// progress 0→0.5: A fades out; 0.5→1: B fades in
+uniform shader srcA;
+uniform shader srcB;
+uniform float  progress;
+
+half4 main(float2 xy) {
+    half4 a = srcA.eval(xy);
+    half4 b = srcB.eval(xy);
+    if (progress < 0.5) {
+        float t = progress * 2.0;          // 0→1 during first half
+        return mix(a, half4(0,0,0,1), half(t));
+    } else {
+        float t = (progress - 0.5) * 2.0; // 0→1 during second half
+        return mix(half4(0,0,0,1), b, half(t));
+    }
+}

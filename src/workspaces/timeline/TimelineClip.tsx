@@ -123,6 +123,7 @@ const TimelineClip = memo(function TimelineClip({
       });
       // Update InspectorPanel
       setSelected({
+        type:       'clip',
         clipId:     clip.id,
         clipName:   clip.name,
         clipType:   clip.type,
@@ -318,7 +319,7 @@ const TimelineClip = memo(function TimelineClip({
       await effectsApi.add(clip.id, effectType);
       // Select this clip so inspector shows the new effect
       dispatch({ type: 'SELECT_CLIP', clipId: clip.id, trackId: track.id, multi: false });
-      setSelected({ clipId: clip.id, clipName: clip.name, clipType: clip.type, trackIndex });
+      setSelected({ type: 'clip', clipId: clip.id, clipName: clip.name, clipType: clip.type, trackIndex });
       window.dispatchEvent(new CustomEvent('fade:effects-changed', { detail: clip.id }));
     } catch (err) {
       console.error('[TimelineClip] effect drop failed', err);

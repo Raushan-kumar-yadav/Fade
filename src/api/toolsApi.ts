@@ -118,7 +118,7 @@ export const penApi = {
     post('/clips/pen', { startFrame, duration, points, isClosed, style }),
   updatePoints: (clipId: string, points: BezierPoint[], isClosed?: boolean) =>
     patch(`/clips/pen/${clipId}/points`, { points, isClosed }),
-  /** Snapshot current path as an animation keyframe at `frame`. */
+ 
   addPathKeyframe: (clipId: string, frame: number, interp = 'bezier') =>
     post(`/clips/pen/${clipId}/path-keyframe`, { frame, interp }),
   removePathKeyframe: (clipId: string, frame: number) =>
@@ -132,9 +132,9 @@ export interface MaskRequest {
   shape?: 'rect' | 'ellipse' | 'bezier';
   mode?: 'add' | 'subtract';
   inverted?: boolean;
-  feather?:  number;
-  opacity?:  number;
-  points?:   BezierPoint[];
+  feather?: number;
+  opacity?: number;
+  points?: BezierPoint[];
 }
 
 export interface MaskInfo {
@@ -142,11 +142,11 @@ export interface MaskInfo {
   name: string;
   shape: string;
   mode: string;
-  inverted:   boolean;
-  feather:    number;
-  opacity:    number;
+  inverted: boolean;
+  feather: number;
+  opacity: number;
   pointCount: number;
-  points:     BezierPoint[];   // full path  
+  points: BezierPoint[];   // full path  
 }
 
 export interface AddMaskResponse {
@@ -251,3 +251,62 @@ export async function listFonts(): Promise<string[]> {
     return ['Arial', 'Times New Roman', 'Verdana'];
   }
 }
+
+//   Transitions  
+
+export interface TransitionCatalogParam {
+  id: string;
+  displayName: string;
+  type: string;
+  default: number;
+  min: number;
+  max: number;
+}
+
+export interface TransitionCatalogEntry {
+  typeId: string;
+  name: string;
+  icon: string;
+  category: string;
+  desc: string;
+  params: TransitionCatalogParam[];
+}
+
+export interface TransitionInfo {
+  transId: string;
+  typeId: string;
+  duration: number;   // frames
+  clipA_id: string;
+  clipB_id: string;
+  values: Record<string, number>;
+}
+
+export const transitionApi = {
+  catalog: (): Promise<{ transitions: TransitionCatalogEntry[] }> =>
+    fetch(`${base()}/transitions/catalog`).then(r => r.json()),
+
+  list: (trackId: string): Promise<{ transitions: TransitionInfo[] }> =>
+    fetch(`${base()}/tracks/${trackId}/transitions`).then(r => r.json()),
+
+  listAll: (): Promise<{ transitions: TransitionInfo[] }> =>
+    fetch(`${base()}/timeline/transitions`).then(r => r.json()),
+
+  add: (req: {
+    typeId:   string;
+    duration: number;
+    clipA_id: string;
+    clipB_id: string;
+    trackId?:  string;
+  }): Promise<TransitionInfo> =>
+    post('/transitions', req),
+
+  patch: (transId: string, req: {
+    duration?: number;
+    typeId?:   string;
+    params?:   Record<string, number>;
+  }): Promise<TransitionInfo> =>
+    patch(`/transitions/${transId}`, req),
+
+  remove: (transId: string): Promise<void> =>
+    del(`/transitions/${transId}`),
+};

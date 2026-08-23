@@ -1,19 +1,16 @@
 /**
  * selectionContext.ts
- * Shared selected-clip state so Timeline → Inspector can communicate.
+ * Shared selected state so Timeline → Inspector can communicate.
  */
 import { createContext, useContext } from 'react';
 
-export interface SelectedClip {
-  clipId:     string;
-  clipName:   string;
-  clipType:   string;
-  trackIndex: number;
-}
+export type SelectedItem =
+  | { type: 'clip'; clipId: string; clipName: string; clipType: string; trackIndex: number }
+  | { type: 'transition'; id: string; trackId: string; data: any };
 
 export interface SelectionCtx {
-  selected:   SelectedClip | null;
-  setSelected: (c: SelectedClip | null) => void;
+  selected:   SelectedItem | null;
+  setSelected: (c: SelectedItem | null) => void;
 }
 
 export const SelectionContext = createContext<SelectionCtx>({

@@ -272,7 +272,7 @@ function AppliedEffect({ eff, clipId, onRefresh }: {
 
 export default function EffectsPanel() {
   const { selected } = useSelection()
-  const clipId = selected?.clipId ?? null
+  const clipId = selected?.type === 'clip' ? selected.clipId : null
 
   const [catalog,  setCatalog]  = useState<CatalogEntry[]>(FALLBACK_CATALOG)
   const [applied,  setApplied]  = useState<EffectInfo[]>([])

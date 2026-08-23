@@ -1,0 +1,13 @@
+// dissolve.sksl — cross-dissolve transition
+// Uniforms: progress (0→1), softness
+uniform shader srcA;        // outgoing clip
+uniform shader srcB;        // incoming clip
+uniform float  progress;    // 0=all A, 1=all B
+uniform float  softness;    // edge feather width (0-0.5)
+
+half4 main(float2 xy) {
+    half4 a = srcA.eval(xy);
+    half4 b = srcB.eval(xy);
+    float t = clamp((progress - softness * 0.5) / max(1.0 - softness, 0.001), 0.0, 1.0);
+    return mix(a, b, half(t));
+}

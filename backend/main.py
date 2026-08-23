@@ -383,10 +383,72 @@ def _get_frame_data(frame: int) -> dict:
 
             clips_out.append(clip_data)
 
+    # ── Transition detection ──────────────────────────────────────────────────
+    # Use timeline-level getTransitionAt so clipA and clipB can be on any track.
+    transition_desc = None
+    result = tl.getTransitionAt(frame)
+    if result is not None:
+        tr, prog, clipA, clipB = result
 
+        # Build the clip descriptor for clipA (outgoing) if not already present
+        def _build_clip_desc(clip):
+            ctype  = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
+            fpath  = getattr(clip, "filepath", "")
+            if not fpath:
+                aid  = getattr(clip, "assetId", "")
+                ast  = _library.get(aid)
+                if ast:
+                    fpath = getattr(ast, "filepath", "")
+            try:   sf = clip.sourceFrame(frame)
+            except Exception: sf = 0
+            try:   clip.evaluateAll(frame)
+            except Exception: pass
+            try:   op = float(clip.transform.opacity.get())
+            except Exception: op = 1.0
+            return {
+                "clipId":      clip.clipId,
+                "file":        fpath,
+                "type":        ctype,
+                "sourceFrame": sf,
+                "opacity":     op,
+                "blendMode":   0,
+                "transform":   {"x":0,"y":0,"scaleX":1,"scaleY":1,"rotation":0,"anchorX":0,"anchorY":0},
+                "effects":     _serialize_effects(clip, frame),
+            }
 
+        # Ensure both clip descriptors are in clips_out
+        ids_in_out = {c["clipId"] for c in clips_out}
+        if clipA.clipId not in ids_in_out:
+            clips_out.append(_build_clip_desc(clipA))
+        if clipB.clipId not in ids_in_out:
+            clips_out.append(_build_clip_desc(clipB))
 
-    return {"frame": frame, "fps": fps, "width": width, "height": height, "clips": clips_out}
+        # Build transition descriptor (progress + shader-specific uniforms)
+        uniforms = [{"id": "progress", "values": [prog]}]
+        for pid, pdef in tr.params().items():
+            uniforms.append({"id": pid, "values": [float(pdef["value"])]})
+        uniforms.append({"id": "resolution", "values": [float(width), float(height)]})
+
+        transition_desc = {
+            "typeId":    tr.typeId,
+            "transId":   tr.transId,
+            "clipA_id":  clipA.clipId,
+            "clipB_id":  clipB.clipId,
+            "progress":  prog,
+            "uniforms":  uniforms,
+        }
+
+    result_dict: dict = {
+        "frame":  frame,
+        "fps":    fps,
+        "width":  width,
+        "height": height,
+        "clips":  clips_out,
+    }
+    if transition_desc:
+        result_dict["transition"] = transition_desc
+
+    return result_dict
 
 
 #   FastAPI app  
@@ -1643,6 +1705,107 @@ def removeEffect(clipId: str, effectId: str):
     if len(clip.effects) == before:
         raise HTTPException(404, "Effect not found")
     return {"status": "ok"}
+
+
+# ── Transitions  
+
+def _find_track(trackId: str):
+    tl = engine.activeTimeline if engine else None
+    if tl is None:
+        raise HTTPException(503, "No active timeline")
+    for track in tl.tracks:
+        if getattr(track, "trackId", None) == trackId:
+            return track
+    raise HTTPException(404, f"Track {trackId!r} not found")
+
+
+@app.get("/transitions/catalog")
+def transitionsCatalog():
+    from backend.timeline.transitions.transition import TRANSITION_CATALOG
+    return {"transitions": TRANSITION_CATALOG}
+
+class TransitionAddRequest(BaseModel):
+    typeId:   str
+    duration: int = 30      # frames
+    clipA_id: str
+    clipB_id: str
+    trackId:  str | None = None  # kept for backward-compat but unused
+
+class TransitionPatchRequest(BaseModel):
+    duration: int | None = None
+    typeId:   str | None = None
+    params:   dict | None = None
+
+
+@app.post("/transitions")
+def addTransition(req: TransitionAddRequest):
+    from backend.timeline.transitions.transition import Transition
+    tl = engine.activeTimeline if engine else None
+    if tl is None:
+        raise HTTPException(503, "No active timeline")
+    # Verify both clips exist
+    clipA, _ = tl.findClip(req.clipA_id)
+    clipB, _ = tl.findClip(req.clipB_id)
+    if clipA is None:
+        raise HTTPException(404, f"Clip A '{req.clipA_id}' not found")
+    if clipB is None:
+        raise HTTPException(404, f"Clip B '{req.clipB_id}' not found")
+    tr = Transition(
+        typeId   = req.typeId,
+        duration = req.duration,
+        clipA_id = req.clipA_id,
+        clipB_id = req.clipB_id,
+    )
+    tl.addTransition(tr)
+    return tr.toDict()
+
+
+@app.get("/tracks/{trackId}/transitions")
+def listTransitions(trackId: str):
+    tl = engine.activeTimeline if engine else None
+    if tl is None:
+        return {"transitions": []}
+    trs = tl.getTransitionsForTrack(trackId)
+    return {"transitions": [t.toDict() for t in trs]}
+
+
+@app.get("/timeline/transitions")
+def listAllTransitions():
+    """List all transitions in the active timeline (cross-track)."""
+    tl = engine.activeTimeline if engine else None
+    if tl is None:
+        return {"transitions": []}
+    return {"transitions": [t.toDict() for t in tl.transitions]}
+
+
+@app.patch("/transitions/{transId}")
+def patchTransition(transId: str, req: TransitionPatchRequest):
+    tl = engine.activeTimeline if engine else None
+    if tl is None:
+        raise HTTPException(503, "No active timeline")
+    for tr in tl.transitions:
+        if tr.transId == transId:
+            if req.duration is not None:
+                tr.duration = max(1, req.duration)
+            if req.typeId is not None:
+                tr.typeId = req.typeId
+            if req.params:
+                for k, v in req.params.items():
+                    tr.setParam(k, v)
+            return tr.toDict()
+    raise HTTPException(404, f"Transition {transId!r} not found")
+
+
+@app.delete("/transitions/{transId}")
+def deleteTransition(transId: str):
+    tl = engine.activeTimeline if engine else None
+    if tl is None:
+        raise HTTPException(503, "No active timeline")
+    before = len(tl.transitions)
+    tl.removeTransition(transId)
+    if len(tl.transitions) < before:
+        return {"status": "ok"}
+    raise HTTPException(404, f"Transition {transId!r} not found")
 
 
 # Waveform  

@@ -21,7 +21,7 @@ export interface AssetItem {
   assetId: string;
   filename: string;
   filepath: string;
-  type: "video" | "image" | "audio" | "subtitle" | "unknown";
+  type: "video" | "image" | "audio" | "subtitle" | "unknown" | "svg";
 }
 
 export interface PlaybackState {
@@ -209,13 +209,13 @@ export async function getPlaybackState(): Promise<PlaybackState> {
   return r.json();
 }
 
-// ── Viewport frame (single-frame scrub, not streaming) ────────────────────────
+//   Viewport frame  
 
 export function frameUrl(frame: number): string {
   return `${base()}/frame/${frame}`;
 }
 
-// ── WebSocket preview stream ──────────────────────────────────────────────────
+//   WebSocket preview stream  
 
 export function openPreviewSocket(
   onFrame: (blob: Blob) => void,
@@ -229,9 +229,9 @@ export function openPreviewSocket(
   return ws;
 }
 
-// ── Preview quality ───────────────────────────────────────────────────────────
+ 
 
-/** Set decode resolution scale: 1.0=full, 0.5=half, 0.25=quarter, 0.125=eighth */
+ 
 export async function setPreviewScale(scale: number): Promise<void> {
   await fetch(`${base()}/preview/scale`, {
     method: 'POST',
@@ -240,7 +240,7 @@ export async function setPreviewScale(scale: number): Promise<void> {
   });
 }
 
-/** Set playback speed: 0.25, 0.5, 1.0, 2.0 */
+/** Set playback speed  */
 export async function setPlaybackSpeed(speed: number): Promise<void> {
   await fetch(`${base()}/playback/speed`, {
     method: 'POST',
@@ -249,7 +249,7 @@ export async function setPlaybackSpeed(speed: number): Promise<void> {
   });
 }
 
-/** Set in/out loop points. Pass null to clear. */
+/** Set in/out loop points  */
 export async function setPlaybackInOut(
   inPoint: number | null,
   outPoint: number | null,

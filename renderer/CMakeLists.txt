@@ -4,9 +4,9 @@ project(render_engine VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# skia.lib was built with /MDd (DynamicDebug) — match it to avoid CRT mismatch.
-# Node.js addons must use the same CRT as the linked static libs.
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebugDLL")
+# skia.lib from out/Release (is_debug=false) uses /MD (Release DLL CRT).
+# The addon MUST match to avoid CRT mismatch link errors.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 set(DEPS "${CMAKE_CURRENT_SOURCE_DIR}/deps")
@@ -91,9 +91,8 @@ target_compile_definitions(render_engine PRIVATE
     NOMINMAX
     VK_USE_PLATFORM_WIN32_KHR
     SK_VULKAN
-    # Match skia.lib build (is_debug=false). Without these, SkLoadUserConfig.h
-    # defines SK_DEBUG because /MDd does not define NDEBUG, activating NVRefCnt
-    # destructor asserts that crash on valid Release-mode refcount patterns.
+    # Match skia.lib build (is_debug=false). These prevent SkLoadUserConfig.h
+    # from defining SK_DEBUG, which activates NVRefCnt destructor asserts.
     SK_RELEASE
     NDEBUG
 )

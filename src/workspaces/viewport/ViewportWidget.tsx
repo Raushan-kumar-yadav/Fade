@@ -76,11 +76,11 @@ export default function ViewportWidget() {
   // Throttled React state update  
   const lastStateFrameRef = useRef<number>(-1);
 
-  // ── Native render engine (C++ Vulkan compositor) ──────────────────────────
+  // Native render engine 
   const [isNativeRender, setIsNativeRender] = useState(false);
-  const nativeBufferRef  = useRef<ArrayBuffer | null>(null);
-  const nativeWidthRef   = useRef(1920);
-  const nativeHeightRef  = useRef(1080);
+  const nativeBufferRef = useRef<ArrayBuffer | null>(null);
+  const nativeWidthRef = useRef(1920);
+  const nativeHeightRef = useRef(1080);
 
   // Check if native addon is available and cache the SharedArrayBuffer
   useEffect(() => {
@@ -99,7 +99,7 @@ export default function ViewportWidget() {
     });
   }, []);
 
-  // Subscribe to frame-ready events from C++ compositor
+  // Subscribe to frame-ready events  
   useEffect(() => {
     if (!isNativeRender) return;
     const api = (window as any).electronAPI;
@@ -109,7 +109,7 @@ export default function ViewportWidget() {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      // Get fresh pixel buffer from native compositor (Buffer copy per frame)
+      // Get fresh pixel buffer from native compositor 
       const buf: ArrayBuffer | null = await api.getRenderBuffer();
       if (!buf) return;
 
@@ -137,12 +137,8 @@ export default function ViewportWidget() {
     return cleanup;
   }, [isNativeRender]);
 
-  // WebSocket preview path removed — native C++ compositor is the sole renderer.
-  // The C++ play loop fetches frame descriptors via TCP, decodes video with
-  // D3D11VA HW decoder, composites with Skia/Vulkan, and pushes pixels to the
-  // viewport via onFrameReady. No Python-side rendering or WS streaming needed.
-
-  // ── Audio engine: create, load clips, keep in sync ────────────────────────
+   
+  // Audio engine  
   useEffect(() => {
     const port = (window as any).__FADE_PORT__ ?? 8000
     const engine = new AudioEngine(fps, port)
@@ -160,7 +156,7 @@ export default function ViewportWidget() {
     }
 
     loadClips()
-    const pollId = setInterval(loadClips, 3000)  // re-sync every 3s
+    const pollId = setInterval(loadClips, 3000)  
     const onTracksChanged = () => loadClips()
     window.addEventListener('fade:tracks-changed', onTracksChanged)
 
@@ -170,7 +166,7 @@ export default function ViewportWidget() {
       engine.destroy()
       audioRef.current = null
     }
-  }, [])  // mount-only; fps updated via engine.setFps()
+  }, [])   
 
   //   Poll playback state 
   useEffect(() => {
@@ -315,8 +311,7 @@ export default function ViewportWidget() {
 
   useEffect(() => { fitToFrame(); }, [fitToFrame]);
 
-  // Scroll to zoom — native listener required so e.preventDefault() works
-  // (React attaches onWheel as passive by default which blocks preventDefault)
+   
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey && !spaceDown.current) return;
     e.preventDefault();
@@ -440,15 +435,15 @@ export default function ViewportWidget() {
           />
           {/* Pen / Mask overlay   */}
           {activeTool === 'shape:path' && (
-            penOutputMode === 'mask' && selected ? (
+            penOutputMode === 'mask' && selected?.type === 'clip' ? (
               <OverlayCanvas
                 mode="mask"
                 clipId={selected.clipId}
                 width={1920}
                 height={1080}
                 currentFrame={currentFrame}
-                startFrame={selected.startFrame ?? 0}
-                duration={selected.duration ?? 150}
+                startFrame={(selected as any).startFrame ?? 0}
+                duration={(selected as any).duration ?? 150}
               />
             ) : (
               <OverlayCanvas

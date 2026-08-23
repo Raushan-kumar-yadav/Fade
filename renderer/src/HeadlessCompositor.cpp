@@ -9,6 +9,7 @@
 #include <core/SkBlendMode.h>
 #include <core/SkCanvas.h>
 #include <core/SkColorSpace.h>
+#include <core/SkData.h>
 #include <core/SkImage.h>
 #include <core/SkM44.h>
 #include <core/SkPaint.h>
@@ -127,10 +128,10 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           decoder =
               std::make_unique<ClipDecoder>(clip.file, m_device.get(), 1.0f);
 
-        // Direct decode: sws_scale
+        // Direct decode
         if (decoder->decodeFrameDirect(clip.sourceFrame, m_renderBuffer.get(),
                                        m_width, m_height)) {
-          // Flip: atomic copy to front buffer before signaling JS
+          // Flip
           std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
           if (m_onFrameReady)
             m_onFrameReady(fd.frame);
@@ -156,12 +157,11 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     if (clip.type == ClipDesc::Type::Solid ||
         clip.type == ClipDesc::Type::Text ||
         clip.type == ClipDesc::Type::Shape ||
-        clip.type == ClipDesc::Type::Pen ||
-        clip.type == ClipDesc::Type::Svg) {
+        clip.type == ClipDesc::Type::Pen || clip.type == ClipDesc::Type::Svg) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
     }
-    // Safety: never try to open an empty path — would crash the decoder
+    // Safety
     if (clip.file.empty()) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
@@ -234,20 +234,52 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   }
 
   //   GPU path
+  m_gpuKeepAliveSurfaces.clear();
+  m_gpuKeepAliveImages.clear();
   SkCanvas *canvas = m_surface->getCanvas();
   canvas->clear(SK_ColorBLACK);
 
+  // ── Collect clip-ids that are part of the active transition ──────────────
+  // They will be skipped from the normal per-clip draw loop and blended below.
+  std::string transClipA, transClipB;
+  if (fd.transition.valid) {
+    transClipA = fd.transition.clipA_id;
+    transClipB = fd.transition.clipB_id;
+  }
+
+  // Helper
+  auto clipToImage = [&](const ClipPixels &cp) -> sk_sp<SkImage> {
+    const ClipDesc &cl = *cp.clip;
+    const bool isGenerative =
+        (cl.type == ClipDesc::Type::Solid || cl.type == ClipDesc::Type::Text ||
+         cl.type == ClipDesc::Type::Shape || cl.type == ClipDesc::Type::Pen ||
+         cl.type == ClipDesc::Type::Svg);
+    if (isGenerative)
+      return renderGenerativeToImage(cl);
+    if (cp.rgba.empty())
+      return nullptr;
+    const size_t rowBytes =
+        static_cast<size_t>(cp.imgW > 0 ? cp.imgW : m_width) * 4;
+    const size_t dataBytes = rowBytes * (cp.imgH > 0 ? cp.imgH : m_height);
+    SkImageInfo ii = SkImageInfo::Make(
+        cp.imgW > 0 ? cp.imgW : m_width, cp.imgH > 0 ? cp.imgH : m_height,
+        kRGBA_8888_SkColorType, kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
+    sk_sp<SkData> px = SkData::MakeWithCopy(cp.rgba.data(), dataBytes);
+    return SkImages::RasterFromData(ii, px, rowBytes);
+  };
+
+  // Normal per-clip draw
   for (const auto &cp : decoded) {
     const ClipDesc &cl = *cp.clip;
-    const bool hasEffects = !cl.effects.empty();
+    if (fd.transition.valid &&
+        (cl.clipId == transClipA || cl.clipId == transClipB))
+      continue;
 
-    // For generative clips with effects: render to an intermediate image first,
-    // run the SkSL chain on it, then composite the result.
-    const bool isGenerative = (cl.type == ClipDesc::Type::Solid  ||
-                               cl.type == ClipDesc::Type::Text   ||
-                               cl.type == ClipDesc::Type::Shape  ||
-                               cl.type == ClipDesc::Type::Pen    ||
-                               cl.type == ClipDesc::Type::Svg);
+    const bool hasEffects = !cl.effects.empty();
+    const bool isGenerative =
+        (cl.type == ClipDesc::Type::Solid || cl.type == ClipDesc::Type::Text ||
+         cl.type == ClipDesc::Type::Shape || cl.type == ClipDesc::Type::Pen ||
+         cl.type == ClipDesc::Type::Svg);
 
     if (isGenerative && hasEffects) {
       auto genImg = renderGenerativeToImage(cl);
@@ -290,12 +322,78 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
                      /*useGpu=*/true, fd.frame);
   }
 
+  //   Transition blend
+  if (fd.transition.valid) {
+    std::cerr << "[TRANS] BEGIN transition clipA=" << transClipA
+              << " clipB=" << transClipB
+              << " progress=" << fd.transition.progress << "\n";
+    const ClipPixels *dpA = nullptr;
+    const ClipPixels *dpB = nullptr;
+    for (const auto &dp : decoded) {
+      if (dp.clip->clipId == transClipA)
+        dpA = &dp;
+      if (dp.clip->clipId == transClipB)
+        dpB = &dp;
+    }
+    std::cerr << "[TRANS] dpA=" << (dpA ? "found" : "NULL")
+              << " dpB=" << (dpB ? "found" : "NULL") << "\n";
+    if (dpA && dpB) {
+      std::cerr << "[TRANS] clipToImage(A)...\n";
+      sk_sp<SkImage> imgA = clipToImage(*dpA);
+      std::cerr << "[TRANS] clipToImage(A) done: " << (imgA ? "OK" : "NULL")
+                << (imgA ? (" " + std::to_string(imgA->width()) + "x" +
+                            std::to_string(imgA->height()))
+                         : "")
+                << "\n";
+      std::cerr << "[TRANS] clipToImage(B)...\n";
+      sk_sp<SkImage> imgB = clipToImage(*dpB);
+      std::cerr << "[TRANS] clipToImage(B) done: " << (imgB ? "OK" : "NULL")
+                << (imgB ? (" " + std::to_string(imgB->width()) + "x" +
+                            std::to_string(imgB->height()))
+                         : "")
+                << "\n";
+
+      // Apply per-clip effects before blending
+      if (imgA && !dpA->clip->effects.empty()) {
+        std::cerr << "[TRANS] applyEffects(A)...\n";
+        imgA = applyEffects(imgA, *dpA->clip, fd.frame);
+        std::cerr << "[TRANS] applyEffects(A) done\n";
+      }
+      if (imgB && !dpB->clip->effects.empty()) {
+        std::cerr << "[TRANS] applyEffects(B)...\n";
+        imgB = applyEffects(imgB, *dpB->clip, fd.frame);
+        std::cerr << "[TRANS] applyEffects(B) done\n";
+      }
+
+      std::cerr << "[TRANS] applyTransition()...\n";
+      sk_sp<SkImage> blended = applyTransition(imgA, imgB, fd.transition);
+      std::cerr << "[TRANS] applyTransition done: " << (blended ? "OK" : "NULL")
+                << "\n";
+      if (blended) {
+        SkPaint p;
+        std::cerr << "[TRANS] drawImage blended...\n";
+        canvas->drawImage(blended, 0, 0,
+                          SkSamplingOptions(SkFilterMode::kLinear), &p);
+        std::cerr << "[TRANS] drawImage blended done\n";
+      }
+    }
+    std::cerr << "[TRANS] END transition block\n";
+  }
+
   // GPU sync
-  m_skia->getDirectContext()->flushAndSubmit();
+  std::cerr << "[RENDER] final flushAndSubmit (sync)...\n";
+  m_skia->getDirectContext()->flushAndSubmit(GrSyncCpu::kYes); // SYNC
+
+  // NOW safe
+  m_gpuKeepAliveSurfaces.clear();
+  m_gpuKeepAliveImages.clear();
+
+  std::cerr << "[RENDER] readPixels...\n";
   SkImageInfo readInfo = SkImageInfo::Make(
       m_width, m_height, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
   bool ok = m_surface->readPixels(readInfo, m_renderBuffer.get(),
                                   static_cast<size_t>(m_width) * 4, 0, 0);
+  std::cerr << "[RENDER] readPixels: " << (ok ? "OK" : "FAILED") << "\n";
   if (!ok) {
     LOG_ERROR("readPixels failed for frame " << fd.frame);
     return;
@@ -321,17 +419,16 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
   const size_t dataBytes = rowBytes * imgH;
   SkImageInfo info = SkImageInfo::Make(imgW, imgH, kRGBA_8888_SkColorType,
                                        kPremul_SkAlphaType);
-  SkBitmap bmp;
-  bmp.allocPixels(info, rowBytes);
-  std::memcpy(bmp.getPixels(), rgba, dataBytes);
-  bmp.setImmutable();
-  sk_sp<SkImage> img = bmp.asImage();
+
+  sk_sp<SkData> pixData = SkData::MakeWithCopy(rgba, dataBytes);
+  sk_sp<SkImage> img = SkImages::RasterFromData(info, pixData, rowBytes);
   if (!img)
     return;
 
-  // Apply SkSL effects (GPU-side only)
-  if (useGpu && !clip.effects.empty())
+  // Apply SkSL effects
+  if (!clip.effects.empty()) {
     img = applyEffects(img, clip, frame);
+  }
 
   // Build transform matrix
   canvas->save();
@@ -379,21 +476,20 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
 
 //   SkSL effect chain
 
-// ── Load and compile a single SkSL shader, with caching ──────────────────────
-sk_sp<SkRuntimeEffect> HeadlessCompositor::getOrCompileEffect(const std::string& typeId) {
+//   Load and compile a single SkSL shader, with caching
+sk_sp<SkRuntimeEffect>
+HeadlessCompositor::getOrCompileEffect(const std::string &typeId) {
   auto it = m_effectCache.find(typeId);
   if (it != m_effectCache.end())
     return it->second;
 
-  // Try to read  <skslDir>/<typeId>.sksl
-  // First resolve the manifest to get the actual shader filename
   std::string manifestPath = m_skslDir + "/" + typeId + ".json";
-  std::string shaderFile   = typeId + ".sksl";  // fallback
+  std::string shaderFile = typeId + ".sksl"; // fallback
   {
     std::ifstream mf(manifestPath);
     if (mf.good()) {
       std::string content((std::istreambuf_iterator<char>(mf)),
-                           std::istreambuf_iterator<char>());
+                          std::istreambuf_iterator<char>());
       // Minimal JSON parse: look for "shader":
       auto pos = content.find("\"shader\"");
       if (pos != std::string::npos) {
@@ -412,7 +508,7 @@ sk_sp<SkRuntimeEffect> HeadlessCompositor::getOrCompileEffect(const std::string&
     return nullptr;
   }
   std::string src((std::istreambuf_iterator<char>(f)),
-                   std::istreambuf_iterator<char>());
+                  std::istreambuf_iterator<char>());
 
   auto [effect, err] = SkRuntimeEffect::MakeForShader(SkString(src.c_str()));
   if (!effect) {
@@ -425,149 +521,330 @@ sk_sp<SkRuntimeEffect> HeadlessCompositor::getOrCompileEffect(const std::string&
   return effect;
 }
 
-// ── Apply a single effect pass (Qteee SkRuntimeShaderBuilder pattern) ────────
+//   Apply a single effect pass
 sk_sp<SkImage> HeadlessCompositor::applyOneEffect(sk_sp<SkImage> src,
-                                                  const EffectParam& ep,
+                                                  const EffectParam &ep,
                                                   int64_t frame) {
-  if (!src) return src;
+  if (!src)
+    return src;
 
-  // Strip optional "sksl:" prefix — typeId is e.g. "gaussian_blur"
+  // Strip optional "sksl:" prefix
   std::string tid = ep.typeId;
-  if (tid.rfind("sksl:", 0) == 0) tid = tid.substr(5);
+  if (tid.rfind("sksl:", 0) == 0)
+    tid = tid.substr(5);
+
+  std::cerr << "[FX] applyOneEffect: " << tid << " frame=" << frame
+            << " src=" << src->width() << "x" << src->height() << "\n";
 
   sk_sp<SkRuntimeEffect> effect = getOrCompileEffect(tid);
-  if (!effect) return src;
+  if (!effect)
+    return src;
 
-  // ── Qteee pattern: use SkRuntimeShaderBuilder ─────────────────────────────
-  // (same as EffectInstance::apply in Qteee-Vulkan)
+  const int w = src->width();
+  const int h = src->height();
+
+  // Build shader builder once
   SkRuntimeShaderBuilder builder(effect);
 
-  // Bind "source" child (primary input)
+  // Bind source image as child shader
   auto srcShader = src->makeShader(SkSamplingOptions(SkFilterMode::kLinear));
-  // Bind every declared child to the source (handles "source", "_originalSource", etc.)
-  for (const auto& ch : effect->children()) {
-    // ch.name is std::string_view — convert to std::string for builder.child()
-    try { builder.child(std::string(ch.name)) = srcShader; } catch (...) {}
-  }
+  if (!srcShader)
+    return src;
 
-  // Push user-set uniform values from the frame descriptor
-  for (const auto& uv : ep.uniforms) {
-    if (!effect->findUniform(uv.id.c_str())) continue;
+  for (const auto &ch : effect->children())
+    builder.child(std::string(ch.name)) = srcShader;
+
+  // User uniforms
+  for (const auto &uv : ep.uniforms) {
+    if (!effect->findUniform(uv.id.c_str()))
+      continue;
     const size_t n = uv.values.size();
-    if      (n == 1) builder.uniform(uv.id.c_str()) = uv.values[0];
-    else if (n == 2) builder.uniform(uv.id.c_str()) = SkV2{uv.values[0], uv.values[1]};
-    else if (n == 3) builder.uniform(uv.id.c_str()) = SkV3{uv.values[0], uv.values[1], uv.values[2]};
-    else if (n >= 4) builder.uniform(uv.id.c_str()) = SkV4{uv.values[0], uv.values[1], uv.values[2], uv.values[3]};
+    if (n == 1)
+      builder.uniform(uv.id.c_str()) = uv.values[0];
+    else if (n == 2)
+      builder.uniform(uv.id.c_str()) = SkV2{uv.values[0], uv.values[1]};
+    else if (n == 3)
+      builder.uniform(uv.id.c_str()) =
+          SkV3{uv.values[0], uv.values[1], uv.values[2]};
+    else if (n >= 4)
+      builder.uniform(uv.id.c_str()) =
+          SkV4{uv.values[0], uv.values[1], uv.values[2], uv.values[3]};
   }
 
-  // Inject Qteee-style system uniforms (only if declared in the shader)
-  auto tryFloat = [&](const char* name, float val) {
-    if (effect->findUniform(name)) builder.uniform(name) = val;
+  // System uniforms
+  auto tryFloat = [&](const char *name, float val) {
+    if (effect->findUniform(name))
+      builder.uniform(name) = val;
   };
-  auto tryVec2 = [&](const char* name, float x, float y) {
-    if (effect->findUniform(name)) builder.uniform(name) = SkV2{x, y};
+  auto tryVec2 = [&](const char *name, float x, float y) {
+    if (effect->findUniform(name))
+      builder.uniform(name) = SkV2{x, y};
   };
-
   const float t = static_cast<float>(frame) / std::max(m_fps, 1.f);
-  tryFloat("_frame",       static_cast<float>(frame));
-  tryFloat("frame",        static_cast<float>(frame));
-  tryFloat("time",         t);
-  tryFloat("iTime",        t);
-  tryFloat("_clipWidth",   static_cast<float>(src->width()));
-  tryFloat("_clipHeight",  static_cast<float>(src->height()));
-  tryVec2 ("iResolution",  static_cast<float>(src->width()),
-                           static_cast<float>(src->height()));
-  tryVec2 ("resolution",   static_cast<float>(src->width()),
-                           static_cast<float>(src->height()));
+  tryFloat("_frame", static_cast<float>(frame));
+  tryFloat("frame", static_cast<float>(frame));
+  tryFloat("time", t);
+  tryFloat("iTime", t);
+  tryFloat("_clipWidth", static_cast<float>(w));
+  tryFloat("_clipHeight", static_cast<float>(h));
+  tryVec2("iResolution", static_cast<float>(w), static_cast<float>(h));
+  tryVec2("resolution", static_cast<float>(w), static_cast<float>(h));
 
   auto shader = builder.makeShader();
   if (!shader) {
-    LOG_ERROR("SkRuntimeShaderBuilder::makeShader() failed for [" << tid << "]");
+    LOG_ERROR("makeShader() failed for [" << tid << "]");
     return src;
   }
 
-  // ── Render into offscreen GPU surface (Qteee: SkSurfaces::RenderTarget) ───
-  const int w = src->width();
-  const int h = src->height();
-  SkImageInfo info = SkImageInfo::Make(w, h, kRGBA_8888_SkColorType,
-                                       kPremul_SkAlphaType);
-  GrDirectContext* grCtx = m_skia ? m_skia->getDirectContext() : nullptr;
-
+  // GPU offscreen via GrDirectContext
+  SkImageInfo info =
+      SkImageInfo::Make(w, h, kRGBA_8888_SkColorType, kPremul_SkAlphaType,
+                        SkColorSpace::MakeSRGB());
   sk_sp<SkSurface> offscreen;
-  if (grCtx)
-    offscreen = SkSurfaces::RenderTarget(grCtx, skgpu::Budgeted::kYes, info);
-  if (!offscreen)
-    offscreen = SkSurfaces::Raster(info);  // CPU fallback
+  if (m_skia && m_skia->getDirectContext()) {
+    offscreen = SkSurfaces::RenderTarget(m_skia->getDirectContext(),
+                                         skgpu::Budgeted::kYes, info);
+  }
+  // CPU fallback only if GPU surface creation fails
   if (!offscreen) {
-    LOG_ERROR("Cannot create offscreen surface for effect [" << tid << "]");
+    offscreen = SkSurfaces::Raster(info);
+  }
+  if (!offscreen) {
+    LOG_ERROR("Cannot create offscreen for effect [" << tid << "]");
     return src;
   }
 
   SkPaint paint;
-  paint.setShader(shader);
+  paint.setShader(std::move(shader));
   offscreen->getCanvas()->clear(SK_ColorTRANSPARENT);
   offscreen->getCanvas()->drawPaint(paint);
 
-  if (grCtx) grCtx->flushAndSubmit();
+  // Flush GPU work then snapshot — avoids dangling GPU refs
+  if (m_skia && m_skia->getDirectContext())
+    m_skia->getDirectContext()->flushAndSubmit();
 
-  return offscreen->makeImageSnapshot();
+  auto result = offscreen->makeImageSnapshot();
+  std::cerr << "[FX] DONE: " << (result ? "OK" : "NULL") << "\n";
+  return result;
 }
 
-// ── Chain all effects on a clip ───────────────────────────────────────────────
+//   Chain all effects on a clip
 sk_sp<SkImage> HeadlessCompositor::applyEffects(sk_sp<SkImage> src,
-                                                const ClipDesc& clip,
+                                                const ClipDesc &clip,
                                                 int64_t frame) {
-  if (clip.effects.empty()) return src;
+  if (clip.effects.empty())
+    return src;
   sk_sp<SkImage> img = src;
-  for (const auto& ep : clip.effects)
+  for (const auto &ep : clip.effects)
     img = applyOneEffect(img, ep, frame);
   return img;
 }
 
-// ── Render a generative clip to an SkImage (for SkSL effect input) ───────────
-// Text, Shape, Pen, Solid, SVG are all drawn to an offscreen surface so that
-// SkSL shaders get a proper pixel buffer to sample from via "source".
-sk_sp<SkImage> HeadlessCompositor::renderGenerativeToImage(const ClipDesc& clip) {
-  SkImageInfo info = SkImageInfo::MakeN32Premul(m_width, m_height,
-                                                SkColorSpace::MakeSRGB());
+sk_sp<SkImage>
+HeadlessCompositor::renderGenerativeToImage(const ClipDesc &clip) {
+  SkImageInfo info =
+      SkImageInfo::MakeN32Premul(m_width, m_height, SkColorSpace::MakeSRGB());
   sk_sp<SkSurface> surf;
   if (m_skia && m_skia->getDirectContext())
     surf = SkSurfaces::RenderTarget(m_skia->getDirectContext(),
                                     skgpu::Budgeted::kYes, info);
   if (!surf)
     surf = SkSurfaces::Raster(info);
-  if (!surf) return nullptr;
+  if (!surf)
+    return nullptr;
 
-  SkCanvas* cv = surf->getCanvas();
+  SkCanvas *cv = surf->getCanvas();
   cv->clear(SK_ColorTRANSPARENT);
 
   switch (clip.type) {
-    case ClipDesc::Type::Solid: {
-      SkPaint p;
-      p.setColor4f({clip.solidR, clip.solidG, clip.solidB, clip.solidA});
-      cv->drawRect(SkRect::MakeWH(m_width, m_height), p);
-      break;
-    }
-    case ClipDesc::Type::Text:
-      fade::drawing::drawText(cv, clip, m_width, m_height);
-      break;
-    case ClipDesc::Type::Shape:
-      fade::drawing::drawShape(cv, clip, m_width, m_height);
-      break;
-    case ClipDesc::Type::Pen:
-      fade::drawing::drawPen(cv, clip, m_width, m_height);
-      break;
-    case ClipDesc::Type::Svg:
-      fade::drawing::drawSvg(cv, clip, m_width, m_height);
-      break;
-    default:
-      break;
+  case ClipDesc::Type::Solid: {
+    SkPaint p;
+    p.setColor4f({clip.solidR, clip.solidG, clip.solidB, clip.solidA});
+    cv->drawRect(SkRect::MakeWH(m_width, m_height), p);
+    break;
+  }
+  case ClipDesc::Type::Text:
+    fade::drawing::drawText(cv, clip, m_width, m_height);
+    break;
+  case ClipDesc::Type::Shape:
+    fade::drawing::drawShape(cv, clip, m_width, m_height);
+    break;
+  case ClipDesc::Type::Pen:
+    fade::drawing::drawPen(cv, clip, m_width, m_height);
+    break;
+  case ClipDesc::Type::Svg:
+    fade::drawing::drawSvg(cv, clip, m_width, m_height);
+    break;
+  default:
+    break;
   }
 
   if (m_skia && m_skia->getDirectContext())
     m_skia->getDirectContext()->flushAndSubmit();
 
   return surf->makeImageSnapshot();
+}
+
+sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
+                                                   sk_sp<SkImage> srcB,
+                                                   const TransitionDesc &td) {
+  if (!srcA || !srcB)
+    return srcA ? srcA : srcB;
+
+  const std::string cacheKey = "transition:" + td.typeId;
+  sk_sp<SkRuntimeEffect> effect;
+
+  auto it = m_effectCache.find(cacheKey);
+  if (it != m_effectCache.end()) {
+    effect = it->second;
+  } else {
+    std::string path = m_skslDir + "/transitions/" + td.typeId + ".sksl";
+    std::ifstream f(path);
+    if (f.good()) {
+      std::string src((std::istreambuf_iterator<char>(f)),
+                      std::istreambuf_iterator<char>());
+      auto [eff, err] = SkRuntimeEffect::MakeForShader(SkString(src.c_str()));
+      if (eff) {
+        LOG_INFO("Compiled transition: " << td.typeId);
+        effect = eff;
+      } else {
+        LOG_ERROR("Transition shader compile error ["
+                  << td.typeId << "]: " << (err.c_str() ? err.c_str() : "?"));
+      }
+    } else {
+      LOG_ERROR("Transition shader not found: " << path);
+    }
+    m_effectCache[cacheKey] = effect;
+  }
+
+  if (!effect) {
+    SkImageInfo info =
+        SkImageInfo::Make(m_width, m_height, kRGBA_8888_SkColorType,
+                          kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
+    GrDirectContext *grCtx = m_skia ? m_skia->getDirectContext() : nullptr;
+    sk_sp<SkSurface> surf;
+    if (grCtx)
+      surf = SkSurfaces::RenderTarget(grCtx, skgpu::Budgeted::kYes, info);
+    if (!surf)
+      surf = SkSurfaces::Raster(info);
+    if (!surf)
+      return srcA;
+    SkCanvas *cv = surf->getCanvas();
+    cv->clear(SK_ColorBLACK);
+    SkPaint pa;
+    pa.setAlphaf(1.f - td.progress);
+    cv->drawImage(srcA, 0, 0, SkSamplingOptions(SkFilterMode::kLinear), &pa);
+    SkPaint pb;
+    pb.setAlphaf(td.progress);
+    cv->drawImage(srcB, 0, 0, SkSamplingOptions(SkFilterMode::kLinear), &pb);
+    if (grCtx)
+      grCtx->flushAndSubmit();
+    return surf->makeImageSnapshot();
+  }
+
+  // GPU shader path
+  std::cerr << "[TRANS-FN] GPU shader path begin\n";
+  SkRuntimeShaderBuilder builder(effect);
+
+  // Convert both sources to clean raster images
+  auto toRaster = [](sk_sp<SkImage> img, const char *label) -> sk_sp<SkImage> {
+    if (!img)
+      return img;
+    const int sw = img->width();
+    const int sh = img->height();
+    SkImageInfo ri =
+        SkImageInfo::Make(sw, sh, kRGBA_8888_SkColorType, kPremul_SkAlphaType,
+                          SkColorSpace::MakeSRGB());
+    const size_t rb = static_cast<size_t>(sw) * 4;
+    sk_sp<SkData> px = SkData::MakeUninitialized(rb * sh);
+    bool ok = img->readPixels(ri, px->writable_data(), rb, 0, 0);
+    if (ok) {
+      std::cerr << "[TRANS-FN] toRaster(" << label << ") OK\n";
+      return SkImages::RasterFromData(ri, px, rb);
+    }
+    std::cerr << "[TRANS-FN] toRaster(" << label << ") FAILED, using as-is\n";
+    return img;
+  };
+  srcA = toRaster(srcA, "A");
+  srcB = toRaster(srcB, "B");
+
+  std::cerr << "[TRANS-FN] makeShader(A)...\n";
+  auto shaderA = srcA->makeShader(SkSamplingOptions(SkFilterMode::kLinear));
+  std::cerr << "[TRANS-FN] makeShader(A): " << (shaderA ? "OK" : "NULL")
+            << "\n";
+  std::cerr << "[TRANS-FN] makeShader(B)...\n";
+  auto shaderB = srcB->makeShader(SkSamplingOptions(SkFilterMode::kLinear));
+  std::cerr << "[TRANS-FN] makeShader(B): " << (shaderB ? "OK" : "NULL")
+            << "\n";
+
+  // Bind named children
+  std::cerr << "[TRANS-FN] binding children (" << effect->children().size()
+            << ")...\n";
+  for (const auto &ch : effect->children()) {
+    std::string name(ch.name);
+    std::cerr << "[TRANS-FN]   child: " << name << "\n";
+    try {
+      if (name == "srcA" || name == "source")
+        builder.child(name) = shaderA;
+      else if (name == "srcB")
+        builder.child(name) = shaderB;
+      else
+        builder.child(name) = shaderA;
+    } catch (...) {
+      std::cerr << "[TRANS-FN]   child bind EXCEPTION\n";
+    }
+  }
+
+  // Push uniforms from TransitionDesc
+  std::cerr << "[TRANS-FN] pushing " << td.uniforms.size() << " uniforms...\n";
+  for (const auto &uv : td.uniforms) {
+    if (!effect->findUniform(uv.id.c_str()))
+      continue;
+    const size_t n = uv.values.size();
+    std::cerr << "[TRANS-FN]   uniform " << uv.id << " n=" << n << "\n";
+    if (n == 1)
+      builder.uniform(uv.id.c_str()) = uv.values[0];
+    else if (n == 2)
+      builder.uniform(uv.id.c_str()) = SkV2{uv.values[0], uv.values[1]};
+    else if (n == 3)
+      builder.uniform(uv.id.c_str()) =
+          SkV3{uv.values[0], uv.values[1], uv.values[2]};
+    else if (n >= 4)
+      builder.uniform(uv.id.c_str()) =
+          SkV4{uv.values[0], uv.values[1], uv.values[2], uv.values[3]};
+  }
+
+  std::cerr << "[TRANS-FN] builder.makeShader()...\n";
+  auto shader = builder.makeShader();
+  std::cerr << "[TRANS-FN] shader: " << (shader ? "OK" : "NULL") << "\n";
+  if (!shader)
+    return srcA;
+
+  SkImageInfo info =
+      SkImageInfo::Make(m_width, m_height, kRGBA_8888_SkColorType,
+                        kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
+  GrDirectContext *grCtx = m_skia ? m_skia->getDirectContext() : nullptr;
+  sk_sp<SkSurface> offscreen;
+  if (grCtx)
+    offscreen = SkSurfaces::RenderTarget(grCtx, skgpu::Budgeted::kYes, info);
+  if (!offscreen)
+    offscreen = SkSurfaces::Raster(info);
+  if (!offscreen)
+    return srcA;
+
+  SkPaint paint;
+  paint.setShader(shader);
+  std::cerr << "[TRANS-FN] drawing to offscreen...\n";
+  offscreen->getCanvas()->clear(SK_ColorTRANSPARENT);
+  offscreen->getCanvas()->drawRect(SkRect::MakeWH(m_width, m_height), paint);
+
+  std::cerr << "[TRANS-FN] flushing (sync)...\n";
+  if (grCtx)
+    grCtx->flushAndSubmit(GrSyncCpu::kYes); // SYNC flush
+  std::cerr << "[TRANS-FN] snapshot...\n";
+  auto result = offscreen->makeImageSnapshot();
+  std::cerr << "[TRANS-FN] DONE: " << (result ? "OK" : "NULL") << "\n";
+  return result;
 }
 
 //   Playback
