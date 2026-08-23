@@ -44,7 +44,7 @@ from backend.history.commandStack import (
     RemoveClipCommand,
 )
 from backend.worker.worker_bus import bus as _worker_bus
-from backend.tools.downloader import YtdlpDownloader
+from backend.tools import YtdlpDownloader, ImageDownloader
 
 engine = Engine()
 
@@ -867,6 +867,10 @@ class DownloadSearchRequest(BaseModel):
     query: str
     numVideos: int = 2
 
+class DownloadImagesRequest(BaseModel):
+    query: str
+    numImages: int = 2
+
 def _mediaType(filepath: str) -> str:
     ext = os.path.splitext(filepath)[1].lower()
     if ext in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}:
@@ -933,6 +937,50 @@ def download_search(req: DownloadSearchRequest):
             "filename": os.path.basename(filepath),
             "title": r["title"],
             "durationFrames": int(r["duration_sec"] * fps),
+        })
+        
+    return {"assets": imported}
+
+
+@app.post("/media/download-images")
+def download_images(req: DownloadImagesRequest):
+    """Search for images and download top N into the global downloads dir."""
+    downloader = ImageDownloader()
+    
+    from pathlib import Path
+    downloads_dir = str(Path.home() / ".fade" / "downloads")
+    
+    results = downloader.search_and_download(
+        query=req.query,
+        num_images=req.numImages,
+        output_dir=downloads_dir,
+    )
+    
+    imported = []
+    for r in results:
+        filepath = r["filepath"]
+        
+        # De-duplicate by path
+        existing_asset = None
+        for a in _library.values():
+            if a.filepath == filepath:
+                existing_asset = a
+                break
+                
+        if existing_asset:
+            assetId = existing_asset.assetId
+        else:
+            assetId = str(uuid.uuid4())
+            asset = MediaAsset(
+                filepath=filepath,
+                assetId=assetId,
+            )
+            _library[assetId] = asset
+        
+        imported.append({
+            "assetId": assetId,
+            "filename": os.path.basename(filepath),
+            "title": r["title"],
         })
         
     return {"assets": imported}

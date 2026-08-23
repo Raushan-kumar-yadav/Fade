@@ -169,7 +169,8 @@ RULES:
 5. Never invent clipIds - always read them from get_timeline_state().
 6. Whisper transcription is available via the /ai/transcribe endpoint; the user
    can ask you to add subtitles and you will use add_text_clip() with the results.
-7. You can download videos from YouTube using download_videos(query, num_videos=2).
+7. You can download videos from YouTube using download_videos(query, num_videos=2),
+   and download images from DuckDuckGo using download_images(query, num_images=2).
    After downloading, use get_library() to confirm the assetIds, then place clips
    on the timeline using place_clip().
 

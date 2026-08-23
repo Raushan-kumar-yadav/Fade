@@ -1,8 +1,4 @@
-"""
-backend/ai/tools.py
-All LangChain @tool functions the agent can call.
-Each wraps an existing FastAPI endpoint via httpx loopback.
-"""
+ 
 from __future__ import annotations
 import json
 import httpx
@@ -263,6 +259,24 @@ def download_videos(query: str, num_videos: int = 2) -> str:
     return json.dumps(result, indent=2)
 
 @tool
+def download_images(query: str, num_images: int = 2) -> str:
+    """Search DuckDuckGo and download images into the project media library.
+    
+    Args:
+        query: Search query string, e.g. 'cyberpunk city'.
+        num_images: Number of top results to download (default 2, max 10).
+    
+    Returns JSON with imported assetIds so you can immediately use place_clip()
+    to add them to the timeline.
+    """
+    num_images = max(1, min(num_images, 10))
+    result = _post("/media/download-images", {
+        "query": query,
+        "numImages": num_images
+    })
+    return json.dumps(result, indent=2)
+
+@tool
 def place_clip(asset_id: str, track_index: int, start_frame: int, duration: int) -> str:
     """Place a media asset onto the timeline as a clip.
     Args:
@@ -302,5 +316,6 @@ ALL_TOOLS = [
     redo,
     mute_track,
     download_videos,
+    download_images,
     place_clip,
 ]
