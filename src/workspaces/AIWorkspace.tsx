@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Allotment } from 'allotment'
 import 'allotment/dist/style.css'
+import ViewportWidget from './viewport/ViewportWidget'
 import './AIWorkspace.css'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -339,20 +340,10 @@ export default function AIWorkspace() {
         <Allotment.Pane minSize={collapsed ? 40 : 280} maxSize={collapsed ? 40 : 440} preferredSize={collapsed ? 40 : 340}>
           <ChatPanel collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
         </Allotment.Pane>
-        <Allotment.Pane>
-          <div className="ai-info-pane">
-            <div className="ai-info-pane__inner">
-              <div className="ai-info-icon">🤖</div>
-              <h3>AI Director</h3>
-              <p>Tell the AI what to do with your timeline in plain language.</p>
-              <ul>
-                <li>"Split the first clip at frame 90"</li>
-                <li>"Add a blur effect to clip on track 2"</li>
-                <li>"Transcribe the audio and add subtitles"</li>
-                <li>"Fade in the first clip over 30 frames"</li>
-                <li>"Undo that last action"</li>
-              </ul>
-            </div>
+        <Allotment.Pane minSize={240}>
+          {/* Live video preview — same as Video tab */}
+          <div className="ai-viewport-pane">
+            <ViewportWidget />
           </div>
         </Allotment.Pane>
       </Allotment>

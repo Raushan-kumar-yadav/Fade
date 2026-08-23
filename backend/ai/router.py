@@ -16,11 +16,11 @@ from pydantic import BaseModel
 
 ai_router = APIRouter(tags=["ai"])
 
-# ── Request models ────────────────────────────────────────────────────────────
+# Request models  
 
 class ChatRequest(BaseModel):
     message: str
-    history: list[dict] = []   # [{role: "user"|"ai", text: str}]
+    history: list[dict] = []   
     port: int = 8000
 
 class TranscribeRequest(BaseModel):
@@ -28,10 +28,10 @@ class TranscribeRequest(BaseModel):
     model: str = "small"
     language: Optional[str] = None
     create_text_clips: bool = False
-    track_index: int = 2          # which track to put subtitles on
+    track_index: int = 2        
     fps: float = 30.0
 
-# ── /ai/status ────────────────────────────────────────────────────────────────
+#   /ai/status  
 
 @ai_router.get("/status")
 def ai_status():
@@ -56,25 +56,25 @@ def ai_status():
             model = model or "llama3.2 (Ollama not running)"
 
     return {
-        "provider":        provider,
-        "model":           model,
-        "ready":           True,
+        "provider": provider,
+        "model": model,
+        "ready": True,
         "ollama_running":  ollama_ok,
         "available_models": available_models,
     }
 
-# ── /ai/chat  (SSE streaming) ─────────────────────────────────────────────────
+# /ai/chat   
 
 @ai_router.post("/chat")
 async def ai_chat(req: ChatRequest):
     """
     Stream the agent response as Server-Sent Events.
     Each event is a JSON line with one of:
-        {"type": "token",       "content": "..."}
-        {"type": "tool_call",   "name": "...", "args": {...}}
+        {"type": "token", "content": "..."}
+        {"type": "tool_call", "name": "...", "args": {...}}
         {"type": "tool_result", "name": "...", "content": "..."}
         {"type": "done"}
-        {"type": "error",       "message": "..."}
+        {"type": "error", "message": "..."}
     """
     from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
@@ -83,7 +83,7 @@ async def ai_chat(req: ChatRequest):
             from backend.ai.agent import get_agent
             agent = get_agent(req.port)
 
-            # Rebuild history as LangChain messages
+            # Rebuild history  
             messages = []
             for h in req.history:
                 if h["role"] == "user":
@@ -135,7 +135,7 @@ async def ai_chat(req: ChatRequest):
         },
     )
 
-# ── /ai/transcribe ────────────────────────────────────────────────────────────
+#   /ai/transcribe  
 
 @ai_router.post("/transcribe")
 def ai_transcribe(req: TranscribeRequest):

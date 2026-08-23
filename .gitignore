@@ -24,10 +24,13 @@ renderer/deps/ffmpeg/bin/
 *.pdb
 *.obj
 *.node
+*.pt
+
+# Specific large files
+backend/ai/whisper_models/small.pt
 
 # Generated / scratch
 Fade_Architecture_Blueprint.pdf
 *.pdf
 .env
 .env.local
-

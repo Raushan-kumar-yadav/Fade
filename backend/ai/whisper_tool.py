@@ -1,15 +1,10 @@
-﻿"""
-backend/ai/whisper_tool.py
-Whisper transcription using a bundled model directory.
-Model files are expected at: backend/ai/whisper_models/<model_name>/
-e.g. backend/ai/whisper_models/small/  (contains model.pt etc.)
-"""
+ 
 from __future__ import annotations
 import os
 import pathlib
 from typing import TYPE_CHECKING
 
-# Path to bundled whisper models shipped with the software
+# Path to bundled whisper models  
 _HERE = pathlib.Path(__file__).parent
 WHISPER_MODELS_DIR = _HERE / "whisper_models"
 
@@ -20,14 +15,16 @@ DEFAULT_MODEL = os.environ.get("FADE_WHISPER_MODEL", "small")
 def _load_model(model_name: str):
     """Load Whisper model from the bundled software directory."""
     import whisper
-    model_path = WHISPER_MODELS_DIR / model_name
+    model_path = WHISPER_MODELS_DIR / f"{model_name}.pt"
     if model_path.exists():
         # Load from local bundled path
+        print(f"[Whisper] Found bundled model at {model_path}", flush=True)
         return whisper.load_model(model_name, download_root=str(WHISPER_MODELS_DIR))
     else:
-        # Fallback: load from default cache (will download if missing)
+        # Fallback 
         print(f"[Whisper] Bundled model not found at {model_path}, using HuggingFace cache.", flush=True)
         return whisper.load_model(model_name)
+
 
 
 _model_cache: dict[str, object] = {}
@@ -44,12 +41,7 @@ def get_model(model_name: str = DEFAULT_MODEL):
 
 def transcribe(filepath: str, model_name: str = DEFAULT_MODEL,
                language: str | None = None) -> list[dict]:
-    """
-    Transcribe audio from a media file.
-
-    Returns a list of segments:
-        [{"start_s": float, "end_s": float, "text": str}, ...]
-    """
+ 
     import whisper
     model = get_model(model_name)
 
@@ -63,9 +55,9 @@ def transcribe(filepath: str, model_name: str = DEFAULT_MODEL,
     segments = []
     for seg in result.get("segments", []):
         segments.append({
-            "start_s":  round(seg["start"], 3),
-            "end_s":    round(seg["end"], 3),
-            "text":     seg["text"].strip(),
+            "start_s": round(seg["start"], 3),
+            "end_s": round(seg["end"], 3),
+            "text": seg["text"].strip(),
         })
 
     print(f"[Whisper] Done — {len(segments)} segments", flush=True)

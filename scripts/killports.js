@@ -2,8 +2,11 @@
  * killports.js — run before `npm run dev` to free Vite + backend ports.
  * Kills PIDs holding :5173 and :8000-8005 (backend may have drifted).
  * Also kills any lingering python.exe (stale backend process).
+ * Also ensures AI Python deps (langgraph etc.) are installed in the venv.
  */
-const { execSync } = require('child_process')
+const { execSync, spawnSync } = require('child_process')
+const path = require('path')
+const fs   = require('fs')
 
 function freePort(port) {
   try {
@@ -31,3 +34,30 @@ try {
   execSync('taskkill /F /IM python.exe', { stdio: 'ignore' })
   console.log('[predev] killed python.exe')
 } catch { /* none running */ }
+
+// ── Ensure AI Python deps are installed ───────────────────────────────────────
+const venvPip = path.join(__dirname, '..', '.venv', 'Scripts', 'pip.exe')
+const reqFile = path.join(__dirname, '..', 'requirements.txt')
+
+if (fs.existsSync(venvPip) && fs.existsSync(reqFile)) {
+  try {
+    // Quick check: if langgraph importable, skip install
+    const venvPy = path.join(__dirname, '..', '.venv', 'Scripts', 'python.exe')
+    const check = spawnSync(venvPy, ['-c', 'import langgraph'], { encoding: 'utf8' })
+    if (check.status !== 0) {
+      console.log('[predev] langgraph missing — installing AI deps from requirements.txt...')
+      const res = spawnSync(venvPip, ['install', '-r', reqFile, '-q'], {
+        encoding: 'utf8', stdio: 'inherit'
+      })
+      if (res.status === 0) {
+        console.log('[predev] AI deps installed OK')
+      } else {
+        console.warn('[predev] AI deps install failed — AI features may not work')
+      }
+    } else {
+      console.log('[predev] AI deps OK')
+    }
+  } catch (e) {
+    console.warn('[predev] Could not check AI deps:', e.message)
+  }
+}

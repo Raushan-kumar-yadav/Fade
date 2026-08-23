@@ -62,7 +62,7 @@ def _detect_ollama_model() -> str:
         models = [m["name"] for m in r.json().get("models", [])]
         if not models:
             print("[AI Agent] Ollama has no models installed. Run: ollama pull llama3.2", flush=True)
-            return "llama3.2"  # will fail gracefully at call time
+            return "llama3.2"   
 
         # pick from preferred list
         for pref in _PREFERRED_MODELS:
@@ -90,6 +90,22 @@ def _build_llm():
 
         print(f"[AI Agent] Using Ollama model: {model_name}", flush=True)
         return ChatOllama(model=model_name, temperature=0)
+
+    elif provider == "tabi":
+        # tabitoken.com  
+        from langchain_openai import ChatOpenAI
+        key = os.environ.get("TABI_API_KEY", "").strip().strip('"')
+        base_url = os.environ.get("TABI_BASE_URL", "https://tabitoken.com/v1").strip().strip('"')
+        if not key:
+            print("[AI Agent] WARNING: TABI_API_KEY not set in .env", flush=True)
+        m = model_name or "claude-opus-4-8"
+        print(f"[AI Agent] Using Tabi model: {m} via {base_url}", flush=True)
+        return ChatOpenAI(
+            model=m,
+            temperature=0,
+            api_key=key,
+            base_url=base_url,
+        )
 
     elif provider == "openai":
         from langchain_openai import ChatOpenAI
@@ -120,13 +136,17 @@ def _build_llm():
 
     elif provider == "claude":
         from langchain_anthropic import ChatAnthropic
-        key      = os.environ.get("ANTHROPIC_API_KEY", "")
-        base_url = os.environ.get("ANTHROPIC_BASE_URL", "")  # optional proxy
+        key      = os.environ.get("ANTHROPIC_API_KEY", "").strip().strip('"')
+        base_url = os.environ.get("ANTHROPIC_BASE_URL", "").strip().strip('"')
+    
+        if base_url and not base_url.startswith(("http://", "https://")):
+            print(f"[AI Agent] WARNING: ANTHROPIC_BASE_URL doesn't look like a URL — ignoring it", flush=True)
+            base_url = ""
         if not key:
             print("[AI Agent] WARNING: ANTHROPIC_API_KEY not set in .env", flush=True)
         m = model_name or "claude-3-5-haiku-20241022"
         print(f"[AI Agent] Using Claude model: {m}"
-              + (f" via {base_url}" if base_url else ""), flush=True)
+              + (f" via {base_url}" if base_url else " (api.anthropic.com)"), flush=True)
         kwargs = dict(model=m, temperature=0, anthropic_api_key=key or None)
         if base_url:
             kwargs["anthropic_api_url"] = base_url
@@ -135,10 +155,10 @@ def _build_llm():
     else:
         raise ValueError(f"Unknown FADE_AI_PROVIDER: {provider}")
 
-# ── System prompt ─────────────────────────────────────────────────────────────
+# System prompt  
 
 _SYSTEM = """\
-You are the AI Director inside Fade, a professional video editor.
+You are the AI Editor inside Fade, a professional video editor.
 You can read and edit the user's timeline using the tools provided.
 
 RULES:
@@ -153,7 +173,7 @@ RULES:
 Current project context will be injected by the router.
 """
 
-# ── Graph builder ─────────────────────────────────────────────────────────────
+#   Graph builder  
 
 def build_agent(port: int = 8000):
     """Build and return the compiled LangGraph agent."""
@@ -182,7 +202,7 @@ def build_agent(port: int = 8000):
 
     return graph.compile()
 
-# ── Singleton ─────────────────────────────────────────────────────────────────
+#   Singleton  
 
 _agent = None
 

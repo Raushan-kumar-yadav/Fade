@@ -8,7 +8,7 @@ import json
 import httpx
 from langchain_core.tools import tool
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+# helpers  
 
 _PORT: int = 8000
 
@@ -34,8 +34,8 @@ def set_port(port: int) -> None:
     global _PORT
     _PORT = port
 
-# ── timeline read ─────────────────────────────────────────────────────────────
-
+# timeline read  
+ 
 @tool
 def get_timeline_state() -> str:
     """Return the full current timeline state as JSON (tracks, clips, durations, fps)."""
@@ -54,7 +54,7 @@ def get_playback_state() -> str:
     data = _get("/playback/state")
     return json.dumps(data, indent=2)
 
-# ── playback ──────────────────────────────────────────────────────────────────
+#   playback  
 
 @tool
 def seek_to(frame: int) -> str:
@@ -62,7 +62,7 @@ def seek_to(frame: int) -> str:
     _post("/playback/seek", {"frame": frame})
     return f"Seeked to frame {frame}"
 
-# ── clip editing ──────────────────────────────────────────────────────────────
+# clip editing  
 
 @tool
 def split_clip(clip_id: str, frame: int) -> str:
@@ -113,7 +113,7 @@ def delete_clip(clip_id: str) -> str:
     _delete(f"/timeline/clips/{clip_id}")
     return f"Deleted clip {clip_id}."
 
-# ── effects ───────────────────────────────────────────────────────────────────
+# effects  
 
 @tool
 def get_effects_catalog() -> str:
@@ -154,7 +154,7 @@ def set_effect_param(clip_id: str, effect_id: str, params: str) -> str:
     _post(f"/clips/{clip_id}/effects/{effect_id}", p)
     return f"Updated effect {effect_id} on clip {clip_id} with {params}."
 
-# ── clip params (opacity, position, scale, rotation) ─────────────────────────
+# clip params  
 
 @tool
 def set_clip_param(clip_id: str, key: str, value: float) -> str:
@@ -167,7 +167,7 @@ def set_clip_param(clip_id: str, key: str, value: float) -> str:
     _post(f"/clips/{clip_id}/params/{key}", {"value": value})
     return f"Set {key}={value} on clip {clip_id}."
 
-# ── text clips ────────────────────────────────────────────────────────────────
+# text clips  
 
 @tool
 def add_text_clip(track_index: int, start_frame: int, duration: int,
@@ -189,7 +189,7 @@ def add_text_clip(track_index: int, start_frame: int, duration: int,
     })
     return f"Added text clip '{text}' at frame {start_frame} (clipId={result.get('clipId')})."
 
-# ── transitions ───────────────────────────────────────────────────────────────
+# transitions  
 
 @tool
 def get_transitions_catalog() -> str:
@@ -216,7 +216,7 @@ def add_transition(clip_a_id: str, clip_b_id: str,
     })
     return f"Added '{type_id}' transition between {clip_a_id} and {clip_b_id}."
 
-# ── history ───────────────────────────────────────────────────────────────────
+# history  
 
 @tool
 def undo() -> str:
@@ -230,7 +230,7 @@ def redo() -> str:
     _post("/history/redo")
     return "Redo applied."
 
-# ── track mute/solo ───────────────────────────────────────────────────────────
+#   track mute/solo  
 
 @tool
 def mute_track(track_id: str, muted: bool) -> str:
@@ -242,7 +242,7 @@ def mute_track(track_id: str, muted: bool) -> str:
     _post(f"/timeline/track/{track_id}/mute", {"muted": muted})
     return f"Track {track_id} {'muted' if muted else 'unmuted'}."
 
-# ── all tools list (used by agent.py) ─────────────────────────────────────────
+# all tools list 
 
 ALL_TOOLS = [
     get_timeline_state,
