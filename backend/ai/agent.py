@@ -120,12 +120,17 @@ def _build_llm():
 
     elif provider == "claude":
         from langchain_anthropic import ChatAnthropic
-        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        key      = os.environ.get("ANTHROPIC_API_KEY", "")
+        base_url = os.environ.get("ANTHROPIC_BASE_URL", "")  # optional proxy
         if not key:
             print("[AI Agent] WARNING: ANTHROPIC_API_KEY not set in .env", flush=True)
         m = model_name or "claude-3-5-haiku-20241022"
-        print(f"[AI Agent] Using Claude model: {m}", flush=True)
-        return ChatAnthropic(model=m, temperature=0, anthropic_api_key=key or None)
+        print(f"[AI Agent] Using Claude model: {m}"
+              + (f" via {base_url}" if base_url else ""), flush=True)
+        kwargs = dict(model=m, temperature=0, anthropic_api_key=key or None)
+        if base_url:
+            kwargs["anthropic_api_url"] = base_url
+        return ChatAnthropic(**kwargs)
 
     else:
         raise ValueError(f"Unknown FADE_AI_PROVIDER: {provider}")
