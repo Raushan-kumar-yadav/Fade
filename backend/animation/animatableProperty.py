@@ -4,7 +4,7 @@ from backend.animation.keyframe import Keyframe, Interpolation, makeBezierKeyfra
 
 
 class AnimatableProperty:
-  
+    """A float property that can hold keyframes for animation."""
 
     def __init__(self, defaultValue: float = 0.0) -> None:
         self._baseValue: float = defaultValue
@@ -12,7 +12,7 @@ class AnimatableProperty:
         self._isAnimated: bool = False
         self._track: ScalarTrack = ScalarTrack()
 
-    #   Control  
+    #   Control
 
     def setAnimated(self, animated: bool) -> None:
         self._isAnimated = animated
@@ -33,7 +33,7 @@ class AnimatableProperty:
     def baseValue(self) -> float:
         return self._baseValue
 
-    #   Keyframe editing  
+    #   Keyframe editing
 
     def addKeyframe(self, frame: int, value: float,
                     interp: Interpolation = Interpolation.Bezier) -> None:
@@ -56,7 +56,7 @@ class AnimatableProperty:
     def track(self) -> ScalarTrack:
         return self._track
 
-    # Evaluation 
+    #   Evaluation
 
     def update(self, frame: int) -> None:
         if not self._isAnimated or self._track.empty():
@@ -64,7 +64,15 @@ class AnimatableProperty:
         else:
             self._currentValue = self._track.evaluateAt(frame, self._baseValue)
 
-    # Read  
+    def evaluate(self, frame: int) -> float:
+        if not self._isAnimated or self._track.empty():
+            return self._baseValue
+        return self._track.evaluateAt(frame, self._baseValue)
+
+    def is_animated(self) -> bool:
+        return self._isAnimated and not self._track.empty()
+
+    #   Read
 
     def get(self) -> float:
         return self._currentValue
@@ -76,9 +84,53 @@ class AnimatableProperty:
         animated = f", {len(self._track)} kf" if self._isAnimated else ""
         return f"AnimatableProperty({self._currentValue:.3f}{animated})"
 
+    # ── Serialization ──────────────────────────────────────────────────────────
+
+    def toDict(self) -> dict:
+        d: dict = {"base": self._baseValue, "animated": self._isAnimated}
+        if self._isAnimated and not self._track.empty():
+            d["keyframes"] = [
+                {
+                    "frame": kf.frame,
+                    "value": kf.value,
+                    "interp": int(kf.interp),
+                    "hiF": kf.handleInFrame,
+                    "hiV": kf.handleInValue,
+                    "hoF": kf.handleOutFrame,
+                    "hoV": kf.handleOutValue,
+                }
+                for kf in self._track.keyframes()
+            ]
+        return d
+
+    @classmethod
+    def fromDict(cls, data: dict, defaultValue: float = 0.0) -> "AnimatableProperty":
+        ap = cls(defaultValue)
+        if isinstance(data, (int, float)):
+            # Legacy: plain number stored, no keyframes
+            ap._baseValue = float(data)
+            ap._currentValue = ap._baseValue
+            return ap
+        ap._baseValue = data.get("base", defaultValue)
+        ap._currentValue = ap._baseValue
+        ap._isAnimated = data.get("animated", False)
+        for kd in data.get("keyframes", []):
+            kf = Keyframe(
+                frame          = kd["frame"],
+                value          = kd["value"],
+                interp         = Interpolation(kd.get("interp", 2)),
+                handleInFrame  = kd.get("hiF", -5.0),
+                handleInValue  = kd.get("hiV",  0.0),
+                handleOutFrame = kd.get("hoF",  5.0),
+                handleOutValue = kd.get("hoV",  0.0),
+            )
+            ap._track.insertKeyframe(kf)
+        return ap
+
 
 class Vec2Property:
- 
+    """A 2D animatable property (x, y)."""
+
     def __init__(self, x: float = 0.0, y: float = 0.0) -> None:
         self.x = AnimatableProperty(x)
         self.y = AnimatableProperty(y)
@@ -101,3 +153,23 @@ class Vec2Property:
 
     def __repr__(self) -> str:
         return f"Vec2Property({self.x.get():.2f}, {self.y.get():.2f})"
+
+    # ── Serialization ──────────────────────────────────────────────────────────
+
+    def toDict(self) -> dict:
+        return {"x": self.x.toDict(), "y": self.y.toDict()}
+
+    @classmethod
+    def fromDict(cls, data: dict, dx: float = 0.0, dy: float = 0.0) -> "Vec2Property":
+        v = cls(dx, dy)
+        xd = data.get("x", dx)
+        yd = data.get("y", dy)
+        if isinstance(xd, dict):
+            v.x = AnimatableProperty.fromDict(xd, dx)
+        else:
+            v.x.setBaseValue(float(xd))
+        if isinstance(yd, dict):
+            v.y = AnimatableProperty.fromDict(yd, dy)
+        else:
+            v.y.setBaseValue(float(yd))
+        return v

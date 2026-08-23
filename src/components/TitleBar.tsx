@@ -90,6 +90,10 @@ interface TitleBarProps {
   toolboxOpen?:       boolean;
   /** Called after a project is loaded so the app can refresh the timeline */
   onProjectLoaded?:   (result: { project: any; timeline: any }) => void;
+  /** Called before the async load starts — show a loading indicator */
+  onLoadStart?:       (message: string) => void;
+  /** Called after load finishes (success or failure) */
+  onLoadEnd?:         () => void;
 }
 
 export default function TitleBar({
@@ -97,6 +101,7 @@ export default function TitleBar({
   activeTool = 'pointer', onTool,
   onToggleToolbox, toolboxOpen,
   onProjectLoaded,
+  onLoadStart, onLoadEnd,
 }: TitleBarProps) {
   const api = window.electronAPI;
 
@@ -137,13 +142,34 @@ export default function TitleBar({
   }, [projectName]);
 
   const handleOpen = useCallback(async () => {
-    const result = await loadProject();
-    if (result) {
-      savedPathRef.current = result.project.filePath ?? null;
-      setProjectName(result.project.name);
-      onProjectLoaded?.(result);
+    // Show file picker first (no loading yet)
+    const el = (window as any).electronAPI;
+    const filepath: string | undefined = await el?.showOpenDialog({
+      filters: [{ name: 'Fade Project', extensions: ['fade'] }],
+    });
+    if (!filepath) return;
+
+    // Now show loading overlay — file could be large
+    onLoadStart?.('Loading project…');
+    try {
+      const port = (window as any).__FADE_PORT__ ?? 8000;
+      const r = await fetch(`http://127.0.0.1:${port}/project/load`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filepath }),
+      });
+      if (r.ok) {
+        const result = await r.json();
+        savedPathRef.current = result.project?.filePath ?? filepath;
+        setProjectName(result.project?.name ?? 'Project');
+        onProjectLoaded?.(result);
+      } else {
+        console.error('[Project] Load failed', await r.text());
+      }
+    } finally {
+      onLoadEnd?.();
     }
-  }, [onProjectLoaded]);
+  }, [onProjectLoaded, onLoadStart, onLoadEnd]);
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
 

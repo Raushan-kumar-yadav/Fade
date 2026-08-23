@@ -68,31 +68,46 @@ class Transform:
         canvas.scale(sx, sy)
         canvas.translate(-ax, -ay)
 
-    #   Serialization  
+    #   Serialization
 
     def toDict(self) -> dict:
-        px, py = self.position.get()
-        sx, sy = self.scale.get()
-        ax, ay = self.anchor.get()
         return {
-            "position": {"x": px, "y": py},
-            "scale": {"x": sx, "y": sy},
-            "rotation": self.rotation.get(),
-            "opacity": self.opacity.get(),
-            "anchor": {"x": ax, "y": ay},
+            "position": self.position.toDict(),
+            "scale":    self.scale.toDict(),
+            "rotation": self.rotation.toDict(),
+            "opacity":  self.opacity.toDict(),
+            "anchor":   self.anchor.toDict(),
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "Transform":
+        from backend.animation.animatableProperty import Vec2Property, AnimatableProperty
         t = cls()
-        p = data.get("position", {})
-        t.position.setBase(p.get("x", 0.0), p.get("y", 0.0))
-        s = data.get("scale", {})
-        t.scale.setBase(s.get("x", 1.0), s.get("y", 1.0))
-        t.rotation.setBaseValue(data.get("rotation", 0.0))
-        t.opacity.setBaseValue(data.get("opacity", 1.0))
-        a = data.get("anchor", {})
-        t.anchor.setBase(a.get("x", 0.0), a.get("y", 0.0))
+        pd = data.get("position", {})
+        # Backwards-compat: old format stored {"x": float, "y": float}
+        if isinstance(pd.get("x"), dict) or isinstance(pd.get("y"), dict):
+            t.position = Vec2Property.fromDict(pd, 0.0, 0.0)
+        else:
+            t.position.setBase(float(pd.get("x", 0.0)), float(pd.get("y", 0.0)))
+
+        sd = data.get("scale", {})
+        if isinstance(sd.get("x"), dict) or isinstance(sd.get("y"), dict):
+            t.scale = Vec2Property.fromDict(sd, 1.0, 1.0)
+        else:
+            t.scale.setBase(float(sd.get("x", 1.0)), float(sd.get("y", 1.0)))
+
+        ad = data.get("anchor", {})
+        if isinstance(ad.get("x"), dict) or isinstance(ad.get("y"), dict):
+            t.anchor = Vec2Property.fromDict(ad, 0.0, 0.0)
+        else:
+            t.anchor.setBase(float(ad.get("x", 0.0)), float(ad.get("y", 0.0)))
+
+        rd = data.get("rotation", 0.0)
+        t.rotation = AnimatableProperty.fromDict(rd if isinstance(rd, dict) else {"base": rd}, 0.0)
+
+        od = data.get("opacity", 1.0)
+        t.opacity = AnimatableProperty.fromDict(od if isinstance(od, dict) else {"base": od}, 1.0)
+
         return t
 
     def __repr__(self) -> str:

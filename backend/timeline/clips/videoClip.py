@@ -198,42 +198,78 @@ class VideoClip(BaseClip):
         img = surf.makeImageSnapshot()
         return img.encodeToData(skia.kJPEG, 75).bytes()
 
-    #   Serialization  
+    #   Serialization
 
     def toDict(self) -> dict:
+        from backend.main import _library  # noqa: avoid circular at module level
+        filepath = ""
+        try:
+            filepath = _library[self.assetId].filepath if self.assetId in _library else ""
+        except Exception:
+            pass
         return {
-            "type": self.CLIP_TYPE,
-            "clipId": self.clipId,
+            "type":       self.CLIP_TYPE,
+            "clipId":     self.clipId,
             "startFrame": self.startFrame,
-            "duration": self.duration,
-            "assetId": self.assetId,
-            "color": list(self.color),
-            "transform":   self.transform.toDict(),
-            "cropLeft": self.cropLeft.get(),
-            "cropRight":  self.cropRight.get(),
-            "cropTop": self.cropTop.get(),
-            "cropBottom": self.cropBottom.get(),
-            "blendMode":  int(self.blendMode.get()),
-            "masks": [m.toDict() for m in self.masks],
+            "duration":   self.duration,
+            "assetId":    self.assetId,
+            "filepath":   filepath,
+            "color":      list(self.color),
+            "transform":  self.transform.toDict(),
+            "cropLeft":   self.cropLeft.toDict(),
+            "cropRight":  self.cropRight.toDict(),
+            "cropTop":    self.cropTop.toDict(),
+            "cropBottom": self.cropBottom.toDict(),
+            "blendMode":  self.blendMode.toDict(),
+            "masks":      [m.toDict() for m in self.masks],
+            "effects":    [e.toDict() for e in self.effects],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "VideoClip":
         from backend.animation.transform import Transform
+        from backend.animation.animatableProperty import AnimatableProperty
         from backend.timeline.clips.textClip import MaskLayer
+        from backend.timeline.effects.skslEffect import SkslEffect
+
         c = cls(
-            clipId = data["clipId"],
+            clipId     = data["clipId"],
             startFrame = data["startFrame"],
-            duration = data["duration"],
-            assetId = data.get("assetId", ""),
-            color = tuple(data.get("color", [74, 144, 226, 255])),
+            duration   = data["duration"],
+            assetId    = data.get("assetId", ""),
+            color      = tuple(data.get("color", [74, 144, 226, 255])),
         )
+        # Store filepath so asset library can be rebuilt by loadProject
+        c.filepath = data.get("filepath", "")
+
         if "transform" in data:
             c.transform = Transform.fromDict(data["transform"])
-        c.cropLeft.setBaseValue(data.get("cropLeft", 0.0))
-        c.cropRight.setBaseValue(data.get("cropRight", 0.0))
-        c.cropTop.setBaseValue(data.get("cropTop", 0.0))
-        c.cropBottom.setBaseValue(data.get("cropBottom", 0.0))
-        c.blendMode.setBaseValue(float(data.get("blendMode", 0)))
-        c.masks = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
+
+        # Animated properties — backwards-compat with old plain floats
+        def _ap(key: str, default: float) -> AnimatableProperty:
+            raw = data.get(key, default)
+            if isinstance(raw, dict):
+                return AnimatableProperty.fromDict(raw, default)
+            ap = AnimatableProperty(default)
+            ap.setBaseValue(float(raw))
+            return ap
+
+        c.cropLeft   = _ap("cropLeft",  0.0)
+        c.cropRight  = _ap("cropRight", 0.0)
+        c.cropTop    = _ap("cropTop",   0.0)
+        c.cropBottom = _ap("cropBottom",0.0)
+        c.blendMode  = _ap("blendMode", 0.0)
+
+        c.masks   = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
+
+        # Restore effects
+        for ed in data.get("effects", []):
+            t = ed.get("type", "")
+            if t.startswith("sksl:") or "typeId" in ed:
+                try:
+                    c.effects.append(SkslEffect.fromDict(ed))
+                except Exception as ex:
+                    print(f"[VideoClip] effect restore failed: {ex}")
+
         return c
+
