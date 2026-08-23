@@ -293,6 +293,24 @@ def place_clip(asset_id: str, track_index: int, start_frame: int, duration: int)
     })
     return f"Placed asset {asset_id} on track {track_index} at frame {start_frame} with clipId {result.get('clipId')}."
 
+@tool
+def generate_image(prompt: str, num_images: int = 1) -> str:
+    """Generate AI image(s) from a text prompt using the Gemini Imagen model.
+
+    Args:
+        prompt:     Detailed description of the image to create.
+                    Example: 'a cinematic sunset over mountains, photorealistic 4k'
+        num_images: Number of images to generate (1–4, default 1).
+
+    Returns JSON with assetIds so you can immediately place them on the timeline
+    using place_clip().
+    """
+    result = _post("/media/generate-image", {
+        "prompt": prompt,
+        "numImages": num_images,
+    })
+    return json.dumps(result, indent=2)
+
 # all tools list 
 
 ALL_TOOLS = [
@@ -317,5 +335,6 @@ ALL_TOOLS = [
     mute_track,
     download_videos,
     download_images,
+    generate_image,
     place_clip,
 ]

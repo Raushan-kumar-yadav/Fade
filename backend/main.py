@@ -8,7 +8,10 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS",  "1")
 
 # Add ffmpeg to PATH if not already present (D:\ffmpeg\FFmpeg\ is installed but not in system PATH)
-_FFMPEG_DIRS = [r"D:\ffmpeg\FFmpeg"]
+_FFMPEG_DIRS = [
+    r"D:\ffmpeg\FFmpeg",
+    r"C:\Users\raush\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0-full_build\bin",
+]
 for _d in _FFMPEG_DIRS:
     if os.path.isdir(_d) and _d not in os.environ.get("PATH", ""):
         os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
@@ -44,7 +47,7 @@ from backend.history.commandStack import (
     RemoveClipCommand,
 )
 from backend.worker.worker_bus import bus as _worker_bus
-from backend.tools import YtdlpDownloader, ImageDownloader
+from backend.tools import YtdlpDownloader, ImageDownloader, GeminiImageGenerator
 
 engine = Engine()
 
@@ -871,6 +874,10 @@ class DownloadImagesRequest(BaseModel):
     query: str
     numImages: int = 2
 
+class GenerateImageRequest(BaseModel):
+    prompt: str
+    numImages: int = 1
+
 def _mediaType(filepath: str) -> str:
     ext = os.path.splitext(filepath)[1].lower()
     if ext in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}:
@@ -984,6 +991,34 @@ def download_images(req: DownloadImagesRequest):
         })
         
     return {"assets": imported}
+
+
+@app.post("/media/generate-image")
+def generate_image_endpoint(req: GenerateImageRequest):
+    """Generate image(s) from a text prompt using Gemini and import into the library."""
+    generator = GeminiImageGenerator()
+    results = generator.generate(prompt=req.prompt, num_images=req.numImages)
+
+    imported = []
+    for r in results:
+        filepath = r["filepath"]
+        existing_asset = next(
+            (a for a in _library.values() if a.filepath == filepath), None
+        )
+        if existing_asset:
+            assetId = existing_asset.assetId
+        else:
+            assetId = str(uuid.uuid4())
+            _library[assetId] = MediaAsset(filepath=filepath, assetId=assetId)
+
+        imported.append({
+            "assetId": assetId,
+            "filename": os.path.basename(filepath),
+            "title": r["title"],
+        })
+
+    return {"assets": imported}
+
 
 
 @app.get("/library/assets")

@@ -1,7 +1,10 @@
 import os
 import requests
 from pathlib import Path
-from duckduckgo_search import DDGS
+try:
+    from ddgs import DDGS  # new package name
+except ImportError:
+    from duckduckgo_search import DDGS  # old package name fallback
 from urllib.parse import urlparse
 
 class ImageDownloader:

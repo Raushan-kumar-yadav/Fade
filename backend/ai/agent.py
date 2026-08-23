@@ -1,20 +1,11 @@
-"""
-backend/ai/agent.py
-LangGraph ReAct agent that wraps all Fade editor tools.
-
-Provider is read from .env (project root) or environment variables:
-    FADE_AI_PROVIDER=ollama   (default)   auto-detects installed model
-    FADE_AI_PROVIDER=openai               OPENAI_API_KEY required
-    FADE_AI_PROVIDER=groq                 GROQ_API_KEY required
-    FADE_AI_PROVIDER=gemini               GOOGLE_API_KEY required
-"""
+ 
 from __future__ import annotations
 import os
 import json
 from pathlib import Path
 from typing import Annotated
 
-# ── Load .env from project root ───────────────────────────────────────────────
+#   Load .env from project root  
 try:
     from dotenv import load_dotenv
     _env_path = Path(__file__).resolve().parents[2] / ".env"  # Fade/.env
@@ -31,14 +22,14 @@ from typing_extensions import TypedDict
 
 from backend.ai.tools import ALL_TOOLS, set_port
 
-# ── State ─────────────────────────────────────────────────────────────────────
+#   State  
 
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
-# ── LLM provider selection ────────────────────────────────────────────────────
+#   LLM provider selection  
 
-# ── Preferred models for tool-calling (in order) ─────────────────────────────
+#   Preferred models for tool-calling (in order)  
 
 _PREFERRED_MODELS = [
     "qwen2.5",
@@ -171,6 +162,9 @@ RULES:
    can ask you to add subtitles and you will use add_text_clip() with the results.
 7. You can download videos from YouTube using download_videos(query, num_videos=2),
    and download images from DuckDuckGo using download_images(query, num_images=2).
+8. You can generate AI images using generate_image(prompt, num_images=1).
+   This uses the Gemini Imagen model. Provide a rich, detailed prompt for best results.
+   After generating, use place_clip() to add the image to the timeline.
    After downloading, use get_library() to confirm the assetIds, then place clips
    on the timeline using place_clip().
 

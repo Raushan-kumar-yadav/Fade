@@ -22,11 +22,26 @@ class YtdlpDownloader:
         num_videos = max(1, min(num_videos, 5))
         search_query = f"ytsearch{num_videos}:{query}"
         
+        
+        fmt = (
+            "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]"  # best h264 + aac (needs merge)
+            "/mp4[height<=720]"                                      
+            "/mp4"                                                 
+            "/best[ext=webm]"                                       
+            "/best"                                                
+        )
+
+        # Point yt-dlp 
+        _FFMPEG = r"C:\Users\raush\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0-full_build\bin"
+
         ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+            'format': fmt,
             'merge_output_format': 'mp4',
             'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
             'noplaylist': True,
+            'ffmpeg_location': _FFMPEG,
+            # Don't abort if merge fails  
+            'ignoreerrors': False,
         }
 
         results = []
