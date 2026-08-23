@@ -38,6 +38,11 @@ export interface ElectronAPI {
     filters?: { name: string; extensions: string[] }[]
     defaultPath?: string
   }) => Promise<string | undefined>
+
+  showOpenDialog: (opts?: {
+    filters?: { name: string; extensions: string[] }[]
+    defaultPath?: string
+  }) => Promise<string | undefined>
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -82,5 +87,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // File dialogs  
   showSaveDialog: (opts?: any): Promise<string | undefined> =>
     ipcRenderer.invoke('dialog:save', opts),
+
+  showOpenDialog: (opts?: any): Promise<string | undefined> =>
+    ipcRenderer.invoke('dialog:open', opts),
 
 } satisfies ElectronAPI)

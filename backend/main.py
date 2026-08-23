@@ -753,7 +753,7 @@ def saveProject(req: SaveRequest):
 
     engine.project.filePath = str(path)
     engine.project.isDirty  = False
-    print(f"[Project] Saved → {path}", flush=True)
+    print(f"[Project] Saved -> {path}", flush=True)
     return {"status": "ok", "filepath": str(path)}
 
 
@@ -795,7 +795,7 @@ def loadProject(req: LoadRequest):
     engine.project = proj
     engine.activeTimeline = tl
 
-    print(f"[Project] Loaded ← {path}", flush=True)
+    print(f"[Project] Loaded <- {path}", flush=True)
     return {
         "status": "ok",
         "project": proj.toDict(),
