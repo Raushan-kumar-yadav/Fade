@@ -1,0 +1,22 @@
+# Fade AI dependencies
+# Install with: pip install -r requirements-ai.txt
+
+# LangGraph / LangChain core
+langgraph>=0.2
+langchain-core>=0.3
+
+# LLM providers (install only what you use)
+langchain-anthropic>=0.3     # FADE_AI_PROVIDER=claude
+langchain-google-genai>=2.0  # FADE_AI_PROVIDER=gemini
+langchain-openai>=0.2        # FADE_AI_PROVIDER=openai
+langchain-groq>=0.2          # FADE_AI_PROVIDER=groq
+langchain-ollama>=0.2        # FADE_AI_PROVIDER=ollama
+
+# HTTP client (used by all tools for loopback calls)
+httpx>=0.27
+
+# .env loading
+python-dotenv>=1.0
+
+# Whisper transcription
+openai-whisper>=20231117
