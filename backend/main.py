@@ -787,7 +787,29 @@ def loadProject(req: LoadRequest):
         # No timeline in file — keep whatever engine.loadProject created
         tl = engine.activeTimeline
 
-    print(f"[Project] Loaded <- {path}", flush=True)
+    # ── Restore asset library ────────────────────────────────────────────────
+    # Scan every clip that has an assetId+filepath and re-register it in
+    # the module-level _library dict so the decoders can find the files.
+    _library.clear()
+    if tl:
+        for track in tl.tracks:
+            for clip in track.clips:
+                asset_id  = getattr(clip, "assetId",  None)
+                filepath  = getattr(clip, "filepath",  None)
+                if asset_id and filepath and asset_id not in _library:
+                    if os.path.exists(filepath):
+                        asset = MediaAsset(filepath=filepath, assetId=asset_id)
+                        _library[asset_id] = asset
+                        # Queue waveform generation for audio-bearing assets
+                        if asset.hasAudio:
+                            try:
+                                _worker_bus.submit_waveform(asset_id, filepath)
+                            except Exception:
+                                pass
+                    else:
+                        print(f"[Project] WARNING: asset file missing: {filepath}", flush=True)
+
+    print(f"[Project] Loaded <- {path}  ({len(_library)} assets restored)", flush=True)
     return {
         "status": "ok",
         "project": proj.toDict(),
