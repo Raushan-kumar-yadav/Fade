@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import uuid
 from backend.timeline.clips.baseClip import BaseClip
 from backend.animation.animatableProperty import AnimatableProperty
@@ -148,18 +148,21 @@ class ImageClip(BaseClip):
             "filepath":   self.filepath,
             "color":      list(self.color),
             "transform":  self.transform.toDict(),
-            "cropLeft":   self.cropLeft.get(),
-            "cropRight":  self.cropRight.get(),
-            "cropTop":    self.cropTop.get(),
-            "cropBottom": self.cropBottom.get(),
-            "blendMode":  int(self.blendMode.get()),
+            "cropLeft":   self.cropLeft.toDict(),
+            "cropRight":  self.cropRight.toDict(),
+            "cropTop":    self.cropTop.toDict(),
+            "cropBottom": self.cropBottom.toDict(),
+            "blendMode":  self.blendMode.toDict(),
             "masks":      [m.toDict() for m in self.masks],
+            "effects":    [e.toDict() for e in self.effects],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "ImageClip":
         from backend.animation.transform import Transform
+        from backend.animation.animatableProperty import AnimatableProperty
         from backend.timeline.clips.textClip import MaskLayer
+        from backend.timeline.effects.skslEffect import SkslEffect
         c = cls(
             clipId     = data["clipId"],
             startFrame = data["startFrame"],
@@ -170,10 +173,26 @@ class ImageClip(BaseClip):
         )
         if "transform" in data:
             c.transform = Transform.fromDict(data["transform"])
-        c.cropLeft.setBaseValue(data.get("cropLeft", 0.0))
-        c.cropRight.setBaseValue(data.get("cropRight", 0.0))
-        c.cropTop.setBaseValue(data.get("cropTop", 0.0))
-        c.cropBottom.setBaseValue(data.get("cropBottom", 0.0))
-        c.blendMode.setBaseValue(float(data.get("blendMode", 0)))
+
+        def _ap(key: str, default: float) -> AnimatableProperty:
+            raw = data.get(key, default)
+            if isinstance(raw, dict):
+                return AnimatableProperty.fromDict(raw, default)
+            ap = AnimatableProperty(default)
+            ap.setBaseValue(float(raw))
+            return ap
+
+        c.cropLeft   = _ap("cropLeft",  0.0)
+        c.cropRight  = _ap("cropRight", 0.0)
+        c.cropTop    = _ap("cropTop",   0.0)
+        c.cropBottom = _ap("cropBottom",0.0)
+        c.blendMode  = _ap("blendMode", 0.0)
         c.masks = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
+        for ed in data.get("effects", []):
+            if ed.get("type", "").startswith("sksl:") or "typeId" in ed:
+                try:
+                    c.effects.append(SkslEffect.fromDict(ed))
+                except Exception as ex:
+                    print(f"[ImageClip] effect restore failed: {ex}")
         return c
+

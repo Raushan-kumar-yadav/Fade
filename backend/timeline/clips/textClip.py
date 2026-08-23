@@ -248,25 +248,33 @@ class TextClip(BaseClip):
 
     def toDict(self) -> dict:
         return {
-            "clipType": self.clipType,
-            "clipId": self.clipId,
+            "clipType":   self.clipType,
+            "clipId":     self.clipId,
             "startFrame": self.startFrame,
-            "duration": self.duration,
+            "duration":   self.duration,
             "transform":  self.transform.toDict(),
-            "style": self.style.toDict(),
-            "masks": [m.toDict() for m in self.masks],
+            "style":      self.style.toDict(),
+            "masks":      [m.toDict() for m in self.masks],
+            "effects":    [e.toDict() for e in self.effects],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "TextClip":
+        from backend.timeline.effects.skslEffect import SkslEffect
         clip = cls(
-            clipId = data["clipId"],
+            clipId     = data["clipId"],
             startFrame = data["startFrame"],
             duration   = data["duration"],
             style = TextStyle.fromDict(data.get("style", {})),
         )
         clip.transform = Transform.fromDict(data.get("transform", {}))
         clip.masks = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
+        for ed in data.get("effects", []):
+            if ed.get("type", "").startswith("sksl:") or "typeId" in ed:
+                try:
+                    clip.effects.append(SkslEffect.fromDict(ed))
+                except Exception as ex:
+                    print(f"[TextClip] effect restore failed: {ex}")
         return clip
 
     def __repr__(self) -> str:

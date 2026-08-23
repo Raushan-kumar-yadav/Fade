@@ -31,12 +31,19 @@ class AudioClip(BaseClip):
         pass  # audio-only: no visual render
 
     def toDict(self) -> dict:
+        filepath = ""
+        try:
+            from backend.main import _library
+            filepath = _library[self.assetId].filepath if self.assetId in _library else ""
+        except Exception:
+            pass
         return {
             "clipType":    self.CLIP_TYPE,
             "clipId":      self.clipId,
             "startFrame":  self.startFrame,
             "duration":    self.duration,
             "assetId":     self.assetId,
+            "filepath":    filepath,
             "mediaOffset": self.mediaOffset,
             "volume":      self.volume,
             "mute":        self.mute,
@@ -44,7 +51,7 @@ class AudioClip(BaseClip):
 
     @classmethod
     def fromDict(cls, data: dict) -> "AudioClip":
-        return cls(
+        c = cls(
             clipId      = data.get("clipId", ""),
             startFrame  = data.get("startFrame", 0),
             duration    = data.get("duration", 90),
@@ -53,6 +60,9 @@ class AudioClip(BaseClip):
             volume      = data.get("volume", 1.0),
             mute        = data.get("mute", False),
         )
+        # Store filepath so asset library rebuild can find the file
+        c.filepath = data.get("filepath", "")
+        return c
 
     def __repr__(self) -> str:
         return f"AudioClip({self.clipId[:8]}… asset={self.assetId[:8]}… @{self.startFrame}+{self.duration})"

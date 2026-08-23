@@ -154,10 +154,12 @@ class PenClip(BaseClip):
             "transform":  self.transform.toDict(),
             "style":      self.style.toDict(),
             "masks":      [m.toDict() for m in self.masks],
+            "effects":    [e.toDict() for e in self.effects],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "PenClip":
+        from backend.timeline.effects.skslEffect import SkslEffect
         clip = cls(
             clipId     = data["clipId"],
             startFrame = data["startFrame"],
@@ -173,4 +175,10 @@ class PenClip(BaseClip):
         clip.shapePath = AnimPathProperty.fromDict(
             raw if isinstance(raw, (dict, list)) else []
         )
+        for ed in data.get("effects", []):
+            if ed.get("type", "").startswith("sksl:") or "typeId" in ed:
+                try:
+                    clip.effects.append(SkslEffect.fromDict(ed))
+                except Exception as ex:
+                    print(f"[PenClip] effect restore failed: {ex}")
         return clip

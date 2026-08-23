@@ -88,9 +88,6 @@ class SvgClip(BaseClip):
     # ── Serialisation ────────────────────────────────────────────────────────
 
     def toDict(self) -> dict:
-        px, py = self.transform.position.get()
-        sx, sy = self.transform.scale.get()
-        ax, ay = self.transform.anchor.get()
         return {
             "clipId":      self.clipId,
             "type":        self.CLIP_TYPE,
@@ -101,35 +98,45 @@ class SvgClip(BaseClip):
             "displayH":    self.displayH,
             "tintEnabled": self.tintEnabled,
             "tintColor":   self.tintColor,
-            "transform": {
-                "x": px, "y": py,
-                "scaleX": sx, "scaleY": sy,
-                "rotation": self.transform.rotation.get(),
-                "anchorX": ax, "anchorY": ay,
-                "opacity": self.transform.opacity.get(),
-            },
+            "transform":   self.transform.toDict(),   # full keyframe-aware dict
+            "effects":     [e.toDict() for e in self.effects],
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "SvgClip":
+        from backend.animation.transform import Transform
+        from backend.timeline.effects.skslEffect import SkslEffect
         clip = cls(
-            filepath=data["filepath"],
-            startFrame=data["startFrame"],
-            duration=data["duration"],
-            clipId=data.get("clipId"),
-            displayW=data.get("displayW", 0.0),
-            displayH=data.get("displayH", 0.0),
+            filepath   = data["filepath"],
+            startFrame = data["startFrame"],
+            duration   = data["duration"],
+            clipId     = data.get("clipId"),
+            displayW   = data.get("displayW", 0.0),
+            displayH   = data.get("displayH", 0.0),
         )
         clip.tintEnabled = data.get("tintEnabled", False)
         clip.tintColor   = data.get("tintColor", [1.0, 1.0, 1.0, 1.0])
 
         t = data.get("transform", {})
-        clip.transform.position.setBase(t.get("x", 0.0), t.get("y", 0.0))
-        clip.transform.scale.setBase(t.get("scaleX", 1.0), t.get("scaleY", 1.0))
-        clip.transform.rotation.setBaseValue(t.get("rotation", 0.0))
-        clip.transform.opacity.setBaseValue(t.get("opacity", 1.0))
-        clip.transform.anchor.setBase(t.get("anchorX", 0.0), t.get("anchorY", 0.0))
+        # New format: full Transform dict (has "position", "scale", etc.)
+        if "position" in t or "scale" in t:
+            clip.transform = Transform.fromDict(t)
+        else:
+            # Legacy flat format: {x, y, scaleX, scaleY, rotation, opacity, anchorX, anchorY}
+            clip.transform.position.setBase(t.get("x", 0.0), t.get("y", 0.0))
+            clip.transform.scale.setBase(t.get("scaleX", 1.0), t.get("scaleY", 1.0))
+            clip.transform.rotation.setBaseValue(t.get("rotation", 0.0))
+            clip.transform.opacity.setBaseValue(t.get("opacity", 1.0))
+            clip.transform.anchor.setBase(t.get("anchorX", 0.0), t.get("anchorY", 0.0))
+
+        for ed in data.get("effects", []):
+            if ed.get("type", "").startswith("sksl:") or "typeId" in ed:
+                try:
+                    clip.effects.append(SkslEffect.fromDict(ed))
+                except Exception as ex:
+                    print(f"[SvgClip] effect restore failed: {ex}")
         return clip
+
 
     def __repr__(self) -> str:
         return (
