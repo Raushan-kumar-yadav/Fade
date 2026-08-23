@@ -71,12 +71,17 @@ class VideoTrack(BaseTrack):
     @classmethod
     def fromDict(cls, data: dict) -> "VideoTrack":
         from backend.timeline.clips.videoClip import VideoClip
+        from backend.timeline.clips.imageClip import ImageClip
         from backend.timeline.transitions.transition import Transition
         t = cls(name=data["name"])
         t._applyBaseDict(data)
         t.opacity = data.get("opacity", 1.0)
         for clipData in data.get("clips", []):
-            t.clips.append(VideoClip.fromDict(clipData))
+            clip_type = clipData.get("type", "video")
+            if clip_type == "image":
+                t.clips.append(ImageClip.fromDict(clipData))
+            else:
+                t.clips.append(VideoClip.fromDict(clipData))
         for td in data.get("transitions", []):
             t.transitions.append(Transition.fromDict(td))
         return t

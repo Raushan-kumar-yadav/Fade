@@ -16,16 +16,15 @@ _EXT_MAP: dict[str, MediaType] = {
 }
 
 
+
 def _probe_has_audio(filepath: str) -> bool:
-    """Returns True if ffprobe detects at least one audio stream."""
+    """Returns True if the file has at least one audio stream (uses PyAV, no ffprobe needed)."""
     try:
-        r = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "a:0",
-             "-show_entries", "stream=codec_type",
-             "-of", "csv=p=0", filepath],
-            capture_output=True, text=True, timeout=10,
-        )
-        return "audio" in r.stdout
+        import av
+        container = av.open(filepath)
+        result = any(s.type == 'audio' for s in container.streams)
+        container.close()
+        return result
     except Exception:
         return False
 

@@ -37,7 +37,7 @@ function loadRenderEngine(): void {
     return
   }
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line  
     renderEngine = require(addonPath) as RenderEngine
     console.log('[RenderEngine] Native addon loaded successfully')
   } catch (e) {
@@ -49,10 +49,10 @@ function loadRenderEngine(): void {
 function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps = 30): void {
   if (!renderEngine) return
 
-  // SkSL shaders live at:  <projectRoot>/backend/timeline/effects/sksl/
+  // SkSL shaders live at 
   const projectRoot = path.join(__dirname, '..')
   const effectsDir  = path.join(projectRoot, 'backend', 'timeline', 'effects', 'sksl')
-                          .replace(/\\/g, '/')  // C++ std::ifstream prefers forward slashes
+                          .replace(/\\/g, '/')   
 
   try {
     renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
@@ -72,10 +72,11 @@ app.commandLine.appendSwitch('disable-gpu-shader-disk-cache')
 app.commandLine.appendSwitch('disable-dev-shm-usage')
 app.commandLine.appendSwitch('no-sandbox')
 app.commandLine.appendSwitch('disable-gpu-sandbox')
-app.commandLine.appendSwitch('disable-software-rasterizer')   // use ANGLE instead of SW
-app.commandLine.appendSwitch('ignore-gpu-blocklist')           // don't block GPU on driver issues
-app.commandLine.appendSwitch('enable-gpu-rasterization')       // keep GPU for Chromium UI
-app.commandLine.appendSwitch('disable-zero-copy')              // prevent zero-copy GPU mem pressure
+app.commandLine.appendSwitch('disable-software-rasterizer')
+app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('enable-gpu-rasterization')
+app.commandLine.appendSwitch('disable-zero-copy')
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 // Helpers  
 

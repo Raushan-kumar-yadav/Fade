@@ -7,6 +7,13 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS",  "1")
 
+# Add ffmpeg to PATH if not already present (D:\ffmpeg\FFmpeg\ is installed but not in system PATH)
+_FFMPEG_DIRS = [r"D:\ffmpeg\FFmpeg"]
+for _d in _FFMPEG_DIRS:
+    if os.path.isdir(_d) and _d not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
+        print(f"[main] Added ffmpeg to PATH: {_d}", flush=True)
+
 faulthandler.enable()
 
 import sys
@@ -740,11 +747,17 @@ def importAsset(req: ImportRequest):
     # De-duplicate by path
     for a in _library.values():
         if a.filepath == req.filepath:
+            if a.hasAudio:
+                try:
+                    _worker_bus.submit_waveform(a.assetId, a.filepath)
+                except Exception:
+                    pass
             return {
                 "assetId": a.assetId,
                 "filename": os.path.basename(a.filepath),
                 "filepath": a.filepath,
                 "type": a.mediaType,
+                "hasAudio": a.hasAudio,
             }
 
     assetId = str(uuid.uuid4())
@@ -754,11 +767,20 @@ def importAsset(req: ImportRequest):
     )
     _library[assetId] = asset
 
+    # Eagerly probe for audio and kick off waveform generation
+    has_audio = asset.hasAudio
+    if has_audio:
+        try:
+            _worker_bus.submit_waveform(assetId, req.filepath)
+        except Exception:
+            pass
+
     return {
         "assetId": assetId,
         "filename": os.path.basename(req.filepath),
         "filepath": req.filepath,
         "type": asset.mediaType,
+        "hasAudio": has_audio,
     }
 
 
@@ -791,7 +813,7 @@ class TrimClipRequest(BaseModel):
 
 class SplitClipRequest(BaseModel):
     clipId: str
-    frame: int       # global timeline frame at which to split
+    frame: int       
 
 @app.post("/timeline/add-clip")
 def addClip(req: AddClipRequest):
@@ -808,51 +830,42 @@ def addClip(req: AddClipRequest):
 
     track = tl.tracks[req.trackIndex]
 
-    clip = VideoClip(
-        startFrame = req.startFrame,
-        duration   = req.duration,
-        assetId    = req.assetId,
-    )
+    from backend.media.asset.baseAsset import MediaType
 
-    # Wire scheduler so the clip can decode immediately
-    if engine.scheduler:
-        clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
-        engine.scheduler.registerClip(clip.clipId, asset)
+    if asset.mediaType == MediaType.image:
+        # ── Image clip: decodes once, no scheduler needed ──────────────
+        from backend.timeline.clips.imageClip import ImageClip
+        clip = ImageClip(
+            startFrame = req.startFrame,
+            duration   = req.duration,
+            assetId    = req.assetId,
+            filepath   = asset.filepath,
+        )
+        clip_type = "image"
+    else:
+        # ── Video (or audio) clip ──────────────────────────────────────
+        clip = VideoClip(
+            startFrame = req.startFrame,
+            duration   = req.duration,
+            assetId    = req.assetId,
+        )
+        # Wire scheduler so the clip can decode immediately
+        if engine.scheduler:
+            clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
+            engine.scheduler.registerClip(clip.clipId, asset)
+        clip_type = "video"
 
     from backend.history.commandStack import AddClipCommand
     cmd = AddClipCommand(track, clip)
     engine.commandStack.execute(cmd)
     _clipTrackMap[clip.clipId] = req.trackIndex
 
-    # Auto-create linked AudioClip if the video has an embedded audio stream
-    audio_clip_id: str | None = None
-    try:
-        if asset.hasAudio:
-            # Find first AudioTrack (auto-create if none)
-            audio_track = next(
-                (t for t in tl.tracks if getattr(t, 'isAudio', lambda: False)()),
-                None,
-            )
-            if audio_track is None:
-                audio_track = AudioTrack("Audio 1")
-                tl.addTrack(audio_track)
-
-            aclip = AudioClip(
-                startFrame  = req.startFrame,
-                duration    = req.duration,
-                assetId     = req.assetId,
-                mediaOffset = 0,
-                volume      = 1.0,
-            )
-            audio_cmd = AddClipCommand(audio_track, aclip)
-            engine.commandStack.execute(audio_cmd)
-            _clipTrackMap[aclip.clipId] = tl.tracks.index(audio_track)
-            audio_clip_id = aclip.clipId
-
-            # Kick off async waveform generation (non-blocking)
+    # Kick off waveform generation for clips with audio
+    if asset.hasAudio:
+        try:
             _worker_bus.submit_waveform(req.assetId, asset.filepath)
-    except Exception as _e:
-        print(f"[addClip] audio linking error: {_e}", flush=True)
+        except Exception as _e:
+            print(f"[addClip] waveform submit error: {_e}", flush=True)
 
     return {
         "clipId":      clip.clipId,
@@ -860,8 +873,8 @@ def addClip(req: AddClipRequest):
         "startFrame":  clip.startFrame,
         "duration":    clip.duration,
         "assetId":     req.assetId,
-        "type":        "video",
-        "audioClipId": audio_clip_id,
+        "type":        clip_type,
+        "hasAudio":    asset.hasAudio,
     }
 
 
@@ -1777,16 +1790,16 @@ def transitionsCatalog():
     return {"transitions": TRANSITION_CATALOG}
 
 class TransitionAddRequest(BaseModel):
-    typeId:   str
-    duration: int = 30      # frames
+    typeId: str
+    duration: int = 30      
     clipA_id: str
     clipB_id: str
-    trackId:  str | None = None  # kept for backward-compat but unused
+    trackId:  str | None = None   
 
 class TransitionPatchRequest(BaseModel):
     duration: int | None = None
-    typeId:   str | None = None
-    params:   dict | None = None
+    typeId: str | None = None
+    params: dict | None = None
 
 
 @app.post("/transitions")
@@ -1883,7 +1896,7 @@ def getWaveform(assetId: str, bins: int = 200):
             return JSONResponse({"assetId": assetId, "status": "error",
                                  "message": cached.get("message", "")}, status_code=500)
 
-    # Not in cache yet — kick off async generation
+    # Not in cache yet 
     _worker_bus.submit_waveform(assetId, asset.filepath, bins)
     return JSONResponse({"assetId": assetId, "status": "pending"}, status_code=202)
 
@@ -1901,7 +1914,7 @@ def workerJobs():
     """Return all tracked background jobs from the waveform cache."""
     from backend.worker import waveform_cache as _wc
     jobs = []
-    cache = _wc._cache  # direct dict read (thread-safe enough for display)
+    cache = _wc._cache  # direct dict read  
     for asset_id, entry in list(cache.items()):
         asset = _library.get(asset_id)
         label = asset.filename if asset else asset_id[:12]
@@ -1917,7 +1930,6 @@ def workerJobs():
     order = {"pending": 0, "running": 1, "error": 2, "done": 3}
     jobs.sort(key=lambda j: order.get(j["status"], 9))
     return jobs
-
 
 
 @app.get("/assets/{assetId}/stream")
@@ -1942,27 +1954,106 @@ def streamAsset(assetId: str, request: __import__('fastapi').Request = None):
     })
 
 
+# Audio-only extraction cache dir
+import tempfile as _tempfile
+_audio_cache_dir = os.path.join(_tempfile.gettempdir(), "fade_audio_cache")
+os.makedirs(_audio_cache_dir, exist_ok=True)
+
+
+@app.get("/assets/{assetId}/audio-stream")
+def audioStream(assetId: str):
+    """Serves audio-only. For video files, extracts audio via PyAV to a cached WAV file.
+    For pure audio files, serves the original file directly."""
+    from fastapi.responses import FileResponse
+    import av
+
+    asset = _library.get(assetId)
+    if asset is None:
+        raise HTTPException(404, f"Asset {assetId!r} not found")
+
+    path = asset.filepath
+    if not os.path.exists(path):
+        raise HTTPException(404, "File not found on disk")
+
+    ext = os.path.splitext(path)[1].lower()
+    audio_exts = {".mp3", ".wav", ".aac", ".flac", ".ogg", ".m4a"}
+
+    # Pure audio file  
+    if ext in audio_exts:
+        mime_map = {
+            ".mp3": "audio/mpeg", ".wav": "audio/wav", ".aac": "audio/aac",
+            ".flac": "audio/flac", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
+        }
+        return FileResponse(path, media_type=mime_map.get(ext, "audio/mpeg"), headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        })
+
+    # Video file  
+    cache_path = os.path.join(_audio_cache_dir, f"{assetId}.wav")
+    if not os.path.exists(cache_path):
+        try:
+            in_container = av.open(path)
+            audio_stream = next((s for s in in_container.streams if s.type == 'audio'), None)
+            if audio_stream is None:
+                in_container.close()
+                raise HTTPException(404, "No audio stream found in file")
+
+            out_container = av.open(cache_path, 'w')
+            out_stream = out_container.add_stream('pcm_s16le', rate=audio_stream.sample_rate)
+
+            for packet in in_container.demux(audio_stream):
+                for frame in packet.decode():
+                    frame.pts = None
+                    for out_packet in out_stream.encode(frame):
+                        out_container.mux(out_packet)
+
+            # Flush encoder
+            for out_packet in out_stream.encode(None):
+                out_container.mux(out_packet)
+
+            out_container.close()
+            in_container.close()
+            print(f"[audio-stream] Extracted audio to {cache_path}", flush=True)
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[audio-stream] PyAV extraction failed: {e}", flush=True)
+            raise HTTPException(500, f"Audio extraction error: {e}")
+
+    return FileResponse(cache_path, media_type="audio/wav", headers={
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "public, max-age=3600",
+    })
+
+
 @app.get("/timeline/audio-clips")
 def listAudioClips():
+    """Return audio info for every clip whose asset has an audio stream.
+    This covers VideoClips on video tracks — no separate AudioClip needed."""
     tl = engine.activeTimeline
     if tl is None:
         return {"clips": []}
     result = []
+    seen_assets: set[str] = set()
     for track in tl.tracks:
-        if not getattr(track, 'isAudio', lambda: False)():
-            continue
         for clip in track.clips:
-            asset = _library.get(getattr(clip, 'assetId', None) or '')
+            asset_id = getattr(clip, 'assetId', None) or ''
+            if not asset_id:
+                continue
+            asset = _library.get(asset_id)
             if asset is None:
                 continue
+            if not asset.hasAudio:
+                continue
             result.append({
-                "clipId":     clip.clipId,
-                "assetId":    clip.assetId,
-                "startFrame": clip.startFrame,
-                "duration":   clip.duration,
+                "clipId":      clip.clipId,
+                "assetId":     asset_id,
+                "startFrame":  clip.startFrame,
+                "duration":    clip.duration,
                 "mediaOffset": getattr(clip, 'mediaOffset', 0),
-                "volume":     getattr(clip, 'volume', 1.0),
-                "streamUrl":  f"/assets/{clip.assetId}/stream",
+                "volume":      getattr(clip, 'volume', 1.0),
+                "streamUrl":   f"/assets/{asset_id}/audio-stream",
             })
     return {"clips": result}
 
@@ -1972,14 +2063,14 @@ def listAudioClips():
 # Export  
 
 class ExportStartRequest(BaseModel):
-    outputPath:   str
-    width:        int   = 1920
-    height:       int   = 1080
-    fps:          float = 30.0
-    codec:        str   = "auto"
+    outputPath: str
+    width: int = 1920
+    height: int   = 1080
+    fps: float = 30.0
+    codec: str = "auto"
     videoBitrate: str   = "8M"
     audioBitrate: str   = "192k"
-    formatId:     str   = "mp4-1080"
+    formatId: str = "mp4-1080"
 
 @app.post("/export/start")
 def exportStart(req: ExportStartRequest):

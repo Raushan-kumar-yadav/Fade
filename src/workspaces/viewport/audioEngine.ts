@@ -61,7 +61,14 @@ export class AudioEngine {
         el.preload       = 'auto'
         el.volume        = Math.max(0, Math.min(1, clip.volume))
         el.crossOrigin   = 'anonymous'
+        el.addEventListener('error', () => {
+          console.error('[AudioEngine] load error', clip.clipId, clip.streamUrl, el.error)
+        })
+        el.addEventListener('canplaythrough', () => {
+          console.log('[AudioEngine] ready', clip.clipId, clip.streamUrl)
+        })
         this.nodes.set(clip.clipId, { el, clip })
+        console.log('[AudioEngine] added clip', clip.clipId, 'src=', el.src)
       } else {
         // Update volume if changed
         const node = this.nodes.get(clip.clipId)!
@@ -97,7 +104,7 @@ export class AudioEngine {
           el.currentTime = targetSec
         }
         el.playbackRate = this._rate
-        el.play().catch(() => {})
+        el.play().catch(e => console.warn('[AudioEngine] play rejected', clip.clipId, e.message))
       }
     }
   }
@@ -126,7 +133,7 @@ export class AudioEngine {
         }
         if (el.playbackRate !== this._rate) el.playbackRate = this._rate
         if (el.paused) {
-          el.play().catch(() => {})
+          el.play().catch(e => console.warn('[AudioEngine] tick play rejected', clip.clipId, e.message))
         }
       } else {
         if (!el.paused) el.pause()

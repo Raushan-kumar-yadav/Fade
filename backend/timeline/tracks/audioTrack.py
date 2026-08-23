@@ -3,7 +3,6 @@ from backend.timeline.tracks.baseTrack import BaseTrack
 
 
 class AudioTrack(BaseTrack):
-    
 
     TRACK_TYPE = "audio"
 
@@ -11,6 +10,9 @@ class AudioTrack(BaseTrack):
         super().__init__(name)
         self.volume: float = 1.0  
         self.pan: float = 0.0    
+
+    def isAudio(self) -> bool:
+        return True
 
     def render(self, canvas, frame: int) -> None:
         pass  

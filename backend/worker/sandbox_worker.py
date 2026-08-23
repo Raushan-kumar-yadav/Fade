@@ -21,41 +21,64 @@ import sys
 
 
 def _do_waveform(filepath: str, bins: int) -> list[float]:
-    cmd = [
-        "ffmpeg", "-i", filepath,
-        "-vn",              # no video
-        "-ac", "1",         # mono
-        "-ar", "8000",      # 8 kHz — enough for a waveform
-        "-f", "s16le",
-        "pipe:1",
-        "-loglevel", "error",
-    ]
+    """Extract audio waveform peaks using PyAV (no external ffmpeg needed)."""
     try:
-        result = subprocess.run(cmd, capture_output=True, timeout=120)
-        raw = result.stdout
+        import av
+        import numpy as np
+        has_numpy = True
+    except ImportError:
+        has_numpy = False
+
+    try:
+        import av
+        container = av.open(filepath)
+        audio_stream = next((s for s in container.streams if s.type == 'audio'), None)
+        if audio_stream is None:
+            container.close()
+            return [0.0] * bins
+
+        samples_list: list[float] = []
+
+        for packet in container.demux(audio_stream):
+            for frame in packet.decode():
+                # Convert to mono float32
+                arr = frame.to_ndarray()  # shape: (channels, samples)
+                mono = arr.mean(axis=0) if arr.ndim > 1 else arr
+                # Normalize to -1..1 based on format
+                if frame.format.name in ('s16', 's16p'):
+                    mono = mono.astype(float) / 32768.0
+                elif frame.format.name in ('s32', 's32p'):
+                    mono = mono.astype(float) / 2147483648.0
+                elif frame.format.name in ('fltp', 'flt'):
+                    mono = mono.astype(float)
+                else:
+                    mono = mono.astype(float) / 32768.0
+                samples_list.extend(mono.tolist())
+
+        container.close()
+
+        if not samples_list:
+            return [0.0] * bins
+
+        # Chunk into bins and compute RMS peak per bin
+        n = len(samples_list)
+        chunk = max(1, n // bins)
+        peaks: list[float] = []
+        for i in range(0, n, chunk):
+            sl = samples_list[i: i + chunk]
+            if not sl:
+                break
+            rms = (sum(s * s for s in sl) / len(sl)) ** 0.5
+            peaks.append(min(1.0, rms))
+            if len(peaks) >= bins:
+                break
+
+        while len(peaks) < bins:
+            peaks.append(0.0)
+        return peaks
+
     except Exception as e:
-        raise RuntimeError(f"ffmpeg failed: {e}") from e
-
-    if not raw:
-        return [0.0] * bins
-
-    n = len(raw) // 2
-    samples = struct.unpack(f"<{n}h", raw)
-
-    chunk = max(1, n // bins)
-    peaks: list[float] = []
-    for i in range(0, n, chunk):
-        sl = samples[i: i + chunk]
-        if not sl:
-            break
-        rms = (sum(s * s for s in sl) / len(sl)) ** 0.5
-        peaks.append(min(1.0, rms / 32768.0))
-        if len(peaks) >= bins:
-            break
-
-    while len(peaks) < bins:
-        peaks.append(0.0)
-    return peaks
+        raise RuntimeError(f"PyAV waveform failed: {e}") from e
 
 
 def worker_main(job_queue: multiprocessing.Queue,
