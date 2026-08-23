@@ -241,15 +241,12 @@ async function _pollWaveform(
   attempts = 0,
 ): Promise<{ peaks: number[]; bins: number }> {
   const r = await fetch(`${base()}/assets/${assetId}/waveform?bins=${bins}`);
-  if (r.ok) {
+  if (r.ok || r.status === 202) {
     const d = await r.json();
     if (d.status === 'done') return { peaks: d.peaks, bins: d.bins };
-    if (d.status === 'pending') throw new Error('still_pending');
-  }
-  if (r.status === 202) {
-    // pending — retry with exponential backoff up to ~30s
-    if (attempts > 8) throw new Error('waveform timeout');
-    const delay = Math.min(500 * Math.pow(1.6, attempts), 8000);
+    // pending — retry with exponential backoff, up to ~60s total
+    if (attempts > 20) throw new Error('waveform timeout');
+    const delay = Math.min(300 * Math.pow(1.5, attempts), 6000);
     await new Promise(res => setTimeout(res, delay));
     return _pollWaveform(assetId, bins, attempts + 1);
   }
@@ -257,6 +254,7 @@ async function _pollWaveform(
 }
 
 export const waveformApi = {
+  /** Polls until waveform is ready, then resolves with peaks array. */
   get: (assetId: string, bins = 200) => _pollWaveform(assetId, bins),
 };
 

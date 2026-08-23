@@ -40,6 +40,74 @@ function LoadingOverlay({ message }: { message: string }) {
   )
 }
 
+// ── Media Offline Banner ──────────────────────────────────────────────────────
+
+interface MissingAsset { assetId: string; clipId: string; filename_hint: string }
+
+function MediaOfflineBanner({
+  assets,
+  onRelinked,
+}: {
+  assets: MissingAsset[];
+  onRelinked: (assetId: string) => void;
+}) {
+  const port = (window as any).__FADE_PORT__ ?? 8000;
+  const relink = async (a: MissingAsset) => {
+    const el = (window as any).electronAPI;
+    const fp: string | undefined = await el?.showOpenDialog({
+      title: `Relink "${a.filename_hint}"`,
+      filters: [
+        { name: 'Media', extensions: ['mp4','mov','avi','mkv','webm','png','jpg','jpeg','bmp','webp','svg','mp3','wav','aac','flac','ogg'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (!fp) return;
+    const r = await fetch(`http://127.0.0.1:${port}/library/relink/${a.assetId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filepath: fp }),
+    });
+    if (r.ok) {
+      onRelinked(a.assetId);
+      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+    }
+  };
+  return (
+    <div style={{
+      position: 'fixed', bottom: 60, left: '50%', transform: 'translateX(-50%)',
+      zIndex: 5000,
+      background: 'rgba(28,18,8,0.96)',
+      border: '1px solid rgba(255,160,40,0.45)',
+      borderRadius: 10, padding: '12px 18px',
+      display: 'flex', flexDirection: 'column', gap: 8,
+      fontFamily: 'Inter,sans-serif', fontSize: 13, color: '#ffd580',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.65)',
+      maxWidth: 480, minWidth: 300,
+    }}>
+      <div style={{ fontWeight: 600, marginBottom: 2 }}>
+        {'\u26a0\ufe0f'} {assets.length} media file{assets.length > 1 ? 's' : ''} offline
+      </div>
+      {assets.map(a => (
+        <div key={a.assetId} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1, opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {a.filename_hint || a.assetId.slice(0, 12) + '…'}
+          </span>
+          <button
+            onClick={() => relink(a)}
+            style={{
+              background: 'rgba(255,160,40,0.15)', border: '1px solid rgba(255,160,40,0.4)',
+              color: '#ffd580', borderRadius: 6, padding: '3px 12px',
+              cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap',
+            }}
+          >
+            Relink…
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -53,7 +121,9 @@ export default function App() {
   const [penOutputMode, setPenOutputMode] = useState<PenOutputMode>('clip')
 
   // Loading overlay state
-  const [loadingMsg, setLoadingMsg] = useState<string | null>(null)
+  const [loadingMsg,    setLoadingMsg]    = useState<string | null>(null)
+  // Offline assets after project load
+  const [offlineAssets, setOfflineAssets] = useState<MissingAsset[]>([])
 
   // Apply cursor to whole app when tool changes
   useEffect(() => {
@@ -81,23 +151,22 @@ export default function App() {
   }, [])
 
   // Called by TitleBar after a project is loaded
-  const handleProjectLoaded = useCallback((result: { project: any; timeline: any }) => {
+  const handleProjectLoaded = useCallback((result: { project: any; timeline: any; missing_assets?: MissingAsset[] }) => {
     setLoadingMsg(null)
-    // Switch to video workspace so the user sees their timeline immediately
+    setOfflineAssets(result.missing_assets ?? [])
     setActiveTab('video')
-    // Notify timeline components to refresh
     window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
     window.dispatchEvent(new CustomEvent('fade:project-loaded', { detail: result }))
   }, [])
 
   // Expose a way for TitleBar to show the loading overlay before the fetch
-  // We pass a wrapper that sets the message, delegates to projectApi, then clears
   const handleProjectLoadStart = useCallback((msg: string) => {
     setLoadingMsg(msg)
   }, [])
 
   const handleProjectLoadEnd = useCallback(() => {
     setLoadingMsg(null)
+
   }, [])
 
   const workspaces: Record<TabId, React.FC> = {
@@ -149,6 +218,14 @@ export default function App() {
 
           {/* Full-screen loading overlay */}
           {loadingMsg && <LoadingOverlay message={loadingMsg} />}
+
+          {/* Media Offline Banner — shown when a project has unresolved assets */}
+          {offlineAssets.length > 0 && (
+            <MediaOfflineBanner
+              assets={offlineAssets}
+              onRelinked={(id) => setOfflineAssets(prev => prev.filter(a => a.assetId !== id))}
+            />
+          )}
         </div>
       </ToolContext.Provider>
     </SelectionContext.Provider>

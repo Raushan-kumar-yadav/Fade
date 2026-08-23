@@ -21,10 +21,13 @@ public:
 
   std::shared_ptr<DecodedFrame> tryGetFrameFromCache(const ClipID &contentId,
                                                      int64_t frame);
-  // pumpId   = unique per compClip-instance (e.g. "compA_video1")
-  // contentId = raw video clip ID — shared frame cache key
+
   void registerClip(const ClipID &pumpId, const MediaAsset &asset,
                     const ClipID &contentId = "");
+
+  void registerClipByPath(const ClipID &clipId, const std::string &filepath,
+                          MediaType type);
+
   void unregisterClip(const ClipID &pumpId);
   void prefetchAround(const ClipID &pumpId, int64_t anchorFrame,
                       int radius = 4);
@@ -61,20 +64,13 @@ private:
   std::mutex m_pumpMutex;
 
   // Video pump state
-  std::unordered_map<ClipID, int64_t>
-      m_targetFrames; // Where the pump should stop
-  std::unordered_map<ClipID, int64_t>
-      m_lastDecoded; // Where FFmpeg currently is
-  std::unordered_map<ClipID, int64_t>
-      m_lastAnchorFrame; // Playhead position last tick
-  std::unordered_set<ClipID>
-      m_activePumps; // Is a thread currently pumping this clip
+  std::unordered_map<ClipID, int64_t> m_targetFrames;
+  std::unordered_map<ClipID, int64_t> m_lastDecoded;
+  std::unordered_map<ClipID, int64_t> m_lastAnchorFrame;
+  std::unordered_set<ClipID> m_activePumps;
 
-  // Unified caching: pump state is per-instance (pumpId), frame data is shared
-  // (contentId). Multiple compClip instances pointing to the same video share
-  // decoded pixel data without fighting over the same decoder seek position.
-  std::unordered_map<ClipID, ClipID> m_pumpToContent; // pumpId → contentId
-  std::unordered_map<ClipID, int> m_contentRefCount;  // contentId → # pumps
+  std::unordered_map<ClipID, ClipID> m_pumpToContent;
+  std::unordered_map<ClipID, int> m_contentRefCount;
 
   // Lottie pump state
   std::unordered_map<ClipID, LottieClipState> m_lottieClips;

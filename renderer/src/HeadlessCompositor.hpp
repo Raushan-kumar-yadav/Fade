@@ -84,13 +84,13 @@ private:
   void shutdown();
   void doRender(const FrameDescriptor &fd);
 
-  //   Per-clip draw
+  // Per-clip draw
 
   void drawClipOnCanvas(SkCanvas *canvas, const ClipDesc &clip,
                         const uint8_t *rgba, int imgW, int imgH, bool useGpu,
                         int64_t frame = 0);
 
-  //   SkSL effect pipeline
+  // SkSL effect pipeline
   // Load
   sk_sp<SkRuntimeEffect> getOrCompileEffect(const std::string &typeId);
 
@@ -113,7 +113,7 @@ private:
   int m_height;
   float m_fps;
 
-  // Directory that contains <typeId>
+  // Directory that contains
   std::string m_skslDir;
 
   std::unique_ptr<DeviceContext> m_device;
@@ -122,7 +122,7 @@ private:
   // Per-file video decoder cache
   std::unordered_map<std::string, std::unique_ptr<ClipDecoder>> m_decoders;
 
-  // SkSL runtime-effect cache
+  // SkSL
   std::unordered_map<std::string, sk_sp<SkRuntimeEffect>> m_effectCache;
 
   // Prevents NVRefCnt crash
@@ -132,8 +132,8 @@ private:
   // Main compositing surface
   sk_sp<SkSurface> m_surface;
 
-  std::unique_ptr<uint8_t[]> m_buffer;       // front buffer: JS reads
-  std::unique_ptr<uint8_t[]> m_renderBuffer; // back  buffer: C++ writes
+  std::unique_ptr<uint8_t[]> m_buffer;
+  std::unique_ptr<uint8_t[]> m_renderBuffer;
   size_t m_bufferSize = 0;
 
   std::atomic<bool> m_playing{false};

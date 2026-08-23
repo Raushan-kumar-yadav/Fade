@@ -446,7 +446,21 @@ bool HWVideoDecoder::decodeFrameDirect(int64_t targetFrame, uint8_t* dstBuffer,
                                        int dstW, int dstH) {
   if (!dstBuffer || dstW <= 0 || dstH <= 0) return false;
 
+  // ── Frame-cache fast path ───────────────────────────────────────────────
+  // When project fps > video fps, the same source frame is needed for
+  // multiple consecutive project frames.  Serve from cache instead of
+  // re-running the codec pump (which would advance m_lastDecodedFrame and
+  // cause a gap=-1 backward seek on the *next* request).
+  if (m_cachedTargetFrame == targetFrame &&
+      m_cacheW == dstW && m_cacheH == dstH &&
+      !m_frameCache.empty()) {
+    std::memcpy(dstBuffer, m_frameCache.data(), m_frameCache.size());
+    return true;
+  }
+
   auto decodeStart = std::chrono::steady_clock::now();
+
+  bool success = false;
 
   // SEEK BLOCK (identical to decodeFrame)
   const int64_t gap = targetFrame - m_lastDecodedFrame;
@@ -467,7 +481,6 @@ bool HWVideoDecoder::decodeFrameDirect(int64_t targetFrame, uint8_t* dstBuffer,
   AVPacket *packet = av_packet_alloc();
   if (!frame || !packet) return false;
 
-  bool success = false;
   const int MAX_DECODE_RETRIES = 500;
   int retryCount = 0;
 
@@ -555,6 +568,16 @@ bool HWVideoDecoder::decodeFrameDirect(int64_t targetFrame, uint8_t* dstBuffer,
       auto decodeEnd = std::chrono::steady_clock::now();
       double decMs = std::chrono::duration_cast<std::chrono::microseconds>(decodeEnd - decodeStart).count() / 1000.0;
       std::cout << "[DECODE-D] OK frame=" << targetFrame << " dt=" << decMs << "ms\n" << std::flush;
+
+      // ── Store in frame cache ─────────────────────────────────────────────
+      const size_t frameBytes = static_cast<size_t>(dstW) * dstH * 4;
+      if (success && frameBytes > 0) {
+        m_frameCache.resize(frameBytes);
+        std::memcpy(m_frameCache.data(), dstBuffer, frameBytes);
+        m_cachedTargetFrame = targetFrame;
+        m_cacheW = dstW;
+        m_cacheH = dstH;
+      }
 
       av_frame_free(&frame);
       break;

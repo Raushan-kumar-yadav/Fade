@@ -1,5 +1,6 @@
 #include "HeadlessCompositor.hpp"
 #include "core/api/Logger.hpp"
+#include "engine/SchedulerBridge.hpp"
 #include "napi/FrameDescriptor.hpp"
 #include "rendering/DrawPen.hpp"
 #include "rendering/DrawShape.hpp"
@@ -77,6 +78,9 @@ void HeadlessCompositor::init(const std::string &effectsDir) {
   m_renderBuffer = std::make_unique<uint8_t[]>(m_bufferSize);
   std::memset(m_renderBuffer.get(), 0, m_bufferSize);
 
+  //  Wire DecodeScheduler to our Vulkan device for HW decode
+  schedSetDeviceContext(m_device.get());
+
   LOG_INFO("Initialized " << m_width << "x" << m_height << " @ " << m_fps
                           << "fps");
 }
@@ -123,6 +127,22 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           (t.x == 0 && t.y == 0 && t.rotation == 0 && t.scaleX == 1.0f &&
            t.scaleY == 1.0f && clip.opacity >= 0.99f && clip.blendMode == 0);
       if (isIdentity) {
+        // ── Try scheduler cache first (pre-decoded by worker threads) ──
+        CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
+        if (cfd.valid &&
+            (int)cfd.width == m_width && (int)cfd.height == m_height) {
+          // Dimensions match project — direct memcpy (sub-1ms)
+          std::memcpy(m_renderBuffer.get(), cfd.data, m_bufferSize);
+          std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
+          releaseCachedFrame(cfd);
+          if (m_onFrameReady)
+            m_onFrameReady(fd.frame);
+          return;
+        }
+        if (cfd.valid)
+          releaseCachedFrame(cfd); // dimensions mismatch, release & fall through
+
+        // ── Cache miss: fallback to sync decode ──
         auto &decoder = m_decoders[clip.file];
         if (!decoder)
           decoder =
@@ -166,6 +186,21 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
     }
+
+    // ── Try scheduler cache first ──
+    CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
+    if (cfd.valid) {
+      if (!clip.effects.empty())
+        needsGpu = true;
+      // Copy the cached RGBA data into a local vector
+      std::vector<uint8_t> rgbaCopy(cfd.data, cfd.data + cfd.dataSize);
+      decoded.push_back(
+          {&clip, std::move(rgbaCopy), (int)cfd.width, (int)cfd.height});
+      releaseCachedFrame(cfd);
+      continue;
+    }
+
+    // ── Cache miss: fallback to sync decode ──
     auto &decoder = m_decoders[clip.file];
     if (!decoder)
       decoder = std::make_unique<ClipDecoder>(clip.file, m_device.get(), 1.0f);
@@ -885,14 +920,37 @@ void HeadlessCompositor::play() {
 
       int64_t frame = m_currentFrame.load();
 
+      // ── Responsive pause check before HTTP ──
+      if (!m_playing.load()) break;
+
       // Fetch layout from Python
       auto t0 = clock::now();
       std::string json = fetchFrameJson(frame);
       auto t1 = clock::now();
 
+      // ── Responsive pause check before render ──
+      if (!m_playing.load()) break;
+
       if (!json.empty()) {
         FrameDescriptor fd = parseFrameDescriptor(json);
         if (fd.valid) {
+          // ── Responsive pause check before expensive decode+render ──
+          if (!m_playing.load()) break;
+
+          // ── Async prefetch: register clips and pre-decode ahead ──
+          for (const auto &clip : fd.clips) {
+            if (clip.type == ClipDesc::Type::Video ||
+                clip.type == ClipDesc::Type::Image) {
+              if (!clip.file.empty()) {
+                if (clip.type == ClipDesc::Type::Video)
+                  schedRegisterVideo(clip.file, clip.file);
+                else
+                  schedRegisterImage(clip.file, clip.file);
+                schedPrefetchAround(clip.file, clip.sourceFrame, 8);
+              }
+            }
+          }
+
           auto t2 = clock::now();
           std::lock_guard<std::mutex> lock(m_renderMutex);
           doRender(fd);
@@ -912,25 +970,23 @@ void HeadlessCompositor::play() {
         }
       }
 
+      // Always advance by exactly 1 — NEVER skip frames.
+      // Sequential decode is ~25ms per frame (fits in 33ms budget).
+      // Skipping causes the decoder to pump through multiple frames,
+      // taking 100-350ms each and creating a death spiral.
       m_currentFrame.fetch_add(1);
 
       auto now = clock::now();
-      if (now >= nextTick) {
-        // Behind schedule
-        auto behind = std::chrono::duration_cast<ns>(now - nextTick);
-        int64_t framesLate = behind.count() / frameDur.count();
-        if (framesLate > 0) {
-          m_currentFrame.fetch_add(framesLate);
-        }
-        nextTick = now + frameDur;
-      } else {
-        // On time
+      if (now < nextTick) {
+        // On time or ahead — sleep until next tick
         std::unique_lock<std::mutex> lk(m_sleepMutex);
         m_sleepCv.wait_until(lk, nextTick, [this, &lastSeekGen]() {
           return !m_playing.load() || m_seekGeneration.load() != lastSeekGen;
         });
-        nextTick += frameDur;
       }
+      // Always set next tick relative to now (not nextTick) to avoid
+      // accumulated debt that would cause a burst of catch-up frames.
+      nextTick = clock::now() + frameDur;
     }
   });
 }

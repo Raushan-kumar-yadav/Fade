@@ -142,7 +142,7 @@ void DecodeScheduler::startPump(const ClipID &pumpId) {
 void DecodeScheduler::registerClip(const ClipID &pumpId,
                                    const MediaAsset &asset,
                                    const ClipID &contentId) {
-  // Resolve which content ID to use for the shared frame cache
+
   const ClipID &cid = contentId.empty() ? pumpId : contentId;
 
   if (!m_decoderPool.has(pumpId)) {
@@ -151,6 +151,18 @@ void DecodeScheduler::registerClip(const ClipID &pumpId,
     m_lastDecoded[pumpId] = -1;
     m_pumpToContent[pumpId] = cid;
     m_contentRefCount[cid]++;
+  }
+}
+
+void DecodeScheduler::registerClipByPath(const ClipID &clipId,
+                                         const std::string &filepath,
+                                         MediaType type) {
+  if (!m_decoderPool.has(clipId)) {
+    m_decoderPool.open(clipId, filepath, type);
+    std::lock_guard<std::mutex> lock(m_pumpMutex);
+    m_lastDecoded[clipId] = -1;
+    m_pumpToContent[clipId] = clipId; // use clipId as its own contentId
+    m_contentRefCount[clipId]++;
   }
 }
 

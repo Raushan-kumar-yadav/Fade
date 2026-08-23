@@ -737,6 +737,14 @@ def saveProject(req: SaveRequest):
     if tl is not None:
         proj_dict["timeline"] = tl.toDict()
 
+    # ── Asset catalog: assetId → filepath for every known library entry ──────
+    # This is the canonical source of truth for project reload — independent of
+    # whether individual clips happen to store filepath correctly.
+    proj_dict["assets"] = {
+        asset_id: asset.filepath
+        for asset_id, asset in _library.items()
+        if asset.filepath and os.path.exists(asset.filepath)
+    }
 
     path = Path(req.filepath)
     if not path.suffix:
@@ -747,7 +755,7 @@ def saveProject(req: SaveRequest):
 
     engine.project.filePath = str(path)
     engine.project.isDirty  = False
-    print(f"[Project] Saved -> {path}", flush=True)
+    print(f"[Project] Saved -> {path}  ({len(proj_dict['assets'])} assets catalogued)", flush=True)
     return {"status": "ok", "filepath": str(path)}
 
 
@@ -768,7 +776,6 @@ def loadProject(req: LoadRequest):
     data = json.loads(path.read_text(encoding="utf-8"))
 
     # Use engine.loadProject to initialize compositor + scheduler properly
-    # (it calls _stop_pipeline and sets up a fresh Compositor/DecodeScheduler)
     proj = engine.loadProject(str(path))
     proj.filePath = str(path)
 
@@ -776,44 +783,76 @@ def loadProject(req: LoadRequest):
     tl_data = data.get("timeline")
     if tl_data:
         tl = Timeline.fromDict(tl_data)
-        # Re-attach decode schedulers to all video/image clips
         for track in tl.tracks:
             for clip in track.clips:
                 if hasattr(clip, "setScheduler") and engine.scheduler:
                     clip.setScheduler(engine.scheduler, proj.fps)
-        # Inject the rich timeline (engine.loadProject only loaded project meta)
         proj.timelines = [tl]
     else:
-        # No timeline in file — keep whatever engine.loadProject created
         tl = engine.activeTimeline
 
     # ── Restore asset library ────────────────────────────────────────────────
-    # Scan every clip that has an assetId+filepath and re-register it in
-    # the module-level _library dict so the decoders can find the files.
+    # Priority 1: top-level "assets" catalog  {assetId: filepath}  (new format)
+    # Priority 2: clip-level filepath attribute                     (legacy fallback)
     _library.clear()
+    missing: list[str] = []
+
+    def _register(asset_id: str, filepath: str) -> bool:
+        """Register one asset; returns True on success."""
+        if not asset_id or not filepath or asset_id in _library:
+            return False
+        if not os.path.exists(filepath):
+            missing.append(filepath)
+            return False
+        asset = MediaAsset(filepath=filepath, assetId=asset_id)
+        _library[asset_id] = asset
+        if asset.hasAudio:
+            try:
+                _worker_bus.submit_waveform(asset_id, filepath)
+            except Exception:
+                pass
+        return True
+
+    # Pass 1 — asset catalog (guaranteed to have the right filepath)
+    for asset_id, filepath in data.get("assets", {}).items():
+        _register(asset_id, filepath)
+
+    # Pass 2 — scan clips for any assetId not yet in _library
+    # Also collect missing assetIds so frontend can show a relink prompt
+    offline_assets: list[dict] = []   # [{assetId, clipId, filename_hint}]
     if tl:
         for track in tl.tracks:
             for clip in track.clips:
-                asset_id  = getattr(clip, "assetId",  None)
-                filepath  = getattr(clip, "filepath",  None)
-                if asset_id and filepath and asset_id not in _library:
-                    if os.path.exists(filepath):
-                        asset = MediaAsset(filepath=filepath, assetId=asset_id)
-                        _library[asset_id] = asset
-                        # Queue waveform generation for audio-bearing assets
-                        if asset.hasAudio:
-                            try:
-                                _worker_bus.submit_waveform(asset_id, filepath)
-                            except Exception:
-                                pass
-                    else:
-                        print(f"[Project] WARNING: asset file missing: {filepath}", flush=True)
+                aid = getattr(clip, "assetId",  "")
+                fp  = getattr(clip, "filepath",  "")
+                if not aid:
+                    continue
+                registered = _register(aid, fp)
+                if not registered and aid not in _library:
+                    # Clip has an assetId we can't find → mark offline
+                    import pathlib
+                    hint = pathlib.Path(fp).name if fp else aid[:12]
+                    offline_assets.append({
+                        "assetId":      aid,
+                        "clipId":       getattr(clip, "clipId", ""),
+                        "filename_hint": hint,
+                    })
 
-    print(f"[Project] Loaded <- {path}  ({len(_library)} assets restored)", flush=True)
+    if missing:
+        for fp in missing:
+            print(f"[Project] WARNING: asset file missing: {fp}", flush=True)
+
+    if offline_assets:
+        print(f"[Project] {len(offline_assets)} asset(s) offline: "
+              + ", ".join(a['filename_hint'] for a in offline_assets), flush=True)
+
+    print(f"[Project] Loaded <- {path}  ({len(_library)} assets restored, "
+          f"{len(offline_assets)} offline)", flush=True)
     return {
         "status": "ok",
         "project": proj.toDict(),
         "timeline": tl.toDict() if tl else {},
+        "missing_assets": offline_assets,
     }
 
 
@@ -898,7 +937,31 @@ def importAsset(req: ImportRequest):
 @app.delete("/library/assets/{assetId}")
 def deleteAsset(assetId: str):
     _library.pop(assetId, None)
-    return {"status": "ok"}
+
+
+class RelinkRequest(BaseModel):
+    filepath: str
+
+
+@app.post("/library/relink/{assetId}")
+def relinkAsset(assetId: str, req: RelinkRequest):
+    """Relink an offline asset to a new filepath (same assetId preserved)."""
+    if not os.path.exists(req.filepath):
+        raise HTTPException(404, f"File not found: {req.filepath}")
+    asset = MediaAsset(filepath=req.filepath, assetId=assetId)
+    _library[assetId] = asset
+    if asset.hasAudio:
+        try:
+            _worker_bus.submit_waveform(assetId, req.filepath)
+        except Exception:
+            pass
+    print(f"[Library] Relinked {assetId[:8]}... -> {req.filepath}", flush=True)
+    return {
+        "assetId":  assetId,
+        "filepath": req.filepath,
+        "filename": os.path.basename(req.filepath),
+        "hasAudio": asset.hasAudio,
+    }
 
 
 #   Timeline routes  

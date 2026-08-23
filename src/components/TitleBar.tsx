@@ -89,7 +89,7 @@ interface TitleBarProps {
   onToggleToolbox?:   () => void;
   toolboxOpen?:       boolean;
   /** Called after a project is loaded so the app can refresh the timeline */
-  onProjectLoaded?:   (result: { project: any; timeline: any }) => void;
+  onProjectLoaded?:   (result: { project: any; timeline: any; missing_assets?: any[] }) => void;
   /** Called before the async load starts — show a loading indicator */
   onLoadStart?:       (message: string) => void;
   /** Called after load finishes (success or failure) */

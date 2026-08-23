@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useEffect, useState } from "react";
+import React, { memo, useCallback, useRef, useEffect, useState, useLayoutEffect } from "react";
 import { useSelection } from "../../context/selectionContext";
 import {
   useTimeline,
@@ -33,37 +33,68 @@ const TimelineClip = memo(function TimelineClip({
   const { zoomX, selectedTool, interaction } = state;
 
   const clipRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [peaks, setPeaks] = useState<number[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [peaks, setPeaks]             = useState<number[]>([]);
+  const [waveLoading, setWaveLoading] = useState(false);
 
+  // Derived geometry — must be before any hook that uses them as deps
   const x     = clip.startFrame * zoomX;
-  const width  = Math.max(clip.duration * zoomX, 4);
-  const color  = CLIP_COLORS[clip.type];
+  const width = Math.max(clip.duration * zoomX, 4);
+  const color = CLIP_COLORS[clip.type];
 
+  // Only video and audio clips produce waveforms
+  const wantsWaveform = clip.type === 'video' || clip.type === 'audio';
+
+  // ── Fetch waveform asynchronously (polls until ready) ──────────────────────
   useEffect(() => {
-    if (!clip.assetId) return;
+    if (!wantsWaveform || !clip.assetId) return;
     let cancelled = false;
+    setWaveLoading(true);
     waveformApi.get(clip.assetId, 200)
-      .then(d => { if (!cancelled) setPeaks(d.peaks); })
-      .catch(() => {});
+      .then(d => {
+        if (!cancelled) {
+          setPeaks(d.peaks);
+          setWaveLoading(false);
+        }
+      })
+      .catch(() => { if (!cancelled) setWaveLoading(false); });
     return () => { cancelled = true; };
-  }, [clip.assetId]);
+  }, [clip.assetId, wantsWaveform]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
+  // ── Draw onto canvas whenever peaks or width changes ───────────────────────
+  const drawWaveform = useCallback((canvas: HTMLCanvasElement | null) => {
     if (!canvas || peaks.length === 0) return;
+    canvas.width  = Math.max(1, Math.round(width));
+    canvas.height = Math.max(1, trackHeight - 10);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const W = canvas.width;
     const H = canvas.height;
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0,   'rgba(255,255,255,0.55)');
+    grad.addColorStop(0.5, 'rgba(255,255,255,0.30)');
+    grad.addColorStop(1,   'rgba(255,255,255,0.55)');
+    ctx.fillStyle = grad;
     const barW = W / peaks.length;
     for (let i = 0; i < peaks.length; i++) {
-      const h = peaks[i] * H;
+      const h = Math.max(1, peaks[i] * H);
       ctx.fillRect(i * barW, (H - h) / 2, Math.max(1, barW - 0.5), h);
     }
-  }, [peaks, width]);
+  }, [peaks, width, trackHeight]);
+
+  // ref-callback: fires the instant the canvas element is created
+  const canvasRefCallback = useCallback((el: HTMLCanvasElement | null) => {
+    canvasRef.current = el;
+    drawWaveform(el);
+  }, [drawWaveform]);
+
+  // Redraw if peaks/width change while canvas already exists
+  useLayoutEffect(() => {
+    drawWaveform(canvasRef.current);
+  }, [drawWaveform]);
+
+
 
   const isMeMoving =
     interaction?.mode === "move" && interaction.clipId === clip.id;
@@ -123,10 +154,10 @@ const TimelineClip = memo(function TimelineClip({
       });
       // Update InspectorPanel
       setSelected({
-        type:       'clip',
-        clipId:     clip.id,
-        clipName:   clip.name,
-        clipType:   clip.type,
+        type: 'clip',
+        clipId: clip.id,
+        clipName: clip.name,
+        clipType: clip.type,
         trackIndex,
       });
 
@@ -296,7 +327,7 @@ const TimelineClip = memo(function TimelineClip({
     ],
   );
 
-  // Effect drop support — accepts drag from EffectsPanel library
+  // Effect drop support 
   const [effectDropOver, setEffectDropOver] = useState(false);
 
   const handleEffectDragOver = useCallback((e: React.DragEvent) => {
@@ -357,12 +388,21 @@ const TimelineClip = memo(function TimelineClip({
       <div className="tl-clip__trim tl-clip__trim--left" />
       <div className="tl-clip__trim tl-clip__trim--right" />
 
+      {/* Waveform loading shimmer — only for audio/video while pending */}
+      {wantsWaveform && waveLoading && peaks.length === 0 && (
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.08) 50%, transparent 75%)',
+          backgroundSize: '200% 100%',
+          animation: 'tl-wave-shimmer 1.4s ease-in-out infinite',
+        }} />
+      )}
+
+      {/* Waveform canvas — drawn imperatively via ref-callback */}
       {peaks.length > 0 && (
         <canvas
-          ref={canvasRef}
-          width={Math.max(1, Math.round(width))}
-          height={Math.max(1, trackHeight - 10)}
-          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.6 }}
+          ref={canvasRefCallback}
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.65 }}
         />
       )}
 
@@ -374,6 +414,7 @@ const TimelineClip = memo(function TimelineClip({
     </div>
   );
 });
+
 
 // Helpers
 

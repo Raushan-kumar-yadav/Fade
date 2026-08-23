@@ -496,3 +496,9 @@
   background: #6366f1;
   box-shadow: 0 0 6px rgba(99, 102, 241, 0.8);
 }
+
+/* Waveform loading shimmer */
+@keyframes tl-wave-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

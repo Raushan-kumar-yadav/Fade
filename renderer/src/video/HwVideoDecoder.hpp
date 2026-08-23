@@ -13,6 +13,7 @@ extern "C" {
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 }
+#include <vector>
  class HWVideoDecoder : public baseDecoder {
 public:
     HWVideoDecoder(const std::string& filepath, DeviceContext* context, float previewScale = 1.0f);
@@ -51,4 +52,11 @@ private:
     SwsContext* m_swsCtx = nullptr;
     AVFrame* m_rgbFrame = nullptr;
     uint8_t* m_rgbBuffer = nullptr;
+
+    // ── Frame cache: avoid re-decoding when the same source frame is
+    // requested multiple times (common when project fps > video fps).
+    std::vector<uint8_t> m_frameCache;   // last decoded RGBA pixels
+    int64_t  m_cachedTargetFrame = -1;   // which targetFrame is stored
+    int      m_cacheW = 0;
+    int      m_cacheH = 0;
 };

@@ -145,7 +145,7 @@ class Transition:
     @classmethod
     def fromDict(cls, data: dict) -> "Transition":
         t = cls(
-            typeId   = data.get("typeId",   "dissolve"),
+            typeId = data.get("typeId",   "dissolve"),
             duration = data.get("duration", 30),
             clipA_id = data.get("clipA_id", ""),
             clipB_id = data.get("clipB_id", ""),

@@ -56,6 +56,9 @@ set(SOURCES
     src/video/HwVideoDecoder.cpp
     src/video/videoDecoder.cpp
     src/video/ClipDecoder.cpp
+
+    # ── Async decode bridge (self-contained scheduler for HeadlessCompositor) ─
+    src/engine/SchedulerBridge.cpp
 )
 
 # ── NAPI addon target ──────────────────────────────────────────────────────────
