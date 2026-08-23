@@ -1,12 +1,4 @@
-"""
-backend/ai/video_pipeline/asset_gatherer.py
-Gathers all media assets for a ScenePlan in parallel:
-  - video scenes  → POST /media/download-search  (yt-dlp)
-  - image scenes  → POST /media/generate-image   (Gemini Imagen)
-  - none  scenes  → skipped
-
-Returns a mapping: {scene_id: assetId}
-"""
+ 
 from __future__ import annotations
 import asyncio
 import httpx
@@ -15,7 +7,7 @@ from typing import Callable
 from backend.ai.video_pipeline.schema import ScenePlan, Scene
 
 
-_TIMEOUT = httpx.Timeout(180.0)  # image gen can be slow
+_TIMEOUT = httpx.Timeout(180.0)   
 
 
 async def _download_video(scene: Scene, port: int) -> tuple[int, str | None]:
@@ -63,10 +55,7 @@ async def gather_assets(
     port: int = 8000,
     progress_cb: Callable[[str], None] | None = None,
 ) -> dict[int, str]:
-    """
-    Downloads/generates all assets in the plan concurrently.
-    Returns {scene_id: assetId} for scenes that succeeded.
-    """
+     
     if progress_cb:
         progress_cb(f"Gathering assets for {plan.totalScenes} scenes (parallel)…")
 
@@ -78,7 +67,9 @@ async def gather_assets(
         elif btype == "image":
             tasks.append(_generate_image(scene, port))
         else:
-            tasks.append(asyncio.coroutine(lambda s=scene: (s.id, None))())
+            async def _noop(s=scene):
+                return (s.id, None)
+            tasks.append(_noop())
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
 

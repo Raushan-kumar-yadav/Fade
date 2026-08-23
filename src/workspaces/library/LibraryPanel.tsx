@@ -48,6 +48,12 @@ export default function LibraryPanel({ onAddToTimeline }: Props) {
     }
   }, [refresh]);
 
+   useEffect(() => {
+    const h = () => refresh();
+    window.addEventListener('fade:library-changed', h);
+    return () => window.removeEventListener('fade:library-changed', h);
+  }, [refresh]);
+
   // Import via hidden file input  
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;

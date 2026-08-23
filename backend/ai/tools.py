@@ -189,28 +189,90 @@ def add_text_clip(track_index: int, start_frame: int, duration: int,
 
 @tool
 def get_transitions_catalog() -> str:
-    """Return all available transition types."""
+    """Return all available transition types with their typeId values."""
     data = _get("/transitions/catalog")
     return json.dumps(data, indent=2)
 
 @tool
 def add_transition(clip_a_id: str, clip_b_id: str,
-                   type_id: str = "fade", duration_frames: int = 15) -> str:
+                   type_id: str = "dissolve", duration_frames: int = 30) -> str:
     """Add a transition between two consecutive clips.
     Args:
-        clip_a_id: The clipId of the first (outgoing) clip.
-        clip_b_id: The clipId of the second (incoming) clip.
-        type_id: Transition type, e.g. 'fade', 'dissolve', 'wipe_left'.
-                 Use get_transitions_catalog() to see valid types.
-        duration_frames: Length of the transition overlap in frames.
+        clip_a_id: The clipId of the outgoing (first) clip.
+        clip_b_id: The clipId of the incoming (second) clip.
+        type_id: Transition type. Valid values: 'dissolve', 'fade_black',
+                 'wipe_left', 'wipe_right', 'zoom_in', 'slide_left'.
+        duration_frames: Overlap length in frames (default 30 = 1s @ 30fps).
+    Returns a confirmation string.
     """
-    result = _post("/transitions", {
+    _post("/transitions", {
         "typeId": type_id,
         "duration": duration_frames,
         "clipA_id": clip_a_id,
         "clipB_id": clip_b_id,
     })
-    return f"Added '{type_id}' transition between {clip_a_id} and {clip_b_id}."
+    return f"Transition '{type_id}' ({duration_frames}f) added between clip {clip_a_id[:8]}… → {clip_b_id[:8]}…"
+
+
+@tool
+def add_transitions_between_all_clips(
+    type_id: str = "dissolve",
+    duration_frames: int = 30,
+    track_index: int = -1,
+) -> str:
+    """Automatically add transitions between ALL consecutive clip pairs on the timeline.
+    Scans every video track (or just one if track_index is given), finds adjacent
+    clips sorted by startFrame, and adds the requested transition to each boundary.
+
+    Use this after placing multiple clips to instantly polish the video with transitions.
+
+    Args:
+        type_id: Transition type to use for every boundary.
+                 Valid: 'dissolve', 'fade_black', 'wipe_left', 'wipe_right',
+                        'zoom_in', 'slide_left'.
+        duration_frames: Overlap length in frames (30 = 1 second @ 30fps).
+        track_index: If -1 (default) process all tracks.
+                     If 0, 1, 2 … process only that track index.
+    Returns a summary of how many transitions were added.
+    """
+    tl = _get("/timeline/state")
+    tracks = tl.get("tracks", [])
+
+    added = 0
+    skipped = 0
+    errors = []
+
+    for ti, track in enumerate(tracks):
+        if track_index >= 0 and ti != track_index:
+            continue
+        clips = sorted(track.get("clips", []), key=lambda c: c["startFrame"])
+        if len(clips) < 2:
+            continue
+        for i in range(len(clips) - 1):
+            a = clips[i]
+            b = clips[i + 1]
+            # Only add if clips actually touch or overlap
+            gap = b["startFrame"] - (a["startFrame"] + a["duration"])
+            if gap > 90:          # more than 3s gap — skip
+                skipped += 1
+                continue
+            try:
+                _post("/transitions", {
+                    "typeId":   type_id,
+                    "duration": duration_frames,
+                    "clipA_id": a["id"],
+                    "clipB_id": b["id"],
+                })
+                added += 1
+            except Exception as exc:
+                errors.append(f"track{ti}/{a['id'][:8]}: {exc}")
+
+    result = f"✅ Added {added} '{type_id}' transitions ({duration_frames}f each)"
+    if skipped:
+        result += f", {skipped} gaps skipped (>3s)"
+    if errors:
+        result += f"\n⚠️ Errors: {'; '.join(errors)}"
+    return result
 
 # history  
 
@@ -489,6 +551,7 @@ ALL_TOOLS = [
     add_text_clip,
     get_transitions_catalog,
     add_transition,
+    add_transitions_between_all_clips,
     undo,
     redo,
     mute_track,

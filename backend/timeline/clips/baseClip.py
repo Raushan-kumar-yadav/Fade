@@ -14,6 +14,7 @@ class BaseClip(ABC):
         self.isSelected  = False
         self.isLocked = False
         self.transform = Transform()
+        self.blendMode: int = 0   
 
         # Mask    
          
@@ -55,6 +56,12 @@ class BaseClip(ABC):
         elif key == "rotation":self.transform.rotation.setBaseValue(val)
         elif key == "anchor_x":self.transform.anchor.setBase(val, self.transform.anchor.y.baseValue)
         elif key == "anchor_y":self.transform.anchor.setBase(self.transform.anchor.x.baseValue, val)
+        elif key == "blend_mode":
+            bm = getattr(self, "blendMode", None)
+            if hasattr(bm, "setBaseValue"):
+                bm.setBaseValue(float(round(val)))   # AnimatableProperty (videoClip / imageClip)
+            else:
+                self.blendMode = int(round(val))     # plain int (shape / pen / text / etc.)
 
     #   Mask helpers  
 

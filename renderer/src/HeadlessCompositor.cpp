@@ -415,8 +415,16 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       if (blended) {
         SkPaint p;
         std::cerr << "[TRANS] drawImage blended...\n";
-        canvas->drawImage(blended, 0, 0,
-                          SkSamplingOptions(SkFilterMode::kLinear), &p);
+        // Draw the blended result scaled to fill the entire canvas.
+        // Must use drawImageRect (not drawImage at 0,0) so that when
+        // preview scale < 1 the image fills the full scaled canvas
+        // rather than only the top portion of it.
+        const float cw = static_cast<float>(m_width);
+        const float ch = static_cast<float>(m_height);
+        canvas->drawImageRect(
+            blended,
+            SkRect::MakeWH(cw, ch),
+            SkSamplingOptions(SkFilterMode::kLinear), &p);
         std::cerr << "[TRANS] drawImage blended done\n";
       }
     }
@@ -491,25 +499,22 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
     canvas->scale(sx, sy);
   }
 
-  // Blend mode
+  // Blend mode + opacity paint — enum matches Python BlendMode class in videoClip.py
   SkPaint paint;
   paint.setAlphaf(clip.opacity);
   switch (clip.blendMode) {
-  case 1:
-    paint.setBlendMode(SkBlendMode::kPlus);
-    break;
-  case 2:
-    paint.setBlendMode(SkBlendMode::kMultiply);
-    break;
-  case 3:
-    paint.setBlendMode(SkBlendMode::kScreen);
-    break;
-  case 4:
-    paint.setBlendMode(SkBlendMode::kOverlay);
-    break;
-  default:
-    paint.setBlendMode(SkBlendMode::kSrcOver);
-    break;
+  case 1:  paint.setBlendMode(SkBlendMode::kMultiply);   break; // Multiply
+  case 2:  paint.setBlendMode(SkBlendMode::kScreen);     break; // Screen
+  case 3:  paint.setBlendMode(SkBlendMode::kOverlay);    break; // Overlay
+  case 4:  paint.setBlendMode(SkBlendMode::kDarken);     break; // Darken
+  case 5:  paint.setBlendMode(SkBlendMode::kLighten);    break; // Lighten
+  case 6:  paint.setBlendMode(SkBlendMode::kColorDodge); break; // Color Dodge
+  case 7:  paint.setBlendMode(SkBlendMode::kColorBurn);  break; // Color Burn
+  case 8:  paint.setBlendMode(SkBlendMode::kHardLight);  break; // Hard Light
+  case 9:  paint.setBlendMode(SkBlendMode::kSoftLight);  break; // Soft Light
+  case 10: paint.setBlendMode(SkBlendMode::kDifference); break; // Difference
+  case 11: paint.setBlendMode(SkBlendMode::kExclusion);  break; // Exclusion
+  default: paint.setBlendMode(SkBlendMode::kSrcOver);    break; // Normal
   }
 
   canvas->drawImage(img, 0, 0, SkSamplingOptions(SkFilterMode::kLinear),

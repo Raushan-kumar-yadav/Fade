@@ -369,23 +369,25 @@ class ChromaKeyEffect(BaseEffect):
 
 
 EFFECT_REGISTRY: dict[str, type] = {
-    "blur": BlurEffect,
+    # "blur" removed — use sksl:gaussian_blur (GPU)
     "brightness_contrast": BrightnessContrastEffect,
     "hsl": HSLEffect,
     "color_grade": ColorGradeEffect,
-    "sharpen": SharpenEffect,
+    # "sharpen" removed — use sksl effects for GPU sharpening
     "vignette": VignetteEffect,
     "chroma_key": ChromaKeyEffect,
+    # Keep cpu entries for legacy deserialization only
+    "blur": BlurEffect,
+    "sharpen": SharpenEffect,
 }
 
+# These are shown in the Effects panel UI — CPU blur/sharpen removed (SkSL duplicates)
 EFFECT_META = [
-    {"type": "blur", "name": "Blur", "icon": "◈", "category": "Stylize",  "desc": "Gaussian blur"},
     {"type": "brightness_contrast", "name": "Brightness/Contrast",  "icon": "◑", "category": "Color",    "desc": "Adjust luminance"},
-    {"type": "hsl", "name": "HSL", "icon": "◐", "category": "Color",    "desc": "Hue / Saturation / Lightness"},
-    {"type": "color_grade", "name": "Color Grade", "icon": "◧", "category": "Color",    "desc": "Temperature & tint"},
-    {"type": "sharpen", "name": "Sharpen", "icon": "◇", "category": "Stylize",  "desc": "Unsharp mask"},
-    {"type": "vignette", "name": "Vignette", "icon": "◉", "category": "Cinematic","desc": "Dark edge falloff"},
-    {"type": "chroma_key", "name": "Chroma Key", "icon": "◫", "category": "Keying",   "desc": "Green / blue screen removal"},
+    {"type": "hsl",                  "name": "HSL",                   "icon": "◐", "category": "Color",    "desc": "Hue / Saturation / Lightness"},
+    {"type": "color_grade",          "name": "Color Grade",           "icon": "◧", "category": "Color",    "desc": "Temperature & tint"},
+    {"type": "vignette",             "name": "Vignette",              "icon": "◉", "category": "Cinematic","desc": "Dark edge falloff"},
+    {"type": "chroma_key",           "name": "Chroma Key",            "icon": "◫", "category": "Keying",   "desc": "Green / blue screen removal"},
 ]
 
 try:

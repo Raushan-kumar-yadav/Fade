@@ -375,6 +375,58 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
   );
 }
 
+// ── Blend Mode Selector ──────────────────────────────────────────────────────
+
+const BLEND_MODES = [
+  { value: 0,  label: 'Normal' },
+  { value: 1,  label: 'Multiply' },
+  { value: 2,  label: 'Screen' },
+  { value: 3,  label: 'Overlay' },
+  { value: 4,  label: 'Darken' },
+  { value: 5,  label: 'Lighten' },
+  { value: 6,  label: 'Color Dodge' },
+  { value: 7,  label: 'Color Burn' },
+  { value: 8,  label: 'Hard Light' },
+  { value: 9,  label: 'Soft Light' },
+  { value: 10, label: 'Difference' },
+  { value: 11, label: 'Exclusion' },
+];
+
+function BlendModeSelector({ param, clipId, onChange }: {
+  param: ParamRow;
+  clipId: string;
+  onChange: (id: string, value: number) => void;
+}) {
+  const [val, setVal] = useState(Math.round(param.value));
+  useEffect(() => { setVal(Math.round(param.value)); }, [param.value]);
+
+  const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const v = parseInt(e.target.value, 10);
+    setVal(v);
+    await inspectorApi.setParam(clipId, 'blend_mode', v, -1);
+    onChange('blend_mode', v);
+  };
+
+  return (
+    <div className="insp-row insp-row--blend">
+      <span className="insp-row__label">Blend Mode</span>
+      <div className="insp-blend-wrap">
+        <select
+          className="insp-blend-select"
+          value={val}
+          onChange={handleChange}
+          id={`blend-mode-${clipId}`}
+        >
+          {BLEND_MODES.map(m => (
+            <option key={m.value} value={m.value}>{m.label}</option>
+          ))}
+        </select>
+        <span className="insp-blend-arrow">▾</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Single param row ────────────────────────────────────────────────────────
 
 interface ParamRowProps {
@@ -386,6 +438,11 @@ interface ParamRowProps {
 }
 
 function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: ParamRowProps) {
+  // Blend mode gets its own dedicated dropdown UI
+  if (param.id === 'blend_mode') {
+    return <BlendModeSelector param={param} clipId={clipId} onChange={onChange} />;
+  }
+
   const [localVal, setLocalVal] = useState(param.value);
   const [editing,  setEditing]  = useState(false);
   const [showTrack, setShowTrack] = useState(false);

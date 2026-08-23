@@ -24,7 +24,7 @@ class Project:
         width: int = 1920,
         height: int = 1080,
         fps: float = 30.0,
-        totalFrame: int   = 1800,
+        totalFrame: int = 1800,
     ) -> None: 
         self.projectId  = str(uuid.uuid4())
         self.name = name
@@ -33,7 +33,7 @@ class Project:
         self.fps = fps
         self.totalFrame = totalFrame    
         self.filePath:  str | None = None
-        self.isDirty    = False
+        self.isDirty = False
         self.timelines: list = []       
         self.settings   = ProjectSettings()
 

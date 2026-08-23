@@ -2494,14 +2494,15 @@ def _clip_param_schema(clip) -> list:
 
     # Transform params  
     base = [
-        {"id": "opacity",  "label": "Opacity", "type": "float", "min": 0, "max": 1, "default": round(t.opacity.get(), 4),  "group": "Transform"},
-        {"id": "pos_x", "label": "Position X", "type": "float", "min": -3840, "max": 3840, "default": round(px, 2),               "group": "Transform"},
-        {"id": "pos_y", "label": "Position Y", "type": "float", "min": -2160, "max": 2160, "default": round(py, 2),               "group": "Transform"},
-        {"id": "scale_x", "label": "Scale X", "type": "float", "min": 0, "max": 10, "default": round(sx, 4),               "group": "Transform"},
-        {"id": "scale_y", "label": "Scale Y", "type": "float", "min": 0, "max": 10, "default": round(sy, 4),               "group": "Transform"},
-        {"id": "rotation", "label": "Rotation", "type": "float", "min": -360,  "max": 360,  "default": round(t.rotation.get(), 2), "group": "Transform"},
-        {"id": "anchor_x", "label": "Anchor X", "type": "float", "min": -1920, "max": 1920, "default": round(ax, 2),               "group": "Transform"},
-        {"id": "anchor_y", "label": "Anchor Y", "type": "float", "min": -1080, "max": 1080, "default": round(ay, 2),               "group": "Transform"},
+        {"id": "opacity",    "label": "Opacity",    "type": "float", "min": 0,  "max": 1,  "default": round(t.opacity.get(), 4),  "group": "Transform"},
+        {"id": "blend_mode", "label": "Blend Mode", "type": "int",   "min": 0,  "max": 11, "default": (lambda bm: int(bm.get()) if hasattr(bm, "get") else int(bm) if bm else 0)(getattr(clip, "blendMode", 0)), "group": "Transform"},
+        {"id": "pos_x",    "label": "Position X",  "type": "float", "min": -3840, "max": 3840, "default": round(px, 2), "group": "Transform"},
+        {"id": "pos_y",    "label": "Position Y",  "type": "float", "min": -2160, "max": 2160, "default": round(py, 2), "group": "Transform"},
+        {"id": "scale_x",  "label": "Scale X",     "type": "float", "min": 0,   "max": 10, "default": round(sx, 4),               "group": "Transform"},
+        {"id": "scale_y",  "label": "Scale Y",     "type": "float", "min": 0,   "max": 10, "default": round(sy, 4),               "group": "Transform"},
+        {"id": "rotation", "label": "Rotation",    "type": "float", "min": -360,"max": 360,"default": round(t.rotation.get(), 2), "group": "Transform"},
+        {"id": "anchor_x", "label": "Anchor X",    "type": "float", "min": -1920,"max": 1920,"default": round(ax, 2),             "group": "Transform"},
+        {"id": "anchor_y", "label": "Anchor Y",    "type": "float", "min": -1080,"max": 1080,"default": round(ay, 2),             "group": "Transform"},
     ]
 
     if isinstance(clip, TextClip):

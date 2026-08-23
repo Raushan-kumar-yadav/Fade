@@ -1,8 +1,4 @@
-"""
-backend/ai/video_pipeline/news_search.py
-Fetches current news articles using the ddgs library.
-No API key required.
-"""
+ 
 from __future__ import annotations
 from dataclasses import dataclass
 
@@ -29,12 +25,17 @@ def search_news(query: str, max_results: int = 10) -> list[NewsItem]:
 
     items: list[NewsItem] = []
     with DDGS() as ddgs:
-        results = list(ddgs.news(
-            keywords=query,
-            region="wt-wt",
-            safesearch="moderate",
-            max_results=max_results,
-        ))
+        try:
+            # New ddgs API 
+            results = list(ddgs.news(query, max_results=max_results))
+        except TypeError:
+            # Old duckduckgo_search API 
+            results = list(ddgs.news(
+                keywords=query,
+                region="wt-wt",
+                safesearch="moderate",
+                max_results=max_results,
+            ))
 
     for r in results:
         items.append(NewsItem(

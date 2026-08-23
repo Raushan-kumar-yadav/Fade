@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, type Clip, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import TimelineClip from './TimelineClip';
@@ -41,19 +41,23 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
   const [cursorPct, setCursorPct] = useState(50); // for guide line
   const [transitions, setTransitions] = useState<TransitionInfo[]>([]);
  
+  // Use a ref so fetchTransitions always sees the latest clip IDs
+  // without making it a stale closure over track.clips
+  const clipIdsRef = useRef<Set<string>>(new Set(track.clips.map(c => c.id)));
+  useEffect(() => {
+    clipIdsRef.current = new Set(track.clips.map(c => c.id));
+  }, [track.clips]);
+
   const fetchTransitions = useCallback(() => {
     transitionApi.listAll().then(r => {
-      
-      const myClipIds = new Set(track.clips.map(c => c.id));
-      setTransitions(r.transitions.filter(tr => myClipIds.has(tr.clipA_id)));
+      setTransitions(r.transitions.filter(tr => clipIdsRef.current.has(tr.clipA_id)));
     }).catch(() => {});
-  }, [track.clips]);
+  }, []); // no deps — always reads from ref
 
   React.useEffect(() => {
     fetchTransitions();
-    const onTrChanged = () => fetchTransitions();
-    window.addEventListener('fade:transition-changed', onTrChanged);
-    return () => window.removeEventListener('fade:transition-changed', onTrChanged);
+    window.addEventListener('fade:transition-changed', fetchTransitions);
+    return () => window.removeEventListener('fade:transition-changed', fetchTransitions);
   }, [fetchTransitions]);
 
   
@@ -232,12 +236,14 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         try {
           await transitionApi.add({
             typeId:   transTypeId,
-            duration: 30, // 1 sec default @ 30fps
+            duration: 30,
             clipA_id: bestA.id,
             clipB_id: bestB.id,
-            trackId:  bestA._trackId, // kept for compat only
+            trackId:  bestA._trackId,
           });
+          // Dispatch both events so the transition list + timeline both refresh
           window.dispatchEvent(new CustomEvent('fade:transition-changed'));
+          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } catch (err) {
           console.error('[TrackRow] Add transition error:', err);
         }

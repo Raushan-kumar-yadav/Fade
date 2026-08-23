@@ -1,10 +1,8 @@
-/**
- * FloatingAIChat.tsx
- * A draggable, resizable floating AI chat window for the Video workspace.
- * Same chat logic as AIWorkspace but floating over the timeline.
- */
+ 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import './FloatingAIChat.css'
+
+//   Types  
 
 type MsgRole = 'ai' | 'user' | 'tool_call' | 'tool_result' | 'error'
 interface Message {
@@ -18,6 +16,35 @@ interface Message {
 
 const uid = () => Math.random().toString(36).slice(2, 9)
 
+//   Module-level persistent store  
+
+const _WELCOME: Message = {
+  id: 'welcome',
+  role: 'ai',
+  text: "Hi! I'm your AI Director. Select a clip on the timeline, then ask me to apply effects, download media, create news videos, or anything else.",
+}
+
+// These live outside React  
+let _persistedMessages: Message[]   = [_WELCOME]
+let _persistedHistory:  {role: string; text: string}[] = []
+let _persistedInput:    string      = ''
+
+// Tools that modify the TIMELINE
+const TIMELINE_TOOLS = new Set([
+  'split_clip','trim_clip','move_clip','delete_clip','add_text_clip',
+  'add_transition','add_transitions_between_all_clips',
+  'apply_effect_to_clip','patch_clip_effect','remove_effect',
+  'set_effect_param','set_clip_param','undo','redo','place_clip',
+  'create_news_video',
+])
+
+// Tools that modify the LIBRARY
+const LIBRARY_TOOLS = new Set([
+  'download_videos','download_images','generate_image','create_news_video',
+])
+
+//   Port hook  
+
 function usePort(): number {
   const [port, setPort] = useState<number>((window as any).__FADE_PORT__ ?? 8000)
   useEffect(() => {
@@ -28,94 +55,95 @@ function usePort(): number {
   return port
 }
 
-// ── Message Bubble ─────────────────────────────────────────────────────────────
+//   Selected clip badge  
+
+function SelectedClipBadge() {
+  const [clip, setClip] = useState<{ clipId: string; trackIndex: number } | null>(null)
+  useEffect(() => {
+    const h = (e: Event) => {
+      const d = (e as CustomEvent).detail
+      setClip(d?.clipId ? d : null)
+    }
+    window.addEventListener('fade:clip-selected', h)
+    return () => window.removeEventListener('fade:clip-selected', h)
+  }, [])
+  if (!clip) return null
+  return (
+    <div className="fchat__clip-badge">
+      <span className="fchat__clip-dot" />
+      Clip on track {clip.trackIndex} — AI can apply effects
+    </div>
+  )
+}
+
+//   Message Bubble  
 
 function Bubble({ msg }: { msg: Message }) {
   if (msg.role === 'tool_call') {
     return (
-      <div className="fchat-tool fchat-tool--call">
-        <span className="fchat-tool__icon">⚙</span>
+      <div className="fchat__tool-card fchat__tool-card--call">
+        <span className="fchat__tool-icon">⚙</span>
         <div>
-          <div className="fchat-tool__name">{msg.toolName}</div>
+          <div className="fchat__tool-name">{msg.toolName}</div>
           {msg.toolArgs && Object.keys(msg.toolArgs).length > 0 && (
-            <pre className="fchat-tool__args">{JSON.stringify(msg.toolArgs, null, 2)}</pre>
+            <pre className="fchat__tool-args">{JSON.stringify(msg.toolArgs, null, 2)}</pre>
           )}
         </div>
       </div>
     )
   }
   if (msg.role === 'tool_result') {
-    const preview = msg.text.length > 160 ? msg.text.slice(0, 160) + '…' : msg.text
+    const preview = msg.text.length > 180 ? msg.text.slice(0, 180) + '…' : msg.text
     return (
-      <div className="fchat-tool fchat-tool--result">
-        <span className="fchat-tool__icon">✓</span>
+      <div className="fchat__tool-card fchat__tool-card--result">
+        <span className="fchat__tool-icon">✓</span>
         <div>
-          <div className="fchat-tool__name">{msg.toolName} done</div>
-          <div className="fchat-tool__summary">{preview}</div>
+          <div className="fchat__tool-name">{msg.toolName} done</div>
+          <div className="fchat__tool-summary">{preview}</div>
         </div>
       </div>
     )
   }
   return (
-    <div className={`fchat-msg fchat-msg--${msg.role === 'error' ? 'error' : msg.role}`}>
-      {msg.role === 'ai' && <div className="fchat-msg__avatar">AI</div>}
-      <div className="fchat-msg__bubble">
-        {msg.text || (msg.streaming ? <span className="fchat-cursor">▋</span> : null)}
+    <div className={`fchat__msg fchat__msg--${msg.role === 'error' ? 'error' : msg.role}`}>
+      {msg.role === 'ai' && <div className="fchat__avatar">AI</div>}
+      <div className="fchat__bubble">
+        {msg.text || (msg.streaming ? <span className="fchat__cursor">▋</span> : null)}
       </div>
     </div>
   )
 }
 
-// ── SelectedClipBadge ─────────────────────────────────────────────────────────
+//   Main FloatingAIChat  
 
-function SelectedClipBadge({ port }: { port: number }) {
-  const [clip, setClip] = useState<{ clipId: string; type: string; trackIndex: number } | null>(null)
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      setClip(detail?.clipId ? detail : null)
-    }
-    window.addEventListener('fade:clip-selected', handler)
-    return () => window.removeEventListener('fade:clip-selected', handler)
-  }, [])
-
-  if (!clip) return null
-  return (
-    <div className="fchat-clip-badge">
-      <span className="fchat-clip-badge__dot" />
-      <span>Clip on track {clip.trackIndex} selected — AI can apply effects</span>
-    </div>
-  )
-}
-
-// ── Main FloatingAIChat ───────────────────────────────────────────────────────
-
-interface Props {
-  onClose: () => void
-}
+interface Props { onClose: () => void }
 
 export default function FloatingAIChat({ onClose }: Props) {
-  const port = usePort()
-  const [messages, setMessages] = useState<Message[]>([
-    { id: uid(), role: 'ai', text: "Hi! I'm your AI Editor. Select a clip on the timeline, then ask me to apply effects, transforms, or anything else." },
-  ])
-  const [input, setInput]     = useState('')
-  const [busy, setBusy]       = useState(false)
-  const bottomRef             = useRef<HTMLDivElement>(null)
-  const abortRef              = useRef<AbortController | null>(null)
-  const historyRef            = useRef<{ role: string; text: string }[]>([])
+  const port      = usePort()
+
+  // Initialise from persistent store
+  const [messages, setMessages] = useState<Message[]>(_persistedMessages)
+  const [input,    setInput]    = useState(_persistedInput)
+  const [busy,     setBusy]     = useState(false)
+
+  const bottomRef  = useRef<HTMLDivElement>(null)
+  const abortRef   = useRef<AbortController | null>(null)
+  const historyRef = useRef(_persistedHistory)
 
   // Drag state
-  const [pos, setPos]         = useState({ x: window.innerWidth - 420, y: 80 })
-  const dragRef               = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null)
+  const [pos, setPos] = useState({ x: window.innerWidth - 408, y: 72 })
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+
+  // Keep persistent store in sync
+  useEffect(() => { _persistedMessages = messages }, [messages])
+  useEffect(() => { _persistedInput    = input    }, [input])
 
   const scrollBottom = useCallback(() => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 40)
   }, [])
 
   const appendMsg = useCallback((msg: Message) => {
-    setMessages(prev => [...prev, msg])
+    setMessages(prev => { const n = [...prev, msg]; _persistedMessages = n; return n })
     scrollBottom()
   }, [scrollBottom])
 
@@ -123,18 +151,33 @@ export default function FloatingAIChat({ onClose }: Props) {
     setMessages(prev => {
       const copy = [...prev]
       copy[copy.length - 1] = { ...copy[copy.length - 1], ...patch }
+      _persistedMessages = copy
       return copy
     })
+  }, [])
+
+  // Dispatch UI refresh events based on which tool ran
+  const dispatchToolEvents = useCallback((toolName: string) => {
+    if (TIMELINE_TOOLS.has(toolName)) {
+      window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+    }
+    if (LIBRARY_TOOLS.has(toolName)) {
+      window.dispatchEvent(new CustomEvent('fade:library-changed'))
+    }
+    if (toolName.includes('effect')) {
+      window.dispatchEvent(new CustomEvent('fade:effects-changed'))
+    }
   }, [])
 
   async function send() {
     const text = input.trim()
     if (!text || busy) return
-    setInput('')
+    setInput(''); _persistedInput = ''
     setBusy(true)
 
     appendMsg({ id: uid(), role: 'user', text })
     historyRef.current = [...historyRef.current, { role: 'user', text }]
+    _persistedHistory = historyRef.current
 
     const aiId = uid()
     appendMsg({ id: aiId, role: 'ai', text: '', streaming: true })
@@ -143,12 +186,12 @@ export default function FloatingAIChat({ onClose }: Props) {
 
     try {
       const res = await fetch(`http://127.0.0.1:${port}/ai/chat`, {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history: historyRef.current.slice(-20), port }),
-        signal: abortRef.current.signal,
+        body:    JSON.stringify({ message: text, history: historyRef.current.slice(-20), port }),
+        signal:  abortRef.current.signal,
       })
-      const reader = res.body!.getReader()
+      const reader  = res.body!.getReader()
       const decoder = new TextDecoder()
 
       while (true) {
@@ -168,11 +211,14 @@ export default function FloatingAIChat({ onClose }: Props) {
               appendMsg({ id: uid(), role: 'tool_result', text: evt.content, toolName: evt.name })
               appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
               aiText = ''
-              // Refresh effects panel after tool runs
-              window.dispatchEvent(new CustomEvent('fade:effects-changed'))
+              // ✅ Dispatch UI refresh events
+              dispatchToolEvents(evt.name)
             } else if (evt.type === 'done') {
               patchLast({ streaming: false })
-              setMessages(prev => prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai'))
+              setMessages(prev => {
+                const f = prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai')
+                _persistedMessages = f; return f
+              })
             } else if (evt.type === 'error') {
               patchLast({ text: `⚠ ${evt.message}`, streaming: false, role: 'error' })
             }
@@ -185,18 +231,19 @@ export default function FloatingAIChat({ onClose }: Props) {
     }
 
     historyRef.current = [...historyRef.current, { role: 'ai', text: aiText }]
+    _persistedHistory = historyRef.current
     setBusy(false)
   }
 
-  // Drag handlers
-  function onMouseDown(e: React.MouseEvent) {
+  // Drag
+  function onHeaderMouseDown(e: React.MouseEvent) {
     e.preventDefault()
-    dragRef.current = { startX: e.clientX, startY: e.clientY, ox: pos.x, oy: pos.y }
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y }
     const onMove = (ev: MouseEvent) => {
       if (!dragRef.current) return
       setPos({
-        x: Math.max(0, Math.min(window.innerWidth  - 380, dragRef.current.ox + ev.clientX - dragRef.current.startX)),
-        y: Math.max(0, Math.min(window.innerHeight - 60,  dragRef.current.oy + ev.clientY - dragRef.current.startY)),
+        x: Math.max(0, Math.min(window.innerWidth  - 390, dragRef.current.ox + ev.clientX - dragRef.current.sx)),
+        y: Math.max(0, Math.min(window.innerHeight - 60,  dragRef.current.oy + ev.clientY - dragRef.current.sy)),
       })
     }
     const onUp = () => {
@@ -210,35 +257,41 @@ export default function FloatingAIChat({ onClose }: Props) {
 
   return (
     <div className="fchat" style={{ left: pos.x, top: pos.y }}>
-      {/* Header / drag handle */}
-      <div className="fchat__header" onMouseDown={onMouseDown}>
+      {/* Header */}
+      <div className="fchat__header" onMouseDown={onHeaderMouseDown}>
         <span className="fchat__title">
-          <span className="fchat__dot" />
-          AI Editor
+          <span className="fchat__status-dot" />
+          AI Director
         </span>
         <button className="fchat__close" onClick={onClose} title="Close">✕</button>
       </div>
 
-      <SelectedClipBadge port={port} />
+      <SelectedClipBadge />
 
       {/* Messages */}
       <div className="fchat__messages">
         {messages.map(m => <Bubble key={m.id} msg={m} />)}
-        {busy && <div className="fchat-thinking"><span/><span/><span/></div>}
+        {busy && (
+          <div className="fchat__thinking">
+            <span/><span/><span/>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
       <div className="fchat__input-row">
-        <textarea
-          className="fchat__textarea"
-          placeholder="Ask AI to apply effects, trim, transform…"
-          value={input}
-          rows={2}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-          disabled={busy}
-        />
+        <div className="fchat__input-wrap">
+          <textarea
+            className="fchat__input"
+            placeholder="Ask AI to apply effects, create videos, download media…"
+            value={input}
+            rows={2}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+            disabled={busy}
+          />
+        </div>
         {busy
           ? <button className="fchat__send fchat__send--stop" onClick={() => { abortRef.current?.abort(); setBusy(false) }}>■</button>
           : <button className="fchat__send" onClick={send}>↑</button>

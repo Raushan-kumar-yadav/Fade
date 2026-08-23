@@ -596,3 +596,63 @@
 .insp-effect__params {
   padding: 8px 10px 4px;
 }
+
+/* -- Blend Mode Selector ---------------------------------------------------- */
+
+.insp-row--blend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  min-height: 30px;
+}
+
+.insp-blend-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.insp-blend-select {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding: 4px 26px 4px 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(130,100,255,0.25);
+  border-radius: 6px;
+  color: #c8c8f0;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  outline: none;
+}
+
+.insp-blend-select:hover {
+  background: rgba(130,100,255,0.12);
+  border-color: rgba(130,100,255,0.5);
+}
+
+.insp-blend-select:focus {
+  border-color: #8264ff;
+  background: rgba(130,100,255,0.18);
+  box-shadow: 0 0 0 2px rgba(130,100,255,0.2);
+}
+
+.insp-blend-select option {
+  background: #1a1a2e;
+  color: #c8c8f0;
+}
+
+.insp-blend-arrow {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8264ff;
+  font-size: 10px;
+  pointer-events: none;
+  line-height: 1;
+}

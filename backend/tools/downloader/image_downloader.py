@@ -40,13 +40,18 @@ class ImageDownloader:
         
         with DDGS() as ddgs:
             # Generate the search results
-            search_results = list(ddgs.images(
-                keywords=query,
-                region="wt-wt",
-                safesearch="moderate",
-                size="Large",
-                max_results=num_images
-            ))
+            try:
+                # New ddgs API: query is positional
+                search_results = list(ddgs.images(query, max_results=num_images))
+            except TypeError:
+                # Old duckduckgo_search API: keywords= kwarg
+                search_results = list(ddgs.images(
+                    keywords=query,
+                    region="wt-wt",
+                    safesearch="moderate",
+                    size="Large",
+                    max_results=num_images
+                ))
             
             for i, result in enumerate(search_results):
                 image_url = result.get('image')
