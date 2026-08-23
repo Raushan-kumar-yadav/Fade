@@ -737,12 +737,6 @@ def saveProject(req: SaveRequest):
     if tl is not None:
         proj_dict["timeline"] = tl.toDict()
 
-    # Embed the library asset list (just filepaths — not binary data)
-    proj_dict["library"] = [
-        {"assetId": a.assetId, "filepath": a.filepath,
-         "type": a.__class__.__name__}
-        for a in engine.project.timelines  # timelines field is reused as asset list
-    ] if hasattr(engine.project, "library") else []
 
     path = Path(req.filepath)
     if not path.suffix:
@@ -763,6 +757,8 @@ def loadProject(req: LoadRequest):
     import json
     from pathlib import Path
     from backend.timeline.timeline import Timeline
+    from backend.compositor.compositor import Compositor
+    from backend.media.scheduler.decodeScheduler import DecodeScheduler
     from backend.project.project import Project
 
     path = Path(req.filepath)
@@ -770,10 +766,13 @@ def loadProject(req: LoadRequest):
         raise HTTPException(404, f"Project file not found: {path}")
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    proj = Project.fromDict(data)
+
+    # Use engine.loadProject to initialize compositor + scheduler properly
+    # (it calls _stop_pipeline and sets up a fresh Compositor/DecodeScheduler)
+    proj = engine.loadProject(str(path))
     proj.filePath = str(path)
 
-    # Rebuild the timeline
+    # Rebuild the full timeline from the embedded .fade data
     tl_data = data.get("timeline")
     if tl_data:
         tl = Timeline.fromDict(tl_data)
@@ -782,24 +781,17 @@ def loadProject(req: LoadRequest):
             for clip in track.clips:
                 if hasattr(clip, "setScheduler") and engine.scheduler:
                     clip.setScheduler(engine.scheduler, proj.fps)
+        # Inject the rich timeline (engine.loadProject only loaded project meta)
+        proj.timelines = [tl]
     else:
-        from backend.timeline.timeline import Timeline
-        from backend.timeline.tracks.videoTrack import VideoTrack
-        from backend.timeline.tracks.audioTrack import AudioTrack
-        tl = Timeline(name="Sequence 01")
-        tl.addTrack(VideoTrack("Video 1"))
-        tl.addTrack(VideoTrack("Video 2"))
-        tl.addTrack(AudioTrack("Audio 1"))
-
-    # Swap in the loaded project
-    engine.project = proj
-    engine.activeTimeline = tl
+        # No timeline in file — keep whatever engine.loadProject created
+        tl = engine.activeTimeline
 
     print(f"[Project] Loaded <- {path}", flush=True)
     return {
         "status": "ok",
         "project": proj.toDict(),
-        "timeline": tl.toDict(),
+        "timeline": tl.toDict() if tl else {},
     }
 
 
