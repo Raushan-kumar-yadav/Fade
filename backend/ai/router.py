@@ -20,7 +20,7 @@ ai_router = APIRouter(tags=["ai"])
 
 class ChatRequest(BaseModel):
     message: str
-    history: list[dict] = []   
+    history: list[dict] = []
     port: int = 8000
 
 class TranscribeRequest(BaseModel):
@@ -28,8 +28,14 @@ class TranscribeRequest(BaseModel):
     model: str = "small"
     language: Optional[str] = None
     create_text_clips: bool = False
-    track_index: int = 2        
+    track_index: int = 2
     fps: float = 30.0
+
+class CreateVideoRequest(BaseModel):
+    query: str                     # e.g. "today's top 10 tech news"
+    scene_duration: int = 150      # frames per scene (150 = 5s @ 30fps)
+    fps: float = 30.0
+    port: int = 8000
 
 #   /ai/status  
 
@@ -185,3 +191,96 @@ def ai_transcribe(req: TranscribeRequest):
         return {"segments": segments, "srt": srt, "created_clips": created}
 
     return {"segments": segments, "srt": srt}
+
+
+ 
+@ai_router.post("/create-video")
+async def ai_create_video(req: CreateVideoRequest):
+    """
+    Run the full news-to-video pipeline and stream progress as SSE.
+
+    Events:
+        {"type": "progress", "stage": "...", "detail": "..."}
+        {"type": "done",     "summary": "..."}
+        {"type": "error",    "message": "..."}
+    """
+    async def event_stream():
+        import threading
+        import queue as queue_mod
+
+        q: queue_mod.Queue = queue_mod.Queue()
+
+        def progress_cb(msg: str):
+            """Called synchronously from pipeline nodes."""
+            # Parse stage prefix written by pipeline nodes: "stage:xxx — detail"
+            if " — " in msg:
+                stage, detail = msg.split(" — ", 1)
+                stage = stage.replace("stage:", "").strip()
+            else:
+                stage = "running"
+                detail = msg
+            q.put({"type": "progress", "stage": stage, "detail": detail})
+
+        def run_pipeline():
+            try:
+                from backend.ai.video_pipeline.pipeline import get_pipeline
+                pipeline = get_pipeline()
+
+                # Monkey-patch progress into pipeline state
+                # We pass a mutable dict so nodes can push messages
+                initial_state = {
+                    "query": req.query,
+                    "scene_duration": req.scene_duration,
+                    "fps": req.fps,
+                    "port": req.port,
+                    "progress": [],
+                }
+
+                # Run the graph synchronously in this thread
+                final_state = None
+                for step_output in pipeline.stream(initial_state):
+                    # Each step_output is {node_name: state_delta}
+                    for node_name, delta in step_output.items():
+                        new_progress = delta.get("progress", [])
+                        for msg in new_progress:
+                            progress_cb(msg)
+                        if "summary" in delta:
+                            final_state = delta
+
+                summary = final_state.get("summary", "Pipeline complete.") if final_state else "Done."
+                q.put({"type": "done", "summary": summary})
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                q.put({"type": "error", "message": str(e)})
+            finally:
+                q.put(None)  # sentinel
+
+        # Run pipeline in background thread so we can stream from async
+        thread = threading.Thread(target=run_pipeline, daemon=True)
+        thread.start()
+
+        # Drain the queue and yield SSE events
+        while True:
+            try:
+                item = await asyncio.get_event_loop().run_in_executor(
+                    None, lambda: q.get(timeout=300)
+                )
+            except Exception:
+                break
+
+            if item is None:
+                break
+
+            yield f"data: {json.dumps(item)}\n\n"
+
+        thread.join(timeout=5)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

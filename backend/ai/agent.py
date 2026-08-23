@@ -211,3 +211,9 @@ def get_agent(port: int = 8000):
         _agent = build_agent(port)
         print("[AI Agent] Ready.", flush=True)
     return _agent
+
+
+def get_agent_llm(port: int = 8000):
+    """Return the bare LLM instance (no tools bound). Used by the video pipeline."""
+    set_port(port)
+    return _build_llm()
