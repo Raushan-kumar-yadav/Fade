@@ -178,6 +178,9 @@ class SplitClipCommand(Command):
             raise ValueError(f"Split point {self._globalFrame} is outside clip bounds "
                              f"[{clip.startFrame}, {clip.startFrame + clip.duration})")
 
+        # Preserve the original mediaOffset before modifying
+        origMediaOffset = getattr(clip, 'mediaOffset', 0)
+
         clip.duration = splitLocal
 
         right = VideoClip(
@@ -185,6 +188,7 @@ class SplitClipCommand(Command):
             duration = self._origDuration - splitLocal,
             assetId = clip.assetId,
             color = getattr(clip, 'color', (74, 144, 226, 255)),
+            mediaOffset = origMediaOffset + splitLocal,
         )
         self._rightClip = right
         self._track.addClip(right)

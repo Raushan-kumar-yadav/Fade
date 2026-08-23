@@ -51,6 +51,7 @@ class VideoClip(BaseClip):
         color: tuple = (74, 144, 226, 255),
         # Asset reference  
         assetId: str = "",
+        mediaOffset: int = 0,
     ) -> None:
         super().__init__(
             clipId or str(uuid.uuid4()),
@@ -58,7 +59,8 @@ class VideoClip(BaseClip):
             duration,
         )
         self.color = color
-        self.assetId = assetId      
+        self.assetId = assetId
+        self.mediaOffset: int = mediaOffset  # frame offset into the source media
 
         # Injected by Engine after construction
         self._scheduler: "DecodeScheduler | None" = None
@@ -92,7 +94,7 @@ class VideoClip(BaseClip):
         self.blendMode.update(lf)
 
     def sourceFrame(self, frame: int) -> int:
-        localFrame = self.localFrame(frame)
+        localFrame = self.localFrame(frame) + self.mediaOffset
         if self._scheduler is None:
             return localFrame
         return self._scheduler.sourceFrame(
@@ -210,6 +212,7 @@ class VideoClip(BaseClip):
             "assetId": self.assetId,
             "filepath": filepath,
             "color": list(self.color),
+            "mediaOffset": self.mediaOffset,
             "transform": self.transform.toDict(),
             "cropLeft": self.cropLeft.toDict(),
             "cropRight": self.cropRight.toDict(),
@@ -233,6 +236,7 @@ class VideoClip(BaseClip):
             duration = data["duration"],
             assetId = data.get("assetId", ""),
             color = tuple(data.get("color", [74, 144, 226, 255])),
+            mediaOffset = data.get("mediaOffset", 0),
         )
         # Store filepath so asset library can be rebuilt by loadProject
         c.filepath = data.get("filepath", "")
