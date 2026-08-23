@@ -174,17 +174,14 @@ export default function WorkerProgress() {
 
   return (
     <div className="wp-root" ref={panelRef}>
-      {/* Inline titlebar button */}
+      {/* Inline tb-tool-btn style button */}
       <button
         className={`wp-btn${open ? ' wp-btn--open' : ''}${hasActive ? ' wp-btn--active' : ''}`}
         onClick={() => setOpen(o => !o)}
-        title="Background Jobs"
-        aria-label="Background worker progress"
+        title="Background Tasks"
+        aria-label="Background worker tasks"
       >
         <Ring progress={progress} active={hasActive} hasError={hasError} />
-        <span className="wp-btn__label">
-          {hasError ? 'Error' : hasActive ? `${status.queueDepth || pending.length} Tasks` : 'Tasks'}
-        </span>
         {hasActive && (
           <span className="wp-badge">{status.queueDepth || pending.length}</span>
         )}

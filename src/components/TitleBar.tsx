@@ -130,7 +130,7 @@ export default function TitleBar({ active, onTab, onSettings, activeTool = 'poin
           <button className="tb-menu__btn" onClick={onSettings}>Settings</button>
         </div>
 
-        {/* Toolbox toggle — only on Video tab */}
+        {/* Toolbox toggle + Tasks indicator — only on Video tab */}
         {active === 'video' && (
           <div className="tb-tool-group">
             <button
@@ -142,6 +142,7 @@ export default function TitleBar({ active, onTab, onSettings, activeTool = 'poin
               <span style={{ fontSize: 13 }}>⊞</span>
               <span className="tb-tool-btn__tip">Toolbox</span>
             </button>
+            <WorkerProgress />
           </div>
         )}
       </div>
@@ -159,14 +160,11 @@ export default function TitleBar({ active, onTab, onSettings, activeTool = 'poin
         ))}
       </div>
 
-      {/* Right: worker indicator + window controls */}
-      <div className="titlebar__right">
-        <WorkerProgress />
-        <div className="titlebar__controls">
-          <button className="wbtn wbtn--min"   onClick={() => api?.minimize()} />
-          <button className="wbtn wbtn--max"   onClick={() => api?.maximize()} />
-          <button className="wbtn wbtn--close" onClick={() => api?.close()}    />
-        </div>
+      {/* Right: window controls */}
+      <div className="titlebar__controls">
+        <button className="wbtn wbtn--min"   onClick={() => api?.minimize()} />
+        <button className="wbtn wbtn--max"   onClick={() => api?.maximize()} />
+        <button className="wbtn wbtn--close" onClick={() => api?.close()}    />
       </div>
     </div>
   );
