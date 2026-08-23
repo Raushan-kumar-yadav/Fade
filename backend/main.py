@@ -271,6 +271,8 @@ def _get_frame_data(frame: int) -> dict:
                         "bgPaddingX":     float(getattr(style, "bgPaddingX",  20.0)),
                         "bgPaddingY":     float(getattr(style, "bgPaddingY",  10.0)),
                         "bgCornerRadius": float(getattr(style, "bgCornerRadius", 0.0)),
+                        # Text Animator
+                        "animator":       dict(getattr(style, "animator", {})),
                     }
 
             elif clip_type == "shape":
@@ -1290,6 +1292,14 @@ def addTextClip(req: TextClipRequest):
 class TextPatchRequest(BaseModel):
     style: dict | None = None
     transform: dict | None = None
+
+
+@app.get("/clips/text/{clipId}")
+def getTextClip(clipId: str):
+    clip, _ = _find_clip(clipId)
+    if not isinstance(clip, TextClip):
+        raise HTTPException(404, "Not a text clip")
+    return clip.toDict()
 
 
 @app.patch("/clips/text/{clipId}")

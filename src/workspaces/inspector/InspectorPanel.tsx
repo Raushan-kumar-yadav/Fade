@@ -4,6 +4,7 @@ import { inspectorApi, type ParamRow, type ClipParams, type KFDef } from '../../
 import { maskApi, effectsApi, type MaskInfo, type EffectInfo, type EffectParamDef } from '../../api/toolsApi';
 import EffectsPanel from './EffectsPanel';
 import TransitionPanel from './TransitionPanel';
+import TextInspectorPanel from './TextInspectorPanel';
 import './InspectorPanel.css';
 
 
@@ -717,6 +718,20 @@ export default function InspectorPanel() {
   }
 
   if (!data) return null;
+
+  // Text clips → dedicated text inspector
+  const isText = data.clipType === 'TextClip'
+    || (selected.type === 'clip' && selected.clipType === 'text');
+
+  if (isText) {
+    return (
+      <TextInspectorPanel
+        clipId={data.clipId}
+        clipName={selected.type === 'clip' ? selected.clipName : ''}
+        trackIndex={selected.type === 'clip' ? selected.trackIndex : 0}
+      />
+    );
+  }
 
   return (
     <div className="insp-root">

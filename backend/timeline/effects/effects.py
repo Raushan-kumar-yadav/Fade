@@ -126,9 +126,9 @@ class HSLEffect(BaseEffect):
         sinH = math.sin(h)
         lr = 0.213; lg = 0.715; lb = 0.072
         m = [
-            lr + cosH*(1-lr)*s  + sinH*(-lr)*s,   lg + cosH*(-lg)*s + sinH*(-lg)*s,   lb + cosH*(-lb)*s  + sinH*(1-lb)*s,  0, lu,
-            lr + cosH*(-lr)*s   + sinH*(0.143)*s,  lg + cosH*(1-lg)*s+ sinH*(0.14)*s,  lb + cosH*(-lb)*s  + sinH*(-0.283)*s,0, lu,
-            lr + cosH*(-lr)*s   + sinH*(-(1-lr))*s,lg + cosH*(-lg)*s + sinH*(lg)*s,    lb + cosH*(1-lb)*s + sinH*(lb)*s,   0, lu,
+            lr + cosH*(1-lr)*s + sinH*(-lr)*s, lg + cosH*(-lg)*s + sinH*(-lg)*s, lb + cosH*(-lb)*s  + sinH*(1-lb)*s,  0, lu,
+            lr + cosH*(-lr)*s + sinH*(0.143)*s,  lg + cosH*(1-lg)*s+ sinH*(0.14)*s, lb + cosH*(-lb)*s  + sinH*(-0.283)*s,0, lu,
+            lr + cosH*(-lr)*s + sinH*(-(1-lr))*s,lg + cosH*(-lg)*s + sinH*(lg)*s, lb + cosH*(1-lb)*s + sinH*(lb)*s,   0, lu,
             0, 0, 0, 1, 0,
         ]
         return m

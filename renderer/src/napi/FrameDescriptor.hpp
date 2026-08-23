@@ -68,6 +68,15 @@ struct ClipDesc {
     bool bgEnabled = false;
     float bgR = 0.f, bgG = 0.f, bgB = 0.f, bgA = 0.5f;
     float bgPaddingX = 20.f, bgPaddingY = 10.f, bgCornerRadius = 0.f;
+    // Text Animator
+    bool  animEnabled    = false;
+    int   animMode       = 0;    // 0=chars, 1=words, 2=lines
+    int   animProperty   = 0;    // 0=opacity, 1=offsetY, 2=offsetX, 3=scale
+    float animFrom       = 0.f;
+    float animTo         = 1.f;
+    int   animEasing     = 3;    // 0=linear,1=ease_in,2=ease_out,3=ease_both
+    float animStartOff   = 0.f;  // 0-1
+    float animEndOff     = 1.f;  // 0-1
   } text;
 
   // Shape style
@@ -243,6 +252,21 @@ inline FrameDescriptor parseFrameDescriptor(const std::string &jsonStr) {
         t.bgG = bgc.size() > 1 ? float(bgc[1]) : 0.f;
         t.bgB = bgc.size() > 2 ? float(bgc[2]) : 0.f;
         t.bgA = bgc.size() > 3 ? float(bgc[3]) : 0.5f;
+        // Text Animator
+        if (s.contains("animator")) {
+          auto& a = s["animator"];
+          t.animEnabled = a.value("enabled", false);
+          std::string mode = a.value("mode", std::string{"characters"});
+          t.animMode = (mode == "words") ? 1 : (mode == "lines") ? 2 : 0;
+          std::string prop = a.value("property", std::string{"opacity"});
+          t.animProperty = (prop == "offset_y") ? 1 : (prop == "offset_x") ? 2 : (prop == "scale") ? 3 : 0;
+          t.animFrom     = a.value("from",        0.f);
+          t.animTo       = a.value("to",          1.f);
+          std::string eas = a.value("easing", std::string{"ease_both"});
+          t.animEasing = (eas == "linear") ? 0 : (eas == "ease_in") ? 1 : (eas == "ease_out") ? 2 : 3;
+          t.animStartOff = a.value("startOffset", 0.f);
+          t.animEndOff   = a.value("endOffset",   1.f);
+        }
       }
 
       if (cd.type == ClipDesc::Type::Shape && c.contains("shapeStyle")) {
