@@ -43,7 +43,12 @@ function ChatPanel({ collapsed, onToggle }: ChatPanelProps) {
   ])
   const [input, setInput]       = useState('')
   const [busy, setBusy]         = useState(false)
-  const [aiStatus, setAiStatus] = useState<{provider: string; model: string} | null>(null)
+  const [aiStatus, setAiStatus] = useState<{
+    provider: string;
+    model: string;
+    ollama_running?: boolean;
+    available_models?: string[];
+  } | null>(null)
   const bottomRef  = useRef<HTMLDivElement>(null)
   const abortRef   = useRef<AbortController | null>(null)
   const historyRef = useRef<{role: string; text: string}[]>([])
@@ -173,7 +178,12 @@ function ChatPanel({ collapsed, onToggle }: ChatPanelProps) {
         {!collapsed && (
           <span className="chat-header-title">
             AI Director
-            {aiStatus && <span className="ai-badge">{aiStatus.provider} · {aiStatus.model}</span>}
+            {aiStatus && (
+              <span className="ai-badge">
+                <span className={`ai-dot ${aiStatus.ollama_running === false ? 'ai-dot--off' : 'ai-dot--on'}`} />
+                {aiStatus.provider} · {aiStatus.model}
+              </span>
+            )}
           </span>
         )}
         <button className="chat-panel__toggle" onClick={onToggle} title={collapsed ? 'Expand' : 'Collapse'}>

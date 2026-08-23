@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/ai/router.py
 FastAPI router for all AI endpoints.
 Mount in main.py with:
@@ -37,8 +37,31 @@ class TranscribeRequest(BaseModel):
 def ai_status():
     import os
     provider = os.environ.get("FADE_AI_PROVIDER", "ollama")
-    model    = os.environ.get("FADE_AI_MODEL", "qwen2.5:latest")
-    return {"provider": provider, "model": model, "ready": True}
+    model    = os.environ.get("FADE_AI_MODEL", "")
+
+    ollama_ok = False
+    available_models: list[str] = []
+
+    if provider == "ollama":
+        try:
+            import httpx
+            r = httpx.get("http://localhost:11434/api/tags", timeout=3)
+            available_models = [m["name"] for m in r.json().get("models", [])]
+            ollama_ok = True
+            if not model:
+                from backend.ai.agent import _detect_ollama_model
+                model = _detect_ollama_model()
+        except Exception:
+            ollama_ok = False
+            model = model or "llama3.2 (Ollama not running)"
+
+    return {
+        "provider":        provider,
+        "model":           model,
+        "ready":           True,
+        "ollama_running":  ollama_ok,
+        "available_models": available_models,
+    }
 
 # ── /ai/chat  (SSE streaming) ─────────────────────────────────────────────────
 

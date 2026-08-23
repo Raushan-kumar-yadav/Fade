@@ -1,4 +1,4 @@
-﻿"""
+"""
 backend/ai/agent.py
 LangGraph ReAct agent that wraps all Fade editor tools.
 Uses Ollama by default (local, free). Switch provider via env var:
@@ -26,15 +26,58 @@ class AgentState(TypedDict):
 
 # ── LLM provider selection ────────────────────────────────────────────────────
 
+# ── Preferred models for tool-calling (in order) ─────────────────────────────
+
+_PREFERRED_MODELS = [
+    "qwen2.5",
+    "qwen2.5:latest",
+    "llama3.2",
+    "llama3.2:latest",
+    "llama3",
+    "llama3:latest",
+    "gemma3",
+    "gemma3:latest",
+    "mistral",
+    "mistral:latest",
+]
+
+
+def _detect_ollama_model() -> str:
+    """Query Ollama for installed models and pick the best one for tool-calling."""
+    try:
+        import httpx
+        r = httpx.get("http://localhost:11434/api/tags", timeout=3)
+        models = [m["name"] for m in r.json().get("models", [])]
+        if not models:
+            print("[AI Agent] Ollama has no models installed. Run: ollama pull llama3.2", flush=True)
+            return "llama3.2"  # will fail gracefully at call time
+
+        # pick from preferred list
+        for pref in _PREFERRED_MODELS:
+            if pref in models:
+                return pref
+        # fallback: first available
+        print(f"[AI Agent] Using first available Ollama model: {models[0]}", flush=True)
+        return models[0]
+
+    except Exception:
+        print("[AI Agent] Ollama not running — defaulting to llama3.2. Start Ollama first.", flush=True)
+        return "llama3.2"
+
+
 def _build_llm():
     provider = os.environ.get("FADE_AI_PROVIDER", "ollama").lower()
     model_name = os.environ.get("FADE_AI_MODEL", "")
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
-        m = model_name or "qwen2.5:latest"
-        print(f"[AI Agent] Using Ollama model: {m}", flush=True)
-        return ChatOllama(model=m, temperature=0)
+
+        # Auto-detect which model is installed if not specified
+        if not model_name:
+            model_name = _detect_ollama_model()
+
+        print(f"[AI Agent] Using Ollama model: {model_name}", flush=True)
+        return ChatOllama(model=model_name, temperature=0)
 
     elif provider == "openai":
         from langchain_openai import ChatOpenAI
