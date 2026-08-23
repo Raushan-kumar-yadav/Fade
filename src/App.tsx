@@ -116,9 +116,28 @@ export default function App() {
   const [activeTool,    setActiveTool]    = useState<ActiveTool>('pointer')
   const [lastShapeTool, setLastShapeTool] = useState<ActiveTool>('shape:rect')
   const [showToolbox,   setShowToolbox]   = useState(true)
-  const [selected,      setSelected]      = useState<SelectedItem | null>(null)
+  const [selected,      setSelectedRaw]   = useState<SelectedItem | null>(null)
   const [penSubMode,    setPenSubMode]    = useState<PenSubMode>('pen:add')
   const [penOutputMode, setPenOutputMode] = useState<PenOutputMode>('clip')
+
+  // When a clip is selected, push to backend so AI tools can read it
+  const setSelected = useCallback((item: SelectedItem | null) => {
+    setSelectedRaw(item)
+    const port = (window as any).__FADE_PORT__ ?? 8000
+    const clipId = item?.type === 'clip' ? item.clipId : null
+    fetch(`http://127.0.0.1:${port}/clips/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clipId }),
+    }).catch(() => {})
+    window.dispatchEvent(new CustomEvent('fade:clip-selected', {
+      detail: item?.type === 'clip' ? {
+        clipId: item.clipId,
+        trackIndex: item.trackIndex,
+        clipType: item.clipType,
+      } : null,
+    }))
+  }, [])
 
   // Loading overlay state
   const [loadingMsg,    setLoadingMsg]    = useState<string | null>(null)

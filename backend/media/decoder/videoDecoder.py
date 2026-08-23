@@ -6,8 +6,7 @@ from backend.media.decoder.baseDecoder import BaseDecoder
 from backend.media.decoder.decodedFrame import DecodedFrame
 from backend.media.decoder.ffmpegDecoder import FFmpegVideoDecoder, DecodedFrameFF
 
-# Set FADE_DECODER=ffmpeg to force subprocess, FADE_DECODER=pyav to force PyAV.
-# Default: auto (PyAV if installed, else ffmpeg subprocess)
+ 
 _DECODER_MODE = os.environ.get("FADE_DECODER", "auto").lower()
 
 
@@ -28,21 +27,16 @@ def _make_inner(filepath: str, fps: float, scale_factor: float):
             from backend.media.decoder.pyavDecoder import PyAVDecoder
             return PyAVDecoder(filepath, fps=fps, scale_factor=scale_factor)
         except Exception as e:
-            print(f"[VideoDecoder] PyAV failed ({e}), falling back to FFmpeg subprocess")
+            import sys
+            enc = getattr(sys.stdout, 'encoding', 'utf-8') or 'utf-8'
+            safe_e = str(e).encode(enc, errors='replace').decode(enc)
+            print(f"[VideoDecoder] PyAV failed ({safe_e}), falling back to FFmpeg subprocess")
 
     return FFmpegVideoDecoder(filepath, fps, scale_factor=scale_factor)
 
 
 class VideoDecoder(BaseDecoder):
-    """
-    Adapter that wraps either PyAVDecoder (in-process, fast) or
-    FFmpegVideoDecoder (subprocess, fallback).
-
-    Selection order:
-      1. FADE_DECODER=pyav   → always use PyAV
-      2. FADE_DECODER=ffmpeg → always use subprocess
-      3. FADE_DECODER=auto   → PyAV if installed, else subprocess (default)
-    """
+     
 
     def __init__(self, filepath: str, fps: float = 0.0, scale_factor: float = 0.5) -> None:
         super().__init__(filepath)

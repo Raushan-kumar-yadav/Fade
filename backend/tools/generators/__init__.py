@@ -1,1 +1,1 @@
-from .generators.image_generator import GeminiImageGenerator
+from .image_generator import GeminiImageGenerator

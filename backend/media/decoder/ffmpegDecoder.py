@@ -1,10 +1,22 @@
 from __future__ import annotations
 import subprocess
 import os
+import sys
 import json
 import threading
 from dataclasses import dataclass
 from typing import Optional
+
+
+def _safe_print(*args, **kwargs):
+     
+    enc = getattr(sys.stdout, 'encoding', 'utf-8') or 'utf-8'
+    safe_args = []
+    for a in args:
+        if isinstance(a, str):
+            a = a.encode(enc, errors='replace').decode(enc, errors='replace')
+        safe_args.append(a)
+    print(*safe_args, **kwargs)
 
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -205,7 +217,7 @@ class FFmpegVideoDecoder:
         self._read_buf     = bytearray(self._frame_bytes)
 
         pct = int(self._scale_factor * 100)
-        print(
+        _safe_print(
             f"[FFmpegDecoder] {os.path.basename(filepath)}: "
             f"{self._width_src}x{self._height_src} @ {self._fps:.3f}fps "
             f"({self._total_frames} frames) [preview {pct}%: {self._width}x{self._height}]"

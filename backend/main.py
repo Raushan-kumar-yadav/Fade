@@ -20,7 +20,15 @@ for _d in _FFMPEG_DIRS:
 faulthandler.enable()
 
 import sys
- 
+import io
+
+# Force UTF-8 on Windows consoles — prevents UnicodeEncodeError from
+# non-ASCII filenames (Japanese, Arabic, emoji, etc.) in yt-dlp downloads.
+if sys.stdout and hasattr(sys.stdout, 'buffer') and getattr(sys.stdout, 'encoding', 'utf-8').lower() != 'utf-8':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+if sys.stderr and hasattr(sys.stderr, 'buffer') and getattr(sys.stderr, 'encoding', 'utf-8').lower() != 'utf-8':
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
+
 sys.setswitchinterval(0.001)
 
 import asyncio
@@ -104,8 +112,7 @@ async def lifespan(app: FastAPI):
                              
                             import traceback
                             traceback.print_exc()
-                            # Return an empty-clips descriptor so C++ gets a
-                            # valid framed response and skips this frame cleanly.
+                             
                             fallback = {"frame": frame_num, "fps": 30, "width": 1920,
                                         "height": 1080, "clips": []}
                             payload = _json.dumps(fallback).encode("utf-8")
@@ -113,7 +120,7 @@ async def lifespan(app: FastAPI):
                     writer.write(struct.pack("<I", len(payload)) + payload)
                     await writer.drain()
 
-                    # Precompute N+1 immediately (C++ still decoding+rendering current frame)
+                    # Precompute N+1 immediately  s
                     nxt = frame_num + 1
                     if nxt not in _prefetch:
                         try:
@@ -121,7 +128,7 @@ async def lifespan(app: FastAPI):
                             _prefetch[nxt] = _json.dumps(d).encode("utf-8")
                         except Exception:
                             pass
-                    # Keep cache small — evict anything older than current-2
+                    # Keep cache small  
                     for old in [k for k in _prefetch if k < frame_num - 1]:
                         del _prefetch[old]
 
@@ -646,7 +653,7 @@ def getRenderFrame(frame: int):
             try:
                 px, py = t.position.get()
                 sx, sy = t.scale.get()
-                rot    = t.rotation.get()
+                rot = t.rotation.get()
                 ax, ay = t.anchor.get()
                 transform_dict = {
                     "x": float(px),
@@ -740,10 +747,7 @@ def saveProject(req: SaveRequest):
     # Embed the full timeline into the project file
     if tl is not None:
         proj_dict["timeline"] = tl.toDict()
-
-    # ── Asset catalog: assetId → filepath for every known library entry ──────
-    # This is the canonical source of truth for project reload — independent of
-    # whether individual clips happen to store filepath correctly.
+ 
     proj_dict["assets"] = {
         asset_id: asset.filepath
         for asset_id, asset in _library.items()
@@ -779,11 +783,11 @@ def loadProject(req: LoadRequest):
 
     data = json.loads(path.read_text(encoding="utf-8"))
 
-    # Use engine.loadProject to initialize compositor + scheduler properly
+    # Use engine.loadProject to initialize compositor 
     proj = engine.loadProject(str(path))
     proj.filePath = str(path)
 
-    # Rebuild the full timeline from the embedded .fade data
+    # Rebuild the full timeline  
     tl_data = data.get("timeline")
     if tl_data:
         tl = Timeline.fromDict(tl_data)
@@ -794,10 +798,8 @@ def loadProject(req: LoadRequest):
         proj.timelines = [tl]
     else:
         tl = engine.activeTimeline
-
-    # ── Restore asset library ────────────────────────────────────────────────
-    # Priority 1: top-level "assets" catalog  {assetId: filepath}  (new format)
-    # Priority 2: clip-level filepath attribute                     (legacy fallback)
+ 
+ 
     _library.clear()
     missing: list[str] = []
 
@@ -817,13 +819,12 @@ def loadProject(req: LoadRequest):
                 pass
         return True
 
-    # Pass 1 — asset catalog (guaranteed to have the right filepath)
+    #  asset catalog 
     for asset_id, filepath in data.get("assets", {}).items():
         _register(asset_id, filepath)
 
-    # Pass 2 — scan clips for any assetId not yet in _library
-    # Also collect missing assetIds so frontend can show a relink prompt
-    offline_assets: list[dict] = []   # [{assetId, clipId, filename_hint}]
+     
+    offline_assets: list[dict] = []    
     if tl:
         for track in tl.tracks:
             for clip in track.clips:
@@ -1702,7 +1703,7 @@ class ShapeClipRequest(BaseModel):
 @app.post("/clips/shape")
 def addShapeClip(req: ShapeClipRequest):
     import uuid
-    tl    = _active_timeline()
+    tl = _active_timeline()
     track = _top_empty_track(req.startFrame, req.duration)
     clip  = ShapeClip(
         clipId = str(uuid.uuid4()),
@@ -1754,11 +1755,11 @@ def addPenClip(req: PenClipRequest):
     tl    = _active_timeline()
     track = _top_empty_track(req.startFrame, req.duration)
     clip  = PenClip(
-        clipId     = str(uuid.uuid4()),
+        clipId = str(uuid.uuid4()),
         startFrame = req.startFrame,
-        duration   = req.duration,
+        duration = req.duration,
         isClosed   = req.isClosed,
-        style      = ShapeStyle.fromDict(req.style),
+        style = ShapeStyle.fromDict(req.style),
     )
     for p in req.points:
         clip.addPoint(
@@ -1794,11 +1795,11 @@ def updatePenPoints(clipId: str, req: PenPointsRequest):
     return clip.toDict()
 
 
-# ── Pen Path Keyframe ─────────────────────────────────────────────────────────
+# Pen Path Keyframe  
 
 class PathKeyframeRequest(BaseModel):
-    frame:  int   = 0
-    interp: str   = "bezier"   # bezier | linear | constant | ease
+    frame:  int = 0
+    interp: str = "bezier"   # bezier | linear | constant | ease
 
 
 @app.post("/clips/pen/{clipId}/path-keyframe")
@@ -1984,6 +1985,39 @@ def listMasks(clipId: str):
         ],
     }
 
+
+# Selected clip (frontend pushes selection here so AI tools can read it)
+
+_selected_clip_id: str | None = None
+
+class SelectClipRequest(BaseModel):
+    clipId: str | None = None
+
+@app.post("/clips/select")
+def selectClip(req: SelectClipRequest):
+    global _selected_clip_id
+    _selected_clip_id = req.clipId
+    return {"selectedClipId": _selected_clip_id}
+
+@app.get("/clips/selected")
+def getSelectedClip():
+    global _selected_clip_id
+    if not _selected_clip_id:
+        return {"clip": None}
+    try:
+        clip, track_idx = _find_clip(_selected_clip_id)
+        return {
+            "clip": {
+                "clipId":     clip.clipId,
+                "trackIndex": track_idx,
+                "startFrame": clip.startFrame,
+                "duration":   clip.duration,
+                "type":       type(clip).__name__,
+                "effectCount": len(getattr(clip, "effects", [])),
+            }
+        }
+    except Exception:
+        return {"clip": None}
 
 # Effects  
 

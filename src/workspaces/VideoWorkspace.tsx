@@ -12,6 +12,7 @@ import { useTool, isShapeTool } from '../context/toolContext'
 import TextToolPanel   from './tools/TextToolPanel'
 import ShapeToolPanel  from './tools/ShapeToolPanel'
 import TransitionPanel from './inspector/TransitionPanel'
+import FloatingAIChat  from './FloatingAIChat'
 
 
 // ── Tool creation panel ───────────────────────────────────────────────────────
@@ -98,6 +99,7 @@ function getModel(): FlexLayout.Model {
 
 export default function VideoWorkspace() {
   const model = getModel()
+  const [aiOpen, setAiOpen] = useState(false)
 
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
     await addClipToTimeline(asset.assetId, trackIndex, 0, 300)
@@ -120,7 +122,19 @@ export default function VideoWorkspace() {
 
   return (
     <div className="video-ws">
+      {/* AI Director toggle button */}
+      <button
+        className={`video-ws__ai-btn${aiOpen ? ' video-ws__ai-btn--active' : ''}`}
+        onClick={() => setAiOpen(o => !o)}
+        title="Toggle AI Director"
+      >
+        🤖
+      </button>
+
       <FlexLayout.Layout model={model} factory={factory} realtimeResize />
+
+      {/* Floating AI chat */}
+      {aiOpen && <FloatingAIChat onClose={() => setAiOpen(false)} />}
     </div>
   )
 }

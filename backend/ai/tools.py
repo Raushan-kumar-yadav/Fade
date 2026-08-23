@@ -311,6 +311,165 @@ def generate_image(prompt: str, num_images: int = 1) -> str:
     })
     return json.dumps(result, indent=2)
 
+@tool
+def get_selected_clip() -> str:
+    """Get info about the clip currently selected by the user in the timeline.
+
+    Returns the clipId, track, frame range, clip type, and effect count.
+    If nothing is selected, returns null. Always call this before applying effects
+    so you know which clip to target.
+    """
+    result = _get("/clips/selected")
+    return json.dumps(result, indent=2)
+
+@tool
+def list_effects_catalog() -> str:
+    """List all available effect types that can be applied to clips.
+
+    Returns name, type key, category (Color / Stylize / Cinematic / Keying),
+    description, and available parameters for each effect.
+    Use the 'type' field as the effectType when calling apply_effect_to_clip().
+    """
+    result = _get("/effects/catalog")
+    return json.dumps(result, indent=2)
+
+@tool
+def apply_effect_to_clip(clip_id: str, effect_type: str, params: dict | None = None) -> str:
+    """Apply an effect to a specific clip.
+
+    Args:
+        clip_id:     The clipId to add the effect to. Get it from get_selected_clip()
+                     or get_timeline_state().
+        effect_type: Effect type key from list_effects_catalog() e.g. 'blur',
+                     'brightness_contrast', 'hsl', 'color_grade', 'sharpen',
+                     'vignette', 'chroma_key'.
+        params:      Optional dict of parameter values to set immediately after adding
+                     e.g. {"blur_x": 10, "blur_y": 10} for blur effect.
+
+    Returns the effectId of the newly added effect.
+    """
+    result = _post(f"/clips/{clip_id}/effects", {"effectType": effect_type})
+    effect_id = result.get("effectId")
+    # Apply params immediately if provided
+    if params and effect_id:
+        _post(f"/clips/{clip_id}/effects/{effect_id}", {"params": params})
+        result["params_applied"] = params
+    return json.dumps(result, indent=2)
+
+@tool
+def patch_clip_effect(clip_id: str, effect_id: str, params: dict) -> str:
+    """Update the parameters of an existing effect on a clip.
+
+    Args:
+        clip_id:   The clipId that has the effect.
+        effect_id: The effectId to update. Get it from get_selected_clip() then
+                   GET /clips/{clipId}/effects, or from apply_effect_to_clip().
+        params:    Dict of parameter key-value pairs to update.
+                   e.g. {"blur_x": 5} for blur, {"brightness": 0.3} for brightness.
+
+    Use list_effects_catalog() to see available params per effect type.
+    """
+    import httpx as _httpx
+    r = _httpx.patch(f"{_base()}/clips/{clip_id}/effects/{effect_id}",
+                     json={"params": params}, timeout=10)
+    r.raise_for_status()
+    return json.dumps(r.json(), indent=2)
+
+@tool
+def search_news(query: str, max_results: int = 10) -> str:
+    """Search DuckDuckGo News for current headlines matching a query.
+
+    Args:
+        query:       Search term, e.g. "top tech news today", "AI breakthroughs 2026"
+        max_results: Number of articles to return (default 10, max 20)
+
+    Returns a JSON list of {title, body, source, url} objects.
+    Use this first when the user asks for news-related content before building a video.
+    """
+    from backend.ai.video_pipeline.news_search import search_news as _search
+    items = _search(query, max_results=min(max_results, 20))
+    return json.dumps([
+        {"title": it.title, "body": it.body[:300], "source": it.source, "url": it.url}
+        for it in items
+    ], indent=2)
+
+@tool
+def create_news_video(query: str, scene_duration_seconds: float = 5.0) -> str:
+    """Automatically create a full news video from a search query.
+
+    This runs the COMPLETE pipeline in one call:
+      1. Searches DuckDuckGo News for current headlines
+      2. Uses AI to generate a frame-accurate scene plan (b-roll, titles, effects)
+      3. Downloads YouTube videos and generates AI images in parallel
+      4. Assembles everything on the Fade timeline (track 0=broll, 1=titles, 2=lower-thirds)
+
+    Args:
+        query:                  Topic to search, e.g. "today top 10 tech news",
+                                "latest space exploration news", "AI news this week"
+        scene_duration_seconds: How many seconds each news scene lasts (default 5s).
+                                Use 3 for quick cuts, 7 for more breathing room.
+
+    Returns a summary of what was created with clip counts and timeline info.
+
+    WHEN TO USE: Any time the user says "create a video about [topic]",
+    "make a news video", "build a video about [subject]" — use this tool.
+    """
+    import asyncio
+    from backend.ai.video_pipeline.news_search import search_news as _search
+    from backend.ai.video_pipeline.scene_planner import plan_scenes
+    from backend.ai.video_pipeline.asset_gatherer import gather_assets
+    from backend.ai.video_pipeline.timeline_builder import build_timeline
+    from backend.ai.agent import get_agent_llm
+
+    fps = 30.0
+    scene_duration = int(scene_duration_seconds * fps)
+
+    # 1. Search news
+    print(f"[create_news_video] Searching: {query!r}", flush=True)
+    items = _search(query, max_results=10)
+    if not items:
+        return "❌ No news articles found for that query. Try a different topic."
+
+    # 2. Plan scenes via LLM structured output
+    print(f"[create_news_video] Planning {len(items)} scenes…", flush=True)
+    llm = get_agent_llm(_PORT)
+    plan = plan_scenes(query, items, llm, scene_duration=scene_duration, fps=fps)
+
+    # 3. Gather assets in parallel (yt-dlp + Gemini image gen)
+    print(f"[create_news_video] Gathering assets…", flush=True)
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                asset_map = pool.submit(asyncio.run, gather_assets(plan, _PORT)).result()
+        else:
+            asset_map = loop.run_until_complete(gather_assets(plan, _PORT))
+    except RuntimeError:
+        asset_map = asyncio.run(gather_assets(plan, _PORT))
+
+    # 4. Build timeline
+    print(f"[create_news_video] Building timeline…", flush=True)
+    result = build_timeline(plan, asset_map, _PORT)
+
+    placed   = result.get("placed_clips", 0)
+    failed   = result.get("failed_scenes", [])
+    total_s  = plan.totalFrames / fps
+    videos   = sum(1 for s in plan.scenes if s.broll.type == "video")
+    images   = sum(1 for s in plan.scenes if s.broll.type == "image")
+
+    summary = (
+        f"✅ News video created!\n"
+        f"• Topic: {query}\n"
+        f"• {plan.totalScenes} scenes × {scene_duration_seconds:.0f}s = {total_s:.0f}s total\n"
+        f"• {videos} YouTube b-roll clips + {images} AI-generated images\n"
+        f"• {placed} scenes placed on timeline\n"
+        f"• Track 0 = b-roll  |  Track 1 = headlines  |  Track 2 = lower-thirds\n"
+    )
+    if failed:
+        summary += f"• ⚠️ {len(failed)} scenes had issues (no media found): {failed}\n"
+    return summary
+
 # all tools list 
 
 ALL_TOOLS = [
@@ -336,5 +495,11 @@ ALL_TOOLS = [
     download_videos,
     download_images,
     generate_image,
+    search_news,
+    create_news_video,
+    get_selected_clip,
+    list_effects_catalog,
+    apply_effect_to_clip,
+    patch_clip_effect,
     place_clip,
 ]
