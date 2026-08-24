@@ -2005,7 +2005,9 @@ def getSelectedClip():
     if not _selected_clip_id:
         return {"clip": None}
     try:
-        clip, track_idx = _find_clip(_selected_clip_id)
+        clip, track = _find_clip(_selected_clip_id)
+        tl = _active_timeline()
+        track_idx = tl.tracks.index(track) if track in tl.tracks else -1
         return {
             "clip": {
                 "clipId":     clip.clipId,
@@ -2255,7 +2257,7 @@ def getWaveform(assetId: str, bins: int = 200):
 @app.get("/worker/status")
 def workerStatus():
     return {
-        "alive":      _worker_bus.is_alive(),
+        "alive": _worker_bus.is_alive(),
         "queueDepth": _worker_bus.queue_depth(),
     }
 
@@ -2271,13 +2273,13 @@ def workerJobs():
         label = asset.filename if asset else asset_id[:12]
         status = entry.get("status", "pending")
         jobs.append({
-            "id":     asset_id,
-            "type":   "waveform",
-            "label":  label,
+            "id": asset_id,
+            "type": "waveform",
+            "label": label,
             "status": status,
             "message": entry.get("message", ""),
         })
-    # Sort: running/pending first, done last
+    # Sort 
     order = {"pending": 0, "running": 1, "error": 2, "done": 3}
     jobs.sort(key=lambda j: order.get(j["status"], 9))
     return jobs
@@ -2398,13 +2400,13 @@ def listAudioClips():
             if not asset.hasAudio:
                 continue
             result.append({
-                "clipId":      clip.clipId,
-                "assetId":     asset_id,
-                "startFrame":  clip.startFrame,
-                "duration":    clip.duration,
+                "clipId": clip.clipId,
+                "assetId": asset_id,
+                "startFrame": clip.startFrame,
+                "duration": clip.duration,
                 "mediaOffset": getattr(clip, 'mediaOffset', 0),
-                "volume":      getattr(clip, 'volume', 1.0),
-                "streamUrl":   f"/assets/{asset_id}/audio-stream",
+                "volume": getattr(clip, 'volume', 1.0),
+                "streamUrl": f"/assets/{asset_id}/audio-stream",
             })
     return {"clips": result}
 
@@ -2419,8 +2421,8 @@ class ExportStartRequest(BaseModel):
     height: int   = 1080
     fps: float = 30.0
     codec: str = "auto"
-    videoBitrate: str   = "8M"
-    audioBitrate: str   = "192k"
+    videoBitrate: str = "8M"
+    audioBitrate: str = "192k"
     formatId: str = "mp4-1080"
 
 @app.post("/export/start")
@@ -2494,15 +2496,15 @@ def _clip_param_schema(clip) -> list:
 
     # Transform params  
     base = [
-        {"id": "opacity",    "label": "Opacity",    "type": "float", "min": 0,  "max": 1,  "default": round(t.opacity.get(), 4),  "group": "Transform"},
+        {"id": "opacity", "label": "Opacity", "type": "float", "min": 0,  "max": 1,  "default": round(t.opacity.get(), 4),  "group": "Transform"},
         {"id": "blend_mode", "label": "Blend Mode", "type": "int",   "min": 0,  "max": 11, "default": (lambda bm: int(bm.get()) if hasattr(bm, "get") else int(bm) if bm else 0)(getattr(clip, "blendMode", 0)), "group": "Transform"},
-        {"id": "pos_x",    "label": "Position X",  "type": "float", "min": -3840, "max": 3840, "default": round(px, 2), "group": "Transform"},
-        {"id": "pos_y",    "label": "Position Y",  "type": "float", "min": -2160, "max": 2160, "default": round(py, 2), "group": "Transform"},
-        {"id": "scale_x",  "label": "Scale X",     "type": "float", "min": 0,   "max": 10, "default": round(sx, 4),               "group": "Transform"},
-        {"id": "scale_y",  "label": "Scale Y",     "type": "float", "min": 0,   "max": 10, "default": round(sy, 4),               "group": "Transform"},
-        {"id": "rotation", "label": "Rotation",    "type": "float", "min": -360,"max": 360,"default": round(t.rotation.get(), 2), "group": "Transform"},
-        {"id": "anchor_x", "label": "Anchor X",    "type": "float", "min": -1920,"max": 1920,"default": round(ax, 2),             "group": "Transform"},
-        {"id": "anchor_y", "label": "Anchor Y",    "type": "float", "min": -1080,"max": 1080,"default": round(ay, 2),             "group": "Transform"},
+        {"id": "pos_x", "label": "Position X",  "type": "float", "min": -3840, "max": 3840, "default": round(px, 2), "group": "Transform"},
+        {"id": "pos_y", "label": "Position Y", "type": "float", "min": -2160, "max": 2160, "default": round(py, 2), "group": "Transform"},
+        {"id": "scale_x", "label": "Scale X", "type": "float", "min": 0, "max": 10, "default": round(sx, 4),               "group": "Transform"},
+        {"id": "scale_y", "label": "Scale Y", "type": "float", "min": 0, "max": 10, "default": round(sy, 4),               "group": "Transform"},
+        {"id": "rotation", "label": "Rotation", "type": "float", "min": -360,"max": 360,"default": round(t.rotation.get(), 2), "group": "Transform"},
+        {"id": "anchor_x", "label": "Anchor X", "type": "float", "min": -1920,"max": 1920,"default": round(ax, 2),             "group": "Transform"},
+        {"id": "anchor_y", "label": "Anchor Y", "type": "float", "min": -1080,"max": 1080,"default": round(ay, 2),             "group": "Transform"},
     ]
 
     if isinstance(clip, TextClip):
@@ -2543,7 +2545,7 @@ def _clip_param_schema(clip) -> list:
             {"id": "stroke_g", "label": "Stroke G", "type": "float", "min": 0, "max": 1,  "default": sc[1],         "group": "Path"},
             {"id": "stroke_b", "label": "Stroke B", "type": "float", "min": 0, "max": 1,  "default": sc[2],         "group": "Path"},
             {"id": "stroke_w", "label": "Stroke Width", "type": "float", "min": 0, "max": 50, "default": s.strokeWidth, "group": "Path"},
-            {"id": "fill_a",   "label": "Fill Alpha", "type": "float", "min": 0, "max": 1,  "default": fc[3],         "group": "Path"},
+            {"id": "fill_a", "label": "Fill Alpha", "type": "float", "min": 0, "max": 1,  "default": fc[3],         "group": "Path"},
         ]
 
     return base
@@ -2583,15 +2585,15 @@ def getClipParams(clipId: str, frame: int = 0):
             "default": p["default"],
             "group": p["group"],
             "value": value,
-            "isAnimated":  ap.is_animated(),
+            "isAnimated": ap.is_animated(),
             "hasKeyframe": ap.has_keyframe_at(frame),
-            "keyframes":   ap.all_keyframe_frames(),
+            "keyframes": ap.all_keyframe_frames(),
         })
     return {
         "clipId": clipId,
         "clipType": type(clip).__name__,
         "startFrame": clip.startFrame,
-        "duration":   clip.duration,
+        "duration": clip.duration,
         "params": rows,
     }
 
@@ -2600,8 +2602,8 @@ def getClipParams(clipId: str, frame: int = 0):
 def setClipParam(clipId: str, key: str, body: ParamValueBody):
     """Set a static value or add a keyframe."""
     clip, _ = _find_clip(clipId)
-    schema   = _clip_param_schema(clip)
-    p_def    = next((p for p in schema if p["id"] == key), None)
+    schema = _clip_param_schema(clip)
+    p_def = next((p for p in schema if p["id"] == key), None)
     if p_def is None:
         raise HTTPException(404, f"Unknown param {key!r}")
 
@@ -2612,9 +2614,9 @@ def setClipParam(clipId: str, key: str, body: ParamValueBody):
     else:
         print(f"[setClipParam] clipId={clipId[:8]} key={key!r} value={body.value} (base)")
         ap.set_base(body.value)
-        # Apply immediately so render on same frame picks up the change
+        # Apply immediately  
         clip.applyParam(key, body.value)
-        # Clear frame cache guard so evaluateAll re-runs on next render
+        # Clear frame cache guard  
         if hasattr(clip, '_lastFrame'):
             clip._lastFrame = -1
 

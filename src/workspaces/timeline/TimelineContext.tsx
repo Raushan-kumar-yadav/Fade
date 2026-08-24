@@ -18,7 +18,7 @@ import {
 } from "./types";
 import { setTrackMute, setTrackSolo, setTrackLock } from "../../api/useApi";
 
-// ── Empty initial state — filled by backend on mount ─────────────────────────
+// Empty initial state  
 const INITIAL_STATE: TimelineState = {
   tracks: [],
   currentFrame: 0,
@@ -90,6 +90,7 @@ function mapBackendClip(c: any): Clip {
     duration: c.duration,
     type,
     isSelected: false,
+    assetId: c.assetId,
   };
 }
 
@@ -106,7 +107,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
     case "ADD_CLIP": {
       const tracks = state.tracks.map((t) => {
         if (t.id !== action.trackId) return t;
-        // Swap optimistic tmp- clip with real one, or just append
+        // Swap optimistic tmp- clip with real one 
         const hasTmp = t.clips.some(
           (c) => c.id.startsWith("tmp-") && c.name === action.clip.name,
         );
@@ -193,7 +194,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
     }
 
     case "SPLIT_CLIP_DONE": {
-      // Replace the original clip (now shorter) and append the right half
+      // Replace the original clip 
       const { originalClip, rightClip, trackId } = action;
       const tracks = state.tracks.map((t) => {
         if (t.id !== trackId) return t;
@@ -388,10 +389,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     }
 
     function startSync(port: number) {
-      // ── Startup burst: poll /timeline/state rapidly for 2s ────────────
-      // Necessary because the backend lifespan (which seeds tracks) runs
-      // after FastAPI starts accepting connections — so the very first
-      // fetch may return 0 tracks before lifespan finishes.
+       
       let burstCount = 0;
       const BURST_INTERVAL = 200;  // ms between polls
       const BURST_DURATION = 2000; // ms total burst window
@@ -403,16 +401,16 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         }
       }, BURST_INTERVAL);
 
-      // ── Listen for track changes from viewport tools ───────────────────
+      // Listen for track changes from viewport tools  
       const onTracksChanged = () => fetchAndSetTracks(port, true);
       window.addEventListener("fade:tracks-changed", onTracksChanged);
 
-      // ── Slow refresh: re-sync tracks every 2s (catches missed events) ──
+      // refresh 
       const trackRefreshId = setInterval(() => {
         fetchAndSetTracks(port, true);
       }, 2000);
 
-      // ── Fast poll: playback state (play/pause + totalFrames) ──────────
+      //   Fast poll 
       const playbackId = setInterval(() => {
         fetch(`http://127.0.0.1:${port}/playback/state`)
           .then((r) => (r.ok ? r.json() : null))

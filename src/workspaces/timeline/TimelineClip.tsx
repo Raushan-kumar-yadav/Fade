@@ -37,20 +37,20 @@ const TimelineClip = memo(function TimelineClip({
   const [peaks, setPeaks]             = useState<number[]>([]);
   const [waveLoading, setWaveLoading] = useState(false);
 
-  // Derived geometry — must be before any hook that uses them as deps
-  const x     = clip.startFrame * zoomX;
+  // Derived geometry  
+  const x = clip.startFrame * zoomX;
   const width = Math.max(clip.duration * zoomX, 4);
   const color = CLIP_COLORS[clip.type];
 
   // Only video and audio clips produce waveforms
   const wantsWaveform = clip.type === 'video' || clip.type === 'audio';
 
-  // ── Fetch waveform asynchronously (polls until ready) ──────────────────────
+  // Fetch waveform asynchronously  
   useEffect(() => {
     if (!wantsWaveform || !clip.assetId) return;
     let cancelled = false;
     setWaveLoading(true);
-    waveformApi.get(clip.assetId, 200)
+    waveformApi.get(clip.assetId, 1000)
       .then(d => {
         if (!cancelled) {
           setPeaks(d.peaks);
@@ -61,7 +61,7 @@ const TimelineClip = memo(function TimelineClip({
     return () => { cancelled = true; };
   }, [clip.assetId, wantsWaveform]);
 
-  // ── Draw onto canvas whenever peaks or width changes ───────────────────────
+  // Draw onto canvas whenever peaks or width changes  
   const drawWaveform = useCallback((canvas: HTMLCanvasElement | null) => {
     if (!canvas || peaks.length === 0) return;
     canvas.width  = Math.max(1, Math.round(width));
@@ -83,13 +83,13 @@ const TimelineClip = memo(function TimelineClip({
     }
   }, [peaks, width, trackHeight]);
 
-  // ref-callback: fires the instant the canvas element is created
+  // ref-callback 
   const canvasRefCallback = useCallback((el: HTMLCanvasElement | null) => {
     canvasRef.current = el;
     drawWaveform(el);
   }, [drawWaveform]);
 
-  // Redraw if peaks/width change while canvas already exists
+  // Redraw  
   useLayoutEffect(() => {
     drawWaveform(canvasRef.current);
   }, [drawWaveform]);
@@ -388,7 +388,7 @@ const TimelineClip = memo(function TimelineClip({
       <div className="tl-clip__trim tl-clip__trim--left" />
       <div className="tl-clip__trim tl-clip__trim--right" />
 
-      {/* Waveform loading shimmer — only for audio/video while pending */}
+      {/* Waveform loading shimmer  */}
       {wantsWaveform && waveLoading && peaks.length === 0 && (
         <div style={{
           position: 'absolute', inset: 0, pointerEvents: 'none',
@@ -398,7 +398,7 @@ const TimelineClip = memo(function TimelineClip({
         }} />
       )}
 
-      {/* Waveform canvas — drawn imperatively via ref-callback */}
+      {/* Waveform canvas  */}
       {peaks.length > 0 && (
         <canvas
           ref={canvasRefCallback}

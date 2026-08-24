@@ -81,7 +81,7 @@ class WorkerBus:
     def get_cached(self, asset_id: str) -> dict | None:
         return waveform_cache.get(asset_id)
 
-    def submit_waveform(self, asset_id: str, filepath: str, bins: int = 200) -> None:
+    def submit_waveform(self, asset_id: str, filepath: str, bins: int = 1000) -> None:
         """Convenience: mark pending + enqueue waveform job."""
         if waveform_cache.has(asset_id):
             entry = waveform_cache.get(asset_id)
