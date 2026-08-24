@@ -24,18 +24,22 @@ def search_news(query: str, max_results: int = 10) -> list[NewsItem]:
     print(f"[NewsSearch] Searching for: {query!r}", flush=True)
 
     items: list[NewsItem] = []
-    with DDGS() as ddgs:
-        try:
-            # New ddgs API 
-            results = list(ddgs.news(query, max_results=max_results))
-        except TypeError:
-            # Old duckduckgo_search API 
-            results = list(ddgs.news(
-                keywords=query,
-                region="wt-wt",
-                safesearch="moderate",
-                max_results=max_results,
-            ))
+    try:
+        with DDGS() as ddgs:
+            try:
+                # New ddgs API 
+                results = list(ddgs.news(query, max_results=max_results))
+            except TypeError:
+                # Old duckduckgo_search API 
+                results = list(ddgs.news(
+                    keywords=query,
+                    region="wt-wt",
+                    safesearch="moderate",
+                    max_results=max_results,
+                ))
+    except Exception as e:
+        print(f"[NewsSearch] Search failed: {e}", flush=True)
+        results = []
 
     for r in results:
         items.append(NewsItem(
@@ -47,6 +51,7 @@ def search_news(query: str, max_results: int = 10) -> list[NewsItem]:
 
     print(f"[NewsSearch] Found {len(items)} articles", flush=True)
     return items
+
 
 
 def format_for_llm(items: list[NewsItem]) -> str:

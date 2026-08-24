@@ -40,7 +40,7 @@
 #define LOG_ERROR(m) std::cerr << "[HeadlessCompositor][ERR] " << m << "\n"
 #endif
 
-// ── Constructor
+//   Constructor
 
 HeadlessCompositor::HeadlessCompositor(int width, int height, float fps,
                                        const std::string &effectsDir)
@@ -78,7 +78,6 @@ void HeadlessCompositor::init(const std::string &effectsDir) {
   m_renderBuffer = std::make_unique<uint8_t[]>(m_bufferSize);
   std::memset(m_renderBuffer.get(), 0, m_bufferSize);
 
-  //  Wire DecodeScheduler to our Vulkan device for HW decode
   schedSetDeviceContext(m_device.get());
 
   LOG_INFO("Initialized " << m_width << "x" << m_height << " @ " << m_fps
@@ -127,10 +126,10 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           (t.x == 0 && t.y == 0 && t.rotation == 0 && t.scaleX == 1.0f &&
            t.scaleY == 1.0f && clip.opacity >= 0.99f && clip.blendMode == 0);
       if (isIdentity) {
-        // ── Try scheduler cache first (pre-decoded by worker threads) ──
+        //  Try scheduler cache first
         CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
-        if (cfd.valid &&
-            (int)cfd.width == m_width && (int)cfd.height == m_height) {
+        if (cfd.valid && (int)cfd.width == m_width &&
+            (int)cfd.height == m_height) {
           // Dimensions match project — direct memcpy (sub-1ms)
           std::memcpy(m_renderBuffer.get(), cfd.data, m_bufferSize);
           std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
@@ -140,9 +139,9 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           return;
         }
         if (cfd.valid)
-          releaseCachedFrame(cfd); // dimensions mismatch, release & fall through
+          releaseCachedFrame(cfd);
 
-        // ── Cache miss: fallback to sync decode ──
+        //  Cache miss
         auto &decoder = m_decoders[clip.file];
         if (!decoder)
           decoder =
@@ -157,7 +156,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
             m_onFrameReady(fd.frame);
           return;
         }
-        // Fall through if direct decode not supported
       }
     }
   }
@@ -187,12 +185,12 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       continue;
     }
 
-    // ── Try scheduler cache first ──
+    // Try scheduler cache first
     CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
     if (cfd.valid) {
       if (!clip.effects.empty())
         needsGpu = true;
-      // Copy the cached RGBA data into a local vector
+      //  cached RGBA data into a local vector
       std::vector<uint8_t> rgbaCopy(cfd.data, cfd.data + cfd.dataSize);
       decoded.push_back(
           {&clip, std::move(rgbaCopy), (int)cfd.width, (int)cfd.height});
@@ -200,7 +198,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       continue;
     }
 
-    // ── Cache miss: fallback to sync decode ──
+    //   Cache miss
     auto &decoder = m_decoders[clip.file];
     if (!decoder)
       decoder = std::make_unique<ClipDecoder>(clip.file, m_device.get(), 1.0f);
@@ -282,8 +280,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   SkCanvas *canvas = m_surface->getCanvas();
   canvas->clear(SK_ColorBLACK);
 
-  // ── Collect clip-ids that are part of the active transition ──────────────
-  // They will be skipped from the normal per-clip draw loop and blended below.
   std::string transClipA, transClipB;
   if (fd.transition.valid) {
     transClipA = fd.transition.clipA_id;
@@ -415,16 +411,11 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       if (blended) {
         SkPaint p;
         std::cerr << "[TRANS] drawImage blended...\n";
-        // Draw the blended result scaled to fill the entire canvas.
-        // Must use drawImageRect (not drawImage at 0,0) so that when
-        // preview scale < 1 the image fills the full scaled canvas
-        // rather than only the top portion of it.
+
         const float cw = static_cast<float>(m_width);
         const float ch = static_cast<float>(m_height);
-        canvas->drawImageRect(
-            blended,
-            SkRect::MakeWH(cw, ch),
-            SkSamplingOptions(SkFilterMode::kLinear), &p);
+        canvas->drawImageRect(blended, SkRect::MakeWH(cw, ch),
+                              SkSamplingOptions(SkFilterMode::kLinear), &p);
         std::cerr << "[TRANS] drawImage blended done\n";
       }
     }
@@ -499,22 +490,47 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
     canvas->scale(sx, sy);
   }
 
-  // Blend mode + opacity paint — enum matches Python BlendMode class in videoClip.py
+  // Blend mode + opacity paint — enum matches Python BlendMode class in
+  // videoClip.py
   SkPaint paint;
   paint.setAlphaf(clip.opacity);
   switch (clip.blendMode) {
-  case 1:  paint.setBlendMode(SkBlendMode::kMultiply);   break; // Multiply
-  case 2:  paint.setBlendMode(SkBlendMode::kScreen);     break; // Screen
-  case 3:  paint.setBlendMode(SkBlendMode::kOverlay);    break; // Overlay
-  case 4:  paint.setBlendMode(SkBlendMode::kDarken);     break; // Darken
-  case 5:  paint.setBlendMode(SkBlendMode::kLighten);    break; // Lighten
-  case 6:  paint.setBlendMode(SkBlendMode::kColorDodge); break; // Color Dodge
-  case 7:  paint.setBlendMode(SkBlendMode::kColorBurn);  break; // Color Burn
-  case 8:  paint.setBlendMode(SkBlendMode::kHardLight);  break; // Hard Light
-  case 9:  paint.setBlendMode(SkBlendMode::kSoftLight);  break; // Soft Light
-  case 10: paint.setBlendMode(SkBlendMode::kDifference); break; // Difference
-  case 11: paint.setBlendMode(SkBlendMode::kExclusion);  break; // Exclusion
-  default: paint.setBlendMode(SkBlendMode::kSrcOver);    break; // Normal
+  case 1:
+    paint.setBlendMode(SkBlendMode::kMultiply);
+    break; // Multiply
+  case 2:
+    paint.setBlendMode(SkBlendMode::kScreen);
+    break; // Screen
+  case 3:
+    paint.setBlendMode(SkBlendMode::kOverlay);
+    break; // Overlay
+  case 4:
+    paint.setBlendMode(SkBlendMode::kDarken);
+    break; // Darken
+  case 5:
+    paint.setBlendMode(SkBlendMode::kLighten);
+    break; // Lighten
+  case 6:
+    paint.setBlendMode(SkBlendMode::kColorDodge);
+    break; // Color Dodge
+  case 7:
+    paint.setBlendMode(SkBlendMode::kColorBurn);
+    break; // Color Burn
+  case 8:
+    paint.setBlendMode(SkBlendMode::kHardLight);
+    break; // Hard Light
+  case 9:
+    paint.setBlendMode(SkBlendMode::kSoftLight);
+    break; // Soft Light
+  case 10:
+    paint.setBlendMode(SkBlendMode::kDifference);
+    break; // Difference
+  case 11:
+    paint.setBlendMode(SkBlendMode::kExclusion);
+    break; // Exclusion
+  default:
+    paint.setBlendMode(SkBlendMode::kSrcOver);
+    break; // Normal
   }
 
   canvas->drawImage(img, 0, 0, SkSamplingOptions(SkFilterMode::kLinear),
@@ -779,12 +795,13 @@ sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
       return srcA;
     SkCanvas *cv = surf->getCanvas();
     cv->clear(SK_ColorBLACK);
+    SkRect dst = SkRect::MakeWH(m_width, m_height);
     SkPaint pa;
     pa.setAlphaf(1.f - td.progress);
-    cv->drawImage(srcA, 0, 0, SkSamplingOptions(SkFilterMode::kLinear), &pa);
+    cv->drawImageRect(srcA, dst, SkSamplingOptions(SkFilterMode::kLinear), &pa);
     SkPaint pb;
     pb.setAlphaf(td.progress);
-    cv->drawImage(srcB, 0, 0, SkSamplingOptions(SkFilterMode::kLinear), &pb);
+    cv->drawImageRect(srcB, dst, SkSamplingOptions(SkFilterMode::kLinear), &pb);
     if (grCtx)
       grCtx->flushAndSubmit();
     return surf->makeImageSnapshot();
@@ -815,6 +832,31 @@ sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
   };
   srcA = toRaster(srcA, "A");
   srcB = toRaster(srcB, "B");
+
+  auto scaleToProject = [&](sk_sp<SkImage> img) -> sk_sp<SkImage> {
+    if (!img || (img->width() == m_width && img->height() == m_height))
+      return img;
+    SkImageInfo si =
+        SkImageInfo::Make(m_width, m_height, kRGBA_8888_SkColorType,
+                          kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
+    GrDirectContext *gc = m_skia ? m_skia->getDirectContext() : nullptr;
+    sk_sp<SkSurface> s;
+    if (gc)
+      s = SkSurfaces::RenderTarget(gc, skgpu::Budgeted::kYes, si);
+    if (!s)
+      s = SkSurfaces::Raster(si);
+    if (!s)
+      return img;
+    SkCanvas *cv = s->getCanvas();
+    cv->clear(SK_ColorBLACK);
+    cv->drawImageRect(img, SkRect::MakeWH(m_width, m_height),
+                      SkSamplingOptions(SkFilterMode::kLinear));
+    if (gc)
+      gc->flushAndSubmit(GrSyncCpu::kYes);
+    return s->makeImageSnapshot();
+  };
+  srcA = scaleToProject(srcA);
+  srcB = scaleToProject(srcB);
 
   std::cerr << "[TRANS-FN] makeShader(A)...\n";
   auto shaderA = srcA->makeShader(SkSamplingOptions(SkFilterMode::kLinear));
@@ -925,24 +967,26 @@ void HeadlessCompositor::play() {
 
       int64_t frame = m_currentFrame.load();
 
-      // ── Responsive pause check before HTTP ──
-      if (!m_playing.load()) break;
+      // check pause before https
+      if (!m_playing.load())
+        break;
 
       // Fetch layout from Python
       auto t0 = clock::now();
       std::string json = fetchFrameJson(frame);
       auto t1 = clock::now();
 
-      // ── Responsive pause check before render ──
-      if (!m_playing.load()) break;
+      if (!m_playing.load())
+        break;
 
       if (!json.empty()) {
         FrameDescriptor fd = parseFrameDescriptor(json);
         if (fd.valid) {
-          // ── Responsive pause check before expensive decode+render ──
-          if (!m_playing.load()) break;
+          //  Responsive pause check before expensive
+          if (!m_playing.load())
+            break;
 
-          // ── Async prefetch: register clips and pre-decode ahead ──
+          // Async prefetch
           for (const auto &clip : fd.clips) {
             if (clip.type == ClipDesc::Type::Video ||
                 clip.type == ClipDesc::Type::Image) {
@@ -975,22 +1019,17 @@ void HeadlessCompositor::play() {
         }
       }
 
-      // Always advance by exactly 1 — NEVER skip frames.
-      // Sequential decode is ~25ms per frame (fits in 33ms budget).
-      // Skipping causes the decoder to pump through multiple frames,
-      // taking 100-350ms each and creating a death spiral.
       m_currentFrame.fetch_add(1);
 
       auto now = clock::now();
       if (now < nextTick) {
-        // On time or ahead — sleep until next tick
+        // On time or ahead
         std::unique_lock<std::mutex> lk(m_sleepMutex);
         m_sleepCv.wait_until(lk, nextTick, [this, &lastSeekGen]() {
           return !m_playing.load() || m_seekGeneration.load() != lastSeekGen;
         });
       }
-      // Always set next tick relative to now (not nextTick) to avoid
-      // accumulated debt that would cause a burst of catch-up frames.
+
       nextTick = clock::now() + frameDur;
     }
   });
@@ -1101,7 +1140,7 @@ std::string HeadlessCompositor::fetchFrameJson(int64_t frameNum) {
       return {};
   }
 
-  // Send: 4-byte LE frame number
+  // Send
   uint32_t req = static_cast<uint32_t>(frameNum);
   if (send(m_frameSock, reinterpret_cast<char *>(&req), 4, 0) != 4) {
     LOG_ERROR("TCP send failed — reconnecting next frame");
@@ -1110,7 +1149,7 @@ std::string HeadlessCompositor::fetchFrameJson(int64_t frameNum) {
     return {};
   }
 
-  // Receive: 4-byte LE payload length
+  // Receive
   uint32_t payLen = 0;
   if (tcpRecvAll(m_frameSock, reinterpret_cast<char *>(&payLen), 4) != 4) {
     closesocket(m_frameSock);

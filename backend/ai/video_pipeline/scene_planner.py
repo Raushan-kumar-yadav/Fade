@@ -95,8 +95,21 @@ def plan_scenes(
     prompt = _build_prompt(query, news_items, scene_duration, fps)
 
     # Use structured output — LLM must return valid ScenePlan JSON
+    # Retry on ValueError (empty/malformed JSON from streaming parser)
     structured_llm = llm.with_structured_output(ScenePlan)
-    plan: ScenePlan = structured_llm.invoke([HumanMessage(content=prompt)])
+    import time
+    last_err = None
+    for attempt in range(3):
+        try:
+            plan: ScenePlan = structured_llm.invoke([HumanMessage(content=prompt)])
+            break
+        except (ValueError, Exception) as e:
+            last_err = e
+            if progress_cb:
+                progress_cb(f"Scene planning attempt {attempt+1} failed: {e}, retrying…")
+            time.sleep(1.5)
+    else:
+        raise RuntimeError(f"Scene planning failed after 3 attempts: {last_err}")
 
     if progress_cb:
         progress_cb(f"Scene plan ready: {plan.totalScenes} scenes, {plan.totalFrames} frames")

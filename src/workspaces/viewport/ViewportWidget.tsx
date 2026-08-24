@@ -79,8 +79,10 @@ export default function ViewportWidget() {
   // Native render engine 
   const [isNativeRender, setIsNativeRender] = useState(false);
   const nativeBufferRef = useRef<ArrayBuffer | null>(null);
-  const nativeWidthRef = useRef(1920);
+  const nativeWidthRef  = useRef(1920);
   const nativeHeightRef = useRef(1080);
+  // Reactive canvas dimensions  
+  const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
 
   // Check if native addon is available and cache the SharedArrayBuffer
   useEffect(() => {
@@ -95,6 +97,8 @@ export default function ViewportWidget() {
       if (stats) {
         nativeWidthRef.current  = stats.width;
         nativeHeightRef.current = stats.height;
+        // Drive canvas element size reactively so putImageData fills it correctly
+        setNativeDims({ w: stats.width, h: stats.height });
       }
     });
   }, []);
@@ -315,8 +319,10 @@ export default function ViewportWidget() {
     const el = containerRef.current;
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
-    const scaleW = (width - 24) / 1920;
-    const scaleH = (height - 24) / 1080;
+    const projW = nativeWidthRef.current;
+    const projH = nativeHeightRef.current;
+    const scaleW = (width - 24)  / projW;
+    const scaleH = (height - 24) / projH;
     setVpZoom(Math.min(scaleW, scaleH));
     setVpPan({ x: 0, y: 0 });
   }, []);
@@ -442,8 +448,8 @@ export default function ViewportWidget() {
           <canvas
             ref={canvasRef}
             className="vw-canvas__el"
-            width={1920}
-            height={1080}
+            width={nativeDims.w}
+            height={nativeDims.h}
           />
           {/* Pen / Mask overlay   */}
           {activeTool === 'shape:path' && (
