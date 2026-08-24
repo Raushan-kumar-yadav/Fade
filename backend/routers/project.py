@@ -57,6 +57,11 @@ def saveProject(req: SaveRequest):
         for asset_id, asset in _library.items()
         if asset.filepath and os.path.exists(asset.filepath)
     }
+    # Persist the project-level media download path
+    proj_dict["mediaDownloadPath"] = getattr(
+        getattr(engine.project, "settings", None), "mediaDownloadPath", ""
+    ) or ""
+
     path = Path(req.filepath)
     if not path.suffix:
         path = path.with_suffix(".fade")
@@ -66,6 +71,7 @@ def saveProject(req: SaveRequest):
     engine.project.isDirty  = False
     print(f"[Project] Saved -> {path}  ({len(proj_dict['assets'])} assets catalogued)", flush=True)
     return {"status": "ok", "filepath": str(path)}
+
 
 
 @router.post("/project/load")
@@ -88,6 +94,12 @@ def loadProject(req: LoadRequest):
         proj.timelines = [tl]
     else:
         tl = engine.activeTimeline
+
+    # Restore project-level download path
+    saved_dl_path = data.get("mediaDownloadPath", "")
+    if saved_dl_path and hasattr(proj, "settings") and proj.settings is not None:
+        proj.settings.mediaDownloadPath = saved_dl_path
+
     _library.clear()
     missing: list[str] = []
 
@@ -114,7 +126,7 @@ def loadProject(req: LoadRequest):
         for track in tl.tracks:
             for clip in track.clips:
                 aid = getattr(clip, "assetId", "")
-                fp  = getattr(clip, "filepath", "")
+                fp = getattr(clip, "filepath", "")
                 if not aid:
                     continue
                 registered = _register(aid, fp)

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import TitleBar           from './components/TitleBar'
 import SettingsPanel      from './components/SettingsPanel'
+import CreateProjectModal from './components/createProjectModal.'
 import HomeWorkspace      from './workspaces/HomeWorkspace'
 import AIWorkspace        from './workspaces/AIWorkspace'
 import VideoWorkspace     from './workspaces/VideoWorkspace'
@@ -111,14 +112,15 @@ function MediaOfflineBanner({
 // ── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [activeTab,     setActiveTab]     = useState<TabId>('home')
-  const [showSettings,  setShowSettings]  = useState(false)
-  const [activeTool,    setActiveTool]    = useState<ActiveTool>('pointer')
-  const [lastShapeTool, setLastShapeTool] = useState<ActiveTool>('shape:rect')
-  const [showToolbox,   setShowToolbox]   = useState(true)
-  const [selected,      setSelectedRaw]   = useState<SelectedItem | null>(null)
-  const [penSubMode,    setPenSubMode]    = useState<PenSubMode>('pen:add')
-  const [penOutputMode, setPenOutputMode] = useState<PenOutputMode>('clip')
+  const [activeTab,      setActiveTab]      = useState<TabId>('home')
+  const [showSettings,   setShowSettings]   = useState(false)
+  const [showNewProject, setShowNewProject] = useState(false)
+  const [activeTool,     setActiveTool]     = useState<ActiveTool>('pointer')
+  const [lastShapeTool,  setLastShapeTool]  = useState<ActiveTool>('shape:rect')
+  const [showToolbox,    setShowToolbox]    = useState(true)
+  const [selected,       setSelectedRaw]    = useState<SelectedItem | null>(null)
+  const [penSubMode,     setPenSubMode]     = useState<PenSubMode>('pen:add')
+  const [penOutputMode,  setPenOutputMode]  = useState<PenOutputMode>('clip')
 
   // When a clip is selected, push to backend so AI tools can read it
   const setSelected = useCallback((item: SelectedItem | null) => {
@@ -214,6 +216,7 @@ export default function App() {
             active={activeTab}
             onTab={(t) => setActiveTab(t as TabId)}
             onSettings={() => setShowSettings(true)}
+            onNewProject={() => setShowNewProject(true)}
             activeTool={activeTool}
             onTool={setActiveTool}
             onToggleToolbox={() => setShowToolbox(v => !v)}
@@ -233,6 +236,17 @@ export default function App() {
 
           {showSettings && (
             <SettingsPanel onClose={() => setShowSettings(false)} />
+          )}
+
+          {showNewProject && (
+            <CreateProjectModal
+              onClose={() => setShowNewProject(false)}
+              onProjectCreated={() => {
+                setShowNewProject(false)
+                setActiveTab('video')
+                window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+              }}
+            />
           )}
 
           {/* Full-screen loading overlay */}

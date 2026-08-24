@@ -84,6 +84,34 @@ async def lifespan(app: FastAPI):
     _HTTP_PORT = int(os.environ.get("BACKEND_PORT", 8000))
     _TCP_PORT  = _HTTP_PORT + 1
 
+    def _free_port(port: int) -> None:
+        """Best-effort: kill whatever process holds *port* on Windows/Linux."""
+        try:
+            import psutil
+            for conn in psutil.net_connections(kind="tcp"):
+                if conn.laddr and conn.laddr.port == port and conn.pid:
+                    try:
+                        psutil.Process(conn.pid).terminate()
+                        print(f"[TCP] Killed PID {conn.pid} which held port {port}", flush=True)
+                    except Exception:
+                        pass
+        except ImportError:
+            # psutil not available — try netstat on Windows
+            try:
+                import subprocess, re
+                out = subprocess.check_output(
+                    f"netstat -ano | findstr :{port}", shell=True, text=True
+                )
+                for line in out.splitlines():
+                    m = re.search(r"\s+(\d+)\s*$", line)
+                    if m:
+                        pid = int(m.group(1))
+                        subprocess.run(f"taskkill /PID {pid} /F", shell=True,
+                                       capture_output=True)
+                        print(f"[TCP] taskkill PID {pid} on port {port}", flush=True)
+            except Exception:
+                pass
+
     def _run_tcp_server():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -127,14 +155,36 @@ async def lifespan(app: FastAPI):
                 print("[TCP] C++ frame client disconnected", flush=True)
 
         async def _serve():
-            server = await asyncio.start_server(_handle_client, "127.0.0.1", _TCP_PORT)
-            print(f"[TCP] Frame server listening on 127.0.0.1:{_TCP_PORT}", flush=True)
-            async with server:
-                await server.serve_forever()
+            # Pass reuse_address=True — handles TIME_WAIT sockets from previous run
+            for attempt in range(3):
+                try:
+                    server = await asyncio.start_server(
+                        _handle_client, "127.0.0.1", _TCP_PORT,
+                        reuse_address=True,
+                    )
+                    print(f"[TCP] Frame server listening on 127.0.0.1:{_TCP_PORT}", flush=True)
+                    async with server:
+                        await server.serve_forever()
+                    return
+                except OSError as exc:
+                    if attempt == 0:
+                        print(f"[TCP] Port {_TCP_PORT} busy (attempt {attempt+1}): {exc} — freeing…",
+                              flush=True)
+                        _free_port(_TCP_PORT)
+                        await asyncio.sleep(0.8)
+                    else:
+                        print(f"[TCP] Could not bind port {_TCP_PORT} after {attempt+1} attempts: {exc}",
+                              flush=True)
+                        raise
 
-        loop.run_until_complete(_serve())
+        try:
+            loop.run_until_complete(_serve())
+        except Exception as exc:
+            print(f"[TCP] Frame server FATAL: {exc} — C++ renderer will not receive frame data.",
+                  flush=True)
 
     threading.Thread(target=_run_tcp_server, daemon=True, name="tcp-frame-server").start()
+
 
     yield
 

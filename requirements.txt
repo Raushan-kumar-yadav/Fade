@@ -9,6 +9,7 @@ av>=13.0
 Pillow>=10.0
 numpy>=1.26
 python-multipart>=0.0.9
+psutil>=6.0.0
 
 # ── AI Agent (LangGraph) ──────────────────────────────────────────────────────
 langgraph>=0.2

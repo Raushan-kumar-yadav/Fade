@@ -23,12 +23,12 @@ const TABS = [
   { id: 'export', label: 'Export' },
 ];
 
-// ── Minimal dropdown ────────────────────────────────────────────────────────
+//   dropdown  
 
 interface MenuItem {
-  label?:    string;
+  label?: string;
   shortcut?: string;
-  sep?:      boolean;
+  sep?: boolean;
   action?:   () => void;
 }
 
@@ -84,6 +84,8 @@ interface TitleBarProps {
   active:             string;
   onTab:              (id: string) => void;
   onSettings:         () => void;
+  /** Open the New Project modal */
+  onNewProject:       () => void;
   activeTool?:        ActiveTool;
   onTool?:            (t: ActiveTool) => void;
   onToggleToolbox?:   () => void;
@@ -97,7 +99,7 @@ interface TitleBarProps {
 }
 
 export default function TitleBar({
-  active, onTab, onSettings,
+  active, onTab, onSettings, onNewProject,
   activeTool = 'pointer', onTool,
   onToggleToolbox, toolboxOpen,
   onProjectLoaded,
@@ -111,13 +113,9 @@ export default function TitleBar({
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
-  const handleNew = useCallback(async () => {
-    const proj = await newProject({ name: 'Untitled Project' });
-    if (proj) {
-      savedPathRef.current = null;
-      setProjectName(proj.name);
-    }
-  }, []);
+  const handleNew = useCallback(() => {
+    onNewProject();
+  }, [onNewProject]);
 
   const handleSave = useCallback(async () => {
     if (savedPathRef.current) {
@@ -198,6 +196,9 @@ export default function TitleBar({
     { sep: true },
     { label: 'Quit',          shortcut: 'Alt+F4',       action: () => api?.close() },
   ];
+
+  // expose setProjectName so App.tsx can update after modal creates a project
+  // (we forward via onNewProject callback — App holds state)
 
   const editItems: MenuItem[] = [
     { label: 'Undo',        shortcut: 'Ctrl+Z', action: () => {} },

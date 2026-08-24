@@ -252,8 +252,9 @@ ipcMain.handle('dialog:save', async (_event, opts) => {
 ipcMain.handle('dialog:open', async (_event, opts) => {
   if (!mainWindow) return undefined
   const result = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile'],
-    filters: opts?.filters ?? [{ name: 'Fade Project', extensions: ['fade'] }],
+    title: opts?.title,
+    properties: opts?.properties ?? ['openFile'],
+    filters: opts?.filters ?? (opts?.properties?.includes('openDirectory') ? [] : [{ name: 'Fade Project', extensions: ['fade'] }]),
     defaultPath: opts?.defaultPath,
   })
   return result.canceled ? undefined : result.filePaths[0]
