@@ -23,8 +23,9 @@ import {
 } from "../../api/useApi";
 import { playbackPlay, playbackPause } from "../../api/useApi";
 import "./timeline.css";
+import TimelineTabs from "./TimelineTabs";
 
-// ─── Ghost clip — floats at fixed screen position during move ─────────────────
+//  Ghost clip 
 function GhostClip() {
   const { state } = useTimeline();
   const { ghost } = state;
@@ -107,7 +108,7 @@ function formatTimecode(frame: number, fps: number) {
   return `${String(mm).padStart(2, "0")}:${String(ss).padStart(2, "0")}:${String(ff).padStart(2, "0")}`;
 }
 
-// ─── Inner timeline (needs context) ──────────────────────────────────────────
+// Inner timeline  
 function TimelineInner() {
   const { state, dispatch } = useTimeline();
 
@@ -119,7 +120,7 @@ function TimelineInner() {
   const tw = totalWidth(state);
   const th = totalTrackHeight(state);
 
-  // ── Measure content area width ─────────────────────────────────────────
+  // Measure content area width  
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
@@ -129,7 +130,7 @@ function TimelineInner() {
     return () => ro.disconnect();
   }, []);
 
-  // ── Sync scroll state ──────────────────────────────────────────────────
+  //   Sync scroll state  
   const onContentScroll = useCallback(() => {
     const el = contentRef.current;
     if (!el) return;
@@ -137,7 +138,7 @@ function TimelineInner() {
     setScrollTop(el.scrollTop);
   }, []);
 
-  // ── Wheel: zoom X (Ctrl) | zoom Y (Shift) | horizontal pan (Alt) | vertical scroll ──
+  // Wheel 
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
@@ -167,7 +168,7 @@ function TimelineInner() {
     return () => el.removeEventListener("wheel", handler);
   }, [state.zoomX, dispatch]);
 
-  // ── Keyboard shortcuts ─────────────────────────────────────────────────
+  // Keyboard shortcuts  
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).matches("input,textarea")) return;
@@ -273,12 +274,12 @@ function TimelineInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [state.tracks, state.currentFrame, dispatch]);
 
-  // ── Seek on ruler click ────────────────────────────────────────────────
+  // Seek on ruler click  
   const onSeek = useCallback(
     (frame: number) => {
       dispatch({ type: "SEEK", frame });
       playbackSeek(frame).catch(() => {});
-      // Also tell C++ compositor so it renders the seeked frame
+   
       const api = (window as any).electronAPI;
       api?.renderSeek(frame);
     },
@@ -286,80 +287,78 @@ function TimelineInner() {
   );
 
   return (
-    <div className="tl-root" aria-label="Video Timeline">
-      {/* ── Toolbar ─────────────────────────────────────────────────────── */}
-      <div
-        className="tl-toolbar-row"
-        style={{ gridColumn: "1 / -1", gridRow: "1" }}
-      >
-        <Toolbar />
-      </div>
-
-      {/* ── Corner ──────────────────────────────────────────────────────── */}
-      <div className="tl-corner" style={{ gridColumn: "1", gridRow: "2" }} />
-
-      {/* ── Ruler ───────────────────────────────────────────────────────── */}
-      <div
-        className="tl-ruler-container"
-        style={{ gridColumn: "2", gridRow: "2" }}
-      >
-        <TimelineRuler
-          scrollLeft={scrollLeft}
-          totalWidthPx={tw}
-          onSeek={onSeek}
-        />
-      </div>
-
-      {/* ── Track Headers ───────────────────────────────────────────────── */}
-      <div
-        className="tl-headers-container"
-        style={{ gridColumn: "1", gridRow: "3" }}
-      >
-        <TrackHeaders scrollTop={scrollTop} totalTrackHeightPx={th} />
-      </div>
-
-      {/* ── Track Content ───────────────────────────────────────────────── */}
-      <div
-        ref={contentRef}
-        className="tl-content"
-        style={{ gridColumn: "2", gridRow: "3" }}
-        onScroll={onContentScroll}
-      >
-        {/* Expanded canvas */}
-        <div style={{ width: tw, minHeight: th, position: "relative" }}>
-          {state.tracks.map((track, idx) => (
-            <TrackRow
-              key={track.id}
-              track={track}
-              trackIndex={idx}
-              scrollLeft={scrollLeft}
-            />
-          ))}
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', overflow: 'hidden' }}>
+      <TimelineTabs />
+      <div className="tl-root" style={{ flex: 1, minHeight: 0 }} aria-label="Video Timeline">
+        {/* Toolbar   */}
+        <div
+          className="tl-toolbar-row"
+          style={{ gridColumn: "1 / -1", gridRow: "1" }}
+        >
+          <Toolbar />
         </div>
+
+      
+        <div className="tl-corner" style={{ gridColumn: "1", gridRow: "2" }} />
+
+        {/*   Ruler   */}
+        <div
+          className="tl-ruler-container"
+          style={{ gridColumn: "2", gridRow: "2" }}
+        >
+          <TimelineRuler
+            scrollLeft={scrollLeft}
+            totalWidthPx={tw}
+            onSeek={onSeek}
+          />
+        </div>
+
+        {/*   Track Headers   */}
+        <div
+          className="tl-headers-container"
+          style={{ gridColumn: "1", gridRow: "3" }}
+        >
+          <TrackHeaders scrollTop={scrollTop} totalTrackHeightPx={th} />
+        </div>
+
+        {/* Track Content   */}
+        <div
+          ref={contentRef}
+          className="tl-content"
+          style={{ gridColumn: "2", gridRow: "3" }}
+          onScroll={onContentScroll}
+        >
+          <div style={{ width: tw, minHeight: th, position: "relative" }}>
+            {state.tracks.map((track, idx) => (
+              <TrackRow
+                key={track.id}
+                track={track}
+                trackIndex={idx}
+                scrollLeft={scrollLeft}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/*   Bottom Bar   */}
+        <div
+          className="tl-bottom-bar-container"
+          style={{ gridColumn: "1 / -1", gridRow: "4" }}
+        >
+          <BottomBar contentRef={contentRef} viewWidth={viewWidth} />
+        </div>
+
+        {/* Playhead  */}
+        <Playhead scrollLeft={scrollLeft} contentLeft={HEADER_WIDTH} />
+
+        {/*   Ghost clip proxy during move   */}
+        <GhostClip />
       </div>
-
-      {/* ── Bottom Bar ──────────────────────────────────────────────────── */}
-      <div
-        className="tl-bottom-bar-container"
-        style={{ gridColumn: "1 / -1", gridRow: "4" }}
-      >
-        <BottomBar contentRef={contentRef} viewWidth={viewWidth} />
-      </div>
-
-      {/* ── Playhead (absolute over entire grid) ────────────────────────── */}
-      <Playhead scrollLeft={scrollLeft} contentLeft={HEADER_WIDTH} />
-
-      {/* ── Ghost clip proxy during move ────────────────────────────────── */}
-      <GhostClip />
     </div>
   );
 }
 
-// ─── Public export — wraps with provider ─────────────────────────────────────
+//   Public export 
 export default function Timeline() {
-  return (
-    <TimelineProvider>
-      <TimelineInner />
-    </TimelineProvider>
-  );
+  return <TimelineInner />;
 }

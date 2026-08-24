@@ -14,15 +14,15 @@ export type ClipType =
   | "adjustment";
 
 export const CLIP_COLORS: Record<ClipType, string> = {
-  comp: "#7c4dff",
+  comp: "#00897b",
+  video: "#4a90e2",
+  audio: "#546e7a",
   text: "#e6a817",
   solid: "#00b8a9",
   shape: "#43a047",
   lottie: "#e91e8c",
   image: "#00bcd4",
-  audio: "#546e7a",
   adjustment: "#ff6d00",
-  video: "#4a90e2",
 };
 
 // Data Models
@@ -34,6 +34,7 @@ export interface Clip {
   type: ClipType;
   isSelected: boolean;
   assetId?: string;
+  compId?: string;  // only set when type === 'comp'
 }
 
 export interface Track {
@@ -65,10 +66,16 @@ export interface ClipInteraction {
 // Ghost proxy rendered during move
 export interface GhostInfo {
   clip: Clip;
-  x: number; //   screen X
-  y: number; //   screen Y
+  x: number;
+  y: number;
   width: number;
   height: number;
+}
+
+// Composition tab  
+export interface CompTab {
+  compId: string | null;  // null = root timeline
+  name: string;
 }
 
 // Full Timeline State
@@ -82,6 +89,11 @@ export interface TimelineState {
   isPlaying: boolean;
   interaction: ClipInteraction | null;
   ghost: GhostInfo | null;
+  // Composition navigation 
+  activeCompId: string | null;
+  activeCompName: string | null;
+  // Master timeline tab stack  
+  compTabStack: CompTab[];
 }
 
 // Reducer Actions
@@ -126,13 +138,18 @@ export type TimelineAction =
       accumPx: number;
     }
   | { type: "SET_GHOST"; ghost: GhostInfo | null }
-  | { type: "END_INTERACTION" };
+  | { type: "END_INTERACTION" }
+  // Composition navigation
+  | { type: "ENTER_COMP"; compId: string; compName: string }
+  | { type: "EXIT_COMP" }
+  | { type: "SWITCH_COMP_TAB"; compId: string | null }   // switch to existing tab
+  | { type: "CLOSE_COMP_TAB"; compId: string };           // close a comp tab
 
 // Layout Constants
 export const HEADER_WIDTH = 120;
 export const RULER_HEIGHT = 28;
 export const BOTTOM_BAR_H = 24;
-export const EDGE_TOLERANCE = 8; // px — trim handle zone
+export const EDGE_TOLERANCE = 8;   // px  
 export const MIN_ZOOM = 0.3;
 export const MAX_ZOOM = 60;
 export const MIN_TRACK_H = 40;

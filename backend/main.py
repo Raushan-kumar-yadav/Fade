@@ -7,7 +7,6 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS",  "1")
 
-# Add ffmpeg to PATH if not already present (D:\ffmpeg\FFmpeg\ is installed but not in system PATH)
 _FFMPEG_DIRS = [
     r"D:\ffmpeg\FFmpeg",
     r"C:\Users\raush\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0-full_build\bin",
@@ -22,8 +21,7 @@ faulthandler.enable()
 import sys
 import io
 
-# Force UTF-8 on Windows consoles — prevents UnicodeEncodeError from
-# non-ASCII filenames (Japanese, Arabic, emoji, etc.) in yt-dlp downloads.
+ 
 if sys.stdout and hasattr(sys.stdout, 'buffer') and getattr(sys.stdout, 'encoding', 'utf-8').lower() != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 if sys.stderr and hasattr(sys.stderr, 'buffer') and getattr(sys.stderr, 'encoding', 'utf-8').lower() != 'utf-8':
@@ -102,7 +100,7 @@ async def lifespan(app: FastAPI):
                     header = await reader.readexactly(4)
                     frame_num = struct.unpack("<I", header)[0]
 
-                    # Fast path: serve from prefetch cache
+                    # Fast path 
                     payload = _prefetch.pop(frame_num, None)
                     if payload is None:
                         try:
@@ -120,7 +118,7 @@ async def lifespan(app: FastAPI):
                     writer.write(struct.pack("<I", len(payload)) + payload)
                     await writer.drain()
 
-                    # Precompute N+1 immediately  s
+                     
                     nxt = frame_num + 1
                     if nxt not in _prefetch:
                         try:
@@ -171,9 +169,9 @@ def _serialize_effects(clip, frame: int) -> list:
                 continue
             type_id = getattr(eff, "typeId", None) or getattr(eff, "effectType", None)
             if not type_id:
-                continue  # Python-only effect, no GPU equivalent
+                continue  # Python-only effect 
 
-            # Prefer getUniformValues(frame) (SkslEffect API)
+            # Prefer getUniformValues(frame)  
             if hasattr(eff, "getUniformValues") and callable(eff.getUniformValues):
                 uniforms_dict = eff.getUniformValues(frame) or {}
             elif hasattr(eff, "uniforms"):
@@ -181,7 +179,7 @@ def _serialize_effects(clip, frame: int) -> list:
             else:
                 uniforms_dict = {}
 
-            # Convert flat {id: scalar_or_list} → [{id, values}]
+             
             uniforms_list = []
             for k, v in uniforms_dict.items():
                 if isinstance(v, list):
@@ -195,16 +193,265 @@ def _serialize_effects(clip, frame: int) -> list:
     return out
 
 
+def _serialize_clip_type_fields(
+    clip,
+    clip_type: str,
+    frame: int,        
+    data: dict,
+    fps: float = 30.0,
+    width: int = 1920,
+    height: int = 1080,
+    _depth: int = 0,
+) -> None:
+     
+
+    if clip_type == "solid":
+        c = getattr(clip, "color", [0.5, 0.5, 0.5, 1.0])
+        data["color"] = {"r": c[0], "g": c[1], "b": c[2], "a": c[3]}
+
+    elif clip_type == "text":
+        style = getattr(clip, "style", None)
+        if style is not None:
+            data["textStyle"] = {
+                "text": getattr(style, "text", "New Text"),
+                "fontFamily": getattr(style, "fontFamily", "Arial"),
+                "fontSize": float(getattr(style, "fontSize", 48.0)),
+                "bold": bool(getattr(style, "bold", False)),
+                "italic": bool(getattr(style, "italic", False)),
+                "alignment": getattr(style, "alignment", "left"),
+                "lineHeight": float(getattr(style, "lineHeight", 1.2)),
+                "letterSpacing": float(getattr(style, "letterSpacing", 0.0)),
+                "allCaps": bool(getattr(style, "allCaps", False)),
+                "color": list(getattr(style, "color", [1, 1, 1, 1])),
+                "strokeColor": list(getattr(style, "strokeColor", [0, 0, 0, 1])),
+                "strokeWidth": float(getattr(style, "strokeWidth", 0.0)),
+                "shadowEnabled": bool(getattr(style, "shadowEnabled", False)),
+                "shadowColor": list(getattr(style, "shadowColor", [0, 0, 0, 0.6])),
+                "shadowOffsetX": float(getattr(style, "shadowOffsetX", 4.0)),
+                "shadowOffsetY": float(getattr(style, "shadowOffsetY", 4.0)),
+                "shadowBlur": float(getattr(style, "shadowBlur", 6.0)),
+                "bgEnabled": bool(getattr(style, "bgEnabled", False)),
+                "bgColor": list(getattr(style, "bgColor", [0, 0, 0, 0.5])),
+                "bgPaddingX": float(getattr(style, "bgPaddingX", 20.0)),
+                "bgPaddingY": float(getattr(style, "bgPaddingY", 10.0)),
+                "bgCornerRadius": float(getattr(style, "bgCornerRadius", 0.0)),
+                "animator": dict(getattr(style, "animator", {})),
+            }
+
+    elif clip_type == "shape":
+        style = getattr(clip, "style", None)
+        if style is not None:
+            data["shapeStyle"] = {
+                "shapeType": getattr(style, "shapeType", "rect"),
+                "width": float(getattr(style, "width", 200.0)),
+                "height": float(getattr(style, "height", 120.0)),
+                "cornerRadius": float(getattr(style, "cornerRadius", 0.0)),
+                "radiusX": float(getattr(style, "radiusX", 100.0)),
+                "radiusY": float(getattr(style, "radiusY", 80.0)),
+                "outerRadius": float(getattr(style, "outerRadius", 100.0)),
+                "innerRadius": float(getattr(style, "innerRadius", 40.0)),
+                "numPoints": int(getattr(style, "numPoints", 5)),
+                "numSides": int(getattr(style, "numSides", 6)),
+                "polygonRadius": float(getattr(style, "polygonRadius", 100.0)),
+                "x1": float(getattr(style, "x1", -100.0)),
+                "y1": float(getattr(style, "y1", 0.0)),
+                "x2": float(getattr(style, "x2", 100.0)),
+                "y2": float(getattr(style, "y2", 0.0)),
+                "arcStartAngle": float(getattr(style, "arcStartAngle", 0.0)),
+                "arcSweepAngle": float(getattr(style, "arcSweepAngle", 180.0)),
+                "arcRadius": float(getattr(style, "arcRadius", 100.0)),
+                "fillColor": list(getattr(style, "fillColor", [0.4, 0.4, 1.0, 1.0])),
+                "fillOpacity": float(getattr(style, "fillOpacity", 1.0)),
+                "strokeColor": list(getattr(style, "strokeColor", [1.0, 1.0, 1.0, 1.0])),
+                "strokeWidth": float(getattr(style, "strokeWidth", 0.0)),
+                "shadowEnabled": bool(getattr(style, "shadowEnabled", False)),
+                "shadowColor": list(getattr(style, "shadowColor", [0, 0, 0, 0.75])),
+                "shadowAngle": float(getattr(style, "shadowAngle", 135.0)),
+                "shadowDistance": float(getattr(style, "shadowDistance", 10.0)),
+                "shadowBlur": float(getattr(style, "shadowBlur", 5.0)),
+            }
+
+    elif clip_type == "pen":
+        style  = getattr(clip, "style", None)
+        points = getattr(clip, "points", [])
+        data["penStyle"] = {
+            "isClosed": bool(getattr(clip, "isClosed", False)),
+            "points": [
+                {
+                    "x": float(getattr(p, "x", 0.0)),
+                    "y": float(getattr(p, "y", 0.0)),
+                    "inX": float(getattr(p, "inX", 0.0)),
+                    "inY": float(getattr(p, "inY", 0.0)),
+                    "outX": float(getattr(p, "outX", 0.0)),
+                    "outY": float(getattr(p, "outY", 0.0)),
+                }
+                for p in points
+            ],
+            "fillColor": list(getattr(style, "fillColor", [0.4, 0.4, 1.0, 1.0])) if style else [0.4, 0.4, 1.0, 1.0],
+            "fillOpacity": float(getattr(style, "fillOpacity", 1.0)) if style else 1.0,
+            "strokeColor": list(getattr(style, "strokeColor", [1.0, 1.0, 1.0, 1.0])) if style else [1.0, 1.0, 1.0, 1.0],
+            "strokeWidth": float(getattr(style, "strokeWidth",   2.0)) if style else 2.0,
+            "shadowEnabled": bool(getattr(style, "shadowEnabled", False)) if style else False,
+            "shadowColor": list(getattr(style, "shadowColor", [0, 0, 0, 0.75])) if style else [0, 0, 0, 0.75],
+            "shadowAngle": float(getattr(style, "shadowAngle",  135.0)) if style else 135.0,
+            "shadowDistance": float(getattr(style, "shadowDistance", 10.0)) if style else 10.0,
+            "shadowBlur": float(getattr(style, "shadowBlur", 5.0)) if style else 5.0,
+        }
+
+    elif clip_type == "svg":
+        data["file"] = getattr(clip, "filepath", data.get("file", ""))
+        data["svgStyle"] = {
+            "displayW": float(getattr(clip, "displayW", 0.0)),
+            "displayH": float(getattr(clip, "displayH", 0.0)),
+            "tintEnabled": bool(getattr(clip, "tintEnabled", False)),
+            "tintColor": list(getattr(clip, "tintColor", [1.0, 1.0, 1.0, 1.0])),
+        }
+
+    elif clip_type == "comp":
+        comp_id = getattr(clip, "compId", "")
+        media_offset = getattr(clip, "mediaOffset", 0)
+         
+        inner_frame_nested = (frame - clip.startFrame) + media_offset
+        if comp_id and _depth <= 7:
+            data["compId"] = comp_id
+            fd = _build_comp_frame_descriptor(
+                comp_id, inner_frame_nested, fps, width, height, _depth + 1
+            )
+            if fd is not None:
+                data["compFrameDescriptor"] = fd
+
+
+def _build_comp_frame_descriptor(
+    comp_id: str,
+    inner_frame: int,
+    fps: float,
+    width: int,
+    height: int,
+    _depth: int = 0,
+) -> dict | None:
+   
+    if _depth > 8:
+        return None
+    inner_tl = engine.getTimeline(comp_id)
+    if inner_tl is None:
+        return None
+
+    # the comp's  
+    c_width  = getattr(inner_tl, "width",  width)
+    c_height = getattr(inner_tl, "height", height)
+    c_fps    = getattr(inner_tl, "fps",    fps)
+
+    inner_clips: list[dict] = []
+    for inner_track in reversed(inner_tl.tracks):
+        if getattr(inner_track, "isMuted", False):
+            continue
+        for inner_clip in inner_track.clips:
+            if not inner_clip.overlaps(inner_frame):
+                continue
+            ic_type = getattr(inner_clip, "CLIP_TYPE", getattr(inner_clip, "clipType", "video"))
+            ic_file = getattr(inner_clip, "filepath", "")
+            if not ic_file:
+                ic_aid = getattr(inner_clip, "assetId", "")
+                ic_ast = _library.get(ic_aid)
+                if ic_ast:
+                    ic_file = getattr(ic_ast, "filepath", "")
+            try:
+                ic_sf = inner_clip.sourceFrame(inner_frame)
+            except Exception:
+                ic_sf = 0
+            try:
+                inner_clip.evaluateAll(inner_frame)
+            except Exception:
+                pass
+            try:
+                ic_op = float(inner_clip.transform.opacity.get())
+            except Exception:
+                ic_op = 1.0
+            # Transform
+            try:
+                it = inner_clip.transform
+                ipx, ipy = it.position.get()
+                isx, isy = it.scale.get()
+                irot = it.rotation.get()
+                iax, iay = it.anchor.get()
+                ic_xform = {
+                    "x": float(ipx), "y": float(ipy),
+                    "scaleX": float(isx), "scaleY": float(isy),
+                    "rotation": float(irot),
+                    "anchorX": float(iax), "anchorY": float(iay),
+                }
+            except Exception:
+                ic_xform = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
+                            "rotation": 0, "anchorX": 0, "anchorY": 0}
+
+            # Blend mode
+            try:
+                bm = inner_clip.blendMode
+                ic_bm = int(bm.get()) if hasattr(bm, "get") else int(bm) if bm else 0
+            except Exception:
+                ic_bm = 0
+
+            ic_data: dict = {
+                "clipId": inner_clip.clipId,
+                "file": ic_file,
+                "sourceFrame": ic_sf,
+                "opacity": ic_op,
+                "blendMode": ic_bm,
+                "type": ic_type,
+                "transform": ic_xform,
+                "effects": _serialize_effects(inner_clip, inner_frame),
+            }
+
+            # Type-specific fields (solid color, textStyle, shapeStyle, etc.)
+            _serialize_clip_type_fields(
+                inner_clip, ic_type, inner_frame, ic_data,
+                fps=c_fps, width=c_width, height=c_height, _depth=_depth
+            )
+
+            # Register inner video/image clips  
+            if ic_type in ("video", "image") and ic_file:
+                try:
+                    from backend.renderer.bridge import schedRegisterVideo, schedRegisterImage, schedPrefetchAround
+                    if ic_type == "video":
+                        schedRegisterVideo(ic_file, ic_file)
+                    else:
+                        schedRegisterImage(ic_file, ic_file)
+                    schedPrefetchAround(ic_file, int(ic_sf), 4)
+                    print(f"[CompFD] prefetch registered inner {ic_type}: {ic_file[:60]} sf={ic_sf}", flush=True)
+                except Exception as _reg_err:
+                    pass   
+
+            inner_clips.append(ic_data)
+
+    # Debug log  
+    if inner_frame % 30 == 0 or _depth == 0:
+        print(f"[CompFD depth={_depth}] comp={comp_id} inner_frame={inner_frame} "
+              f"tracks={len(inner_tl.tracks)} clips_in_fd={len(inner_clips)}", flush=True)
+        for ic in inner_clips:
+            print(f"  inner clip: id={ic.get('clipId','?')[:8]} type={ic.get('type','?')} "
+                  f"file='{ic.get('file','')[:60]}' sf={ic.get('sourceFrame','?')} "
+                  f"has_compFD={'compFrameDescriptor' in ic}", flush=True)
+
+    return {
+        "frame":  inner_frame,
+        "fps": float(c_fps),
+        "width":  int(c_width),
+        "height": int(c_height),
+        "clips":  inner_clips,
+        "compId": comp_id,
+    }
+
+
 def _get_frame_data(frame: int) -> dict:
-    """Core logic shared by HTTP endpoint and TCP frame server."""
+     
     tl = engine.activeTimeline if engine else None
     if tl is None:
         return {"frame": frame, "fps": 30.0, "width": 1920, "height": 1080, "clips": []}
 
-    proj   = engine.project
-    fps    = float(proj.fps)    if proj else 30.0
-    width  = int(proj.width)    if proj else 1920
-    height = int(proj.height)   if proj else 1080
+    proj = engine.project
+    fps = float(proj.fps) if proj else 30.0
+    width  = int(proj.width) if proj else 1920
+    height = int(proj.height) if proj else 1080
 
     clips_out = []
     for track in reversed(tl.tracks):
@@ -223,7 +470,7 @@ def _get_frame_data(frame: int) -> dict:
                 source_frame = clip.sourceFrame(frame)
             except Exception:
                 source_frame = 0
-            # Bake all animated properties at this frame before reading them
+            
             try:
                 clip.evaluateAll(frame)
             except Exception:
@@ -267,124 +514,11 @@ def _get_frame_data(frame: int) -> dict:
                 "transform":   transform_dict,
                 "effects":     effects_out,
             }
-            if clip_type == "solid":
-                c = getattr(clip, "color", [0.5, 0.5, 0.5, 1.0])
-                clip_data["color"] = {"r": c[0], "g": c[1], "b": c[2], "a": c[3]}
-
-            elif clip_type == "text":
-                style = getattr(clip, "style", None)
-                if style is not None:
-                    clip_data["textStyle"] = {
-                        "text": getattr(style, "text", "New Text"),
-                        "fontFamily": getattr(style, "fontFamily", "Arial"),
-                        "fontSize":float(getattr(style, "fontSize",  48.0)),
-                        "bold": bool(getattr(style, "bold",       False)),
-                        "italic": bool(getattr(style, "italic",     False)),
-                        "alignment": getattr(style, "alignment",      "left"),
-                        "lineHeight": float(getattr(style, "lineHeight", 1.2)),
-                        "letterSpacing":  float(getattr(style, "letterSpacing", 0.0)),
-                        "allCaps": bool(getattr(style, "allCaps",    False)),
-                        # Fill
-                        "color": list(getattr(style, "color",      [1,1,1,1])),
-                        # Stroke
-                        "strokeColor": list(getattr(style, "strokeColor", [0,0,0,1])),
-                        "strokeWidth": float(getattr(style, "strokeWidth", 0.0)),
-                        # Shadow
-                        "shadowEnabled":  bool(getattr(style, "shadowEnabled", False)),
-                        "shadowColor": list(getattr(style, "shadowColor",   [0,0,0,0.6])),
-                        "shadowOffsetX":  float(getattr(style, "shadowOffsetX", 4.0)),
-                        "shadowOffsetY":  float(getattr(style, "shadowOffsetY", 4.0)),
-                        "shadowBlur":     float(getattr(style, "shadowBlur",    6.0)),
-                        # Background box
-                        "bgEnabled":      bool(getattr(style, "bgEnabled",    False)),
-                        "bgColor":        list(getattr(style, "bgColor",      [0,0,0,0.5])),
-                        "bgPaddingX":     float(getattr(style, "bgPaddingX",  20.0)),
-                        "bgPaddingY":     float(getattr(style, "bgPaddingY",  10.0)),
-                        "bgCornerRadius": float(getattr(style, "bgCornerRadius", 0.0)),
-                        # Text Animator
-                        "animator":       dict(getattr(style, "animator", {})),
-                    }
-
-            elif clip_type == "shape":
-                style = getattr(clip, "style", None)
-                if style is not None:
-                    clip_data["shapeStyle"] = {
-                        "shapeType":      getattr(style, "shapeType",     "rect"),
-                        # Rect
-                        "width": float(getattr(style, "width", 200.0)),
-                        "height": float(getattr(style, "height", 120.0)),
-                        "cornerRadius":   float(getattr(style, "cornerRadius",     0.0)),
-                        # Circle / Ellipse
-                        "radiusX": float(getattr(style, "radiusX", 100.0)),
-                        "radiusY": float(getattr(style, "radiusY", 80.0)),
-                        # Star
-                        "outerRadius": float(getattr(style, "outerRadius",    100.0)),
-                        "innerRadius": float(getattr(style, "innerRadius", 40.0)),
-                        "numPoints": int(getattr(style, "numPoints", 5)),
-                        # Polygon
-                        "numSides":       int(getattr(style, "numSides",           6)),
-                        "polygonRadius":  float(getattr(style, "polygonRadius",  100.0)),
-                        # Line
-                        "x1": float(getattr(style, "x1", -100.0)),
-                        "y1": float(getattr(style, "y1", 0.0)),
-                        "x2": float(getattr(style, "x2",  100.0)),
-                        "y2": float(getattr(style, "y2", 0.0)),
-                        # Arc
-                        "arcStartAngle": float(getattr(style, "arcStartAngle",   0.0)),
-                        "arcSweepAngle": float(getattr(style, "arcSweepAngle", 180.0)),
-                        "arcRadius": float(getattr(style, "arcRadius",      100.0)),
-                        # Fill
-                        "fillColor": list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])),
-                        "fillOpacity": float(getattr(style, "fillOpacity",   1.0)),
-                        # Stroke
-                        "strokeColor": list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])),
-                        "strokeWidth": float(getattr(style, "strokeWidth",   0.0)),
-                        # Shadow
-                        "shadowEnabled":  bool(getattr(style, "shadowEnabled", False)),
-                        "shadowColor": list(getattr(style, "shadowColor",  [0, 0, 0, 0.75])),
-                        "shadowAngle": float(getattr(style, "shadowAngle",  135.0)),
-                        "shadowDistance": float(getattr(style, "shadowDistance", 10.0)),
-                        "shadowBlur": float(getattr(style, "shadowBlur",    5.0)),
-                    }
-
-            elif clip_type == "pen":
-              
-                style  = getattr(clip, "style", None)
-                points = getattr(clip, "points", [])
-                clip_data["penStyle"] = {
-                    "isClosed": bool(getattr(clip, "isClosed", False)),
-                    "points": [
-                        {
-                            "x": float(getattr(p, "x", 0.0)),
-                            "y": float(getattr(p, "y", 0.0)),
-                            "inX": float(getattr(p, "inX", 0.0)),
-                            "inY":  float(getattr(p, "inY",  0.0)),
-                            "outX": float(getattr(p, "outX", 0.0)),
-                            "outY": float(getattr(p, "outY", 0.0)),
-                        }
-                        for p in points
-                    ],
-                    # Stroke / fill  
-                    "fillColor": list(getattr(style, "fillColor",   [0.4, 0.4, 1.0, 1.0])) if style else [0.4, 0.4, 1.0, 1.0],
-                    "fillOpacity": float(getattr(style, "fillOpacity",   1.0)) if style else 1.0,
-                    "strokeColor": list(getattr(style, "strokeColor",  [1.0, 1.0, 1.0, 1.0])) if style else [1.0, 1.0, 1.0, 1.0],
-                    "strokeWidth": float(getattr(style, "strokeWidth",   2.0)) if style else 2.0,
-                    "shadowEnabled": bool(getattr(style, "shadowEnabled", False)) if style else False,
-                    "shadowColor": list(getattr(style, "shadowColor",  [0, 0, 0, 0.75])) if style else [0, 0, 0, 0.75],
-                    "shadowAngle": float(getattr(style, "shadowAngle",  135.0)) if style else 135.0,
-                    "shadowDistance": float(getattr(style, "shadowDistance", 10.0)) if style else 10.0,
-                    "shadowBlur": float(getattr(style, "shadowBlur", 5.0)) if style else 5.0,
-                }
-
-            elif clip_type == "svg":
-                 
-                clip_data["file"] = getattr(clip, "filepath", clip_data.get("file", ""))
-                clip_data["svgStyle"] = {
-                    "displayW": float(getattr(clip, "displayW", 0.0)),
-                    "displayH": float(getattr(clip, "displayH", 0.0)),
-                    "tintEnabled": bool(getattr(clip, "tintEnabled",  False)),
-                    "tintColor":   list(getattr(clip, "tintColor", [1.0, 1.0, 1.0, 1.0])),
-                }
+            # All type-specific fields via shared helper (comp, solid, text, shape, pen, svg)
+            _serialize_clip_type_fields(
+                clip, clip_type, frame, clip_data,
+                fps=fps, width=width, height=height, _depth=0
+            )
 
             #   Masks  
             raw_masks = getattr(clip, "masks", [])
@@ -413,7 +547,16 @@ def _get_frame_data(frame: int) -> dict:
                     })
                 clip_data["masks"] = masks_out
 
+            # Debug: log comp clips to verify compFrameDescriptor is being sent
+            if clip_type == "comp" and frame % 30 == 0:
+                has_fd = "compFrameDescriptor" in clip_data
+                inner_n = len(clip_data.get("compFrameDescriptor", {}).get("clips", [])) if has_fd else -1
+                print(f"[FrameData] frame={frame} COMP clip id={clip_id[:8]} "
+                      f"compId={clip_data.get('compId','?')} "
+                      f"has_compFD={has_fd} inner_clips={inner_n}", flush=True)
+
             clips_out.append(clip_data)
+
 
     # Transition detection  
    
@@ -480,7 +623,30 @@ def _get_frame_data(frame: int) -> dict:
     if transition_desc:
         result_dict["transition"] = transition_desc
 
+    # ── ULTRA-FAST PATH workaround ────────────────────────────────────────────
+    # The C++ ULTRA-FAST PATH activates only when clips.size()==1.
+    # For a Comp clip it tries to open clip.file="" via FFmpeg → "file not found".
+    # Fix: inject a fully transparent sentinel solid so clips.size()==2, forcing
+    # the standard GPU path where renderComp() is correctly dispatched.
+    comp_only = (
+        len(clips_out) == 1 and clips_out[0].get("type") == "comp"
+    )
+    if comp_only:
+        result_dict["clips"] = clips_out + [{
+            "clipId":      "__sentinel__",
+            "file":        "",
+            "sourceFrame": 0,
+            "opacity":     0.0,   # fully transparent — contributes nothing
+            "blendMode":   0,
+            "type":        "solid",
+            "transform":   {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
+                            "rotation": 0, "anchorX": 0, "anchorY": 0},
+            "effects":     [],
+            "color":       {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0},
+        }]
+
     return result_dict
+
 
 
 #   FastAPI app  
@@ -1169,7 +1335,7 @@ def addClip(req: AddClipRequest):
             duration = req.duration,
             assetId = req.assetId,
         )
-        # Wire scheduler so the clip can decode immediately
+        # Wire scheduler  
         if engine.scheduler:
             clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
             engine.scheduler.registerClip(clip.clipId, asset)
@@ -1259,7 +1425,7 @@ def moveClip(req: MoveClipRequest):
     for i, track in enumerate(tl.tracks):
         c = track.getClip(req.clipId)
         if c:
-            clip   = c
+            clip = c
             srcIdx = i
             track.removeClip(req.clipId)
             break
@@ -1267,7 +1433,7 @@ def moveClip(req: MoveClipRequest):
     if clip is None:
         raise HTTPException(404, f"Clip {req.clipId!r} not found")
 
-    dstIdx   = max(0, min(len(tl.tracks) - 1, req.trackIndex))
+    dstIdx = max(0, min(len(tl.tracks) - 1, req.trackIndex))
     oldStart = clip.startFrame
     newStart = max(0, req.startFrame)
     srcTrack = tl.tracks[srcIdx]
@@ -1282,20 +1448,22 @@ def moveClip(req: MoveClipRequest):
 
 @app.delete("/timeline/clips/{clipId}")
 def deleteClip(clipId: str):
-    tl = engine.activeTimeline
-    if tl is None:
-        raise HTTPException(400, "No active timeline")
+    # Search all timelines, not just the active one
+    timelines = engine.project.timelines if engine.project else []
+    if not timelines and engine.activeTimeline:
+        timelines = [engine.activeTimeline]
 
-    for track in tl.tracks:
-        clip = track.getClip(clipId)
-        if clip:
-            from backend.history.commandStack import RemoveClipCommand
-            cmd = RemoveClipCommand(track, clip)
-            engine.commandStack.execute(cmd)     
-            if engine.scheduler:
-                engine.scheduler.unregisterClip(clipId)
-            _clipTrackMap.pop(clipId, None)
-            return {"status": "ok"}
+    for tl in timelines:
+        for track in tl.tracks:
+            clip = track.getClip(clipId)
+            if clip:
+                from backend.history.commandStack import RemoveClipCommand
+                cmd = RemoveClipCommand(track, clip)
+                engine.commandStack.execute(cmd)
+                if engine.scheduler:
+                    engine.scheduler.unregisterClip(clipId)
+                _clipTrackMap.pop(clipId, None)
+                return {"status": "ok"}
 
     raise HTTPException(404, f"Clip {clipId!r} not found")
 
@@ -1314,9 +1482,9 @@ def trimClip(req: TrimClipRequest):
             engine.commandStack.execute(cmd)
             track.clips.sort(key=lambda c: c.startFrame)
             return {
-                "clipId":     clip.clipId,
+                "clipId": clip.clipId,
                 "startFrame": clip.startFrame,
-                "duration":   clip.duration,
+                "duration": clip.duration,
             }
 
     raise HTTPException(404, f"Clip {req.clipId!r} not found")
@@ -1440,12 +1608,13 @@ def timelineState():
     tl  = engine.activeTimeline
     prj = engine.project
     fps = prj.fps if prj else 30.0
-    totalFrames = prj.totalFrame  if prj else 1800
+    # Use comp-specific totalFrames if available, else project default
+    totalFrames = getattr(tl, "totalFrames", None) or (prj.totalFrame if prj else 1800)
     if tl is None:
         return {"tracks": [], "totalFrames": totalFrames, "fps": fps}
     data = tl.toDict()
     data["totalFrames"] = totalFrames
-    data["fps"] = fps
+    data["fps"] = getattr(tl, "fps", fps)
     return data
 
 
@@ -1591,17 +1760,27 @@ def _active_timeline():
 
 
 def _find_clip(clipId: str):
+    """Search ALL timelines in the project for a clip by ID."""
+    # First try active timeline (fast path)
     tl = _active_timeline()
     for track in tl.tracks:
         for clip in track.clips:
             if clip.clipId == clipId:
                 return clip, track
+    # Fall back to searching all project timelines
+    if engine.project:
+        for timeline in engine.project.timelines:
+            if timeline is tl:
+                continue
+            for track in timeline.tracks:
+                for clip in track.clips:
+                    if clip.clipId == clipId:
+                        return clip, track
     raise HTTPException(status_code=404, detail=f"Clip {clipId!r} not found")
 
 
 def _top_empty_track(startFrame: int, duration: int):
-    """Return the topmost video track with no clip overlapping [startFrame, startFrame+duration).
-    If all tracks are occupied, create a new VideoTrack above them."""
+    
     from backend.timeline.tracks.videoTrack import VideoTrack
     tl = _active_timeline()
     endFrame = startFrame + duration
@@ -1626,7 +1805,7 @@ def _top_empty_track(startFrame: int, duration: int):
 
 
 def _default_video_track():
-    """Return first non-audio track, or create one (legacy helper)."""
+    """Return first non-audio track, or create one """
     from backend.timeline.tracks.videoTrack import VideoTrack
     tl = _active_timeline()
     for track in tl.tracks:
@@ -1741,10 +1920,10 @@ def updateShapeClip(clipId: str, req: ShapePatchRequest):
 #   Pen  
 
 class PenClipRequest(BaseModel):
-    startFrame: int   = 0
-    duration: int   = 150
+    startFrame: int = 0
+    duration: int = 150
     isClosed: bool  = False
-    points: list  = []
+    points: list = []
     style: dict  = {}
  
 
@@ -1804,11 +1983,7 @@ class PathKeyframeRequest(BaseModel):
 
 @app.post("/clips/pen/{clipId}/path-keyframe")
 def addPenPathKeyframe(clipId: str, req: PathKeyframeRequest):
-    """
-    Snapshot the pen clip's current base path as an animation keyframe.
-    Mirrors Qteee CustomPathData::syncPointsToBaseValue + addKeyframe pattern.
-    Call this after editing points on the canvas to record the shape at `frame`.
-    """
+     
     from backend.animation.keyframe import Interpolation
     clip, _ = _find_clip(clipId)
     if not isinstance(clip, PenClip):
@@ -1822,8 +1997,8 @@ def addPenPathKeyframe(clipId: str, req: PathKeyframeRequest):
     clip.shapePath.addKeyframe(req.frame, interp=interp)
     print(f"[penPathKF] clipId={clipId[:8]} frame={req.frame} pts={len(clip.shapePath.vertices)} interp={interp.value}")
     return {
-        "clipId":   clipId,
-        "frame":    req.frame,
+        "clipId": clipId,
+        "frame": req.frame,
         "keyframes": clip.shapePath.track.frameIndex(),
     }
 
@@ -1845,9 +2020,9 @@ class MaskRequest(BaseModel):
     shape: str = "rect"    # rect | ellipse | bezier
     mode: str   = "add"
     inverted: bool  = False
-    feather:  float = 0.0
-    opacity:  float = 1.0
-    points:   list  = []
+    feather: float = 0.0
+    opacity: float = 1.0
+    points: list  = []
 
 
 @app.post("/clips/{clipId}/mask")
@@ -1858,16 +2033,16 @@ def addMask(clipId: str, req: MaskRequest):
     if not hasattr(clip, 'masks'):
         raise HTTPException(400, "Clip type does not support masks")
     mask = MaskLayer(
-        maskId   = str(uuid.uuid4()),
-        name     = req.name,
-        shape    = req.shape,
-        mode     = req.mode,
+        maskId = str(uuid.uuid4()),
+        name = req.name,
+        shape = req.shape,
+        mode = req.mode,
         inverted = req.inverted,
     )
     # Set feather/opacity base values
     mask.feather.setBaseValue(req.feather)
     mask.opacity.setBaseValue(req.opacity)
-    # Build initial path from the request points list
+    # Build initial path  
     if req.points:
         verts = [PathVertex(
             x=float(p.get("x",0)), y=float(p.get("y",0)),
@@ -1901,12 +2076,12 @@ def updateMask(clipId: str, maskId: str, req: MaskPatchRequest):
     mask = getattr(clip, "getMask", lambda _: None)(maskId)
     if mask is None:
         raise HTTPException(404, f"Mask {maskId!r} not found on clip {clipId!r}")
-    if req.name     is not None: mask.name = req.name
-    if req.mode     is not None: mask.mode = req.mode
+    if req.name is not None: mask.name = req.name
+    if req.mode is not None: mask.mode = req.mode
     if req.inverted is not None: mask.inverted = req.inverted
-    if req.feather  is not None: mask.feather.setBaseValue(req.feather)
-    if req.opacity  is not None: mask.opacity.setBaseValue(req.opacity)
-    if req.points   is not None:
+    if req.feather is not None: mask.feather.setBaseValue(req.feather)
+    if req.opacity is not None: mask.opacity.setBaseValue(req.opacity)
+    if req.points is not None:
         verts = [PathVertex(
             x=float(p.get("x",0)), y=float(p.get("y",0)),
             inX=float(p.get("inX",0)), inY=float(p.get("inY",0)),
@@ -1916,7 +2091,7 @@ def updateMask(clipId: str, maskId: str, req: MaskPatchRequest):
     return clip.toDict()
 
 
-# ── Mask Path Keyframe ────────────────────────────────────────────────────────
+# Mask Path Keyframe  
 
 @app.post("/clips/{clipId}/mask/{maskId}/path-keyframe")
 def addMaskPathKeyframe(clipId: str, maskId: str, req: PathKeyframeRequest):
@@ -1934,8 +2109,8 @@ def addMaskPathKeyframe(clipId: str, maskId: str, req: PathKeyframeRequest):
     print(f"[maskPathKF] clipId={clipId[:8]} maskId={maskId[:8]} frame={req.frame} "
           f"pts={len(mask.maskPath.vertices)} interp={interp.value}")
     return {
-        "maskId":    maskId,
-        "frame":     req.frame,
+        "maskId": maskId,
+        "frame": req.frame,
         "keyframes": mask.maskPath.track.frameIndex(),
     }
 
@@ -1986,7 +2161,7 @@ def listMasks(clipId: str):
     }
 
 
-# Selected clip (frontend pushes selection here so AI tools can read it)
+# Selected clip  
 
 _selected_clip_id: str | None = None
 
@@ -2013,13 +2188,255 @@ def getSelectedClip():
                 "clipId":     clip.clipId,
                 "trackIndex": track_idx,
                 "startFrame": clip.startFrame,
-                "duration":   clip.duration,
-                "type":       type(clip).__name__,
+                "duration": clip.duration,
+                "type": type(clip).__name__,
                 "effectCount": len(getattr(clip, "effects", [])),
             }
         }
     except Exception:
         return {"clip": None}
+
+
+# Compositions  
+
+def _comp_clips_in_timeline(tl) -> list[str]:
+     
+    from backend.timeline.clips.compClip import CompClip
+    ids = []
+    for track in tl.tracks:
+        for clip in track.clips:
+            if isinstance(clip, CompClip):
+                ids.append(clip.compId)
+    return ids
+
+def _has_cycle(start_id: str, target_id: str, visited: set | None = None) -> bool:
+     
+    if visited is None:
+        visited = set()
+    if start_id == target_id:
+        return True
+    if start_id in visited:
+        return False
+    visited.add(start_id)
+    tl = engine.getTimeline(start_id)
+    if tl is None:
+        return False
+    for child_id in _comp_clips_in_timeline(tl):
+        if _has_cycle(child_id, target_id, visited):
+            return True
+    return False
+
+@app.get("/comps")
+def listComps():
+    """List all compositions including the root timeline (isRoot=True)."""
+    if engine.project is None:
+        return {"comps": []}
+    root_id = engine.project.timelines[0].timelineId if engine.project.timelines else ""
+    proj_w = engine.project.width if engine.project else 1920
+    proj_h = engine.project.height if engine.project else 1080
+    proj_fps = engine.project.fps if engine.project else 30.0
+    comps = []
+    for tl in engine.project.timelines:
+        is_root = (tl.timelineId == root_id)
+        comps.append({
+            "compId": tl.timelineId,
+            "name": tl.name,
+            "isRoot": is_root,
+            "width": getattr(tl, "width", proj_w),
+            "height": getattr(tl, "height", proj_h),
+            "fps": getattr(tl, "fps", proj_fps),
+            "totalFrames": getattr(tl, "totalFrames", 900),
+            "trackCount": len(tl.tracks),
+            "clipCount":  sum(len(t.clips) for t in tl.tracks),
+        })
+    return {"comps": comps}
+
+class CreateCompRequest(BaseModel):
+    name: str = "Composition"
+    width: int = 1920
+    height: int = 1080
+    fps: float = 30.0
+    totalFrames: int = 900  # 30s at 30fps
+
+@app.post("/comps")
+def createComp(req: CreateCompRequest):
+    """Create a new composition (empty timeline) with configurable size/fps."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+    comp = engine.createComposition(
+        name=req.name,
+        width=req.width,
+        height=req.height,
+        fps=req.fps,
+        total_frames=req.totalFrames,
+    )
+    return {
+        "compId": comp.timelineId,
+        "name": comp.name,
+        "width": getattr(comp, "width", req.width),
+        "height": getattr(comp, "height", req.height),
+        "fps": getattr(comp, "fps", req.fps),
+        "totalFrames": getattr(comp, "totalFrames", req.totalFrames),
+        "isRoot": False,
+        "trackCount": 0,
+        "clipCount": 0,
+    }
+
+@app.delete("/comps/{compId}")
+def deleteComp(compId: str):
+    """Delete a composition. Fails if it is the root timeline."""
+    ok = engine.deleteComposition(compId)
+    if not ok:
+        raise HTTPException(404, f"Composition {compId!r} not found or is root")
+    return {"status": "ok"}
+
+
+class CompRenameRequest(BaseModel):
+    name: str
+
+
+@app.patch("/comps/{compId}/rename")
+def renameCompRoute(compId: str, req: CompRenameRequest):
+    """Rename a composition timeline."""
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404, f"Composition {compId!r} not found")
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(400, "Name cannot be empty")
+    tl.name = name
+    return {"compId": compId, "name": name}
+
+
+@app.post("/comps/{compId}/activate")
+def activateComp(compId: str):
+    """Set the active composition that all clip-add operations target.
+    Pass compId='root' to revert to the root timeline."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+    if compId == "root":
+        engine.setActiveComp(None)
+        root = engine.project.timelines[0] if engine.project.timelines else None
+        return {"activeCompId": root.timelineId if root else None}
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404, f"Composition {compId!r} not found")
+    engine.setActiveComp(compId)
+    return {"activeCompId": compId}
+
+
+def _ensure_comp_tracks(tl) -> None:
+    """If a composition has no tracks, add default video + audio tracks."""
+    if tl.tracks:
+        return
+    import uuid
+    from backend.timeline.tracks.videoTrack import VideoTrack
+    from backend.timeline.tracks.audioTrack import AudioTrack
+    v = VideoTrack(name="Video 1")
+    a = AudioTrack(name="Audio 1")
+    tl.tracks.append(v)
+    tl.tracks.append(a)
+
+
+@app.post("/comps/{compId}/ensure-tracks")
+def ensureCompTracks(compId: str):
+    """Ensure a composition has at least one video and one audio track."""
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404, f"Composition {compId!r} not found")
+    _ensure_comp_tracks(tl)
+    return {"trackCount": len(tl.tracks)}
+
+
+@app.get("/comps/{compId}/state")
+def getCompState(compId: str):
+    """Return the timeline state of a composition, in the same shape as /timeline/state."""
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404, f"Composition {compId!r} not found")
+
+    # Auto-fix 
+    _ensure_comp_tracks(tl)
+
+    comp_fps = getattr(tl, "fps", engine.project.fps if engine.project else 30.0)
+    comp_total = getattr(tl, "totalFrames", None)
+    if not comp_total:
+        # derive from clip extents
+        comp_total = max((
+            max((c.startFrame + c.duration for c in t.clips), default=0)
+            for t in tl.tracks
+        ), default=900)
+
+    tracks_out = []
+    for track in tl.tracks:
+        clips_out = []
+        for clip in track.clips:
+            clip_id   = getattr(clip, "clipId", "")
+            clip_type = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
+            clip_name = getattr(clip, "name", getattr(clip, "compId", getattr(clip, "assetId", "Clip")))
+            clips_out.append({
+                "clipId": clip_id,
+                "type": clip_type,
+                "name": clip_name,
+                "startFrame": getattr(clip, "startFrame", 0),
+                "duration": getattr(clip, "duration", 90),
+                "assetId": getattr(clip, "assetId", None),
+                "compId": getattr(clip, "compId", None),
+            })
+        tracks_out.append({
+            "trackId": track.trackId,
+            "name": track.name,
+            "type": getattr(track, "TRACK_TYPE", "video"),
+            "muted": track.muted,
+            "solo": getattr(track, "solo", False),
+            "locked":  track.locked,
+            "clips": clips_out,
+        })
+
+    return {
+        "timelineId":  tl.timelineId,
+        "name": tl.name,
+        "tracks": tracks_out,
+        "totalFrames": comp_total,
+        "fps": comp_fps,
+    }
+
+class AddCompClipRequest(BaseModel):
+    compId: str
+    trackIndex: int | None = None
+    startFrame: int = 0
+    duration: int = 90
+    mediaOffset: int = 0
+
+@app.post("/clips/comp")
+def addCompClip(req: AddCompClipRequest):
+    """Add a composition clip to the active timeline."""
+    from backend.timeline.clips.compClip import CompClip
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+    tl = _active_timeline()
+
+   
+    if req.compId == tl.timelineId:
+        raise HTTPException(400, "Cannot add a composition inside itself")
+    if _has_cycle(req.compId, tl.timelineId):
+        raise HTTPException(400, f"Cycle detected: composition {req.compId!r} already references this timeline")
+
+    track = _top_empty_track(req.startFrame, req.duration)
+    if req.trackIndex is not None and 0 <= req.trackIndex < len(tl.tracks):
+        track = tl.tracks[req.trackIndex]
+
+    clip = CompClip(
+        clipId=str(uuid.uuid4()),
+        startFrame=req.startFrame,
+        duration=req.duration,
+        compId=req.compId,
+        mediaOffset=req.mediaOffset,
+    )
+    track.addClip(clip)
+    _clipTrackMap[clip.clipId] = tl.tracks.index(track)
+    return clip.toDict()
+
 
 # Effects  
 
@@ -2087,7 +2504,7 @@ def _effect_to_dict(e) -> dict:
         base["params"] = params
         base["paramTypes"] = "typed"
     else:
-        # Legacy effects: params() → {key: (value, min, max)}
+        # Legacy effects: params() 
         raw = e.params()
         base["params"] = {
             k: {"value": v[0], "min": v[1], "max": v[2],
@@ -2107,7 +2524,7 @@ def patchEffect(clipId: str, effectId: str, req: EffectPatchRequest):
         eff.enabled = req.enabled
     if req.params:
         for k, v in req.params.items():
-            # SkSL effects with vec params need channel routing
+             
             from backend.timeline.effects.skslEffect import SkslEffect
             if isinstance(eff, SkslEffect):
                 eff._resolveVecParam(k, v) or eff.setParam(k, v)
@@ -2383,32 +2800,46 @@ def audioStream(assetId: str):
 @app.get("/timeline/audio-clips")
 def listAudioClips():
     """Return audio info for every clip whose asset has an audio stream.
-    This covers VideoClips on video tracks — no separate AudioClip needed."""
+    Includes clips inside nested composition clips so comp audio plays back."""
     tl = engine.activeTimeline
     if tl is None:
         return {"clips": []}
     result = []
-    seen_assets: set[str] = set()
-    for track in tl.tracks:
-        for clip in track.clips:
-            asset_id = getattr(clip, 'assetId', None) or ''
-            if not asset_id:
-                continue
-            asset = _library.get(asset_id)
-            if asset is None:
-                continue
-            if not asset.hasAudio:
-                continue
-            result.append({
-                "clipId": clip.clipId,
-                "assetId": asset_id,
-                "startFrame": clip.startFrame,
-                "duration": clip.duration,
-                "mediaOffset": getattr(clip, 'mediaOffset', 0),
-                "volume": getattr(clip, 'volume', 1.0),
-                "streamUrl": f"/assets/{asset_id}/audio-stream",
-            })
+
+    def _collect_audio(timeline, frame_offset: int = 0):
+        for track in timeline.tracks:
+            for clip in track.clips:
+                clip_type = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
+
+                # Recurse into comp clips
+                if clip_type == "comp":
+                    comp_id = getattr(clip, "compId", None)
+                    if comp_id:
+                        inner_tl = engine.getTimeline(comp_id)
+                        if inner_tl:
+                            # The inner comp's frame 0 = outer frame clip.startFrame
+                            _collect_audio(inner_tl, frame_offset + clip.startFrame)
+                    continue
+
+                asset_id = getattr(clip, "assetId", None) or ""
+                if not asset_id:
+                    continue
+                asset = _library.get(asset_id)
+                if asset is None or not asset.hasAudio:
+                    continue
+                result.append({
+                    "clipId":      clip.clipId,
+                    "assetId":     asset_id,
+                    "startFrame":  frame_offset + clip.startFrame,
+                    "duration":    clip.duration,
+                    "mediaOffset": getattr(clip, "mediaOffset", 0),
+                    "volume":      getattr(clip, "volume", 1.0),
+                    "streamUrl":   f"/assets/{asset_id}/audio-stream",
+                })
+
+    _collect_audio(tl)
     return {"clips": result}
+
 
 
 
@@ -2553,7 +2984,7 @@ def _clip_param_schema(clip) -> list:
 
 class ParamValueBody(BaseModel):
     value: float
-    frame: int = -1   # if >= 0, set as keyframe at this frame
+    frame: int = -1  
 
 
 class KeyframeBody(BaseModel):

@@ -2,7 +2,7 @@ import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, type Clip, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import TimelineClip from './TimelineClip';
-import { addClipToTimeline, addSvgClipToTimeline, type AssetItem } from '../../api/useApi';
+import { addClipToTimeline, addSvgClipToTimeline, addCompClipToTimeline, type AssetItem } from '../../api/useApi';
 import { useTool, isCreationTool, isShapeTool, shapeTypeOf } from '../../context/toolContext';
 import { useSelection } from '../../context/selectionContext';
 import { textApi, shapeApi, penApi, transitionApi, type TransitionInfo } from '../../api/toolsApi';
@@ -181,7 +181,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
   // Drag-from-library or transitions  
   const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.includes('application/fade-asset') ||
-        e.dataTransfer.types.includes('application/fade-transition')) {
+        e.dataTransfer.types.includes('application/fade-transition') ||
+        e.dataTransfer.types.includes('application/fade-comp')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       setDropOver(true);
@@ -219,7 +220,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         if (dist < bestADist) { bestADist = dist; bestA = c; }
       }
 
-      // Find the incoming clip (clipB): clip whose startFrame is nearest to bestA's endFrame
+       
       // and is NOT the same clip
       let bestB: (Clip & { _trackId: string }) | null = null;
       let bestBDist = Infinity;
@@ -241,7 +242,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
             clipB_id: bestB.id,
             trackId:  bestA._trackId,
           });
-          // Dispatch both events so the transition list + timeline both refresh
+          // Dispatch both events so the transition list  
           window.dispatchEvent(new CustomEvent('fade:transition-changed'));
           window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } catch (err) {
@@ -253,7 +254,47 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       return;
     }
 
-    // ── Handle Asset Drop ───────────────────────────────────────────────────
+    // Handle Comp Drop  
+    const rawComp = e.dataTransfer.getData('application/fade-comp');
+    if (rawComp) {
+      let compMeta;
+      try { compMeta = JSON.parse(rawComp); }
+      catch { return; }
+
+      const duration = 90;
+      const optimisticClip: Clip = {
+        id:         `tmp-${Date.now()}`,
+        name:       compMeta.name,
+        startFrame: frame,
+        duration,
+        type:       'comp',
+        isSelected: false,
+      };
+      dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: optimisticClip });
+
+      try {
+        const result = await addCompClipToTimeline(compMeta.compId, trackIndex, frame, duration);
+        if (result) {
+          const realClip: Clip = {
+            id: result.clipId,
+            name: compMeta.name,
+            startFrame: result.startFrame,
+            duration: result.duration,
+            type: 'comp',
+            isSelected: false,
+          };
+          dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
+        } else {
+          dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+        }
+      } catch (err) {
+        console.error('[TrackRow] Failed to drop comp', err);
+        dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+      }
+      return;
+    }
+
+    // Handle Asset Drop  
     const rawAsset = e.dataTransfer.getData('application/fade-asset');
     if (!rawAsset) return;
 
@@ -263,11 +304,11 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
 
     const duration = 150;
     const optimisticClip: Clip = {
-      id:         `tmp-${Date.now()}`,
-      name:       asset.filename,
+      id: `tmp-${Date.now()}`,
+      name: asset.filename,
       startFrame: frame,
       duration,
-      type:       asset.type === 'audio' ? 'audio'
+      type: asset.type === 'audio' ? 'audio'
                 : asset.type === 'image' ? 'image'
                 : asset.type === 'svg'   ? 'shape'
                 : 'video',
@@ -283,18 +324,18 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     }
     if (result) {
       const realClip: Clip = {
-        id:         result.clipId,
-        name:       asset.filename,
+        id: result.clipId,
+        name: asset.filename,
         startFrame: result.startFrame,
-        duration:   result.duration,
-        type:       optimisticClip.type,
+        duration: result.duration,
+        type: optimisticClip.type,
         isSelected: false,
       };
       dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
     }
   }, [track.id, track.clips, trackIndex, scrollLeft, state.zoomX, dispatch]);
 
-  // ── Cursor guide for creation tools ─────────────────────────────────────
+  // Cursor guide for creation tools  
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!rowRef.current || !isCreationTool(activeTool)) return;
     const rect = rowRef.current.getBoundingClientRect();
@@ -302,7 +343,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     setCursorPct(Math.max(0, Math.min(100, pct)));
   }, [activeTool]);
 
-  // ── Cursor for creation tools ────────────────────────────────────────────
+  // Cursor for creation tools  
   const rowCursor = isCreationTool(activeTool) && !track.locked ? 'crosshair' : undefined;
 
   const isEven = trackIndex % 2 === 0;
@@ -312,17 +353,17 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       ref={rowRef}
       className={[
         'tl-track-row',
-        isEven        ? 'tl-track-row--even'    : 'tl-track-row--odd',
+        isEven ? 'tl-track-row--even' : 'tl-track-row--odd',
         track.locked  ? 'tl-track-row--locked'  : '',
-        dropOver      ? 'tl-track-row--dropover' : '',
-        placing       ? 'tl-track-row--placing'  : '',
+        dropOver ? 'tl-track-row--dropover' : '',
+        placing ? 'tl-track-row--placing'  : '',
         isCreationTool(activeTool) && !track.locked ? 'tl-track-row--creation' : '',
       ].join(' ')}
       style={{
         height: track.height,
         position: 'relative',
         cursor: rowCursor,
-        // CSS var drives the guide-line X position
+        // CSS var drives  
         ['--tbx-cursor-x' as any]: `${cursorPct}%`,
       }}
       onClick={onRowClick}
@@ -345,10 +386,10 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         />
       ))}
 
-      {/* Render Transitions — show on the track that owns clipA (outgoing clip) */}
+      {/* Render Transitions  */}
       {transitions.map(tr => {
         const ca = track.clips.find(c => c.id === tr.clipA_id);
-        if (!ca) return null; // clipA not on this track — shouldn't happen given filter
+        if (!ca) return null;  
         const centerFrame = ca.startFrame + ca.duration;
         return (
           <TransitionWidget
@@ -361,7 +402,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         );
       })}
 
-      {/* Live guide line — follows cursor in creation mode */}
+      {/* Live guide line  */}
       {isCreationTool(activeTool) && !track.locked && !placing && (
         <div className="tl-track-row__guide" />
       )}
@@ -371,7 +412,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         <div className="tl-track-row__drop-hint">Drop to add clip</div>
       )}
 
-      {/* "Click to add …" label */}
+      {/* Click to add */}
       {isCreationTool(activeTool) && !track.locked && !placing && (
         <div className="tl-track-row__create-hint">
           Click to add {clipLabel(activeTool)}
@@ -393,21 +434,21 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
   );
 });
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// Helpers 
 
 function clipLabel(tool: string): string {
   const map: Record<string, string> = {
-    text:           'Text',
-    solid:          'Solid',
-    adjustment:     'Adjustment',
-    'shape:rect':   'Rectangle',
+    text: 'Text',
+    solid: 'Solid',
+    adjustment: 'Adjustment',
+    'shape:rect': 'Rectangle',
     'shape:circle': 'Circle',
     'shape:ellipse':'Ellipse',
-    'shape:star':   'Star',
+    'shape:star': 'Star',
     'shape:polygon':'Polygon',
-    'shape:line':   'Line',
-    'shape:arc':    'Arc',
-    'shape:path':   'Pen Path',
+    'shape:line': 'Line',
+    'shape:arc': 'Arc',
+    'shape:path': 'Pen Path',
   };
   return map[tool] ?? 'Clip';
 }

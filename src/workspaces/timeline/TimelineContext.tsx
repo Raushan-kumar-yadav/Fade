@@ -11,6 +11,7 @@ import {
   type TimelineAction,
   type Track,
   type Clip,
+  type CompTab,
   MIN_ZOOM,
   MAX_ZOOM,
   MIN_TRACK_H,
@@ -29,6 +30,9 @@ const INITIAL_STATE: TimelineState = {
   isPlaying: false,
   interaction: null,
   ghost: null,
+  activeCompId: null,
+  activeCompName: null,
+  compTabStack: [{ compId: null, name: "Main Timeline" }],
 };
 
 //   Helpers
@@ -81,16 +85,19 @@ function mapBackendClip(c: any): Clip {
               ? "shape"
               : c.type === "lottie"
                 ? "lottie"
-                : "video";
+                : c.type === "comp"
+                  ? "comp"
+                  : "video";
 
   return {
     id: c.clipId ?? c.id,
-    name: c.name ?? c.assetId ?? "Clip",
+    name: c.name ?? c.compId ?? c.assetId ?? "Clip",
     startFrame: c.startFrame,
     duration: c.duration,
     type,
     isSelected: false,
     assetId: c.assetId,
+    compId: c.compId,
   };
 }
 
@@ -341,6 +348,58 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
     case "END_INTERACTION":
       return { ...state, interaction: null, ghost: null };
 
+    case "ENTER_COMP": {
+      // Add tab if not already open, then switch to it
+      const alreadyOpen = state.compTabStack.some(t => t.compId === action.compId);
+      const newTabs: CompTab[] = alreadyOpen
+        ? state.compTabStack
+        : [...state.compTabStack, { compId: action.compId, name: action.compName }];
+      return {
+        ...state,
+        activeCompId: action.compId,
+        activeCompName: action.compName,
+        compTabStack: newTabs,
+        tracks: [],
+        currentFrame: 0,
+      };
+    }
+
+    case "EXIT_COMP":
+      return {
+        ...state,
+        activeCompId: null,
+        activeCompName: null,
+        tracks: [],
+        currentFrame: 0,
+      };
+
+    case "SWITCH_COMP_TAB": {
+      // Switch to an already-open tab (null = root)
+      const tab = state.compTabStack.find(t => t.compId === action.compId);
+      if (!tab) return state;
+      return {
+        ...state,
+        activeCompId: action.compId,
+        activeCompName: action.compId === null ? "Main Timeline" : (tab.name),
+        tracks: [],
+        currentFrame: 0,
+      };
+    }
+
+    case "CLOSE_COMP_TAB": {
+      // Close a tab; if it was active, fall back to root
+      const remainingTabs = state.compTabStack.filter(t => t.compId !== action.compId);
+      const wasActive = state.activeCompId === action.compId;
+      return {
+        ...state,
+        compTabStack: remainingTabs.length > 0 ? remainingTabs : [{ compId: null, name: "Main Timeline" }],
+        activeCompId: wasActive ? null : state.activeCompId,
+        activeCompName: wasActive ? null : state.activeCompName,
+        tracks: wasActive ? [] : state.tracks,
+        currentFrame: wasActive ? 0 : state.currentFrame,
+      };
+    }
+
     default:
       return state;
   }
@@ -357,9 +416,68 @@ const TimelineCtx = createContext<TimelineContextValue | null>(null);
 //   Provider
 export function TimelineProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
-  // Keep a ref so async callbacks can read latest tracks without stale closure
+  // Keep refs so async callbacks always read latest values without stale closures
   const stateRef = React.useRef<TimelineState>(state);
   React.useEffect(() => { stateRef.current = state; }, [state]);
+
+  // Track the active comp id in a ref so polling functions see the latest value
+  const activeCompIdRef = React.useRef<string | null>(state.activeCompId);
+  React.useEffect(() => { activeCompIdRef.current = state.activeCompId; }, [state.activeCompId]);
+
+  // ── Sync active comp to backend whenever it changes ──────────────────────
+  // Also immediately fire a fetch so tracks show without waiting for the next poll tick
+  React.useEffect(() => {
+    const port: number = (window as any).__FADE_PORT__ ?? 8000;
+    const base = `http://127.0.0.1:${port}`;
+    const compId = state.activeCompId ?? 'root';
+
+    // Tell backend which comp is active
+    fetch(`${base}/comps/${compId}/activate`, { method: 'POST' }).catch(() => {});
+
+    // For a comp (non-root): ensure it has tracks before fetching state
+    const ensureAndFetch = async () => {
+      const url = state.activeCompId
+        ? `${base}/comps/${state.activeCompId}/state`
+        : `${base}/timeline/state`;
+
+      if (state.activeCompId) {
+        // ensure tracks exist (idempotent — safe to call every time)
+        await fetch(`${base}/comps/${state.activeCompId}/ensure-tracks`, { method: 'POST' }).catch(() => {});
+      }
+
+      const data = await fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
+      if (!data) return;
+      const tracks: Track[] = (data.tracks ?? []).map(mapBackendTrack);
+      dispatch({ type: 'SET_TRACKS', tracks });
+      const tf = data.totalFrames;
+      if (tf) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: tf });
+    };
+
+    ensureAndFetch();
+
+    // Fire a short burst after the switch so we pick up any in-flight changes
+    let count = 0;
+    const url = state.activeCompId
+      ? `${base}/comps/${state.activeCompId}/state`
+      : `${base}/timeline/state`;
+    const burstId = setInterval(() => {
+      count++;
+      if (count >= 5) { clearInterval(burstId); return; }
+      fetch(url)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data) return;
+          const tracks: Track[] = (data.tracks ?? []).map(mapBackendTrack);
+          dispatch({ type: 'SET_TRACKS', tracks });
+          const tf = data.totalFrames;
+          if (tf) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: tf });
+        })
+        .catch(() => {});
+    }, 400);
+
+    return () => clearInterval(burstId);
+  }, [state.activeCompId]);
+
 
   useEffect(() => {
     // Hoist onFrame so cleanup can always reach it
@@ -369,8 +487,14 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     };
     window.addEventListener("fade:frame", onFrame);
 
+    // Always polls the correct URL for the current active comp
     function fetchAndSetTracks(port: number, preserveOrder = false) {
-      fetch(`http://127.0.0.1:${port}/timeline/state`)
+      const activeId = activeCompIdRef.current;
+      const url = activeId
+        ? `http://127.0.0.1:${port}/comps/${activeId}/state`
+        : `http://127.0.0.1:${port}/timeline/state`;
+
+      fetch(url)
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
           if (!data) return;
@@ -389,28 +513,16 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     }
 
     function startSync(port: number) {
-       
-      let burstCount = 0;
-      const BURST_INTERVAL = 200;  // ms between polls
-      const BURST_DURATION = 2000; // ms total burst window
-      const burstId = setInterval(() => {
-        fetchAndSetTracks(port, false);
-        burstCount++;
-        if (burstCount * BURST_INTERVAL >= BURST_DURATION) {
-          clearInterval(burstId);
-        }
-      }, BURST_INTERVAL);
-
-      // Listen for track changes from viewport tools  
+      // Listen for track changes from viewport tools
       const onTracksChanged = () => fetchAndSetTracks(port, true);
       window.addEventListener("fade:tracks-changed", onTracksChanged);
 
-      // refresh 
+      // Slow background refresh (tracks rarely change except on edits)
       const trackRefreshId = setInterval(() => {
         fetchAndSetTracks(port, true);
       }, 2000);
 
-      //   Fast poll 
+      //   Fast poll for playback state
       const playbackId = setInterval(() => {
         fetch(`http://127.0.0.1:${port}/playback/state`)
           .then((r) => (r.ok ? r.json() : null))
@@ -424,7 +536,6 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       }, 500);
 
       return () => {
-        clearInterval(burstId);
         clearInterval(trackRefreshId);
         clearInterval(playbackId);
         window.removeEventListener("fade:tracks-changed", onTracksChanged);

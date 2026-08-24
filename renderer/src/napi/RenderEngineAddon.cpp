@@ -1,26 +1,3 @@
-/**
- * RenderEngineAddon.cpp — Node.js NAPI addon entry point
- *
- * Exposes to JavaScript (Electron main process):
- *
- *   initialize(width, height, fps, effectsDir?, pythonPort?) → void
- *   seekFrame(frameNumber)                                   → void
- *   play()                                                   → void
- *   pause()                                                  → void
- *   isPlaying()                                              → bool
- *   getSharedBuffer()                                        → ArrayBuffer
- * (zero-copy) setFrameReadyCallback(fn: (frameNum: number) => void)    → void
- *   getStats()                                               → { width, height,
- * fps }
- *
- * Frame delivery pipeline:
- *   seekFrame(n)
- *     → HTTP GET http://127.0.0.1:{pythonPort}/render/frame/{n}
- *     → JSON → FrameDescriptor
- *     → HeadlessCompositor::renderFrame()
- *     → reads pixels → SharedArrayBuffer
- *     → fires JS callback: onFrameReady(n)
- */
 
 #define NAPI_VERSION 8
 #include <napi.h>
@@ -28,7 +5,7 @@
 #include "../HeadlessCompositor.hpp"
 #include "FrameDescriptor.hpp"
 
-// Simple HTTP GET using WinHTTP (no extra lib needed on Windows)
+// using WinHTTP
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <Windows.h>
@@ -42,7 +19,7 @@
 #include <string>
 #include <thread>
 
-//   State
+// State
 
 namespace {
 
@@ -52,7 +29,7 @@ int g_width = 1920;
 int g_height = 1080;
 float g_fps = 30.f;
 
-// NAPI threadsafe function for firing JS frame-ready callback
+// JS frame-ready callback
 Napi::ThreadSafeFunction g_tsfn;
 std::atomic<bool> g_tsfnActive{false};
 
@@ -139,14 +116,13 @@ void renderFrameImpl(int64_t frameNum) {
 
   //  Composite on GPU
   g_compositor->renderFrame(fd);
-  // Callback is fired from inside renderFrame → onFrameReady
 }
 
 } // namespace
 
 //   NAPI functions
 
-// initialize(width, height, fps, effectsDir?, pythonPort?)
+// initialize
 Napi::Value Initialize(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
 
@@ -195,7 +171,7 @@ Napi::Value Initialize(const Napi::CallbackInfo &info) {
   return env.Undefined();
 }
 
-// seekFrame(frameNumber: number) — seeks and renders one frame
+//  seeks and renders one frame
 Napi::Value SeekFrame(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   if (info.Length() < 1 || !info[0].IsNumber()) {
@@ -276,7 +252,7 @@ Napi::Value GetStats(const Napi::CallbackInfo &info) {
   return obj;
 }
 
-//   Export NAPI functions
+// Export NAPI functions
 
 Napi::Value StartExport(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();

@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useRef, useEffect, useState, useLayoutEffect } from "react";
+import ReactDOM from "react-dom";
 import { useSelection } from "../../context/selectionContext";
 import {
   useTimeline,
@@ -61,7 +62,7 @@ const TimelineClip = memo(function TimelineClip({
     return () => { cancelled = true; };
   }, [clip.assetId, wantsWaveform]);
 
-  // Draw onto canvas whenever peaks or width changes  
+   
   const drawWaveform = useCallback((canvas: HTMLCanvasElement | null) => {
     if (!canvas || peaks.length === 0) return;
     canvas.width  = Math.max(1, Math.round(width));
@@ -98,6 +99,52 @@ const TimelineClip = memo(function TimelineClip({
 
   const isMeMoving =
     interaction?.mode === "move" && interaction.clipId === clip.id;
+
+  // Right-click context menu  
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+
+  const onContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener('mousedown', close, { once: true });
+    return () => window.removeEventListener('mousedown', close);
+  }, [ctxMenu]);
+
+  const handleDelete = useCallback(async () => {
+    setCtxMenu(null);
+    try {
+      const port = (window as any).__FADE_PORT__ ?? 8000;
+      await fetch(`http://127.0.0.1:${port}/timeline/clips/${clip.id}`, { method: 'DELETE' });
+      dispatch({ type: 'DELETE_CLIP', clipId: clip.id });
+      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+    } catch (err) {
+      console.error('[TimelineClip] delete failed', err);
+    }
+  }, [clip.id, dispatch]);
+
+  const handleSplit = useCallback(() => {
+    setCtxMenu(null);
+    const frame = state.currentFrame;
+    if (frame <= clip.startFrame || frame >= clip.startFrame + clip.duration) return;
+    splitClip(clip.id, frame).then((result) => {
+      if (!result) return;
+      fetchTimeline().then((data) => {
+        if (data) dispatch({ type: 'SET_TRACKS', tracks: mapBackendTracksPreservingOrder(state.tracks, data.tracks ?? []) });
+      });
+    });
+  }, [clip.id, clip.startFrame, clip.duration, state.currentFrame, state.tracks, dispatch]);
+
+  const onDoubleClick = useCallback((e: React.MouseEvent) => {
+    if (clip.type !== 'comp' || !clip.compId) return;
+    e.stopPropagation();
+    dispatch({ type: 'ENTER_COMP', compId: clip.compId, compName: clip.name });
+  }, [clip.type, clip.compId, clip.name, dispatch]);
 
   // Cursor based on tool
   const getCursor = useCallback(
@@ -362,6 +409,7 @@ const TimelineClip = memo(function TimelineClip({
   const dimForGhost = isMeMoving;
 
   return (
+    <>
     <div
       ref={clipRef}
       className={`tl-clip ${isSelected ? "tl-clip--selected" : ""} ${dimForGhost ? "tl-clip--ghost-dim" : ""} ${effectDropOver ? "tl-clip--effect-drop" : ""}`}
@@ -374,6 +422,8 @@ const TimelineClip = memo(function TimelineClip({
         borderColor: isSelected ? lighten(color, 0.4) : lighten(color, 0.2),
       }}
       onMouseDown={onMouseDown}
+      onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
       onMouseMove={(e) => {
         const localX = e.clientX - e.currentTarget.getBoundingClientRect().left;
         e.currentTarget.style.cursor = getCursor(localX);
@@ -410,13 +460,67 @@ const TimelineClip = memo(function TimelineClip({
         <div className="tl-clip__effect-drop-hint">+ Drop Effect</div>
       )}
 
-      <span className="tl-clip__label">{clip.name}</span>
+      <span className="tl-clip__label">
+        {clip.type === 'comp' && <span style={{ marginRight: 4, opacity: 0.8 }}>⊞</span>}
+        {clip.name}
+      </span>
     </div>
+
+    {/* Right-click context menu */}
+    {ctxMenu && ReactDOM.createPortal(
+      <div
+        style={{
+          position: 'fixed',
+          left: ctxMenu.x,
+          top: ctxMenu.y,
+          zIndex: 9999,
+          background: '#1e1e2e',
+          border: '1px solid #333',
+          borderRadius: 6,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+          minWidth: 160,
+          overflow: 'hidden',
+          fontSize: 12,
+        }}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        {clip.type === 'comp' && (
+          <button
+            style={CTX_ITEM_STYLE}
+            onClick={() => { setCtxMenu(null); dispatch({ type: 'ENTER_COMP', compId: clip.compId!, compName: clip.name }); }}
+          >⊞ Enter Composition</button>
+        )}
+        <button
+          style={CTX_ITEM_STYLE}
+          onClick={handleSplit}
+        >✂ Split at Playhead</button>
+        <div style={{ height: 1, background: '#333', margin: '2px 0' }} />
+        <button
+          style={{ ...CTX_ITEM_STYLE, color: '#ff5f5f' }}
+          onClick={handleDelete}
+        >🗑 Delete Clip</button>
+      </div>,
+      document.body
+    )}
+    </>
   );
 });
 
 
 // Helpers
+
+const CTX_ITEM_STYLE: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  padding: '7px 14px',
+  background: 'transparent',
+  border: 'none',
+  color: '#e0e0e0',
+  textAlign: 'left',
+  cursor: 'pointer',
+  fontSize: 12,
+  whiteSpace: 'nowrap',
+};
 
 let _trimAccum = 0;
 let _trimLastX = 0;

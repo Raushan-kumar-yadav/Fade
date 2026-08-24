@@ -442,7 +442,7 @@ def search_news(query: str, max_results: int = 10) -> str:
     """Search DuckDuckGo News for current headlines matching a query.
 
     Args:
-        query:       Search term, e.g. "top tech news today", "AI breakthroughs 2026"
+        query: Search term, e.g. "top tech news today", "AI breakthroughs 2026"
         max_results: Number of articles to return (default 10, max 20)
 
     Returns a JSON list of {title, body, source, url} objects.
@@ -514,11 +514,11 @@ def create_news_video(query: str, scene_duration_seconds: float = 5.0) -> str:
     print(f"[create_news_video] Building timeline…", flush=True)
     result = build_timeline(plan, asset_map, _PORT)
 
-    placed   = result.get("placed_clips", 0)
-    failed   = result.get("failed_scenes", [])
+    placed = result.get("placed_clips", 0)
+    failed = result.get("failed_scenes", [])
     total_s  = plan.totalFrames / fps
-    videos   = sum(1 for s in plan.scenes if s.broll.type == "video")
-    images   = sum(1 for s in plan.scenes if s.broll.type == "image")
+    videos = sum(1 for s in plan.scenes if s.broll.type == "video")
+    images = sum(1 for s in plan.scenes if s.broll.type == "image")
 
     summary = (
         f"✅ News video created!\n"
@@ -532,7 +532,210 @@ def create_news_video(query: str, scene_duration_seconds: float = 5.0) -> str:
         summary += f"• ⚠️ {len(failed)} scenes had issues (no media found): {failed}\n"
     return summary
 
-# all tools list 
+
+# Composition tools
+
+@tool
+def create_composition(
+    name: str,
+    width: int = 1920,
+    height: int = 1080,
+    fps: float = 30.0,
+    total_frames: int = 900,
+) -> str:
+    """Create a new nested composition (sub-timeline) with custom resolution and frame rate.
+
+    Args:
+        name: Name for the composition, e.g. 'Intro Scene'.
+        width: Frame width in pixels (default 1920).
+        height: Frame height in pixels (default 1080).
+        fps: Frames per second (default 30.0).
+        total_frames: Total duration in frames (default 900 = 30s at 30fps).
+
+    Returns the compId of the new composition.
+    Call add_comp_to_timeline() to place it on the main timeline.
+    """
+    result = _post("/comps", {
+        "name": name,
+        "width": width,
+        "height": height,
+        "fps": fps,
+        "totalFrames": total_frames,
+    })
+    return json.dumps(result, indent=2)
+
+
+@tool
+def list_compositions() -> str:
+    """List all compositions in the project, including the root timeline.
+
+    Returns compId, name, isRoot, width, height, fps, totalFrames, trackCount, clipCount.
+    Use this to find a compId before adding a composition clip to the timeline.
+    """
+    result = _get("/comps")
+    return json.dumps(result, indent=2)
+
+
+@tool
+def add_comp_to_timeline(comp_id: str, start_frame: int, duration: int = 90) -> str:
+    """Place a composition onto the main timeline as a nested clip.
+
+    Args:
+        comp_id:     The compId of the composition (get from list_compositions()).
+        start_frame: Timeline frame where the comp clip starts.
+        duration:    Duration in frames (default 90 = 3s at 30fps).
+
+    Raises an error if adding would create a cycle (comp inside itself).
+    """
+    result = _post("/clips/comp", {
+        "compId": comp_id,
+        "startFrame": start_frame,
+        "duration": duration,
+    })
+    return json.dumps(result, indent=2)
+
+
+@tool
+def activate_comp(comp_id: str) -> str:
+    """Switch the active composition that clip-add operations target.
+
+    Args:
+        comp_id: The compId to make active, OR 'root' to go back to the main timeline.
+
+    Use this before adding clips into a nested composition.
+    After you're done editing the comp, call activate_comp('root') to return.
+    """
+    result = _post(f"/comps/{comp_id}/activate")
+    return json.dumps(result, indent=2)
+
+
+@tool
+def get_comp_state(comp_id: str) -> str:
+    """Get the full track/clip state of a composition (sub-timeline).
+
+    Args:
+        comp_id: The compId to inspect (get from list_compositions()).
+
+    Returns tracks, clips, totalFrames, fps for the given composition.
+    Use this to inspect what's inside a comp before editing it.
+    """
+    result = _get(f"/comps/{comp_id}/state")
+    return json.dumps(result, indent=2)
+
+
+@tool
+def add_clip_to_comp(
+    comp_id: str,
+    asset_id: str,
+    track_index: int,
+    start_frame: int,
+    duration: int,
+) -> str:
+    """Add a media clip (video or image) from the library into a nested composition.
+
+    This activates the comp, adds the clip, then returns to root automatically.
+
+    Args:
+        comp_id: The compId of the target composition.
+        asset_id: The assetId of the media to add (get from get_library()).
+        track_index: Which track inside the comp to add to (0 = first).
+        start_frame: Frame inside the comp where the clip starts.
+        duration: Duration in frames.
+    """
+    # Activate comp → add clip → return to root
+    _post(f"/comps/{comp_id}/activate")
+    result = _post("/timeline/add-clip", {
+        "assetId": asset_id,
+        "trackIndex": track_index,
+        "startFrame": start_frame,
+        "duration": duration,
+    })
+    _post("/comps/root/activate")
+    return json.dumps(result, indent=2)
+
+
+@tool
+def add_solid_clip(
+    track_index: int,
+    start_frame: int,
+    duration: int,
+    r: float = 0.0,
+    g: float = 0.0,
+    b: float = 0.0,
+    a: float = 1.0,
+) -> str:
+    """Add a solid color clip to the active timeline.
+
+    Args:
+        track_index: Track to add the solid clip to (0 = first track).
+        start_frame: Timeline frame where the clip starts.
+        duration: Duration in frames.
+        r: Red channel 0.0–1.0 (default 0.0 = black).
+        g: Green channel 0.0–1.0.
+        b: Blue channel 0.0–1.0.
+        a: Alpha 0.0–1.0 (default 1.0 = opaque).
+    """
+    result = _post("/clips/shape", {
+        "trackIndex": track_index,
+        "startFrame": start_frame,
+        "duration": duration,
+        "shapeType": "rectangle",
+        "fillR": r, "fillG": g, "fillB": b, "fillA": a,
+        "strokeA": 0.0,
+        "width": 1920, "height": 1080,
+    })
+    return json.dumps(result, indent=2)
+
+
+@tool
+def add_shape_clip(
+    track_index: int,
+    start_frame: int,
+    duration: int,
+    shape_type: str = "rectangle",
+    fill_r: float = 1.0,
+    fill_g: float = 0.0,
+    fill_b: float = 0.0,
+    fill_a: float = 1.0,
+    width: float = 400.0,
+    height: float = 300.0,
+) -> str:
+    """Add a shape clip (rectangle, ellipse, triangle) to the active timeline.
+
+    Args:
+        track_index: Track index (0 = first).
+        start_frame: Frame where the clip starts.
+        duration:    Duration in frames.
+        shape_type:  'rectangle', 'ellipse', or 'triangle'.
+        fill_r/g/b/a: Fill color channels 0.0–1.0.
+        width/height: Shape dimensions in pixels.
+    """
+    result = _post("/clips/shape", {
+        "trackIndex": track_index,
+        "startFrame": start_frame,
+        "duration": duration,
+        "shapeType": shape_type,
+        "fillR": fill_r, "fillG": fill_g, "fillB": fill_b, "fillA": fill_a,
+        "strokeA": 0.0,
+        "width": width, "height": height,
+    })
+    return json.dumps(result, indent=2)
+
+
+@tool
+def delete_composition(comp_id: str) -> str:
+    """Delete a composition (sub-timeline) and all its contents.
+
+    Args:
+        comp_id: The compId of the composition to delete.
+
+    WARNING: This also removes any comp clips referencing this comp from all timelines.
+    """
+    result = _delete(f"/comps/{comp_id}")
+    return json.dumps(result, indent=2)
+
+
+# all tools list
 
 ALL_TOOLS = [
     get_timeline_state,
@@ -565,4 +768,14 @@ ALL_TOOLS = [
     apply_effect_to_clip,
     patch_clip_effect,
     place_clip,
+    # Composition tools
+    create_composition,
+    list_compositions,
+    add_comp_to_timeline,
+    activate_comp,
+    get_comp_state,
+    add_clip_to_comp,
+    add_solid_clip,
+    add_shape_clip,
+    delete_composition,
 ]

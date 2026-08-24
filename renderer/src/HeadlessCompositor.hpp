@@ -33,6 +33,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <winsock2.h>
@@ -107,6 +108,9 @@ private:
   // srcA = outgoing clip, srcB
   sk_sp<SkImage> applyTransition(sk_sp<SkImage> srcA, sk_sp<SkImage> srcB,
                                  const TransitionDesc &td);
+
+  sk_sp<SkImage> renderComp(const ClipDesc &clip, int64_t frame,
+                            std::unordered_set<std::string> &ancestorStack);
 
   //   Members
   int m_width;

@@ -2,20 +2,22 @@ import React, { useCallback, useState } from 'react'
 import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
-import Timeline        from './timeline/Timeline'
-import ViewportWidget  from './viewport/ViewportWidget'
-import LibraryPanel    from './library/LibraryPanel'
-import InspectorPanel  from './inspector/InspectorPanel'
-import EffectsPanel    from './inspector/EffectsPanel'
+import Timeline from './timeline/Timeline'
+import { TimelineProvider } from './timeline/TimelineContext'
+import ViewportWidget from './viewport/ViewportWidget'
+import LibraryPanel from './library/LibraryPanel'
+import InspectorPanel from './inspector/InspectorPanel'
+import EffectsPanel from './inspector/EffectsPanel'
 import { addClipToTimeline, type AssetItem } from '../api/useApi'
 import { useTool, isShapeTool } from '../context/toolContext'
-import TextToolPanel   from './tools/TextToolPanel'
-import ShapeToolPanel  from './tools/ShapeToolPanel'
+import TextToolPanel from './tools/TextToolPanel'
+import ShapeToolPanel from './tools/ShapeToolPanel'
 import TransitionPanel from './inspector/TransitionPanel'
-import FloatingAIChat  from './FloatingAIChat'
+import FloatingAIChat from './FloatingAIChat'
+import CompositionsPanel from './compositions/CompositionsPanel'
 
 
-// ── Tool creation panel ───────────────────────────────────────────────────────
+// Tool creation panel  
 
 function ToolPanel() {
   const { activeTool } = useTool()
@@ -44,7 +46,7 @@ function ToolPanel() {
   )
 }
 
-// ── FlexLayout model ──────────────────────────────────────────────────────────
+// FlexLayout model  
 
 const layoutJson: FlexLayout.IJsonModel = {
   global: {},
@@ -72,10 +74,10 @@ const layoutJson: FlexLayout.IJsonModel = {
             weight: 30,
             selected: 0,
             children: [
-              { type: 'tab', name: 'Inspector',   component: 'inspector',   enableClose: false },
-              { type: 'tab', name: 'Effects',     component: 'effects',     enableClose: false },
-              { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
-              { type: 'tab', name: 'Tools',       component: 'tools',       enableClose: false },
+              { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
+              { type: 'tab', name: 'Effects', component: 'effects', enableClose: false },
+              { type: 'tab', name: 'Transitions',  component: 'transitions',  enableClose: false },
+              { type: 'tab', name: 'Tools', component: 'tools', enableClose: false },
             ],
           },
         ],
@@ -95,7 +97,7 @@ function getModel(): FlexLayout.Model {
   return _model
 }
 
-// ── VideoWorkspace ────────────────────────────────────────────────────────────
+// VideoWorkspace  
 
 export default function VideoWorkspace() {
   const model = getModel()
@@ -107,34 +109,37 @@ export default function VideoWorkspace() {
 
   const factory = (node: FlexLayout.TabNode) => {
     switch (node.getComponent()) {
-      case 'library':   return <LibraryPanel onAddToTimeline={handleAddToTimeline} />
-      case 'viewport':  return <ViewportWidget />
-      case 'timeline':  return (
+      case 'library': return <LibraryPanel onAddToTimeline={handleAddToTimeline} />
+      case 'viewport': return <ViewportWidget />
+      case 'timeline': return (
         <div className="vp vp--timeline"><Timeline /></div>
       )
       case 'inspector': return <InspectorPanel />
-      case 'effects':   return <EffectsPanel />
+      case 'effects': return <EffectsPanel />
       case 'transitions': return <TransitionPanel />
-      case 'tools':     return <ToolPanel />
+      case 'tools': return <ToolPanel />
+      case 'compositions': return <CompositionsPanel />
       default: return <div className="vp" />
     }
   }
 
   return (
-    <div className="video-ws">
-      {/* AI Director toggle button */}
-      <button
-        className={`video-ws__ai-btn${aiOpen ? ' video-ws__ai-btn--active' : ''}`}
-        onClick={() => setAiOpen(o => !o)}
-        title="Toggle AI Director"
-      >
-        🤖
-      </button>
+    <TimelineProvider>
+      <div className="video-ws">
+        {/* AI Director toggle button */}
+        <button
+          className={`video-ws__ai-btn${aiOpen ? ' video-ws__ai-btn--active' : ''}`}
+          onClick={() => setAiOpen(o => !o)}
+          title="Toggle AI Director"
+        >
+          🤖
+        </button>
 
-      <FlexLayout.Layout model={model} factory={factory} realtimeResize />
+        <FlexLayout.Layout model={model} factory={factory} realtimeResize />
 
-      {/* Floating AI chat */}
-      {aiOpen && <FloatingAIChat onClose={() => setAiOpen(false)} />}
-    </div>
+        {/* Floating AI chat */}
+        {aiOpen && <FloatingAIChat onClose={() => setAiOpen(false)} />}
+      </div>
+    </TimelineProvider>
   )
 }

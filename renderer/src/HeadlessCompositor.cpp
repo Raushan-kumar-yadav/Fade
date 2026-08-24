@@ -101,6 +101,129 @@ void HeadlessCompositor::shutdown() {
   closeTcp();
 }
 
+// renderComp
+// recursion.
+sk_sp<SkImage>
+HeadlessCompositor::renderComp(const ClipDesc &clip, int64_t frame,
+                               std::unordered_set<std::string> &ancestorStack) {
+  const std::string &compId = clip.comp.compId;
+
+  // Cycle detection
+  if (ancestorStack.count(compId)) {
+    LOG_ERROR("[Comp] Cycle detected for compId=" + compId +
+              " — returning red error frame");
+    SkImageInfo errInfo =
+        SkImageInfo::MakeN32Premul(m_width, m_height, SkColorSpace::MakeSRGB());
+    auto errSurf = SkSurfaces::RenderTarget(m_skia->getDirectContext(),
+                                            skgpu::Budgeted::kYes, errInfo);
+    if (!errSurf)
+      return nullptr;
+    errSurf->getCanvas()->clear(SkColorSetARGB(255, 200, 30, 30));
+    return errSurf->makeImageSnapshot();
+  }
+
+  if (!clip.comp.innerFd) {
+    LOG_ERROR("[Comp] No innerFd for compId=" + compId);
+    return nullptr;
+  }
+
+  ancestorStack.insert(compId);
+
+  // Create offscreen surface for this comp
+  SkImageInfo info =
+      SkImageInfo::MakeN32Premul(m_width, m_height, SkColorSpace::MakeSRGB());
+  auto compSurf = SkSurfaces::RenderTarget(m_skia->getDirectContext(),
+                                           skgpu::Budgeted::kYes, info);
+  if (!compSurf) {
+    ancestorStack.erase(compId);
+    return nullptr;
+  }
+
+  SkCanvas *compCanvas = compSurf->getCanvas();
+  compCanvas->clear(SK_ColorTRANSPARENT);
+
+  // Render each inner clip onto compCanvas
+  const FrameDescriptor &innerFd = *clip.comp.innerFd;
+  for (const auto &innerClip : innerFd.clips) {
+    if (innerClip.type == ClipDesc::Type::Solid) {
+      SkPaint p;
+      p.setColor4f({innerClip.solidR, innerClip.solidG, innerClip.solidB,
+                    innerClip.solidA});
+      p.setAlphaf(innerClip.opacity);
+      compCanvas->drawRect(SkRect::MakeWH(m_width, m_height), p);
+      continue;
+    }
+    if (innerClip.type == ClipDesc::Type::Text) {
+      fade::drawing::drawText(compCanvas, innerClip, m_width, m_height);
+      continue;
+    }
+    if (innerClip.type == ClipDesc::Type::Shape) {
+      fade::drawing::drawShape(compCanvas, innerClip, m_width, m_height);
+      continue;
+    }
+    if (innerClip.type == ClipDesc::Type::Pen) {
+      fade::drawing::drawPen(compCanvas, innerClip, m_width, m_height);
+      continue;
+    }
+    if (innerClip.type == ClipDesc::Type::Svg) {
+      fade::drawing::drawSvg(compCanvas, innerClip, m_width, m_height);
+      continue;
+    }
+    // Recursive nested composition
+    if (innerClip.type == ClipDesc::Type::Comp) {
+      auto nestedImg = renderComp(innerClip, innerFd.frame, ancestorStack);
+      if (nestedImg) {
+        SkPaint p;
+        p.setAlphaf(innerClip.opacity);
+        auto img = innerClip.effects.empty()
+                       ? nestedImg
+                       : applyEffects(nestedImg, innerClip, innerFd.frame);
+        compCanvas->drawImageRect(img,
+                                  SkRect::MakeWH(static_cast<float>(m_width),
+                                                 static_cast<float>(m_height)),
+                                  SkSamplingOptions(SkFilterMode::kLinear), &p);
+      }
+      continue;
+    }
+    // Video / Image
+    if (innerClip.file.empty())
+      continue;
+
+    CachedFrameData cfd =
+        tryGetCachedFrame(innerClip.file, innerClip.sourceFrame);
+    std::vector<uint8_t> rgba;
+    int imgW = 0, imgH = 0;
+    if (cfd.valid) {
+      rgba.assign(cfd.data, cfd.data + cfd.dataSize);
+      imgW = static_cast<int>(cfd.width);
+      imgH = static_cast<int>(cfd.height);
+      releaseCachedFrame(cfd);
+    } else {
+      auto &dec = m_decoders[innerClip.file];
+      if (!dec)
+        dec =
+            std::make_unique<ClipDecoder>(innerClip.file, m_device.get(), 1.0f);
+      auto res = dec->decodeFrame(innerClip.sourceFrame);
+      rgba = std::move(res.rgba);
+      imgW = res.width;
+      imgH = res.height;
+    }
+    if (!rgba.empty())
+      drawClipOnCanvas(compCanvas, innerClip, rgba.data(), imgW, imgH,
+                       /*useGpu=*/true, innerFd.frame);
+  }
+
+  // Flush the composition surface before snapshotting
+  m_skia->getDirectContext()->flushAndSubmit();
+
+  ancestorStack.erase(compId);
+
+  sk_sp<SkImage> result = compSurf->makeImageSnapshot();
+  LOG_INFO("[Comp] Rendered compId=" + compId +
+           " frame=" + std::to_string(innerFd.frame));
+  return result;
+}
+
 //   Render entry
 
 void HeadlessCompositor::renderFrame(const FrameDescriptor &fd) {
@@ -130,7 +253,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
         if (cfd.valid && (int)cfd.width == m_width &&
             (int)cfd.height == m_height) {
-          // Dimensions match project — direct memcpy (sub-1ms)
+          // Dimensions match project
           std::memcpy(m_renderBuffer.get(), cfd.data, m_bufferSize);
           std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
           releaseCachedFrame(cfd);
@@ -171,11 +294,12 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   std::vector<ClipPixels> decoded;
 
   for (const auto &clip : fd.clips) {
-    // Skip video/image decode for generative clip types
+    // Skip video/image
     if (clip.type == ClipDesc::Type::Solid ||
         clip.type == ClipDesc::Type::Text ||
         clip.type == ClipDesc::Type::Shape ||
-        clip.type == ClipDesc::Type::Pen || clip.type == ClipDesc::Type::Svg) {
+        clip.type == ClipDesc::Type::Pen || clip.type == ClipDesc::Type::Svg ||
+        clip.type == ClipDesc::Type::Comp) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
     }
@@ -210,7 +334,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         {&clip, std::move(result.rgba), result.width, result.height});
   }
 
-  // Any generative clip with effects also needs GPU
+  // Any generative clip
   for (const auto &cp : decoded) {
     if (!cp.clip->effects.empty()) {
       needsGpu = true;
@@ -355,6 +479,22 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       fade::drawing::drawSvg(canvas, cl, m_width, m_height);
       continue;
     }
+    // Nested composition
+    if (cl.type == ClipDesc::Type::Comp) {
+      std::unordered_set<std::string> ancestors;
+      auto compImg = renderComp(cl, fd.frame, ancestors);
+      if (compImg) {
+        SkPaint p;
+        p.setAlphaf(cl.opacity);
+        auto img =
+            cl.effects.empty() ? compImg : applyEffects(compImg, cl, fd.frame);
+        canvas->drawImageRect(img,
+                              SkRect::MakeWH(static_cast<float>(m_width),
+                                             static_cast<float>(m_height)),
+                              SkSamplingOptions(SkFilterMode::kLinear), &p);
+      }
+      continue;
+    }
     if (cp.rgba.empty())
       continue;
     drawClipOnCanvas(canvas, cl, cp.rgba.data(), cp.imgW, cp.imgH,
@@ -490,7 +630,6 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
     canvas->scale(sx, sy);
   }
 
-  // Blend mode + opacity paint — enum matches Python BlendMode class in
   // videoClip.py
   SkPaint paint;
   paint.setAlphaf(clip.opacity);
@@ -538,9 +677,7 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
   canvas->restore();
 }
 
-//   SkSL effect chain
-
-//   Load and compile a single SkSL shader, with caching
+// SkSL effect chain
 sk_sp<SkRuntimeEffect>
 HeadlessCompositor::getOrCompileEffect(const std::string &typeId) {
   auto it = m_effectCache.find(typeId);
@@ -669,7 +806,7 @@ sk_sp<SkImage> HeadlessCompositor::applyOneEffect(sk_sp<SkImage> src,
     offscreen = SkSurfaces::RenderTarget(m_skia->getDirectContext(),
                                          skgpu::Budgeted::kYes, info);
   }
-  // CPU fallback only if GPU surface creation fails
+  // CPU fallback
   if (!offscreen) {
     offscreen = SkSurfaces::Raster(info);
   }
@@ -683,7 +820,7 @@ sk_sp<SkImage> HeadlessCompositor::applyOneEffect(sk_sp<SkImage> src,
   offscreen->getCanvas()->clear(SK_ColorTRANSPARENT);
   offscreen->getCanvas()->drawPaint(paint);
 
-  // Flush GPU work then snapshot — avoids dangling GPU refs
+  // Flush GPU work then snapshot
   if (m_skia && m_skia->getDirectContext())
     m_skia->getDirectContext()->flushAndSubmit();
 
@@ -962,7 +1099,7 @@ void HeadlessCompositor::play() {
       uint64_t curGen = m_seekGeneration.load();
       if (curGen != lastSeekGen) {
         lastSeekGen = curGen;
-        nextTick = clock::now() + frameDur; // reset deadline after seek
+        nextTick = clock::now() + frameDur;
       }
 
       int64_t frame = m_currentFrame.load();

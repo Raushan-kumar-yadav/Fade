@@ -12,20 +12,21 @@ from backend.history.commandStack import CommandStack
 class Engine:
 
     def __init__(self) -> None:
-        self.project: Project | None     = None
-        self.compositor: Compositor | None  = None
+        self.project: Project | None = None
+        self.compositor: Compositor | None = None
         self.scheduler: DecodeScheduler | None = None
 
         self._playing = False
         self._currentFrame = 0
-        self._speed: float = 1.0          # playback speed multiplier
-        self._inPoint: int  | None = None  # loop in-point (frame), None = disabled
-        self._outPoint: int | None = None  # loop out-point (frame), None = disabled
+        self._speed: float = 1.0           
+        self._inPoint: int  | None = None   
+        self._outPoint: int | None = None   
 
         self.commandStack: CommandStack = CommandStack()
 
         self._pipeline: RenderPipeline | None = None
-        self._lastTimelineId: int = 0  # tracks structural changes
+        self._lastTimelineId: int = 0
+        self._active_comp_id: str | None = None  # None = root
 
     # Project lifecycle  
 
@@ -43,6 +44,55 @@ class Engine:
         self.compositor.setScheduler(self.scheduler)
         self.project.timelines.append(Timeline("Main Timeline"))
         return self.project
+
+    def createComposition(
+        self,
+        name: str = "Composition",
+        width: int = 1920,
+        height: int = 1080,
+        fps: float = 30.0,
+        total_frames: int = 900,
+    ) -> "Timeline":
+        if self.project is None:
+            raise RuntimeError("No active project")
+        from backend.timeline.tracks.videoTrack import VideoTrack
+        from backend.timeline.tracks.audioTrack import AudioTrack
+        import uuid
+        comp = Timeline(name)
+        comp.width = width
+        comp.height = height
+        comp.fps = fps
+        comp.totalFrames = total_frames
+         
+        v = VideoTrack(name="Video 1")
+        v.trackId = str(uuid.uuid4())
+        a = AudioTrack(name="Audio 1")
+        a.trackId = str(uuid.uuid4())
+        comp.tracks.append(v)
+        comp.tracks.append(a)
+        self.project.timelines.append(comp)
+        return comp
+
+    def getTimeline(self, timelineId: str) -> "Timeline | None":
+         
+        if self.project is None:
+            return None
+        for tl in self.project.timelines:
+            if tl.timelineId == timelineId:
+                return tl
+        return None
+
+    def deleteComposition(self, timelineId: str) -> bool:
+         
+        if self.project is None:
+            return False
+        root_id = self.project.timelines[0].timelineId if self.project.timelines else ""
+        if timelineId == root_id:
+            return False  # root
+        before = len(self.project.timelines)
+        self.project.timelines = [t for t in self.project.timelines if t.timelineId != timelineId]
+        return len(self.project.timelines) < before
+
 
     def loadProject(self, path: str) -> Project:
         self._stop_pipeline()
@@ -64,8 +114,24 @@ class Engine:
 
     # Helpers  
 
+    def setActiveComp(self, compId: str | None) -> None:
+        """Switch the active composition. None = root."""
+        self._active_comp_id = compId
+
     @property
     def activeTimeline(self) -> Timeline | None:
+        
+        if self.project is None or not self.project.timelines:
+            return None
+        if self._active_comp_id:
+            tl = self.getTimeline(self._active_comp_id)
+            if tl is not None:
+                return tl
+        return self.project.timelines[0]
+
+    @property
+    def rootTimeline(self) -> Timeline | None:
+        """Always return the root timeline regardless of active comp."""
         if self.project and self.project.timelines:
             return self.project.timelines[0]
         return None

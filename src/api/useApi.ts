@@ -103,6 +103,25 @@ export async function addSvgClipToTimeline(
   }
 }
 
+export async function addCompClipToTimeline(
+  compId: string,
+  trackIndex: number,
+  startFrame: number,
+  duration: number,
+): Promise<{ clipId: string; startFrame: number; duration: number } | null> {
+  try {
+    const r = await fetch(`${base()}/clips/comp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ compId, trackIndex, startFrame, duration }),
+    });
+    if (!r.ok) return null;
+    return r.json();
+  } catch {
+    return null;
+  }
+}
+
 
 export async function moveClip(
   clipId: string,
