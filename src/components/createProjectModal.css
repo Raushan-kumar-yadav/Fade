@@ -1,4 +1,4 @@
-/*   Settings overlay  */
+/* Settings overlay  */
 .sp-overlay {
   position: fixed;
   inset: 0;
@@ -16,7 +16,7 @@
   to { opacity: 1; }
 }
 
-/*   Panel   */
+/* Panel */
 .sp-panel {
   background: #16161a;
   border: 1px solid rgba(255,255,255,0.08);
@@ -33,10 +33,10 @@
 
 @keyframes sp-slide-in {
   from { transform: translateY(-16px) scale(0.97); opacity: 0; }
-  to   { transform: translateY(0)     scale(1);    opacity: 1; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
-/*    Header   */
+/* Header   */
 .sp-header {
   display: flex;
   align-items: center;

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import './HomeWorkspace.css'
+import CreateProjectModal from '../components/createProjectModal.'
 
 interface Video {
   id: number
@@ -72,7 +74,13 @@ const STATS: Stat[] = [
   { label: 'Trending Niche', value: 'AI', unit: '', color: '#FFD60A' },
 ]
 
-export default function HomeWorkspace() {
+interface HomeWorkspaceProps {
+  onProjectCreated?: () => void
+}
+
+export default function HomeWorkspace({ onProjectCreated }: HomeWorkspaceProps) {
+  const [showModal, setShowModal] = useState(false)
+
   return (
     <div className="home-ws">
       <div className="home-ws__header">
@@ -81,6 +89,14 @@ export default function HomeWorkspace() {
           <p>AI-powered analytics for your content</p>
         </div>
         <div className="home-ws__header-right">
+          <button
+            className="icon-btn"
+            title="New Project"
+            onClick={() => setShowModal(true)}
+            style={{ padding: '6px 14px', fontSize: 13, borderRadius: 7, background: 'rgba(108,99,255,0.85)', color: '#fff', border: 'none', cursor: 'pointer' }}
+          >
+            + New Project
+          </button>
           <button className="icon-btn" title="Settings">⚙</button>
           <div className="avatar" title="Profile">R</div>
         </div>
@@ -98,6 +114,16 @@ export default function HomeWorkspace() {
       <div className="home-ws__grid">
         {MOCK_VIDEOS.map(v => <VideoCard key={v.id} video={v} />)}
       </div>
+
+      {showModal && (
+        <CreateProjectModal
+          onClose={() => setShowModal(false)}
+          onProjectCreated={() => {
+            setShowModal(false)
+            onProjectCreated?.()
+          }}
+        />
+      )}
     </div>
   )
 }

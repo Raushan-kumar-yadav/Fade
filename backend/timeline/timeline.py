@@ -123,7 +123,7 @@ class Timeline:
         for td in data.get("transitions", []):
             t.transitions.append(Transition.fromDict(td))
 
-        # Back-compat: migrate per-track transitions to timeline level
+        # Back-compat 
         for track in t.tracks:
             for tr in getattr(track, 'transitions', []):
                 if not any(x.transId == tr.transId for x in t.transitions):

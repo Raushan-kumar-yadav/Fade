@@ -34,3 +34,6 @@ Fade_Architecture_Blueprint.pdf
 *.pdf
 .env
 .env.local
+
+tools/ffmpeg/
+

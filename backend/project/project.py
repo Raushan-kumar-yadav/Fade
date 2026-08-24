@@ -13,6 +13,7 @@ class ProjectSettings:
     preset: str = "fast"
     audioCodec: str = "aac"
     audioBitrate: str = "192k"
+    mediaDownloadPath : str = ""
 
 
 class Project:
