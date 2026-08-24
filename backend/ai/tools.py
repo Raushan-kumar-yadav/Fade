@@ -166,24 +166,39 @@ def set_clip_param(clip_id: str, key: str, value: float) -> str:
 # text clips  
 
 @tool
-def add_text_clip(track_index: int, start_frame: int, duration: int,
-                  text: str, font_size: float = 48.0) -> str:
-    """Add a text / subtitle clip to the timeline.
+def add_text_clip(
+    track_index: int, 
+    start_frame: int, 
+    duration: int, 
+    text: str, 
+    font: str = "Arial",
+    comp_id: str | None = None
+) -> str:
+    """Add a text clip to the timeline.
+
     Args:
-        track_index: Track to place the text clip on (0-based).
-        start_frame: When the text appears (timeline frame).
-        duration: How many frames the text stays visible.
-        text: The text content to display.
-        font_size: Font size in points (default 48).
+        track_index: Track index (0 = first).
+        start_frame: Frame where the clip starts.
+        duration: Duration in frames.
+        text: The text to display.
+        font: Font family (e.g. Arial).
+        comp_id: Optional compId if adding to a nested composition.
     """
+    if comp_id:
+        _post(f"/comps/{comp_id}/activate")
+    
     result = _post("/clips/text", {
         "trackIndex": track_index,
         "startFrame": start_frame,
         "duration": duration,
         "text": text,
-        "fontSize": font_size,
+        "fontFamily": font,
     })
-    return f"Added text clip '{text}' at frame {start_frame} (clipId={result.get('clipId')})."
+    
+    if comp_id:
+        _post("/comps/root/activate")
+        
+    return json.dumps(result, indent=2)
 
 # transitions  
 
@@ -339,20 +354,34 @@ def download_images(query: str, num_images: int = 2) -> str:
     return json.dumps(result, indent=2)
 
 @tool
-def place_clip(asset_id: str, track_index: int, start_frame: int, duration: int) -> str:
+def place_clip(
+    asset_id: str, 
+    track_index: int, 
+    start_frame: int, 
+    duration: int,
+    comp_id: str | None = None
+) -> str:
     """Place a media asset onto the timeline as a clip.
     Args:
         asset_id: The assetId of the media (get this from download_videos or get_library).
         track_index: The track index to place it on (0-based).
         start_frame: Timeline frame where the clip starts.
         duration: Duration of the clip in frames.
+        comp_id: Optional compId if adding to a nested composition instead of main timeline.
     """
+    if comp_id:
+        _post(f"/comps/{comp_id}/activate")
+        
     result = _post("/timeline/add-clip", {
         "assetId": asset_id,
         "trackIndex": track_index,
         "startFrame": start_frame,
         "duration": duration
     })
+    
+    if comp_id:
+        _post("/comps/root/activate")
+        
     return f"Placed asset {asset_id} on track {track_index} at frame {start_frame} with clipId {result.get('clipId')}."
 
 @tool
@@ -581,9 +610,9 @@ def add_comp_to_timeline(comp_id: str, start_frame: int, duration: int = 90) -> 
     """Place a composition onto the main timeline as a nested clip.
 
     Args:
-        comp_id:     The compId of the composition (get from list_compositions()).
+        comp_id: The compId of the composition (get from list_compositions()).
         start_frame: Timeline frame where the comp clip starts.
-        duration:    Duration in frames (default 90 = 3s at 30fps).
+        duration: Duration in frames (default 90 = 3s at 30fps).
 
     Raises an error if adding would create a cycle (comp inside itself).
     """
@@ -597,13 +626,12 @@ def add_comp_to_timeline(comp_id: str, start_frame: int, duration: int = 90) -> 
 
 @tool
 def activate_comp(comp_id: str) -> str:
-    """Switch the active composition that clip-add operations target.
+    """Switch the active composition (changes what the user sees in the editor).
 
     Args:
         comp_id: The compId to make active, OR 'root' to go back to the main timeline.
 
-    Use this before adding clips into a nested composition.
-    After you're done editing the comp, call activate_comp('root') to return.
+    Use this if the user explicitly asks to "open", "go to", or "activate" a specific timeline.
     """
     result = _post(f"/comps/{comp_id}/activate")
     return json.dumps(result, indent=2)
@@ -663,18 +691,23 @@ def add_solid_clip(
     g: float = 0.0,
     b: float = 0.0,
     a: float = 1.0,
+    comp_id: str | None = None
 ) -> str:
-    """Add a solid color clip to the active timeline.
+    """Add a solid color clip to a timeline.
 
     Args:
         track_index: Track to add the solid clip to (0 = first track).
         start_frame: Timeline frame where the clip starts.
-        duration: Duration in frames.
+        duration:    Duration in frames.
         r: Red channel 0.0–1.0 (default 0.0 = black).
         g: Green channel 0.0–1.0.
         b: Blue channel 0.0–1.0.
         a: Alpha 0.0–1.0 (default 1.0 = opaque).
+        comp_id:     Optional compId if adding to a nested composition.
     """
+    if comp_id:
+        _post(f"/comps/{comp_id}/activate")
+        
     result = _post("/clips/shape", {
         "trackIndex": track_index,
         "startFrame": start_frame,
@@ -684,6 +717,10 @@ def add_solid_clip(
         "strokeA": 0.0,
         "width": 1920, "height": 1080,
     })
+    
+    if comp_id:
+        _post("/comps/root/activate")
+        
     return json.dumps(result, indent=2)
 
 
@@ -699,17 +736,22 @@ def add_shape_clip(
     fill_a: float = 1.0,
     width: float = 400.0,
     height: float = 300.0,
+    comp_id: str | None = None
 ) -> str:
-    """Add a shape clip (rectangle, ellipse, triangle) to the active timeline.
+    """Add a shape clip (rectangle, ellipse, triangle) to a timeline.
 
     Args:
         track_index: Track index (0 = first).
         start_frame: Frame where the clip starts.
-        duration:    Duration in frames.
-        shape_type:  'rectangle', 'ellipse', or 'triangle'.
+        duration: Duration in frames.
+        shape_type: 'rectangle', 'ellipse', or 'triangle'.
         fill_r/g/b/a: Fill color channels 0.0–1.0.
         width/height: Shape dimensions in pixels.
+        comp_id: Optional compId if adding to a nested composition.
     """
+    if comp_id:
+        _post(f"/comps/{comp_id}/activate")
+        
     result = _post("/clips/shape", {
         "trackIndex": track_index,
         "startFrame": start_frame,
@@ -719,6 +761,10 @@ def add_shape_clip(
         "strokeA": 0.0,
         "width": width, "height": height,
     })
+    
+    if comp_id:
+        _post("/comps/root/activate")
+        
     return json.dumps(result, indent=2)
 
 

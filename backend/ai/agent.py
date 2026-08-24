@@ -9,7 +9,7 @@ from typing import Annotated
 try:
     from dotenv import load_dotenv
     _env_path = Path(__file__).resolve().parents[2] / ".env"  # Fade/.env
-    load_dotenv(_env_path, override=False)  # won't overwrite already-set vars
+    load_dotenv(_env_path, override=False)  
     print(f"[AI Agent] Loaded .env from {_env_path}", flush=True)
 except ImportError:
     pass   
@@ -158,6 +158,12 @@ CORE RULES:
 3. After tools complete, summarise the result clearly.
 4. Never invent clipIds — always read them from get_timeline_state().
 5. You DO have access to the internet via DuckDuckGo search. Never say you cannot search the web.
+
+COMPOSITIONS (NESTED TIMELINES):
+- You can create sub-timelines using create_composition(). This returns a compId.
+- To add a comp to the main timeline, use add_comp_to_timeline(compId, startFrame, duration).
+- To edit what's inside a comp WITHOUT changing the user's view, simply pass `comp_id=...` to the editing tools like place_clip, add_solid_clip, add_shape_clip, add_text_clip.
+- You can also use activate_comp(compId) to actually change the active timeline in the editor UI. Use this if the user asks you to "open" or "go to" a specific timeline.
 
 TRANSITIONS — MANDATORY RULE:
 - **ALWAYS add transitions between clips.** Every time you place 2 or more clips on the
