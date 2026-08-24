@@ -50,7 +50,7 @@ def get_playback_state() -> str:
     data = _get("/playback/state")
     return json.dumps(data, indent=2)
 
-#   playback  
+# playback  
 
 @tool
 def seek_to(frame: int) -> str:
@@ -670,7 +670,7 @@ def add_clip_to_comp(
         start_frame: Frame inside the comp where the clip starts.
         duration: Duration in frames.
     """
-    # Activate comp → add clip → return to root
+    # Activate comp  
     _post(f"/comps/{comp_id}/activate")
     result = _post("/timeline/add-clip", {
         "assetId": asset_id,
@@ -698,12 +698,12 @@ def add_solid_clip(
     Args:
         track_index: Track to add the solid clip to (0 = first track).
         start_frame: Timeline frame where the clip starts.
-        duration:    Duration in frames.
+        duration: Duration in frames.
         r: Red channel 0.0–1.0 (default 0.0 = black).
         g: Green channel 0.0–1.0.
         b: Blue channel 0.0–1.0.
         a: Alpha 0.0–1.0 (default 1.0 = opaque).
-        comp_id:     Optional compId if adding to a nested composition.
+        comp_id: Optional compId if adding to a nested composition.
     """
     if comp_id:
         _post(f"/comps/{comp_id}/activate")
