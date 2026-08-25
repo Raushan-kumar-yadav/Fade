@@ -23,3 +23,4 @@ void schedPrefetchAround(const std::string &clipId, int64_t anchorFrame,
                          int radius = 8);
 
 void schedSetDeviceContext(void *deviceCtx);
+void schedSetPreviewScale(float scale); // clears cache and reopens decoders at new scale

@@ -33,34 +33,34 @@ class AudioClip(BaseClip):
     def toDict(self) -> dict:
         filepath = ""
         try:
-            from backend.main import _library
+            from backend.state import _library
             filepath = _library[self.assetId].filepath if self.assetId in _library else ""
         except Exception:
             pass
         return {
-            "clipType":    self.CLIP_TYPE,
-            "clipId":      self.clipId,
+            "clipType": self.CLIP_TYPE,
+            "clipId": self.clipId,
             "startFrame":  self.startFrame,
-            "duration":    self.duration,
-            "assetId":     self.assetId,
-            "filepath":    filepath,
+            "duration": self.duration,
+            "assetId": self.assetId,
+            "filepath": filepath,
             "mediaOffset": self.mediaOffset,
-            "volume":      self.volume,
-            "mute":        self.mute,
+            "volume": self.volume,
+            "mute": self.mute,
         }
 
     @classmethod
     def fromDict(cls, data: dict) -> "AudioClip":
         c = cls(
-            clipId      = data.get("clipId", ""),
+            clipId = data.get("clipId", ""),
             startFrame  = data.get("startFrame", 0),
-            duration    = data.get("duration", 90),
-            assetId     = data.get("assetId", ""),
+            duration = data.get("duration", 90),
+            assetId = data.get("assetId", ""),
             mediaOffset = data.get("mediaOffset", 0),
-            volume      = data.get("volume", 1.0),
-            mute        = data.get("mute", False),
+            volume = data.get("volume", 1.0),
+            mute = data.get("mute", False),
         )
-        # Store filepath so asset library rebuild can find the file
+        # Store filepath so asset library 
         c.filepath = data.get("filepath", "")
         return c
 

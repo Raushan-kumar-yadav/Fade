@@ -11,6 +11,9 @@ from backend.media.asset.mediaAsset import MediaAsset
 
 _SENTINEL = "QUIT"
 
+ 
+cpp_renderer_active: bool = False
+
 class DecodeScheduler:
      
 
@@ -78,13 +81,17 @@ class DecodeScheduler:
         return max(0, round(timelineFrame * sourceFps / timelineFps))
 
     def prefetchAround(self, clipId: str, anchorFrame: int, radius: int = 15) -> None:
-         
+        
+        import backend.media.scheduler.decodeScheduler as _self_mod
+        if _self_mod.cpp_renderer_active:
+            return
+
         needs_pump = False
 
         with self._lock:
             lastAnchor = self._lastAnchor.get(clipId, -1)
-            seekedFwd  = anchorFrame > lastAnchor + self.SEEK_FWD_THRESH
-            seekedBwd  = anchorFrame < lastAnchor - self.SEEK_BWD_THRESH
+            seekedFwd = anchorFrame > lastAnchor + self.SEEK_FWD_THRESH
+            seekedBwd = anchorFrame < lastAnchor - self.SEEK_BWD_THRESH
 
             if seekedFwd or seekedBwd:
                 # Seek detected 
@@ -225,13 +232,13 @@ class DecodeScheduler:
                         self._targetFrames[clipId] = self._lastDecoded.get(clipId, 0)
                     break
 
-            # Check if more work remains  
+            # Check  for more work    
             with self._lock:
                 cancelled = self._cancelFlags.get(clipId, False)
                 behind = self._lastDecoded.get(clipId, -1) < self._targetFrames.get(clipId, 0)
                 if behind and not cancelled:
                     needs_more = True
-                    # Stay in activePumps for the chained job
+                    #  chained job
                 else:
                     self._activePumps.discard(clipId)
 

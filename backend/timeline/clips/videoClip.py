@@ -60,7 +60,7 @@ class VideoClip(BaseClip):
         )
         self.color = color
         self.assetId = assetId
-        self.mediaOffset: int = mediaOffset  # frame offset into the source media
+        self.mediaOffset: int = mediaOffset   
 
         # Injected by Engine after construction
         self._scheduler: "DecodeScheduler | None" = None
@@ -143,7 +143,7 @@ class VideoClip(BaseClip):
         #  cache lookup  
         decoded = self._scheduler.tryGetFrame(self.assetId, localFrame)
 
-        # On cache miss, fall back to last valid frame  
+        # On cache miss   
         if not (decoded and decoded.valid):
             decoded = self._lastValidFrame
 
@@ -198,7 +198,7 @@ class VideoClip(BaseClip):
     #   Serialization
 
     def toDict(self) -> dict:
-        from backend.main import _library  # noqa 
+        from backend.state import _library  # noqa 
         filepath = ""
         try:
             filepath = _library[self.assetId].filepath if self.assetId in _library else ""
@@ -238,13 +238,13 @@ class VideoClip(BaseClip):
             color = tuple(data.get("color", [74, 144, 226, 255])),
             mediaOffset = data.get("mediaOffset", 0),
         )
-        # Store filepath so asset library can be rebuilt by loadProject
+        # Store filepath 
         c.filepath = data.get("filepath", "")
 
         if "transform" in data:
             c.transform = Transform.fromDict(data["transform"])
 
-        # Animated properties — backwards-compat with old plain floats
+        # Animated properties 
         def _ap(key: str, default: float) -> AnimatableProperty:
             raw = data.get(key, default)
             if isinstance(raw, dict):

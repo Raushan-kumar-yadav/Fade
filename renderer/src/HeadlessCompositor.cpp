@@ -201,8 +201,8 @@ HeadlessCompositor::renderComp(const ClipDesc &clip, int64_t frame,
     } else {
       auto &dec = m_decoders[innerClip.file];
       if (!dec)
-        dec =
-            std::make_unique<ClipDecoder>(innerClip.file, m_device.get(), 1.0f);
+        dec = std::make_unique<ClipDecoder>(innerClip.file, m_device.get(),
+                                            m_previewScale);
       auto res = dec->decodeFrame(innerClip.sourceFrame);
       rgba = std::move(res.rgba);
       imgW = res.width;
@@ -213,7 +213,7 @@ HeadlessCompositor::renderComp(const ClipDesc &clip, int64_t frame,
                        /*useGpu=*/true, innerFd.frame);
   }
 
-  // Flush the composition surface before snapshotting
+  // Flush the composition
   m_skia->getDirectContext()->flushAndSubmit();
 
   ancestorStack.erase(compId);
@@ -249,31 +249,72 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           (t.x == 0 && t.y == 0 && t.rotation == 0 && t.scaleX == 1.0f &&
            t.scaleY == 1.0f && clip.opacity >= 0.99f && clip.blendMode == 0);
       if (isIdentity) {
-        //  Try scheduler cache first
+
         CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
-        if (cfd.valid && (int)cfd.width == m_width &&
-            (int)cfd.height == m_height) {
-          // Dimensions match project
-          std::memcpy(m_renderBuffer.get(), cfd.data, m_bufferSize);
-          std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
+        if (cfd.valid && cfd.dataSize > 0) {
+          if ((int)cfd.width == m_width && (int)cfd.height == m_height) {
+            // Full-resolution cache hit
+            std::cout << "[CACHE HIT ] frame=" << fd.frame
+                      << " srcFrame=" << clip.sourceFrame
+                      << " full-res (blit)\n";
+            std::memcpy(m_renderBuffer.get(), cfd.data, m_bufferSize);
+            std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
+            releaseCachedFrame(cfd);
+            if (m_onFrameReady)
+              m_onFrameReady(fd.frame);
+            return;
+          }
+
+          std::cout << "[CACHE HIT ] frame=" << fd.frame
+                    << " srcFrame=" << clip.sourceFrame << " " << cfd.width
+                    << "x" << cfd.height << " (cpu-upscale)\n";
+          {
+            const int srcW = (int)cfd.width;
+            const int srcH = (int)cfd.height;
+            const int dstW = m_width;
+            const int dstH = m_height;
+            const uint8_t *src = cfd.data;
+            uint8_t *dst = m_buffer.get();
+
+            const int xRatio = ((srcW) << 16) / dstW;
+            const int yRatio = ((srcH) << 16) / dstH;
+            for (int dy = 0; dy < dstH; ++dy) {
+              int sy = (dy * yRatio) >> 16;
+              if (sy >= srcH)
+                sy = srcH - 1;
+              const uint8_t *srcRow = src + sy * srcW * 4;
+              uint8_t *dstRow = dst + dy * dstW * 4;
+              for (int dx = 0; dx < dstW; ++dx) {
+                int sx = (dx * xRatio) >> 16;
+                if (sx >= srcW)
+                  sx = srcW - 1;
+                const uint8_t *p = srcRow + sx * 4;
+                uint8_t *q = dstRow + dx * 4;
+                q[0] = p[0];
+                q[1] = p[1];
+                q[2] = p[2];
+                q[3] = p[3];
+              }
+            }
+          }
           releaseCachedFrame(cfd);
           if (m_onFrameReady)
             m_onFrameReady(fd.frame);
           return;
         }
-        if (cfd.valid)
-          releaseCachedFrame(cfd);
 
-        //  Cache miss
+        // Cache miss
+        std::cout << "[CACHE MISS] frame=" << fd.frame
+                  << " srcFrame=" << clip.sourceFrame
+                  << " -> decoder (fast-path)\n";
         auto &decoder = m_decoders[clip.file];
         if (!decoder)
-          decoder =
-              std::make_unique<ClipDecoder>(clip.file, m_device.get(), 1.0f);
+          decoder = std::make_unique<ClipDecoder>(clip.file, m_device.get(),
+                                                  m_previewScale);
 
         // Direct decode
         if (decoder->decodeFrameDirect(clip.sourceFrame, m_renderBuffer.get(),
                                        m_width, m_height)) {
-          // Flip
           std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
           if (m_onFrameReady)
             m_onFrameReady(fd.frame);
@@ -312,6 +353,8 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     // Try scheduler cache first
     CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
     if (cfd.valid) {
+      std::cout << "[CACHE HIT ] frame=" << fd.frame
+                << " srcFrame=" << clip.sourceFrame << " (std-path)\n";
       if (!clip.effects.empty())
         needsGpu = true;
       //  cached RGBA data into a local vector
@@ -323,9 +366,12 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     }
 
     //   Cache miss
+    std::cout << "[CACHE MISS] frame=" << fd.frame
+              << " srcFrame=" << clip.sourceFrame << " → decoder (std-path)\n";
     auto &decoder = m_decoders[clip.file];
     if (!decoder)
-      decoder = std::make_unique<ClipDecoder>(clip.file, m_device.get(), 1.0f);
+      decoder = std::make_unique<ClipDecoder>(clip.file, m_device.get(),
+                                              m_previewScale);
 
     auto result = decoder->decodeFrame(clip.sourceFrame);
     if (!clip.effects.empty())
@@ -1167,7 +1213,7 @@ void HeadlessCompositor::play() {
         });
       }
 
-      nextTick = clock::now() + frameDur;
+      nextTick += frameDur;
     }
   });
 }

@@ -75,6 +75,12 @@ public:
     }
   }
 
+  void setPreviewScale(float scale) {
+    std::lock_guard<std::mutex> lock(m_renderMutex);
+    m_previewScale = std::max(0.125f, std::min(1.0f, scale));
+    m_decoders.clear(); // force recreation
+  }
+
   int width() const { return m_width; }
   int height() const { return m_height; }
   float fps() const { return m_fps; }
@@ -116,6 +122,7 @@ private:
   int m_width;
   int m_height;
   float m_fps;
+  float m_previewScale = 0.5f; // decode scale for live preview
 
   // Directory that contains
   std::string m_skslDir;

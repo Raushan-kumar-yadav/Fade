@@ -8,7 +8,7 @@ import '../workspaces/tools/ToolPanels.css';
 interface ElectronAPI {
   minimize: () => void;
   maximize: () => void;
-  close:    () => void;
+  close: () => void;
 }
 
 declare global {
@@ -16,10 +16,10 @@ declare global {
 }
 
 const TABS = [
-  { id: 'home',   label: 'Home'   },
-  { id: 'ai',     label: 'AI'     },
-  { id: 'video',  label: 'Video'  },
-  { id: 'audio',  label: 'Audio'  },
+  { id: 'home', label: 'Home' },
+  { id: 'ai', label: 'AI' },
+  { id: 'video', label: 'Video' },
+  { id: 'audio', label: 'Audio' },
   { id: 'export', label: 'Export' },
 ];
 
@@ -75,27 +75,25 @@ function MenuButton({ label, items }: { label: string; items: MenuItem[] }) {
   );
 }
 
-// ── TitleBar ────────────────────────────────────────────────────────────────
+//   TitleBar  
 
-// ActiveTool re-exported for backwards-compat with App.tsx
+// ActiveTool 
 export type { ActiveTool } from '../context/toolContext';
 
 interface TitleBarProps {
   active:             string;
-  onTab:              (id: string) => void;
-  onSettings:         () => void;
-  /** Open the New Project modal */
-  onNewProject:       () => void;
-  activeTool?:        ActiveTool;
-  onTool?:            (t: ActiveTool) => void;
+  onTab: (id: string) => void;
+  onSettings: () => void;
+ 
+  onNewProject: () => void;
+  activeTool?: ActiveTool;
+  onTool?: (t: ActiveTool) => void;
   onToggleToolbox?:   () => void;
   toolboxOpen?:       boolean;
-  /** Called after a project is loaded so the app can refresh the timeline */
-  onProjectLoaded?:   (result: { project: any; timeline: any; missing_assets?: any[] }) => void;
-  /** Called before the async load starts — show a loading indicator */
-  onLoadStart?:       (message: string) => void;
-  /** Called after load finishes (success or failure) */
-  onLoadEnd?:         () => void;
+   onProjectLoaded?: (result: { project: any; timeline: any; missing_assets?: any[] }) => void;
+   onLoadStart?: (message: string) => void;
+  
+  onLoadEnd?: () => void;
 }
 
 export default function TitleBar({
@@ -107,11 +105,11 @@ export default function TitleBar({
 }: TitleBarProps) {
   const api = window.electronAPI;
 
-  // Track the currently saved path so Ctrl+S can overwrite without re-asking
+  // Track the currently saved path 
   const savedPathRef = useRef<string | null>(null);
   const [projectName, setProjectName] = useState('Untitled Project');
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
+  //   Actions  
 
   const handleNew = useCallback(() => {
     onNewProject();
@@ -169,7 +167,7 @@ export default function TitleBar({
     }
   }, [onProjectLoaded, onLoadStart, onLoadEnd]);
 
-  // ── Keyboard shortcuts ───────────────────────────────────────────────────────
+  //   Keyboard shortcuts  
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -184,29 +182,28 @@ export default function TitleBar({
     return () => window.removeEventListener('keydown', onKey);
   }, [handleNew, handleOpen, handleSave]);
 
-  // ── Menu items ───────────────────────────────────────────────────────────────
+  //   Menu items  
 
   const fileItems: MenuItem[] = [
-    { label: 'New Project',   shortcut: 'Ctrl+N',       action: handleNew },
-    { label: 'Open Project…', shortcut: 'Ctrl+O',       action: handleOpen },
-    { label: 'Save Project',  shortcut: 'Ctrl+S',       action: handleSave },
-    { label: 'Save As…',      shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
+    { label: 'New Project',   shortcut: 'Ctrl+N', action: handleNew },
+    { label: 'Open Project…', shortcut: 'Ctrl+O', action: handleOpen },
+    { label: 'Save Project',  shortcut: 'Ctrl+S', action: handleSave },
+    { label: 'Save As…', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
     { sep: true },
     { label: 'Import Media',  shortcut: 'Ctrl+I',       action: () => {} },
-    { sep: true },
-    { label: 'Quit',          shortcut: 'Alt+F4',       action: () => api?.close() },
+    { sep: true }, 
+    { label: 'Quit', shortcut: 'Alt+F4',       action: () => api?.close() },
   ];
 
-  // expose setProjectName so App.tsx can update after modal creates a project
-  // (we forward via onNewProject callback — App holds state)
+ 
 
   const editItems: MenuItem[] = [
-    { label: 'Undo',        shortcut: 'Ctrl+Z', action: () => {} },
-    { label: 'Redo',        shortcut: 'Ctrl+Y', action: () => {} },
+    { label: 'Undo', shortcut: 'Ctrl+Z', action: () => {} },
+    { label: 'Redo', shortcut: 'Ctrl+Y', action: () => {} },
     { sep: true },
-    { label: 'Cut',         shortcut: 'Ctrl+X', action: () => {} },
-    { label: 'Copy',        shortcut: 'Ctrl+C', action: () => {} },
-    { label: 'Paste',       shortcut: 'Ctrl+V', action: () => {} },
+    { label: 'Cut', shortcut: 'Ctrl+X', action: () => {} },
+    { label: 'Copy', shortcut: 'Ctrl+C', action: () => {} },
+    { label: 'Paste', shortcut: 'Ctrl+V', action: () => {} },
     { sep: true },
     { label: 'Split Clip',  shortcut: 'S',      action: () => {} },
     { label: 'Delete Clip', shortcut: 'Del',    action: () => {} },
@@ -214,7 +211,7 @@ export default function TitleBar({
 
   return (
     <div className="titlebar">
-      {/* Left: Logo + menus + tool buttons */}
+ 
       <div className="titlebar__left">
         <div className="titlebar__logo">
           <div className="titlebar__logo-dot" />
@@ -226,7 +223,7 @@ export default function TitleBar({
           <button className="tb-menu__btn" onClick={onSettings}>Settings</button>
         </div>
 
-        {/* Toolbox toggle + Tasks indicator — only on Video tab */}
+  
         {active === 'video' && (
           <div className="tb-tool-group">
             <button
@@ -243,7 +240,7 @@ export default function TitleBar({
         )}
       </div>
 
-      {/* Centre: project name + workspace tabs */}
+ 
       <div className="titlebar__tabs">
         {/* Unsaved indicator dot */}
         <span
@@ -263,10 +260,10 @@ export default function TitleBar({
         ))}
       </div>
 
-      {/* Right: window controls */}
+      {/* Right  */}
       <div className="titlebar__controls">
-        <button className="wbtn wbtn--min"   onClick={() => api?.minimize()} />
-        <button className="wbtn wbtn--max"   onClick={() => api?.maximize()} />
+        <button className="wbtn wbtn--min" onClick={() => api?.minimize()} />
+        <button className="wbtn wbtn--max" onClick={() => api?.maximize()} />
         <button className="wbtn wbtn--close" onClick={() => api?.close()}    />
       </div>
     </div>

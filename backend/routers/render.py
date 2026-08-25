@@ -113,18 +113,30 @@ def _build_comp_frame_descriptor(
     }
 
 
+_frame_cache_project: tuple = (None, 30.0, 1920, 1080) 
+
+
 def _get_frame_data(frame: int) -> dict:
+    global _frame_cache_project
     tl = engine.activeTimeline if engine else None
     if tl is None:
         return {"frame": frame, "fps": 30.0, "width": 1920, "height": 1080, "clips": []}
 
-    proj   = engine.project
-    fps    = float(proj.fps) if proj else 30.0
-    width  = int(proj.width) if proj else 1920
-    height = int(proj.height) if proj else 1080
+    proj = engine.project
+    # Cache fps/width/height  
+    if proj is not _frame_cache_project[0]:
+        _frame_cache_project = (
+            proj,
+            float(proj.fps) if proj else 30.0,
+            int(proj.width) if proj else 1920,
+            int(proj.height) if proj else 1080,
+        )
+    _, fps, width, height = _frame_cache_project
 
     clips_out = []
     for track in reversed(tl.tracks):
+        if getattr(track, "isMuted", False):
+            continue
         for clip in track.clips:
             if not clip.overlaps(frame):
                 continue
@@ -140,6 +152,7 @@ def _get_frame_data(frame: int) -> dict:
                 source_frame = clip.sourceFrame(frame)
             except Exception:
                 source_frame = 0
+            
             try:
                 clip.evaluateAll(frame)
             except Exception:
@@ -157,7 +170,7 @@ def _get_frame_data(frame: int) -> dict:
             try:
                 px, py = t.position.get()
                 sx, sy = t.scale.get()
-                rot    = t.rotation.get()
+                rot = t.rotation.get()
                 ax, ay = t.anchor.get()
                 transform_dict = {
                     "x": float(px), "y": float(py),
@@ -173,6 +186,7 @@ def _get_frame_data(frame: int) -> dict:
                 "clipId": clip_id,
                 "file": filepath,
                 "sourceFrame": source_frame,
+
                 "opacity": opacity,
                 "blendMode": blend_mode,
                 "type": clip_type,
@@ -191,18 +205,18 @@ def _get_frame_data(frame: int) -> dict:
                         m.evaluateAll(lf)
                     pts = m.maskPath.getFlatList() if hasattr(m, "maskPath") else []
                     masks_out.append({
-                        "maskId":    m.maskId,
-                        "shape":     m.shape,
-                        "mode":      m.mode,
+                        "maskId": m.maskId,
+                        "shape": m.shape,
+                        "mode": m.mode,
                         "inverted":  m.inverted,
-                        "feather":   float(m.feather.get()) if hasattr(m.feather, "get") else float(m.feather),
-                        "opacity":   float(m.opacity.get()) if hasattr(m.opacity, "get") else float(m.opacity),
+                        "feather": float(m.feather.get()) if hasattr(m.feather, "get") else float(m.feather),
+                        "opacity": float(m.opacity.get()) if hasattr(m.opacity, "get") else float(m.opacity),
                         "expansion": float(m.expansion.get()) if hasattr(m.expansion, "get") else 0.0,
-                        "size":      float(m.size.get()) if hasattr(m.size, "get") else 100.0,
-                        "posX":      float(m.position.x.get()) if hasattr(m, "position") else 0.0,
-                        "posY":      float(m.position.y.get()) if hasattr(m, "position") else 0.0,
-                        "rotation":  float(m.rotation.get()) if hasattr(m, "rotation") and hasattr(m.rotation, "get") else 0.0,
-                        "points":    pts,
+                        "size": float(m.size.get()) if hasattr(m.size, "get") else 100.0,
+                        "posX": float(m.position.x.get()) if hasattr(m, "position") else 0.0,
+                        "posY": float(m.position.y.get()) if hasattr(m, "position") else 0.0,
+                        "rotation": float(m.rotation.get()) if hasattr(m, "rotation") and hasattr(m.rotation, "get") else 0.0,
+                        "points": pts,
                     })
                 clip_data["masks"] = masks_out
 

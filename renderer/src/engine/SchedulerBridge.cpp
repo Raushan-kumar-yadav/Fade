@@ -122,6 +122,13 @@ public:
     }
   }
 
+  void clear() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_order.clear();
+    m_map.clear();
+    m_usedBytes = 0;
+  }
+
 private:
   using LRUList = std::list<CacheKey>;
   using LRUMap = std::unordered_map<
@@ -155,9 +162,11 @@ public:
     if (m_clips.count(clipId))
       return;
     auto state = std::make_unique<ClipState>();
-    state->decoder = std::make_unique<ClipDecoder>(filepath, m_deviceCtx, 1.0f);
+    state->decoder =
+        std::make_unique<ClipDecoder>(filepath, m_deviceCtx, m_scale);
     m_clips[clipId] = std::move(state);
-    std::cout << "[MiniScheduler] Registered: " << clipId << "\n";
+    std::cout << "[MiniScheduler] Registered: " << clipId
+              << " scale=" << m_scale << "\n";
   }
 
   void registerImage(const std::string &clipId, const std::string &filepath) {
@@ -165,7 +174,8 @@ public:
   }
 
   void prefetchAround(const std::string &clipId, int64_t anchor, int radius) {
-    for (int offset = 0; offset <= radius; ++offset) {
+
+    for (int offset = 1; offset <= radius; ++offset) {
       int64_t frame = anchor + offset;
       CacheKey key{clipId, frame};
 
@@ -180,6 +190,10 @@ public:
           continue;
         m_pending.insert(key);
       }
+
+      std::cout << "[SCHED] Prefetch queued clipId="
+                << clipId.substr(clipId.rfind('/') + 1) << " frame=" << frame
+                << "\n";
 
       // Submit decode job to thread pool
       m_pool.enqueue([this, clipId, frame, key]() {
@@ -205,6 +219,8 @@ public:
           entry->width = result.width;
           entry->height = result.height;
           m_cache.put(key, entry);
+          std::cout << "[SCHED] Cached frame=" << frame << " " << entry->width
+                    << "x" << entry->height << "\n";
         }
 
         {
@@ -243,11 +259,21 @@ public:
     }
   }
 
+  void setScale(float scale) {
+    std::lock_guard<std::mutex> lock(m_clipsMutex);
+    m_scale = std::max(0.125f, std::min(1.0f, scale));
+    // Clear all decoders
+    m_clips.clear();
+    m_cache.clear(); // use clear()
+    std::cout << "[MiniScheduler] Preview scale -> " << m_scale << "\n";
+  }
+
 private:
-  MiniScheduler() : m_pool(4) {}
+  MiniScheduler() : m_pool(4), m_scale(0.5f) {}
 
   MiniThreadPool m_pool;
   MiniFrameCache m_cache;
+  float m_scale = 0.5f; // preview decode scale factor
 
   std::unordered_map<std::string, std::unique_ptr<ClipState>> m_clips;
   std::mutex m_clipsMutex;
@@ -285,3 +311,5 @@ void schedSetDeviceContext(void *deviceCtx) {
   MiniScheduler::get().setDeviceContext(
       static_cast<DeviceContext *>(deviceCtx));
 }
+
+void schedSetPreviewScale(float scale) { MiniScheduler::get().setScale(scale); }

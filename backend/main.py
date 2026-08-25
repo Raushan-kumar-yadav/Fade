@@ -8,11 +8,10 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
-# Project-bundled ffmpeg is preferred (tools/ffmpeg/ relative to project root).
-# Falls back to known system paths if the bundled copy is absent.
+ 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _FFMPEG_DIRS = [
-    str(_PROJECT_ROOT / "tools" / "ffmpeg"),   # bundled — works on any clone
+    str(_PROJECT_ROOT / "tools" / "ffmpeg"),   # bundled  
     r"D:\ffmpeg\FFmpeg",                        # dev machine fallback A
     r"C:\Users\raush\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0-full_build\bin",  # fallback B
 ]
@@ -35,6 +34,7 @@ if sys.stderr and hasattr(sys.stderr, 'buffer') and getattr(sys.stderr, 'encodin
 sys.setswitchinterval(0.001)
 
 import asyncio
+import concurrent.futures
 import socket
 import struct
 import json as _json
@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI):
                     except Exception:
                         pass
         except ImportError:
-            # psutil not available — try netstat on Windows
+            # psutil not available  
             try:
                 import subprocess, re
                 out = subprocess.check_output(
@@ -112,41 +112,73 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+ 
+    _frame_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=2,
+        thread_name_prefix="tcp-frame",
+    )
+
     def _run_tcp_server():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        _prefetch: dict[int, bytes] = {}
+        _prefetch: dict[int, bytes] = {}   # frame_num  
+        _in_flight: set[int] = set()       # frames currently being computed
+
+        async def _compute_frame(fn: int) -> bytes:
+            """Compute _get_frame_data off the event loop (thread pool)."""
+            try:
+                data = await loop.run_in_executor(_frame_executor, _get_frame_data, fn)
+                return _json.dumps(data).encode("utf-8")
+            except Exception:
+                import traceback; traceback.print_exc()
+                fallback = {"frame": fn, "fps": 30, "width": 1920, "height": 1080, "clips": []}
+                return _json.dumps(fallback).encode("utf-8")
+
+        async def _prefetch_next(after_frame: int) -> None:
+             
+            fn = after_frame + 1
+            if fn in _prefetch or fn in _in_flight:
+                return
+            _in_flight.add(fn)
+            try:
+                payload = await _compute_frame(fn)
+                _prefetch[fn] = payload
+            finally:
+                _in_flight.discard(fn)
 
         async def _handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+            import backend.media.scheduler.decodeScheduler as _ds_mod
+            _ds_mod.cpp_renderer_active = True
             print("[TCP] C++ frame client connected", flush=True)
             try:
                 while True:
                     header    = await reader.readexactly(4)
                     frame_num = struct.unpack("<I", header)[0]
-                    payload   = _prefetch.pop(frame_num, None)
+
+                    # Cache hit?
+                    payload = _prefetch.pop(frame_num, None)
+                    _in_flight.discard(frame_num)
+
                     if payload is None:
-                        try:
-                            data    = _get_frame_data(frame_num)
-                            payload = _json.dumps(data).encode("utf-8")
-                        except Exception:
-                            import traceback; traceback.print_exc()
-                            fallback = {"frame": frame_num, "fps": 30, "width": 1920,
-                                        "height": 1080, "clips": []}
-                            payload = _json.dumps(fallback).encode("utf-8")
+                        # Miss: compute now  
+                        payload = await _compute_frame(frame_num)
+
                     writer.write(struct.pack("<I", len(payload)) + payload)
                     await writer.drain()
-                    nxt = frame_num + 1
-                    if nxt not in _prefetch:
-                        try:
-                            d = _get_frame_data(nxt)
-                            _prefetch[nxt] = _json.dumps(d).encode("utf-8")
-                        except Exception:
-                            pass
-                    for old in [k for k in _prefetch if k < frame_num - 1]:
-                        del _prefetch[old]
+
+                    # Evict stale entries
+                    for old in [k for k in list(_prefetch) if k <= frame_num]:
+                        _prefetch.pop(old, None)
+                        _in_flight.discard(old)
+
+                    # Kick off sequential prefetch of N+1  
+                    asyncio.create_task(_prefetch_next(frame_num))
+
             except (asyncio.IncompleteReadError, ConnectionResetError, BrokenPipeError):
                 pass
             finally:
+                import backend.media.scheduler.decodeScheduler as _ds_mod
+                _ds_mod.cpp_renderer_active = False
                 try:
                     writer.close()
                     await writer.wait_closed()
@@ -155,7 +187,7 @@ async def lifespan(app: FastAPI):
                 print("[TCP] C++ frame client disconnected", flush=True)
 
         async def _serve():
-            # Pass reuse_address=True — handles TIME_WAIT sockets from previous run
+            # Pass reuse_address=True  
             for attempt in range(3):
                 try:
                     server = await asyncio.start_server(
@@ -238,6 +270,7 @@ def _findFreePort(start: int = 8000, end: int = 8010) -> int:
 
 if __name__ == "__main__":
     port = _findFreePort()
+    os.environ["BACKEND_PORT"] = str(port)
     print(f"[Fade] Backend starting on port {port}", flush=True)
     print(f"[Fade] Python {sys.version.split()[0]} | skia + subprocess-ffmpeg ready", flush=True)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

@@ -287,7 +287,7 @@ inline FrameDescriptor parseFrameDescriptorFromJson(const nlohmann::json &j,
       auto &s = c["shapeStyle"];
       auto &sh = cd.shape;
       sh.shapeType = s.value("shapeType", std::string{"rect"});
-      sh.width = s.v alue("width", 200.f);
+      sh.width = s.value("width", 200.f);
       sh.height = s.value("height", 120.f);
       sh.cornerRadius = s.value("cornerRadius", 0.f);
       sh.radiusX = s.value("radiusX", 100.f);

@@ -20,7 +20,18 @@ def getProject():
 def newProject(name: str = "Untitled Project",
                width: int = 1920, height: int = 1080,
                fps: float = 30.0, mediaDownloadPath: str = ""):
+    from backend.timeline.tracks.videoTrack import VideoTrack
+    from backend.timeline.tracks.audioTrack import AudioTrack
+    
     engine.newProject(name=name, width=width, height=height, fps=fps)
+    
+    # Initialize with default tracks
+    tl = engine.activeTimeline
+    if tl:
+        for track_name in ["Video 1", "Video 2", "Video 3"]:
+            tl.addTrack(VideoTrack(track_name))
+        tl.addTrack(AudioTrack("Audio 1"))
+        
     if mediaDownloadPath:
         engine.project.settings.mediaDownloadPath = mediaDownloadPath
     return {"status": "ok", "project": engine.project.toDict()}

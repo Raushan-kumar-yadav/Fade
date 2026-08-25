@@ -3,6 +3,7 @@
 #include <napi.h>
 
 #include "../HeadlessCompositor.hpp"
+#include "../engine/SchedulerBridge.hpp"
 #include "FrameDescriptor.hpp"
 
 // using WinHTTP
@@ -12,6 +13,7 @@
 #include <winhttp.h>
 #pragma comment(lib, "winhttp.lib")
 
+#include <algorithm>
 #include <atomic>
 #include <functional>
 #include <iostream>
@@ -28,6 +30,7 @@ int g_pythonPort = 8001;
 int g_width = 1920;
 int g_height = 1080;
 float g_fps = 30.f;
+float g_previewScale = 0.5f; // default 50% — matches Python scheduler default
 
 // JS frame-ready callback
 Napi::ThreadSafeFunction g_tsfn;
@@ -396,6 +399,29 @@ Napi::Value CancelExport(const Napi::CallbackInfo &info) {
   return info.Env().Undefined();
 }
 
+// setPreviewScale(scale: number)
+// Updates the MiniScheduler decode scale and flushes per-file decoder cache.
+// Call this from the Python /preview/scale response handler in Electron.
+Napi::Value SetPreviewScale(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsNumber()) {
+    Napi::TypeError::New(env, "setPreviewScale(scale: number)")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+  float scale = info[0].As<Napi::Number>().FloatValue();
+  g_previewScale = std::max(0.125f, std::min(1.0f, scale));
+  // Update the MiniScheduler (clears cache + closes old decoders)
+  schedSetPreviewScale(g_previewScale);
+  // Also flush the per-file decoder map in the main compositor so the next
+  // cache miss creates a new ClipDecoder at the updated scale.
+  if (g_compositor)
+    g_compositor->setPreviewScale(g_previewScale);
+  std::cout << "[RenderEngine] Preview scale -> " << g_previewScale << "\n";
+  return Napi::Number::New(env, g_previewScale);
+}
+
+
 // Addon registration
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -410,6 +436,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("getStats", Napi::Function::New(env, GetStats));
   exports.Set("startExport", Napi::Function::New(env, StartExport));
   exports.Set("cancelExport", Napi::Function::New(env, CancelExport));
+  exports.Set("setPreviewScale", Napi::Function::New(env, SetPreviewScale));
   return exports;
 }
 
