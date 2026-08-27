@@ -1,4 +1,4 @@
- 
+
 import os
 import uuid
 import base64
@@ -6,7 +6,8 @@ import requests
 from pathlib import Path
 
 
-_GEMINI_IMAGE_MODEL = "gemini-2.0-flash-preview-image-generation"
+ 
+_GEMINI_IMAGE_MODEL = "gemini-2.0-flash-exp-image-generation"
 _GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
 

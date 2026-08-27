@@ -30,7 +30,7 @@ int g_pythonPort = 8001;
 int g_width = 1920;
 int g_height = 1080;
 float g_fps = 30.f;
-float g_previewScale = 0.5f; // default 50% — matches Python scheduler default
+float g_previewScale = 0.5f; // default 50%
 
 // JS frame-ready callback
 Napi::ThreadSafeFunction g_tsfn;
@@ -112,7 +112,7 @@ void renderFrameImpl(int64_t frameNum) {
     return;
   }
 
-  //   Parse
+  // Parse
   FrameDescriptor fd = parseFrameDescriptor(json);
   if (!fd.valid)
     return;
@@ -123,7 +123,7 @@ void renderFrameImpl(int64_t frameNum) {
 
 } // namespace
 
-//   NAPI functions
+// NAPI functions
 
 // initialize
 Napi::Value Initialize(const Napi::CallbackInfo &info) {
@@ -399,9 +399,6 @@ Napi::Value CancelExport(const Napi::CallbackInfo &info) {
   return info.Env().Undefined();
 }
 
-// setPreviewScale(scale: number)
-// Updates the MiniScheduler decode scale and flushes per-file decoder cache.
-// Call this from the Python /preview/scale response handler in Electron.
 Napi::Value SetPreviewScale(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   if (info.Length() < 1 || !info[0].IsNumber()) {
@@ -411,16 +408,14 @@ Napi::Value SetPreviewScale(const Napi::CallbackInfo &info) {
   }
   float scale = info[0].As<Napi::Number>().FloatValue();
   g_previewScale = std::max(0.125f, std::min(1.0f, scale));
-  // Update the MiniScheduler (clears cache + closes old decoders)
+  // Update the MiniScheduler
   schedSetPreviewScale(g_previewScale);
-  // Also flush the per-file decoder map in the main compositor so the next
-  // cache miss creates a new ClipDecoder at the updated scale.
+
   if (g_compositor)
     g_compositor->setPreviewScale(g_previewScale);
   std::cout << "[RenderEngine] Preview scale -> " << g_previewScale << "\n";
   return Napi::Number::New(env, g_previewScale);
 }
-
 
 // Addon registration
 
