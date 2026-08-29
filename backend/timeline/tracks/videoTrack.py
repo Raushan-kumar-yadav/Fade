@@ -13,7 +13,7 @@ class VideoTrack(BaseTrack):
         self.opacity: float = 1.0
         self.transitions: list = []   # list[Transition]
 
-    # ── Transition helpers ────────────────────────────────────────────────────
+    #   Transition helpers  
 
     def getTransitionAt(self, frame: int):
         """
@@ -46,7 +46,7 @@ class VideoTrack(BaseTrack):
     def removeTransition(self, transId: str) -> None:
         self.transitions = [t for t in self.transitions if t.transId != transId]
 
-    # ── Legacy render (Python preview path) ──────────────────────────────────
+    # Legacy render  
 
     def render(self, canvas, frame: int) -> None:
         if self.muted:
@@ -59,7 +59,7 @@ class VideoTrack(BaseTrack):
             if effect.enabled:
                 effect.apply(canvas, frame)
 
-    # ── Serialisation ─────────────────────────────────────────────────────────
+    #   Serialisation  
 
     def toDict(self) -> dict:
         d = self._baseDict()
@@ -72,13 +72,16 @@ class VideoTrack(BaseTrack):
     def fromDict(cls, data: dict) -> "VideoTrack":
         from backend.timeline.clips.videoClip import VideoClip
         from backend.timeline.clips.imageClip import ImageClip
+        from backend.timeline.clips.webComp import WebCompClip
         from backend.timeline.transitions.transition import Transition
         t = cls(name=data["name"])
         t._applyBaseDict(data)
         t.opacity = data.get("opacity", 1.0)
         for clipData in data.get("clips", []):
             clip_type = clipData.get("type", "video")
-            if clip_type == "image":
+            if clip_type == "webcomp":
+                t.clips.append(WebCompClip.fromDict(clipData))
+            elif clip_type == "image":
                 t.clips.append(ImageClip.fromDict(clipData))
             else:
                 t.clips.append(VideoClip.fromDict(clipData))

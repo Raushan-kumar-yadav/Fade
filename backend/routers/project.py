@@ -57,17 +57,30 @@ class LoadRequest(BaseModel):
 @router.post("/project/save")
 def saveProject(req: SaveRequest):
     from pathlib import Path
+    from backend.media.asset.webCompAsset import WebCompAsset
+    from backend.media.asset.baseAsset import MediaType
     if engine is None or engine.project is None:
         raise HTTPException(503, "No active project")
     tl = engine.activeTimeline
     proj_dict = engine.project.toDict()
     if tl is not None:
         proj_dict["timeline"] = tl.toDict()
+
+    #   Regular media assets (video / audio / image)  
     proj_dict["assets"] = {
         asset_id: asset.filepath
         for asset_id, asset in _library.items()
-        if asset.filepath and os.path.exists(asset.filepath)
+        if getattr(asset, "filepath", None) and os.path.exists(asset.filepath)
     }
+
+    #   WebComp assets    
+    # Saved as full dicts  
+    proj_dict["webcompAssets"] = [
+        asset.toDict()
+        for asset in _library.values()
+        if getattr(asset, "mediaType", None) == MediaType.webcomp
+    ]
+
     # Persist the project-level media download path
     proj_dict["mediaDownloadPath"] = getattr(
         getattr(engine.project, "settings", None), "mediaDownloadPath", ""
@@ -80,7 +93,8 @@ def saveProject(req: SaveRequest):
     path.write_text(_json.dumps(proj_dict, indent=2), encoding="utf-8")
     engine.project.filePath = str(path)
     engine.project.isDirty  = False
-    print(f"[Project] Saved -> {path}  ({len(proj_dict['assets'])} assets catalogued)", flush=True)
+    wc_count = len(proj_dict["webcompAssets"])
+    print(f"[Project] Saved -> {path}  ({len(proj_dict['assets'])} media, {wc_count} webcomp assets)", flush=True)
     return {"status": "ok", "filepath": str(path)}
 
 
@@ -89,6 +103,7 @@ def saveProject(req: SaveRequest):
 def loadProject(req: LoadRequest):
     from pathlib import Path
     from backend.timeline.timeline import Timeline
+    from backend.media.asset.webCompAsset import WebCompAsset
     path = Path(req.filepath)
     if not path.exists():
         raise HTTPException(404, f"Project file not found: {path}")
@@ -113,7 +128,9 @@ def loadProject(req: LoadRequest):
 
     _library.clear()
     missing: list[str] = []
+    offline_assets: list[dict] = []
 
+    # Restore regular media assets  
     def _register(asset_id: str, filepath: str) -> bool:
         if not asset_id or not filepath or asset_id in _library:
             return False
@@ -132,12 +149,40 @@ def loadProject(req: LoadRequest):
     for asset_id, filepath in data.get("assets", {}).items():
         _register(asset_id, filepath)
 
-    offline_assets: list[dict] = []
+    # Restore WebComp assets  
+    wc_restored = 0
+    wc_offline  = 0
+    for wc_data in data.get("webcompAssets", []):
+        asset_id   = wc_data.get("assetId", "")
+        folder     = wc_data.get("folderPath", "")
+        if not asset_id:
+            continue
+        if asset_id in _library:
+            continue   
+        if not os.path.isdir(folder):
+            print(f"[Project] WARNING: WebComp folder missing: {folder}", flush=True)
+            wc_offline += 1
+            offline_assets.append({
+                "assetId": asset_id,
+                "clipId": "",
+                "filename_hint": wc_data.get("name", asset_id[:12]),
+            })
+            continue
+        asset = WebCompAsset.fromDict(wc_data)
+        asset._loadMeta()   # refresh params  
+        _library[asset_id] = asset
+        wc_restored += 1
+        print(f"[Project] WebComp restored: {asset.name} ({asset_id[-8:]})", flush=True)
+
+    #   Scan timeline for any media clips not caught above  
     if tl:
         for track in tl.tracks:
             for clip in track.clips:
+                # Skip webcomp clips 
+                if getattr(clip, "webcompId", None):
+                    continue
                 aid = getattr(clip, "assetId", "")
-                fp = getattr(clip, "filepath", "")
+                fp  = getattr(clip, "filepath", "")
                 if not aid:
                     continue
                 registered = _register(aid, fp)
@@ -149,12 +194,14 @@ def loadProject(req: LoadRequest):
                         "clipId": getattr(clip, "clipId", ""),
                         "filename_hint": hint,
                     })
+
     for fp in missing:
         print(f"[Project] WARNING: asset file missing: {fp}", flush=True)
     if offline_assets:
         print(f"[Project] {len(offline_assets)} asset(s) offline: "
               + ", ".join(a['filename_hint'] for a in offline_assets), flush=True)
-    print(f"[Project] Loaded <- {path}  ({len(_library)} assets restored, "
+    print(f"[Project] Loaded <- {path}  "
+          f"({len(_library) - wc_restored} media + {wc_restored} webcomp restored, "
           f"{len(offline_assets)} offline)", flush=True)
     return {
         "status": "ok",
