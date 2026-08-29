@@ -8,6 +8,7 @@ class MediaType(Enum):
     image = "image"
     audio = "audio"
     subtitle = "subtitle"
+    webcomp = "webcomp" 
     unknown  = "unknown"
 
 
