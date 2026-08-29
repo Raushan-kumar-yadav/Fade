@@ -122,6 +122,25 @@ export async function addCompClipToTimeline(
   }
 }
 
+export async function addWebCompClipToTimeline(
+  assetId: string,
+  trackIndex: number,
+  startFrame: number,
+  duration: number,
+): Promise<{ clipId: string; startFrame: number; duration: number } | null> {
+  try {
+    const r = await fetch(`${base()}/timeline/add-clip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assetId, trackIndex, startFrame, duration }),
+    });
+    if (!r.ok) return null;
+    return r.json();
+  } catch {
+    return null;
+  }
+}
+
 
 export async function moveClip(
   clipId: string,

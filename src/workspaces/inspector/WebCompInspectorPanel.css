@@ -1,0 +1,309 @@
+/* WebCompInspectorPanel.css */
+
+.wci-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--lib-bg, #111116);
+  color: var(--lib-text, #e0e0ec);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  scrollbar-width: thin;
+  scrollbar-color: #2a2a38 transparent;
+}
+
+.wci-spinner {
+  width: 24px; height: 24px;
+  border: 2px solid #2a2a38;
+  border-top-color: #a78bfa;
+  border-radius: 50%;
+  animation: wci-spin 0.7s linear infinite;
+  margin: 24px auto;
+}
+@keyframes wci-spin { to { transform: rotate(360deg); } }
+
+.wci-empty {
+  text-align: center;
+  padding: 24px;
+  color: #5a5a74;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────────── */
+
+.wci-header {
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #2a2a38;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.wci-header__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.12);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  border-radius: 4px;
+  padding: 2px 6px;
+  align-self: flex-start;
+}
+
+.wci-header__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e0e0ec;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wci-header__meta {
+  font-size: 10px;
+  color: #5a5a74;
+}
+
+/* ── Quick actions ───────────────────────────────────────────────────────────── */
+
+.wci-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #2a2a38;
+  flex-wrap: wrap;
+}
+
+.wci-action-btn {
+  font-size: 11px;
+  font-family: inherit;
+  padding: 3px 10px;
+  border-radius: 5px;
+  border: 1px solid #2a2a38;
+  background: #1e1e28;
+  color: #c0c0d8;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.wci-action-btn:hover {
+  background: #28283a;
+  border-color: #a78bfa;
+  color: #a78bfa;
+}
+
+.wci-saving { font-size: 10px; color: #a78bfa; margin-left: 4px; }
+.wci-dirty  { font-size: 14px; color: #f59e0b; line-height: 1; }
+
+/* ── Section ─────────────────────────────────────────────────────────────────── */
+
+.wci-section-hdr {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #1e1e28;
+  color: #8888aa;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.12s;
+}
+.wci-section-hdr:hover { color: #c0c0d8; }
+
+.wci-section-hdr__arrow { font-size: 10px; opacity: 0.7; }
+.wci-section-hdr__label { flex: 1; }
+
+.wci-section-body {
+  padding: 6px 10px 10px;
+  border-bottom: 1px solid #1e1e28;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Key-value rows ──────────────────────────────────────────────────────────── */
+
+.wci-kv {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.wci-kv__key {
+  width: 90px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: #5a5a74;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wci-kv__val {
+  flex: 1;
+  font-size: 11px;
+  color: #c0c0d8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wci-kv__val--mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 10px;
+}
+
+/* ── Param rows ──────────────────────────────────────────────────────────────── */
+
+.wci-param {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+}
+
+.wci-param__label {
+  width: 90px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: #a0a0c0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wci-param__ctrl {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wci-param__input {
+  width: 100%;
+  background: #0e0e14;
+  border: 1px solid #2a2a38;
+  border-radius: 4px;
+  color: #e0e0ec;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 3px 7px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+.wci-param__input:focus { border-color: #a78bfa; }
+
+/* ── Color picker ────────────────────────────────────────────────────────────── */
+
+.wci-color-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wci-color {
+  width: 32px; height: 22px;
+  border: 1px solid #2a2a38;
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.wci-color__hex {
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #8888aa;
+}
+
+/* ── Toggle ──────────────────────────────────────────────────────────────────── */
+
+.wci-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.wci-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.wci-toggle__track {
+  display: inline-block;
+  width: 32px; height: 16px;
+  background: #2a2a38;
+  border-radius: 8px;
+  transition: background 0.2s;
+  position: relative;
+}
+.wci-toggle__track::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #5a5a74;
+  transition: transform 0.2s, background 0.2s;
+}
+.wci-toggle input:checked + .wci-toggle__track { background: rgba(167, 139, 250, 0.35); }
+.wci-toggle input:checked + .wci-toggle__track::after {
+  transform: translateX(16px);
+  background: #a78bfa;
+}
+
+/* ── JSON editor ─────────────────────────────────────────────────────────────── */
+
+.wci-json {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wci-json__area {
+  width: 100%;
+  background: #0e0e14;
+  border: 1px solid #2a2a38;
+  border-radius: 6px;
+  color: #c0c0d8;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  padding: 8px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.12s;
+  box-sizing: border-box;
+}
+.wci-json__area:focus { border-color: #a78bfa; }
+.wci-json__area--error { border-color: #f87171; }
+
+.wci-json__error {
+  font-size: 10px;
+  color: #f87171;
+  padding: 2px 0;
+}
+
+.wci-json__apply {
+  align-self: flex-end;
+  padding: 3px 12px;
+  font-size: 11px;
+  font-family: inherit;
+  border-radius: 5px;
+  border: 1px solid #2a2a38;
+  background: rgba(167, 139, 250, 0.15);
+  color: #a78bfa;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.wci-json__apply:hover { background: rgba(167, 139, 250, 0.25); }

@@ -242,7 +242,8 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     const bool isGenerative = (clip.type == ClipDesc::Type::Solid ||
                                clip.type == ClipDesc::Type::Text ||
                                clip.type == ClipDesc::Type::Shape ||
-                               clip.type == ClipDesc::Type::Pen);
+                               clip.type == ClipDesc::Type::Pen ||
+                               clip.type == ClipDesc::Type::WebComp);
     if (!isGenerative && clip.effects.empty()) {
       const auto &t = clip.transform;
       bool isIdentity =

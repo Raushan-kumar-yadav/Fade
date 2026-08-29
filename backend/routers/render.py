@@ -142,6 +142,9 @@ def _get_frame_data(frame: int) -> dict:
                 continue
             clip_id   = getattr(clip, "clipId", "")
             clip_type = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
+            # DEBUG: skip webcomp clips to test crash isolation
+            if clip_type == "webcomp":
+                continue
             filepath  = getattr(clip, "filepath", "")
             if not filepath:
                 asset_id = getattr(clip, "assetId", "")

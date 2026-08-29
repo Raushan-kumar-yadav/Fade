@@ -82,7 +82,8 @@ def addClip(req: AddClipRequest):
     engine.commandStack.execute(AddClipCommand(track, clip))
     _clipTrackMap[clip.clipId] = req.trackIndex
 
-    if asset.hasAudio:
+    has_audio = getattr(asset, 'hasAudio', False) and clip_type != 'webcomp'
+    if has_audio:
         try:
             _worker_bus.submit_waveform(req.assetId, asset.filepath)
         except Exception as _e:
@@ -91,7 +92,7 @@ def addClip(req: AddClipRequest):
     return {
         "clipId": clip.clipId, "trackId": track.trackId,
         "startFrame": clip.startFrame, "duration": clip.duration,
-        "assetId": req.assetId, "type": clip_type, "hasAudio": asset.hasAudio,
+        "assetId": req.assetId, "type": clip_type, "hasAudio": has_audio,
     }
 
 
@@ -319,7 +320,7 @@ window.addEventListener('fade:params', (e) => {
 """)
 
 
-@router.post("/webcomp/create")
+@router.post("/timeline/webcomp/create")
 async def createWebcomp(body: dict):
     """Create a new WebComp asset (folder on disk with HTML/CSS/JS)."""
     from pathlib import Path
@@ -350,13 +351,22 @@ async def createWebcomp(body: dict):
         height=proj.height if proj else 1080,
         fps=proj.fps if proj else 30.0,
     )
-    asset.saveMeta()
-    _library.add(asset)
+    asset._loadMeta()           
+    asset.saveMeta()          
+    _library[asset.assetId] = asset
 
-    return {"assetId": asset.assetId, "folderPath": folder, "name": name}
+    return {
+        "assetId": asset.assetId,
+        "name": asset.name,
+        "folderPath": folder,
+        "width": asset.width,
+        "height": asset.height,
+        "fps": asset.fps,
+        "durationFrames": asset.durationFrames,
+    }
 
 
-@router.post("/webcomp/read-file")
+@router.post("/timeline/webcomp/read-file")
 async def readWebcompFile(webcompId: str = "", filename: str = ""):
     """Read a file from a WebComp folder."""
     asset = _library.get(webcompId)
@@ -370,7 +380,7 @@ async def readWebcompFile(webcompId: str = "", filename: str = ""):
     return {"content": content, "filename": filename}
 
 
-@router.post("/webcomp/write-file")
+@router.post("/timeline/webcomp/write-file")
 async def writeWebcompFile(body: dict):
     """Write a file to a WebComp folder."""
     webcomp_id = body.get("webcompId", "")
@@ -384,3 +394,113 @@ async def writeWebcompFile(body: dict):
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(content)
     return {"ok": True, "filename": filename}
+
+
+@router.get("/timeline/webcomp/list")
+async def listWebcomps():
+    """List all WebComp assets in the library."""
+    from backend.media.asset.baseAsset import MediaType
+    result = []
+    for asset_id, asset in _library.items():
+        if getattr(asset, "mediaType", None) == MediaType.webcomp:
+            result.append({
+                "assetId": asset.assetId,
+                "name": asset.name,
+                "folderPath": getattr(asset, "folderPath", ""),
+                "width": getattr(asset, "width", 1920),
+                "height": getattr(asset, "height", 1080),
+                "fps": getattr(asset, "fps", 30.0),
+                "durationFrames": getattr(asset, "durationFrames", 150),
+            })
+    return {"webcomps": result}
+
+
+@router.get("/timeline/webcomp/clip-info")
+async def getWebcompClipInfo(clipId: str = ""):
+    """Return WebComp clip info + meta + param schema for the inspector panel."""
+    import json
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+
+    # Find clip across all tracks
+    clip = None
+    for track in tl.tracks:
+        for c in track.clips:
+            if c.clipId == clipId:
+                clip = c
+                break
+        if clip:
+            break
+
+    if clip is None:
+        raise HTTPException(404, f"Clip {clipId!r} not found")
+
+    if not hasattr(clip, "webcompId"):
+        raise HTTPException(400, "Clip is not a WebComp")
+
+    asset = _library.get(clip.webcompId)
+    meta = None
+    params_schema = []
+
+    if asset:
+        meta = {
+            "assetId": asset.assetId,
+            "name": asset.name,
+            "folderPath": getattr(asset, "folderPath", ""),
+            "width": getattr(asset, "width", 1920),
+            "height": getattr(asset, "height", 1080),
+            "fps": getattr(asset, "fps", 30.0),
+            "durationFrames": getattr(asset, "durationFrames", 150),
+        }
+        # Read param schema from webcomp.json
+        folder = getattr(asset, "folderPath", "")
+        webcomp_json = os.path.join(folder, "webcomp.json")
+        if os.path.isfile(webcomp_json):
+            try:
+                with open(webcomp_json, "r", encoding="utf-8") as f:
+                    wc_data = json.load(f)
+                params_schema = wc_data.get("params", [])
+            except Exception:
+                params_schema = []
+
+    return {
+        "webcompId": clip.webcompId,
+        "mediaOffset": getattr(clip, "mediaOffset", 0),
+        "runtimeParams": getattr(clip, "_runtimeParams", {}),
+        "meta": meta,
+        "params": params_schema,
+    }
+
+
+@router.post("/timeline/webcomp/runtime-params")
+async def setWebcompRuntimeParams(body: dict):
+    """Update runtime params on a WebComp clip."""
+    clip_id = body.get("clipId", "")
+    params = body.get("params", {})
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    clip = None
+    for track in tl.tracks:
+        for c in track.clips:
+            if c.clipId == clip_id:
+                clip = c
+                break
+        if clip:
+            break
+    if clip is None:
+        raise HTTPException(404, f"Clip {clip_id!r} not found")
+    if not hasattr(clip, "_runtimeParams"):
+        raise HTTPException(400, "Clip is not a WebComp")
+    clip._runtimeParams.update(params)
+    return {"ok": True, "runtimeParams": clip._runtimeParams}
+
+
+@router.delete("/timeline/webcomp/{webcomp_id}")
+async def deleteWebcomp(webcomp_id: str):
+    """Remove a WebComp asset from the library."""
+    if webcomp_id not in _library:
+        raise HTTPException(404, f"WebComp {webcomp_id!r} not found")
+    del _library[webcomp_id]
+    return {"ok": True}

@@ -2,7 +2,7 @@ import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, type Clip, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import TimelineClip from './TimelineClip';
-import { addClipToTimeline, addSvgClipToTimeline, addCompClipToTimeline, type AssetItem } from '../../api/useApi';
+import { addClipToTimeline, addSvgClipToTimeline, addCompClipToTimeline, addWebCompClipToTimeline, type AssetItem } from '../../api/useApi';
 import { useTool, isCreationTool, isShapeTool, shapeTypeOf } from '../../context/toolContext';
 import { useSelection } from '../../context/selectionContext';
 import { textApi, shapeApi, penApi, transitionApi, type TransitionInfo } from '../../api/toolsApi';
@@ -182,7 +182,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
   const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     if (e.dataTransfer.types.includes('application/fade-asset') ||
         e.dataTransfer.types.includes('application/fade-transition') ||
-        e.dataTransfer.types.includes('application/fade-comp')) {
+        e.dataTransfer.types.includes('application/fade-comp') ||
+        e.dataTransfer.types.includes('application/fade-webcomp')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       setDropOver(true);
@@ -294,7 +295,50 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       return;
     }
 
-    // Handle Asset Drop  
+    // Handle WebComp Drop
+    const rawWebComp = e.dataTransfer.getData('application/fade-webcomp');
+    if (rawWebComp) {
+      let wcMeta: { assetId: string; name: string; durationFrames?: number };
+      try { wcMeta = JSON.parse(rawWebComp); }
+      catch { return; }
+
+      const duration = wcMeta.durationFrames || 150;
+      const optimisticClip: Clip = {
+        id:         `tmp-${Date.now()}`,
+        name:       wcMeta.name,
+        startFrame: frame,
+        duration,
+        type:       'webcomp',
+        isSelected: false,
+      };
+      dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: optimisticClip });
+
+      try {
+        const result = await addWebCompClipToTimeline(wcMeta.assetId, trackIndex, frame, duration);
+        if (result) {
+          const realClip: Clip = {
+            id:         result.clipId,
+            name:       wcMeta.name,
+            startFrame: result.startFrame,
+            duration:   result.duration,
+            type:       'webcomp',
+            isSelected: false,
+          };
+          dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+          dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
+          // Signal useWebCompSync to create the offscreen BrowserWindow
+          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+        } else {
+          dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+        }
+      } catch (err) {
+        console.error('[TrackRow] Failed to drop webcomp', err);
+        dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+      }
+      return;
+    }
+
+    // Handle Asset Drop
     const rawAsset = e.dataTransfer.getData('application/fade-asset');
     if (!rawAsset) return;
 

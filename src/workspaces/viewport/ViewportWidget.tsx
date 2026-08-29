@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useWebCompSync } from './useWebCompSync';
 import {
   openPreviewSocket,
   playbackPlay, playbackPause, playbackSeek,
@@ -83,6 +84,9 @@ export default function ViewportWidget() {
   const nativeHeightRef = useRef(1080);
   // Reactive canvas dimensions  
   const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
+
+  // Sync WebComp offscreen windows and push frames into C++ cache
+  useWebCompSync();
 
   // Check if native addon is available and cache the SharedArrayBuffer
   useEffect(() => {

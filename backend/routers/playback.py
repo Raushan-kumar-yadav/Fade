@@ -14,7 +14,7 @@ class SpeedRequest(BaseModel):
 
 
 class InOutRequest(BaseModel):
-    inPoint:  int | None = None
+    inPoint: int | None = None
     outPoint: int | None = None
 
 
@@ -40,13 +40,13 @@ def seek(req: SeekRequest):
 def playbackState():
     prj = engine.project
     return {
-        "frame":       engine.currentFrame,
-        "playing":     engine._playing,
-        "fps":         prj.fps if prj else 30.0,
+        "frame": engine.currentFrame,
+        "playing": engine._playing,
+        "fps": prj.fps if prj else 30.0,
         "totalFrames": prj.totalFrame if prj else 1800,
-        "speed":       engine._speed,
-        "inPoint":     engine._inPoint,
-        "outPoint":    engine._outPoint,
+        "speed": engine._speed,
+        "inPoint": engine._inPoint,
+        "outPoint": engine._outPoint,
     }
 
 

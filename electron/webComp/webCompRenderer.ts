@@ -7,6 +7,8 @@ interface WebCompInstance {
   height: number
   fps: number
   frameCache: Map<number, Buffer>
+  ready: boolean
+  readyPromise: Promise<void>
 }
 
 const instances = new Map<string, WebCompInstance>()
@@ -22,6 +24,7 @@ export function createWebComp(
     width,
     height,
     show: false,
+    paintWhenInitiallyHidden: true,
     webPreferences: {
       offscreen: true,              // Enable offscreen rendering
       nodeIntegration: false,       // Security: no Node.js access
@@ -31,12 +34,20 @@ export function createWebComp(
   })
 
   win.webContents.setFrameRate(Math.min(fps, 60))
+
+  const readyPromise = new Promise<void>(resolve => {
+    win.webContents.once('did-finish-load', () => resolve())
+  })
   win.loadURL(htmlUrl)
 
-  instances.set(webcompId, {
+  const inst: WebCompInstance = {
     win, htmlUrl, width, height, fps,
     frameCache: new Map(),
-  })
+    ready: false,
+    readyPromise,
+  }
+  readyPromise.then(() => { inst.ready = true })
+  instances.set(webcompId, inst)
   console.log(`[WebComp] Created ${webcompId} (${width}x${height}@${fps}fps)`)
 }
 
@@ -45,6 +56,10 @@ export async function captureFrame(
 ): Promise<Buffer | null> {
   const inst = instances.get(webcompId)
   if (!inst) return null
+  if (inst.win.isDestroyed()) return null
+
+  // Wait for page to finish loading on first capture
+  if (!inst.ready) await inst.readyPromise
 
   // Cache hit
   if (inst.frameCache.has(frame)) return inst.frameCache.get(frame)!

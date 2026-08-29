@@ -5,6 +5,7 @@ import { maskApi, effectsApi, type MaskInfo, type EffectInfo, type EffectParamDe
 import EffectsPanel from './EffectsPanel';
 import TransitionPanel from './TransitionPanel';
 import TextInspectorPanel from './TextInspectorPanel';
+import WebCompInspectorPanel from './WebCompInspectorPanel';
 import './InspectorPanel.css';
 
 
@@ -795,6 +796,23 @@ export default function InspectorPanel() {
         clipId={data.clipId}
         clipName={selected.type === 'clip' ? selected.clipName : ''}
         trackIndex={selected.type === 'clip' ? selected.trackIndex : 0}
+      />
+    );
+  }
+
+  // WebComp clips → dedicated WebComp inspector
+  const isWebComp = data.clipType === 'WebCompClip'
+    || (selected.type === 'clip' && (selected as any).clipType === 'webcomp')
+    || data.clipType.toLowerCase().includes('webcomp');
+
+  if (isWebComp) {
+    return (
+      <WebCompInspectorPanel
+        clipId={data.clipId}
+        clipName={selected.type === 'clip' ? selected.clipName : ''}
+        trackIndex={selected.type === 'clip' ? selected.trackIndex : 0}
+        startFrame={data.startFrame}
+        duration={data.duration}
       />
     );
   }

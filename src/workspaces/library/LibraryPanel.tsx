@@ -16,6 +16,10 @@ interface CompMeta {
 interface CompConfig {
   name: string; width: number; height: number; fps: number; totalFrames: number;
 }
+interface WebCompMeta {
+  assetId: string; name: string; folderPath: string;
+  width: number; height: number; fps: number; durationFrames: number;
+}
 interface CtxMenu { x: number; y: number; items: CtxItem[]; }
 interface CtxItem {
   icon: string; label: string; danger?: boolean; sep?: boolean; onClick: () => void;
@@ -29,7 +33,7 @@ const PRESETS = [
   { label: '9:16',  w: 1080, h: 1920 }, { label: '4:3',   w: 1440, h: 1080 },
 ];
 const FPS_OPTIONS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60];
-const BASE = 'http://localhost:8000';
+function base() { return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`; }
 
 //   Type thumbnails
 
@@ -39,6 +43,7 @@ const THUMB_BG: Record<string, string> = {
   audio: 'linear-gradient(135deg,#2a1a3a 0%,#180d26 100%)',
   svg: 'linear-gradient(135deg,#1a3a3a 0%,#0d2222 100%)',
   comp: 'linear-gradient(135deg,#0d2e2e 0%,#051a1a 100%)',
+  webcomp: 'linear-gradient(135deg,#1a1040 0%,#0a0628 100%)',
   unknown:'linear-gradient(135deg,#2a2a2a 0%,#111 100%)',
 };
 
@@ -98,6 +103,17 @@ function CardThumb({ type }: { type: string }) {
         </svg>
       );
       break;
+    case 'webcomp':
+      icon = (
+        <svg viewBox="0 0 48 48" width={22} height={22} fill="none">
+          <rect x="4" y="4" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.8"/>
+          <rect x="26" y="4" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.5"/>
+          <rect x="4" y="26" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.5"/>
+          <rect x="26" y="26" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.3"/>
+          <text x="24" y="30" textAnchor="middle" fontSize="10" fill="#a78bfa" fontFamily="monospace" opacity="0.9">⌨</text>
+        </svg>
+      );
+      break;
     default:
       icon = (
         <svg viewBox="0 0 48 48" width={22} height={22} fill="none">
@@ -119,19 +135,19 @@ function CardThumb({ type }: { type: string }) {
 //   API helpers  
 
 async function fetchComps(): Promise<CompMeta[]> {
-  const r = await fetch(`${BASE}/comps`); return (await r.json()).comps ?? [];
+  const r = await fetch(`${base()}/comps`); return (await r.json()).comps ?? [];
 }
 async function apiCreateComp(cfg: CompConfig): Promise<CompMeta> {
-  const r = await fetch(`${BASE}/comps`, {
+  const r = await fetch(`${base()}/comps`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: cfg.name, width: cfg.width, height: cfg.height, fps: cfg.fps, totalFrames: cfg.totalFrames }),
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail ?? 'Failed'); }
   return r.json();
 }
-async function apiDeleteComp(id: string) { await fetch(`${BASE}/comps/${id}`, { method: 'DELETE' }); }
+async function apiDeleteComp(id: string) { await fetch(`${base()}/comps/${id}`, { method: 'DELETE' }); }
 async function apiAddCompClip(compId: string, startFrame: number, duration: number) {
-  const r = await fetch(`${BASE}/clips/comp`, {
+  const r = await fetch(`${base()}/clips/comp`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ compId, startFrame, duration }),
   });
@@ -139,13 +155,117 @@ async function apiAddCompClip(compId: string, startFrame: number, duration: numb
   return r.json();
 }
 async function apiRenameComp(id: string, name: string) {
-  await fetch(`${BASE}/comps/${id}/rename`, {
+  await fetch(`${base()}/comps/${id}/rename`, {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   });
 }
 
+//   WebComp API helpers
+async function fetchWebComps(): Promise<WebCompMeta[]> {
+  try {
+    const r = await fetch(`${base()}/timeline/webcomp/list`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return d.webcomps ?? [];
+  } catch { return []; }
+}
+async function apiCreateWebComp(name: string, template: string): Promise<WebCompMeta> {
+  const r = await fetch(`${base()}/timeline/webcomp/create`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, template }),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail ?? 'Failed'); }
+  return r.json();
+}
+async function apiAddWebCompClip(assetId: string, startFrame: number, duration: number) {
+  const r = await fetch(`${base()}/timeline/add-clip`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trackIndex: 0, startFrame, duration, assetId }),
+  });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail ?? 'Failed'); }
+  return r.json();
+}
+
+//   WebComp Create Modal
+
+const WC_TEMPLATES = [
+  { id: 'blank',       label: '◻ Blank',       hint: 'Empty canvas' },
+  { id: 'lower-third', label: '▬ Lower Third',  hint: 'Animated name card' },
+];
+
+function WebCompCreateModal({ onSubmit, onCancel }: {
+  onSubmit: (name: string, template: string) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [name, setName]         = useState('My WebComp');
+  const [template, setTemplate] = useState('blank');
+  const [creating, setCreating] = useState(false);
+  const [error, setError]       = useState('');
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { nameRef.current?.select(); }, []);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', h, true);
+    return () => document.removeEventListener('keydown', h, true);
+  }, [onCancel]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setCreating(true); setError('');
+    try { await onSubmit(name.trim(), template); }
+    catch (err: any) { setError(err.message ?? 'Failed'); setCreating(false); }
+  };
+
+  return ReactDOM.createPortal(
+    <div className="lib-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
+      <form className="lib-modal" onSubmit={handleSubmit}>
+        <div className="lib-modal__header">
+          <span className="lib-modal__title" style={{ color: '#a78bfa' }}>⊞ New WebComp</span>
+          <button type="button" className="lib-modal__close" onClick={onCancel}>✕</button>
+        </div>
+        <div className="lib-modal__body">
+          <label className="lib-comp-cfg__label">Name</label>
+          <input ref={nameRef} className="lib-comp-cfg__input" value={name}
+            onChange={e => setName(e.target.value)} placeholder="WebComp name…" />
+
+          <label className="lib-comp-cfg__label" style={{ marginTop: 12 }}>Template</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+            {WC_TEMPLATES.map(t => (
+              <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+                padding: '8px 10px', borderRadius: 6,
+                border: `1px solid ${template === t.id ? '#a78bfa' : '#2a2a38'}`,
+                background: template === t.id ? 'rgba(167,139,250,0.1)' : 'transparent',
+                transition: 'all 0.12s' }}>
+                <input type="radio" name="template" value={t.id} checked={template === t.id}
+                  onChange={() => setTemplate(t.id)} style={{ accentColor: '#a78bfa' }} />
+                <div>
+                  <div style={{ fontSize: 12, color: '#e0e0ec', fontWeight: 600 }}>{t.label}</div>
+                  <div style={{ fontSize: 10, color: '#5a5a74' }}>{t.hint}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          {error && <div className="lib-comp-cfg__error" style={{ marginTop: 8 }}>⚠ {error}</div>}
+        </div>
+        <div className="lib-modal__footer">
+          <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create"
+            style={{ background: '#7c3aed' }}
+            disabled={creating || !name.trim()}>
+            {creating ? 'Creating…' : '✓ Create WebComp'}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  );
+}
+
 //   Context menu portal  
+
 
 function ContextMenu({ menu, onClose }: { menu: CtxMenu; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -370,6 +490,11 @@ export default function LibraryPanel({ onAddToTimeline }: {
   const [compError, setCompError]   = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
 
+  // WebComp state
+  const [webcomps, setWebcomps]       = useState<WebCompMeta[]>([]);
+  const [showWcCfg, setShowWcCfg]     = useState(false);
+  const [wcError, setWcError]         = useState<string | null>(null);
+
   const openCtx = useCallback((e: React.MouseEvent, items: CtxItem[]) => {
     e.preventDefault(); e.stopPropagation();
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
@@ -390,7 +515,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
     return () => window.removeEventListener('fade:library-changed', h);
   }, [refreshAssets]);
 
-  //   Load comps  
+  //   Load comps
   const refreshComps = useCallback(async () => {
     try { setComps(await fetchComps()); } catch { /* ignore */ }
   }, []);
@@ -398,6 +523,15 @@ export default function LibraryPanel({ onAddToTimeline }: {
     if ((window as any).__FADE_PORT__) refreshComps();
     else { const h = () => refreshComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
   }, [refreshComps]);
+
+  //   Load webcomps
+  const refreshWebComps = useCallback(async () => {
+    try { setWebcomps(await fetchWebComps()); } catch { /* ignore */ }
+  }, []);
+  useEffect(() => {
+    if ((window as any).__FADE_PORT__) refreshWebComps();
+    else { const h = () => refreshWebComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
+  }, [refreshWebComps]);
 
   //   Asset handlers  
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -446,6 +580,19 @@ export default function LibraryPanel({ onAddToTimeline }: {
     setRenamingId(null);
   }, []);
 
+  //   WebComp handlers
+  const handleCreateWebComp = useCallback(async (name: string, template: string) => {
+    setWcError(null);
+    const wc = await apiCreateWebComp(name, template);
+    setWebcomps(p => [...p, wc]);
+    setShowWcCfg(false);
+  }, []);
+
+  const handleAddWebCompToTimeline = useCallback(async (wc: WebCompMeta) => {
+    try { await apiAddWebCompClip(wc.assetId, state.currentFrame, wc.durationFrames || 150); }
+    catch (err: any) { setWcError(err.message ?? 'Failed'); }
+  }, [state.currentFrame]);
+
   //   Context menus  
   const assetCtx = useCallback((e: React.MouseEvent, asset: AssetItem) => {
     openCtx(e, [
@@ -469,12 +616,14 @@ export default function LibraryPanel({ onAddToTimeline }: {
   const bgCtx = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.lib-card,.lib-modal-overlay')) return;
     openCtx(e, [
-      { icon: '⊞', label: 'New Composition', onClick: () => setShowCfg(true) },
-      { icon: '+', label: 'Import Media…',   onClick: () => fileInputRef.current?.click() },
+      { icon: '⊞', label: 'New Composition',  onClick: () => setShowCfg(true) },
+      { icon: '⌨', label: 'New WebComp',      onClick: () => setShowWcCfg(true) },
+      { icon: '+', label: 'Import Media…',    onClick: () => fileInputRef.current?.click() },
       { icon: '', label: '', sep: true, onClick: () => {} },
-      { icon: '↺', label: 'Refresh',         onClick: () => { refreshAssets(); refreshComps(); } },
+      { icon: '↺', label: 'Refresh',          onClick: () => { refreshAssets(); refreshComps(); refreshWebComps(); } },
     ]);
-  }, [openCtx, refreshAssets, refreshComps]);
+  }, [openCtx, refreshAssets, refreshComps, refreshWebComps]);
+
 
   const filtered = assets.filter(a => a.filename.toLowerCase().includes(query.toLowerCase()));
 
@@ -485,6 +634,12 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
       {ctxMenu && <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />}
       {showCfg && <CompConfigModal onSubmit={handleCreateComp} onCancel={() => { setShowCfg(false); setCompError(null); }} />}
+      {showWcCfg && (
+        <WebCompCreateModal
+          onSubmit={handleCreateWebComp}
+          onCancel={() => { setShowWcCfg(false); setWcError(null); }}
+        />
+      )}
 
       {/* Search bar */}
       <div className="lib__search">
@@ -497,9 +652,41 @@ export default function LibraryPanel({ onAddToTimeline }: {
       {compError && (
         <div className="lib-comp-cfg__error" onClick={() => setCompError(null)}>⚠ {compError}</div>
       )}
+      {wcError && (
+        <div className="lib-comp-cfg__error" style={{ borderColor: '#a78bfa' }} onClick={() => setWcError(null)}>⚠ {wcError}</div>
+      )}
 
-      {/* GRID — Comps + Media unified, no dividers */}
+      {/* GRID — Comps + WebComps + Media */}
       <div className="lib__grid">
+        {/* WebComps */}
+        {webcomps.map(wc => (
+          <LibCard
+            key={wc.assetId}
+            type="webcomp"
+            title={wc.name}
+            badge="WC"
+            subtitle={`${wc.width}×${wc.height} · ${wc.fps}fps`}
+            isDragging={dragging === wc.assetId}
+            onDragStart={e => {
+              setDragging(wc.assetId);
+              e.dataTransfer.setData('application/fade-webcomp', JSON.stringify(wc));
+              e.dataTransfer.effectAllowed = 'copy';
+            }}
+            onDragEnd={() => setDragging(null)}
+            onDoubleClick={() => handleAddWebCompToTimeline(wc)}
+            onContextMenu={e => openCtx(e, [
+              { icon: '↓', label: 'Add to Timeline', onClick: () => handleAddWebCompToTimeline(wc) },
+              { icon: '📁', label: 'Open Folder', onClick: () => (window as any).electronAPI?.shellOpenPath?.(wc.folderPath) },
+              { icon: '', label: '', sep: true, onClick: () => {} },
+              { icon: '✕', label: 'Delete', danger: true, onClick: async () => {
+                if (!window.confirm(`Delete WebComp "${wc.name}"?`)) return;
+                await fetch(`${base()}/timeline/webcomp/${wc.assetId}`, { method: 'DELETE' });
+                setWebcomps(p => p.filter(w => w.assetId !== wc.assetId));
+              }},
+            ])}
+          />
+        ))}
+
         {comps.map(comp => {
           const isActive = state.activeCompId === comp.compId;
           return (

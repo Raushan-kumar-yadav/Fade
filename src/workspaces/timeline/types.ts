@@ -11,17 +11,19 @@ export type ClipType =
   | "lottie"
   | "image"
   | "comp"
+  | "webcomp"
   | "adjustment";
 
 export const CLIP_COLORS: Record<ClipType, string> = {
-  comp: "#00897b",
-  video: "#4a90e2",
-  audio: "#546e7a",
-  text: "#e6a817",
-  solid: "#00b8a9",
-  shape: "#43a047",
-  lottie: "#e91e8c",
-  image: "#00bcd4",
+  comp:       "#00897b",
+  webcomp:    "#7c3aed",
+  video:      "#4a90e2",
+  audio:      "#546e7a",
+  text:       "#e6a817",
+  solid:      "#00b8a9",
+  shape:      "#43a047",
+  lottie:     "#e91e8c",
+  image:      "#00bcd4",
   adjustment: "#ff6d00",
 };
 
