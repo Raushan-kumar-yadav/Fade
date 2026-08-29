@@ -388,14 +388,14 @@ async def listWebcompTemplates():
         except Exception:
             meta = {}
         results.append({
-            "id":            entry,
-            "name":          meta.get("name",          entry.replace("-", " ").title()),
+            "id": entry,
+            "name": meta.get("name", entry.replace("-", " ").title()),
             "description":   meta.get("description",   ""),
-            "width":         meta.get("width",          1920),
-            "height":        meta.get("height",         1080),
-            "fps":           meta.get("fps",            30),
+            "width": meta.get("width", 1920),
+            "height": meta.get("height", 1080),
+            "fps": meta.get("fps", 30),
             "durationFrames":meta.get("durationFrames", 150),
-            "params":        meta.get("params",         []),
+            "params": meta.get("params", []),
         })
     return {"templates": results}
 
@@ -502,22 +502,22 @@ async def getWebcompClipInfo(clipId: str = ""):
     # Read current transform values
     t = clip.transform
     tx, ty = t.position.get() if hasattr(t.position, 'get') else (getattr(t, 'x', 0.0), getattr(t, 'y', 0.0))
-    sx, sy = t.scale.get()    if hasattr(t.scale,    'get') else (getattr(t, 'scaleX', 1.0), getattr(t, 'scaleY', 1.0))
-    rot    = t.rotation.get() if hasattr(t.rotation,  'get') else getattr(t, 'rotation', 0.0)
-    op     = t.opacity.get()  if hasattr(t.opacity,   'get') else getattr(t, 'opacity', 1.0)
-    ax, ay = t.anchor.get()   if hasattr(t.anchor,    'get') else (getattr(t, 'anchorX', 0.0), getattr(t, 'anchorY', 0.0))
+    sx, sy = t.scale.get() if hasattr(t.scale, 'get') else (getattr(t, 'scaleX', 1.0), getattr(t, 'scaleY', 1.0))
+    rot = t.rotation.get() if hasattr(t.rotation,  'get') else getattr(t, 'rotation', 0.0)
+    op = t.opacity.get() if hasattr(t.opacity, 'get') else getattr(t, 'opacity', 1.0)
+    ax, ay = t.anchor.get() if hasattr(t.anchor, 'get') else (getattr(t, 'anchorX', 0.0), getattr(t, 'anchorY', 0.0))
 
     return {
         "webcompId":    clip.webcompId,
         "mediaOffset":  getattr(clip, "mediaOffset", 0),
         "runtimeParams": getattr(clip, "_runtimeParams", {}),
-        "meta":         meta,
-        "params":       params_schema,
+        "meta": meta,
+        "params": params_schema,
         "transform": {
-            "x":       tx,       "y":       ty,
-            "scaleX":  sx,       "scaleY":  sy,
+            "x": tx, "y": ty,
+            "scaleX":  sx, "scaleY":  sy,
             "rotation": rot,
-            "anchorX": ax,       "anchorY": ay,
+            "anchorX": ax, "anchorY": ay,
         },
         "opacity": op,
     }
@@ -568,9 +568,9 @@ async def setWebcompTransform(body: dict):
     cur_pos = t.position.get()
     cur_scale = t.scale.get()
     cur_anchor = t.anchor.get()
-    if "x"        in body or "y"       in body:
+    if "x" in body or "y"       in body:
         t.position.setBase(float(body.get("x", cur_pos[0])), float(body.get("y", cur_pos[1])))
-    if "scaleX"   in body or "scaleY"  in body:
+    if "scaleX" in body or "scaleY"  in body:
         t.scale.setBase(float(body.get("scaleX", cur_scale[0])), float(body.get("scaleY", cur_scale[1])))
     if "rotation" in body:
         t.rotation.setBaseValue(float(body["rotation"]))
@@ -596,3 +596,59 @@ async def deleteWebcomp(webcomp_id: str):
         raise HTTPException(404, f"WebComp {webcomp_id!r} not found")
     del _library[webcomp_id]
     return {"ok": True}
+
+
+@router.post("/timeline/webcomp/reload")
+async def reloadWebcomp(body: dict):
+    """Force-reload a WebComp's Electron BrowserWindow and clear its frame cache."""
+    webcomp_id = body.get("webcompId", "")
+    if not webcomp_id or webcomp_id not in _library:
+        raise HTTPException(404, f"WebComp {webcomp_id!r} not found")
+   
+    if engine:
+        try:
+            engine.reloadWebComp(webcomp_id)
+        except Exception:
+            pass   
+    return {"ok": True, "webcompId": webcomp_id}
+
+
+@router.post("/timeline/webcomp/update-meta")
+async def updateWebcompMeta(body: dict):
+    """Update name/dimensions/fps/durationFrames on a WebComp asset."""
+    webcomp_id = body.get("webcompId", "")
+    if not webcomp_id or webcomp_id not in _library:
+        raise HTTPException(404, f"WebComp {webcomp_id!r} not found")
+
+    asset = _library[webcomp_id]
+
+    if body.get("name"): asset.name = body["name"]
+    if body.get("width"): asset.width = int(body["width"])
+    if body.get("height"): asset.height = int(body["height"])
+    if body.get("fps"): asset.fps = float(body["fps"])
+    if body.get("durationFrames"): asset.durationFrames = int(body["durationFrames"])
+
+    # Persist to webcomp.json on disk
+    folder = getattr(asset, "folderPath", "")
+    if folder:
+        import json as _json
+        wc_json_path = os.path.join(folder, "webcomp.json")
+        meta: dict = {}
+        if os.path.isfile(wc_json_path):
+            try:
+                with open(wc_json_path, "r", encoding="utf-8") as f:
+                    meta = _json.load(f)
+            except Exception:
+                meta = {}
+        meta["name"] = asset.name
+        meta["width"] = getattr(asset, "width", 1920)
+        meta["height"] = getattr(asset, "height", 1080)
+        meta["fps"] = getattr(asset, "fps", 30)
+        meta["durationFrames"] = getattr(asset, "durationFrames", 150)
+        try:
+            with open(wc_json_path, "w", encoding="utf-8") as f:
+                _json.dump(meta, f, indent=2)
+        except Exception:
+            pass
+
+    return {"ok": True, "webcompId": webcomp_id, "name": asset.name}

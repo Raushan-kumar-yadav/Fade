@@ -201,6 +201,55 @@ DOWNLOADING MEDIA:
 - After downloading, use get_library() then place_clip() to add to timeline.
 - After placing multiple clips, always call add_transitions_between_all_clips().
 
+WEBCOMP — HTML/CSS/JS ANIMATED SCENES:
+WebComps are HTML pages rendered frame-by-frame by an Electron offscreen BrowserWindow.
+Each frame, Electron injects globals into the page:
+  window.FADE_FRAME  — current frame (int, 0-indexed)
+  window.FADE_TIME — current time in seconds (float)
+  window.FADE_FPS — project fps
+  window.FADE_WIDTH  — canvas width in pixels
+  window.FADE_HEIGHT — canvas height in pixels
+  window.FADE_PARAMS — runtime params from the inspector panel (object)
+The page can listen for frame updates:
+  window.addEventListener('fade:frame', (e) => { const {frame, time} = e.detail; ... });
+
+WebComp tools and when to use them:
+- list_webcomp_templates() → browse available starter templates before creating
+- create_webcomp(name, html, css, js)  → create a new animated scene from scratch or from template
+- list_webcomps() → see all WebComp assets in the project library
+- add_webcomp_to_timeline(id, track, start, dur) → place a WebComp clip on the timeline
+- get_webcomp_clip_info(clip_id) → read clip transform, opacity, and param schema
+- read_webcomp_file(id, filename) → read index.html / script.js / style.css before editing
+- edit_webcomp_file(id, filename, code) → overwrite a file (always read first!)
+- reload_webcomp(id) → reload the BrowserWindow so edits appear in preview
+- set_webcomp_params(clip_id, params)   → drive window.FADE_PARAMS (text, color, fontSize, etc.)
+- set_webcomp_transform(clip_id, x, y, scaleX, scaleY, rotation) → move/scale/rotate on canvas
+- set_webcomp_opacity(clip_id, opacity) → set transparency 0.0–1.0
+- update_webcomp_meta(id, name, width, height, fps, duration_frames) → rename or resize
+- delete_webcomp(id) → remove asset (delete timeline clips with delete_clip first)
+
+WEBCOMP CREATION RULES:
+1. Always call list_webcomp_templates() first to show the user what templates exist.
+2. For the JS animation code, listen to window.addEventListener('fade:frame', ...) to animate.
+   Use window.FADE_FRAME for the current frame number.
+3. For React-style authoring (like Remotion), load React from CDN and include the runtime:
+   <script src="../../_runtime/fade-react.js"></script>
+   Then use: const { useCurrentFrame, interpolate, spring, mount, FadeComposition } = window.FadeReact;
+4. After create_webcomp(), always call add_webcomp_to_timeline() to place it.
+5. After edit_webcomp_file(), always call reload_webcomp() so changes appear immediately.
+6. webcomp.json declares the param schema — fields become sliders/pickers in the inspector.
+   Format: { "params": [{ "id": "text", "label": "Title", "type": "text", "default": "Hello" }] }
+   Supported param types: "text", "color", "number", "range", "select".
+7. ALWAYS write complete, working HTML — do not use placeholder comments.
+8. The canvas is always 1920×1080 at 30fps. Use CSS transforms for animation.
+
+WEBCOMP TYPICAL WORKFLOW:
+  list_webcomp_templates() # see what's available
+  → create_webcomp("My Scene", html=..., js=...) # create with code
+  → add_webcomp_to_timeline(assetId, 0, 0, 150) # place on timeline (150 = 5 s)
+  → set_webcomp_params(clipId, {"text": "Hello"}) # drive params
+  → add_transitions_between_all_clips() # always add transitions
+
 Current project context will be injected by the router.
 """
 

@@ -827,8 +827,8 @@ ALL_TOOLS = [
 ]
 
 
-# ─── WebComp tools ──────────────────────────────────────────────────
-
+# WebComp tools  
+ 
 @tool
 def create_webcomp(
     name: str,
@@ -838,49 +838,69 @@ def create_webcomp(
     template: str = "blank",
     duration_seconds: float = 5.0,
 ) -> str:
-    """Create a WebComp — an HTML/CSS/JS scene rendered as video pixels on the timeline.
+    """Create a WebComp — an animated HTML/CSS/JS scene rendered as video pixels on the timeline.
 
-    The page receives these globals each frame (injected by Electron):
-      window.FADE_FRAME  (int)     — current frame number
-      window.FADE_TIME   (float)   — current time in seconds
-      window.FADE_FPS    (float)   — project FPS
-      window.FADE_PARAMS (object)  — runtime params from Properties panel
+    The page receives these globals each frame (Electron injects them):
+      window.FADE_FRAME  — current frame number (int, 0-indexed)
+      window.FADE_TIME   — current time in seconds (float)
+      window.FADE_FPS    — project FPS
+      window.FADE_WIDTH  — canvas width in pixels
+      window.FADE_HEIGHT — canvas height in pixels
+      window.FADE_PARAMS — runtime params from the inspector panel (object)
 
     Listen for frame updates:
       window.addEventListener('fade:frame', (e) => {
         const { frame, time } = e.detail;
-        // animate here
+        // update animation here
       });
 
-    Templates: blank, lower-third
-    If html/css/js are provided, they override the template files.
+    Args:
+        name: Human-readable name
+        html: Full index.html (overrides template if provided)
+        css: style.css content (overrides template)
+        js: script.js content (overrides template)
+        template: Starter template — "blank" | "lower-third" | "neon-headline" | "kinetic-title"
+        duration_seconds: Default clip duration when placed on timeline
     """
     body: dict = {"name": name, "template": template}
     result = _post("/timeline/webcomp/create", body)
     asset_id = result.get("assetId", "")
     folder = result.get("folderPath", "")
 
-    # Override template files if custom code provided
     if html:
-        _post("/timeline/webcomp/write-file", {
-            "webcompId": asset_id, "filename": "index.html", "content": html
-        })
+        _post("/timeline/webcomp/write-file", {"webcompId": asset_id, "filename": "index.html", "content": html})
     if css:
-        _post("/timeline/webcomp/write-file", {
-            "webcompId": asset_id, "filename": "style.css", "content": css
-        })
+        _post("/timeline/webcomp/write-file", {"webcompId": asset_id, "filename": "style.css", "content": css})
     if js:
-        _post("/timeline/webcomp/write-file", {
-            "webcompId": asset_id, "filename": "script.js", "content": js
-        })
+        _post("/timeline/webcomp/write-file", {"webcompId": asset_id, "filename": "script.js", "content": js})
 
     return json.dumps({
         "status": "ok",
         "assetId": asset_id,
         "folderPath": folder,
         "name": name,
-        "message": f"WebComp '{name}' created. Use add_webcomp_to_timeline() to place it.",
+        "message": f"WebComp '{name}' created (assetId={asset_id}). Use add_webcomp_to_timeline() to place it.",
     })
+
+
+@tool
+def list_webcomps() -> str:
+    """List all WebComp assets currently in the library.
+
+    Returns assetId, name, folderPath, width, height, fps, and durationFrames
+    for each WebComp. Use assetId with other webcomp tools.
+    """
+    return json.dumps(_get("/timeline/webcomp/list"))
+
+
+@tool
+def list_webcomp_templates() -> str:
+    """List all built-in WebComp templates that can be used when creating a new WebComp.
+
+    Returns template names, descriptions, and param schemas.
+    Pass the template name to create_webcomp(template=...).
+    """
+    return json.dumps(_get("/timeline/webcomp/templates"))
 
 
 @tool
@@ -890,13 +910,13 @@ def add_webcomp_to_timeline(
     start_frame: int = 0,
     duration: int = 150,
 ) -> str:
-    """Add an existing WebComp asset to the timeline as a clip.
+    """Place an existing WebComp asset onto the timeline as a video clip.
 
     Args:
-        webcomp_id: The assetId returned by create_webcomp
-        track_index: Which video track (0 = top)
-        start_frame: Where on the timeline to place it
-        duration: Length in frames
+        webcomp_id: The assetId returned by create_webcomp or list_webcomps
+        track_index: Which video track to place it on (0 = top/first track)
+        start_frame: Start position on the timeline (frames)
+        duration: Clip length in frames (150 = 5 s @ 30 fps)
     """
     result = _post("/timeline/add-clip", {
         "trackIndex": track_index,
@@ -910,34 +930,186 @@ def add_webcomp_to_timeline(
 
 
 @tool
-def edit_webcomp_file(
-    webcomp_id: str,
-    filename: str,
-    content: str,
-) -> str:
-    """Write or overwrite a file inside a WebComp folder.
+def get_webcomp_clip_info(clip_id: str) -> str:
+    """Get full info about a WebComp clip that is on the timeline.
 
-    Common filenames: index.html, style.css, script.js
-    For surgical single-line edits, prefer editing the file path directly.
+    Returns the clip's transform, opacity, webcompId, asset metadata (name/size/fps),
+    and the complete param schema so you know which params can be set.
+
+    Args:
+        clip_id: The clipId of the WebComp clip on the timeline
+    """
+    return json.dumps(_get(f"/timeline/webcomp/clip-info?clipId={clip_id}"))
+
+
+@tool
+def read_webcomp_file(webcomp_id: str, filename: str) -> str:
+    """Read the content of a file inside a WebComp folder.
+
+    Always call this before edit_webcomp_file() to understand the existing code.
 
     Args:
         webcomp_id: The assetId of the WebComp
-        filename: File to write (e.g. "style.css")
-        content: Full file content
+        filename: File to read — e.g. "index.html", "style.css", "script.js", "webcomp.json"
     """
-    result = _post("/timeline/webcomp/write-file", {
-        "webcompId": webcomp_id,
-        "filename": filename,
-        "content": content,
+    result = _post("/timeline/webcomp/read-file", {"webcompId": webcomp_id, "filename": filename})
+    return json.dumps(result)
+
+
+@tool
+def edit_webcomp_file(webcomp_id: str, filename: str, content: str) -> str:
+    """Write or overwrite a file inside a WebComp folder.
+
+    Common files: index.html, style.css, script.js, webcomp.json
+    After editing, call reload_webcomp() to see changes in the preview immediately.
+
+    Args:
+        webcomp_id: The assetId of the WebComp
+        filename: File to write (e.g. "script.js")
+        content: Full file content to write
+    """
+    result = _post("/timeline/webcomp/write-file", {"webcompId": webcomp_id, "filename": filename, "content": content})
+    return json.dumps(result)
+
+
+@tool
+def set_webcomp_params(clip_id: str, params: dict) -> str:
+    """Set runtime params on a WebComp clip (drives window.FADE_PARAMS in the page).
+
+    Params appear in the inspector panel and are injected into the WebComp page
+    as window.FADE_PARAMS. Match keys to the param schema in webcomp.json.
+
+    Example: set_webcomp_params("clip-123", {"text": "Hello", "color": "#ff0000"})
+
+    Args:
+        clip_id: The clipId of the WebComp clip on the timeline
+        params: Key-value dict matching the WebComp's param schema
+    """
+    result = _post("/timeline/webcomp/runtime-params", {"clipId": clip_id, "params": params})
+    return json.dumps(result)
+
+
+@tool
+def set_webcomp_transform(
+    clip_id: str,
+    x: float = 0.0,
+    y: float = 0.0,
+    scale_x: float = 1.0,
+    scale_y: float = 1.0,
+    rotation: float = 0.0,
+    anchor_x: float = 0.0,
+    anchor_y: float = 0.0,
+) -> str:
+    """Set the position, scale, and rotation of a WebComp clip on the canvas.
+
+    Args:
+        clip_id: The clipId of the WebComp clip
+        x: Horizontal offset in pixels from canvas centre (negative = left)
+        y: Vertical offset in pixels from canvas centre (negative = up)
+        scale_x: Horizontal scale factor (1.0 = original size)
+        scale_y: Vertical scale factor (1.0 = original size)
+        rotation: Rotation in degrees
+        anchor_x: Anchor point X offset in pixels
+        anchor_y: Anchor point Y offset in pixels
+    """
+    result = _post("/timeline/webcomp/transform", {
+        "clipId": clip_id,
+        "x": x, "y": y,
+        "scaleX": scale_x, "scaleY": scale_y,
+        "rotation": rotation,
+        "anchorX": anchor_x, "anchorY": anchor_y,
     })
     return json.dumps(result)
 
 
+@tool
+def set_webcomp_opacity(clip_id: str, opacity: float) -> str:
+    """Set the opacity of a WebComp clip.
+
+    Args:
+        clip_id: The clipId of the WebComp clip
+        opacity: 0.0 (fully transparent) to 1.0 (fully opaque)
+    """
+    result = _post("/timeline/webcomp/opacity", {"clipId": clip_id, "opacity": max(0.0, min(1.0, opacity))})
+    return json.dumps(result)
+
+
+@tool
+def delete_webcomp(webcomp_id: str) -> str:
+    """Delete a WebComp asset from the library permanently.
+
+    IMPORTANT: Remove all timeline clips that reference this WebComp first using
+    delete_clip(), otherwise the clips will reference a missing asset.
+
+    Args:
+        webcomp_id: The assetId of the WebComp to delete
+    """
+    result = _delete(f"/timeline/webcomp/{webcomp_id}")
+    return json.dumps(result)
+
+
+@tool
+def reload_webcomp(webcomp_id: str) -> str:
+    """Force-reload a WebComp's browser window and clear its frame cache.
+
+    Call this after edit_webcomp_file() to see the updated code in the preview.
+
+    Args:
+        webcomp_id: The assetId of the WebComp to reload
+    """
+    result = _post("/timeline/webcomp/reload", {"webcompId": webcomp_id})
+    return json.dumps(result)
+
+
+@tool
+def update_webcomp_meta(
+    webcomp_id: str,
+    name: str = "",
+    width: int = 0,
+    height: int = 0,
+    fps: float = 0.0,
+    duration_frames: int = 0,
+) -> str:
+    """Update the metadata of a WebComp asset (name, canvas size, fps, duration).
+
+    Only non-zero/non-empty values are applied. Updates both the in-memory asset
+    and webcomp.json on disk so changes persist across project saves.
+
+    Args:
+        webcomp_id: The assetId of the WebComp
+        name: New display name (leave empty to keep current)
+        width: Canvas width in pixels (0 = keep current)
+        height: Canvas height in pixels (0 = keep current)
+        fps: Frame rate (0.0 = keep current)
+        duration_frames: Total duration in frames (0 = keep current)
+    """
+    body: dict = {"webcompId": webcomp_id}
+    if name: body["name"] = name
+    if width: body["width"] = width
+    if height: body["height"] = height
+    if fps: body["fps"] = fps
+    if duration_frames: body["durationFrames"] = duration_frames
+    result = _post("/timeline/webcomp/update-meta", body)
+    return json.dumps(result)
+
+
+#   Register all WebComp tools with the LangGraph agent  
+
 WEBCOMP_TOOLS = [
     create_webcomp,
+    list_webcomps,
+    list_webcomp_templates,
     add_webcomp_to_timeline,
+    get_webcomp_clip_info,
+    read_webcomp_file,
     edit_webcomp_file,
+    set_webcomp_params,
+    set_webcomp_transform,
+    set_webcomp_opacity,
+    delete_webcomp,
+    reload_webcomp,
+    update_webcomp_meta,
 ]
 
-# Append WebComp tools to TOOLS
-TOOLS.extend(WEBCOMP_TOOLS)
+# Extend ALL_TOOLS 
+ALL_TOOLS.extend(WEBCOMP_TOOLS)
