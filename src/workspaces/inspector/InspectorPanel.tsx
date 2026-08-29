@@ -800,22 +800,10 @@ export default function InspectorPanel() {
     );
   }
 
-  // WebComp clips → dedicated WebComp inspector
+  // WebComp clips → generic params (transform/opacity/blend) + WebComp-specific extras
   const isWebComp = data.clipType === 'WebCompClip'
     || (selected.type === 'clip' && (selected as any).clipType === 'webcomp')
     || data.clipType.toLowerCase().includes('webcomp');
-
-  if (isWebComp) {
-    return (
-      <WebCompInspectorPanel
-        clipId={data.clipId}
-        clipName={selected.type === 'clip' ? selected.clipName : ''}
-        trackIndex={selected.type === 'clip' ? selected.trackIndex : 0}
-        startFrame={data.startFrame}
-        duration={data.duration}
-      />
-    );
-  }
 
   return (
     <div className="insp-root">
@@ -840,7 +828,6 @@ export default function InspectorPanel() {
               />
               {(groups[group] ?? true) && (
                 <div className="insp-group__body">
-                  {/* Vec4 color pickers first */}
                   {[...vec4Groups.entries()].map(([base, [rP, gP, bP, aP]]) => (
                     <Vec4ColorPicker
                       key={base}
@@ -849,7 +836,6 @@ export default function InspectorPanel() {
                       onChange={(r, g, b, a) => handleVec4Change(data.clipId, base, r, g, b, a)}
                     />
                   ))}
-                  {/* Individual scalar params (not part of a vec4 group) */}
                   {params.filter(p => !rendered.has(p.id)).map(p => (
                     <ParamRowWidget
                       key={p.id}
@@ -872,9 +858,21 @@ export default function InspectorPanel() {
         {/* Effects section */}
         <InspectorEffectsPanel clipId={data.clipId} />
       </div>
+
+      {/* WebComp extras: runtime params + source info (appended below standard params) */}
+      {isWebComp && (
+        <WebCompInspectorPanel
+          clipId={data.clipId}
+          clipName={selected.type === 'clip' ? selected.clipName : ''}
+          trackIndex={selected.type === 'clip' ? selected.trackIndex : 0}
+          startFrame={data.startFrame}
+          duration={data.duration}
+        />
+      )}
     </div>
   );
 }
+
 
 // ── Inspector Effects Panel (inline, compact) ─────────────────────────────────
 

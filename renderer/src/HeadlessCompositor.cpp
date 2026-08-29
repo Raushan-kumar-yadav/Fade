@@ -210,7 +210,7 @@ HeadlessCompositor::renderComp(const ClipDesc &clip, int64_t frame,
     }
     if (!rgba.empty())
       drawClipOnCanvas(compCanvas, innerClip, rgba.data(), imgW, imgH,
-                       /*useGpu=*/true, innerFd.frame);
+                       /*useGpu=*/true, rgba.size(), innerFd.frame);
   }
 
   // Flush the composition
@@ -580,7 +580,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     if (cp.rgba.empty())
       continue;
     drawClipOnCanvas(canvas, cl, cp.rgba.data(), cp.imgW, cp.imgH,
-                     /*useGpu=*/true, fd.frame);
+                     /*useGpu=*/true, cp.rgba.size(), fd.frame);
   }
 
   //   Transition blend

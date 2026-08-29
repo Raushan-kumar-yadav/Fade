@@ -1,54 +1,46 @@
+ 
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './WebCompInspectorPanel.css';
 
-// Types  
+/* Types */
 
 interface WebCompMeta {
-  assetId: string;
-  name: string;
-  folderPath: string;
-  width: number;
-  height: number;
-  fps: number;
-  durationFrames:number;
+  assetId: string; name: string; folderPath: string;
+  width: number; height: number; fps: number; durationFrames: number;
 }
-
 interface ParamDef {
-  id: string;
-  label:   string;
-  type:    'string' | 'number' | 'color' | 'boolean';
+  id: string; label: string;
+  type: 'string' | 'number' | 'color' | 'boolean';
   default: string | number | boolean;
 }
-
 interface WebCompClipInfo {
-  webcompId:     string;
-  mediaOffset:   number;
+  webcompId: string; mediaOffset: number;
   runtimeParams: Record<string, any>;
-  meta:          WebCompMeta | null;
-  params:        ParamDef[];
+  meta: WebCompMeta | null; params: ParamDef[];
 }
 
-// ── API helpers ────────────────────────────────────────────────────────────────
+/* API */
 
 function base() { return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`; }
 
-async function fetchWebCompInfo(clipId: string): Promise<WebCompClipInfo | null> {
+async function fetchInfo(clipId: string): Promise<WebCompClipInfo | null> {
   try {
     const r = await fetch(`${base()}/timeline/webcomp/clip-info?clipId=${clipId}`);
-    if (!r.ok) return null;
-    return r.json();
+    return r.ok ? r.json() : null;
   } catch { return null; }
 }
 
-async function patchRuntimeParams(clipId: string, params: Record<string, any>): Promise<void> {
+async function patchParams(clipId: string, webcompId: string, params: Record<string, any>) {
   await fetch(`${base()}/timeline/webcomp/runtime-params`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clipId, params }),
   });
+  // Also push live to the offscreen window
+  (window as any).electronAPI?.webcompUpdateParams?.(webcompId, params);
 }
 
-// ── Small sub-components ───────────────────────────────────────────────────────
+/* Sub-components */
 
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
@@ -59,52 +51,38 @@ function SectionHeader({ label, open, onToggle }: { label: string; open: boolean
   );
 }
 
-interface ParamEditorProps {
-  def:      ParamDef;
-  value:    any;
-  onChange: (id: string, val: any) => void;
-}
-
-function ParamEditor({ def, value, onChange }: ParamEditorProps) {
+function ParamEditor({ def, value, onChange }: {
+  def: ParamDef; value: any; onChange: (id: string, val: any) => void;
+}) {
   const [localStr, setLocalStr] = useState(String(value ?? def.default));
-
   useEffect(() => { setLocalStr(String(value ?? def.default)); }, [value, def.default]);
-
   const commit = () => {
     if (def.type === 'number') onChange(def.id, parseFloat(localStr) || 0);
-    else if (def.type === 'string') onChange(def.id, localStr);
+    else onChange(def.id, localStr);
   };
-
   return (
     <div className="wci-param">
       <label className="wci-param__label">{def.label}</label>
       <div className="wci-param__ctrl">
         {def.type === 'boolean' && (
           <label className="wci-toggle">
-            <input
-              type="checkbox"
-              checked={!!value}
-              onChange={e => onChange(def.id, e.target.checked)}
-            />
+            <input type="checkbox" checked={!!value}
+              onChange={e => onChange(def.id, e.target.checked)} />
             <span className="wci-toggle__track" />
           </label>
         )}
         {def.type === 'color' && (
           <div className="wci-color-wrap">
-            <input
-              type="color"
-              className="wci-color"
+            <input type="color" className="wci-color"
               value={typeof value === 'string' ? value : '#667eea'}
-              onChange={e => onChange(def.id, e.target.value)}
-            />
+              onChange={e => onChange(def.id, e.target.value)} />
             <span className="wci-color__hex">
               {typeof value === 'string' ? value.toUpperCase() : '#667EEA'}
             </span>
           </div>
         )}
         {(def.type === 'string' || def.type === 'number') && (
-          <input
-            className="wci-param__input"
+          <input className="wci-param__input"
             type={def.type === 'number' ? 'number' : 'text'}
             value={localStr}
             onChange={e => setLocalStr(e.target.value)}
@@ -117,41 +95,37 @@ function ParamEditor({ def, value, onChange }: ParamEditorProps) {
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+/* Main */
 
 interface Props {
-  clipId:     string;
-  clipName:   string;
-  trackIndex: number;
-  startFrame: number;
-  duration:   number;
+  clipId: string; clipName: string;
+  trackIndex: number; startFrame: number; duration: number;
 }
 
-export default function WebCompInspectorPanel({ clipId, clipName, trackIndex, startFrame, duration }: Props) {
+export default function WebCompInspectorPanel({
+  clipId, clipName, trackIndex, startFrame, duration,
+}: Props) {
   const [info, setInfo]       = useState<WebCompClipInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [params, setParams]   = useState<Record<string, any>>({});
-  const [dirty, setDirty]     = useState(false);
   const [saving, setSaving]   = useState(false);
-  const [openSrc, setOpenSrc] = useState(true);
+  const [dirty, setDirty]     = useState(false);
   const [openPrm, setOpenPrm] = useState(true);
-  const [openMeta, setOpenMeta] = useState(false);
+  const [openSrc, setOpenSrc] = useState(false);
+  const [openRaw, setOpenRaw] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Load ──────────────────────────────────────────────────────────────────
+  /* Load */
   const load = useCallback(async () => {
     setLoading(true);
-    const d = await fetchWebCompInfo(clipId);
-    if (d) {
-      setInfo(d);
-      setParams(d.runtimeParams ?? {});
-    }
+    const d = await fetchInfo(clipId);
+    if (d) { setInfo(d); setParams(d.runtimeParams ?? {}); }
     setLoading(false);
   }, [clipId]);
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Param change — debounce push to backend ───────────────────────────────
+  /* Param change — debounce 500ms */
   const handleParamChange = useCallback((id: string, val: any) => {
     setParams(p => {
       const next = { ...p, [id]: val };
@@ -159,11 +133,7 @@ export default function WebCompInspectorPanel({ clipId, clipName, trackIndex, st
       if (saveTimer.current) clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(async () => {
         setSaving(true);
-        await patchRuntimeParams(clipId, next);
-        // Notify Electron to push the change to the offscreen window
-        (window as any).electronAPI?.webcompUpdateParams?.(
-          info?.webcompId ?? '', next
-        );
+        await patchParams(clipId, info?.webcompId ?? '', next);
         setSaving(false);
         setDirty(false);
       }, 500);
@@ -176,39 +146,26 @@ export default function WebCompInspectorPanel({ clipId, clipName, trackIndex, st
   }, [info?.webcompId]);
 
   const handleOpenFolder = useCallback(() => {
-    if (info?.meta?.folderPath) {
+    if (info?.meta?.folderPath)
       (window as any).electronAPI?.shellOpenPath?.(info.meta.folderPath);
-    }
   }, [info?.meta?.folderPath]);
 
-  if (loading) {
-    return (
-      <div className="wci-root">
-        <div className="wci-spinner" />
-      </div>
-    );
-  }
-
-  if (!info) {
-    return (
-      <div className="wci-root">
-        <div className="wci-empty">WebComp not found</div>
-      </div>
-    );
-  }
+  /* ── Render ── */
+  if (loading) return <div className="wci-root"><div className="wci-spinner" /></div>;
+  if (!info)   return <div className="wci-root"><div className="wci-empty">WebComp not found</div></div>;
 
   const { meta, params: paramDefs, webcompId } = info;
 
   return (
     <div className="wci-root">
 
-      {/* Header badge */}
+      {/* Header */}
       <div className="wci-header">
         <div className="wci-header__badge">
           <svg width="12" height="12" viewBox="0 0 48 48" fill="none">
-            <rect x="4" y="4" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.8"/>
-            <rect x="26" y="4" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.5"/>
-            <rect x="4" y="26" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.5"/>
+            <rect x="4"  y="4"  width="18" height="18" rx="3" fill="#a78bfa" opacity="0.8"/>
+            <rect x="26" y="4"  width="18" height="18" rx="3" fill="#a78bfa" opacity="0.5"/>
+            <rect x="4"  y="26" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.5"/>
             <rect x="26" y="26" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.3"/>
           </svg>
           WebComp
@@ -219,20 +176,61 @@ export default function WebCompInspectorPanel({ clipId, clipName, trackIndex, st
         </div>
       </div>
 
-      {/* Quick actions */}
+      {/* Actions */}
       <div className="wci-actions">
-        <button className="wci-action-btn" onClick={handleReload} title="Reload offscreen window">
-          ↺ Reload
-        </button>
-        <button className="wci-action-btn" onClick={handleOpenFolder} title="Open folder in Explorer">
-          📁 Folder
-        </button>
+        <button className="wci-action-btn" onClick={handleReload} title="Reload offscreen window">↺ Reload</button>
+        <button className="wci-action-btn" onClick={handleOpenFolder} title="Open folder">📁 Folder</button>
         {saving && <span className="wci-saving">Saving…</span>}
         {!saving && dirty && <span className="wci-dirty">●</span>}
       </div>
 
+      {/* Note: Transform (position/scale/rotation/opacity/blend) params are rendered
+          by the parent InspectorPanel exactly like video/shape clips.
+          This panel only shows WebComp-specific extras below. */}
+
+      {/* Runtime params from webcomp.json schema */}
+      {paramDefs.length > 0 && (
+        <>
+          <SectionHeader
+            label={`Params (${paramDefs.length})`}
+            open={openPrm}
+            onToggle={() => setOpenPrm(o => !o)}
+          />
+          {openPrm && (
+            <div className="wci-section-body">
+              {paramDefs.map(def => (
+                <ParamEditor key={def.id} def={def}
+                  value={params[def.id] ?? def.default}
+                  onChange={handleParamChange}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Freeform JSON fallback if no schema */}
+      {paramDefs.length === 0 && (
+        <>
+          <SectionHeader label="Runtime Params (JSON)" open={openRaw}
+            onToggle={() => setOpenRaw(o => !o)} />
+          {openRaw && (
+            <div className="wci-section-body">
+              <FreeformJsonEditor
+                value={params}
+                onChange={next => {
+                  setParams(next); setDirty(true);
+                  patchParams(clipId, webcompId, next);
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
+
       {/* Source info */}
-      <SectionHeader label="Source" open={openSrc} onToggle={() => setOpenSrc(o => !o)} />
+      <SectionHeader label="Source" open={openSrc}
+        onToggle={() => setOpenSrc(o => !o)} />
       {openSrc && (
         <div className="wci-section-body">
           <div className="wci-kv">
@@ -259,85 +257,26 @@ export default function WebCompInspectorPanel({ clipId, clipName, trackIndex, st
           </div>
         </div>
       )}
-
-      {/* Runtime params — defined in webcomp.json */}
-      {paramDefs.length > 0 && (
-        <>
-          <SectionHeader
-            label={`Params (${paramDefs.length})`}
-            open={openPrm}
-            onToggle={() => setOpenPrm(o => !o)}
-          />
-          {openPrm && (
-            <div className="wci-section-body">
-              {paramDefs.map(def => (
-                <ParamEditor
-                  key={def.id}
-                  def={def}
-                  value={params[def.id] ?? def.default}
-                  onChange={handleParamChange}
-                />
-              ))}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Raw params — if no schema, show freeform JSON editor */}
-      {paramDefs.length === 0 && (
-        <>
-          <SectionHeader label="Raw Params (JSON)" open={openMeta} onToggle={() => setOpenMeta(o => !o)} />
-          {openMeta && (
-            <div className="wci-section-body">
-              <FreeformJsonEditor
-                value={params}
-                onChange={next => {
-                  setParams(next);
-                  setDirty(true);
-                  patchRuntimeParams(clipId, next);
-                  (window as any).electronAPI?.webcompUpdateParams?.(webcompId, next);
-                }}
-              />
-            </div>
-          )}
-        </>
-      )}
-
     </div>
   );
 }
 
-// ── Freeform JSON editor for clips with no param schema ────────────────────────
-
+/* Freeform JSON editor */
 function FreeformJsonEditor({ value, onChange }: {
-  value: Record<string, any>;
-  onChange: (v: Record<string, any>) => void;
+  value: Record<string, any>; onChange: (v: Record<string, any>) => void;
 }) {
   const [text, setText] = useState(JSON.stringify(value, null, 2));
   const [err, setErr]   = useState('');
-
   useEffect(() => { setText(JSON.stringify(value, null, 2)); }, [value]);
-
   const commit = () => {
-    try {
-      const parsed = JSON.parse(text);
-      setErr('');
-      onChange(parsed);
-    } catch (e: any) {
-      setErr(e.message);
-    }
+    try { setErr(''); onChange(JSON.parse(text)); }
+    catch (e: any) { setErr(e.message); }
   };
-
   return (
     <div className="wci-json">
-      <textarea
-        className={`wci-json__area${err ? ' wci-json__area--error' : ''}`}
-        value={text}
-        onChange={e => setText(e.target.value)}
-        onBlur={commit}
-        rows={8}
-        spellCheck={false}
-      />
+      <textarea className={`wci-json__area${err ? ' wci-json__area--error' : ''}`}
+        value={text} onChange={e => setText(e.target.value)}
+        onBlur={commit} rows={8} spellCheck={false} />
       {err && <div className="wci-json__error">{err}</div>}
       <button className="wci-json__apply" onClick={commit}>Apply</button>
     </div>

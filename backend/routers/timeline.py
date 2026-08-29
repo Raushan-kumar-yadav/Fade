@@ -464,12 +464,27 @@ async def getWebcompClipInfo(clipId: str = ""):
             except Exception:
                 params_schema = []
 
+    # Read current transform values
+    t = clip.transform
+    tx, ty = t.position.get() if hasattr(t.position, 'get') else (getattr(t, 'x', 0.0), getattr(t, 'y', 0.0))
+    sx, sy = t.scale.get()    if hasattr(t.scale,    'get') else (getattr(t, 'scaleX', 1.0), getattr(t, 'scaleY', 1.0))
+    rot    = t.rotation.get() if hasattr(t.rotation,  'get') else getattr(t, 'rotation', 0.0)
+    op     = t.opacity.get()  if hasattr(t.opacity,   'get') else getattr(t, 'opacity', 1.0)
+    ax, ay = t.anchor.get()   if hasattr(t.anchor,    'get') else (getattr(t, 'anchorX', 0.0), getattr(t, 'anchorY', 0.0))
+
     return {
-        "webcompId": clip.webcompId,
-        "mediaOffset": getattr(clip, "mediaOffset", 0),
+        "webcompId":    clip.webcompId,
+        "mediaOffset":  getattr(clip, "mediaOffset", 0),
         "runtimeParams": getattr(clip, "_runtimeParams", {}),
-        "meta": meta,
-        "params": params_schema,
+        "meta":         meta,
+        "params":       params_schema,
+        "transform": {
+            "x":       tx,       "y":       ty,
+            "scaleX":  sx,       "scaleY":  sy,
+            "rotation": rot,
+            "anchorX": ax,       "anchorY": ay,
+        },
+        "opacity": op,
     }
 
 
@@ -495,6 +510,48 @@ async def setWebcompRuntimeParams(body: dict):
         raise HTTPException(400, "Clip is not a WebComp")
     clip._runtimeParams.update(params)
     return {"ok": True, "runtimeParams": clip._runtimeParams}
+
+
+def _find_clip(clip_id: str):
+    tl = engine.activeTimeline
+    if tl is None:
+        return None
+    for track in tl.tracks:
+        for c in track.clips:
+            if c.clipId == clip_id:
+                return c
+    return None
+
+
+@router.post("/timeline/webcomp/transform")
+async def setWebcompTransform(body: dict):
+    """Update position / scale / rotation / anchor on a WebComp clip."""
+    clip = _find_clip(body.get("clipId", ""))
+    if clip is None:
+        raise HTTPException(404, "Clip not found")
+    t = clip.transform
+    cur_pos = t.position.get()
+    cur_scale = t.scale.get()
+    cur_anchor = t.anchor.get()
+    if "x"        in body or "y"       in body:
+        t.position.setBase(float(body.get("x", cur_pos[0])), float(body.get("y", cur_pos[1])))
+    if "scaleX"   in body or "scaleY"  in body:
+        t.scale.setBase(float(body.get("scaleX", cur_scale[0])), float(body.get("scaleY", cur_scale[1])))
+    if "rotation" in body:
+        t.rotation.setBaseValue(float(body["rotation"]))
+    if "anchorX"  in body or "anchorY" in body:
+        t.anchor.setBase(float(body.get("anchorX", cur_anchor[0])), float(body.get("anchorY", cur_anchor[1])))
+    return {"ok": True}
+
+
+@router.post("/timeline/webcomp/opacity")
+async def setWebcompOpacity(body: dict):
+    """Update opacity on a WebComp clip."""
+    clip = _find_clip(body.get("clipId", ""))
+    if clip is None:
+        raise HTTPException(404, "Clip not found")
+    clip.transform.opacity.setBaseValue(float(body.get("opacity", 1.0)))
+    return {"ok": True}
 
 
 @router.delete("/timeline/webcomp/{webcomp_id}")

@@ -24,13 +24,24 @@ export function createWebComp(
     width,
     height,
     show: false,
+    frame: false,                      // No title bar — full capture area
+    transparent: true,                 // Transparent background
+    backgroundColor: '#00000000',      // ARGB transparent
     paintWhenInitiallyHidden: true,
     webPreferences: {
-      offscreen: true,              // Enable offscreen rendering
-      nodeIntegration: false,       // Security: no Node.js access
+      offscreen: true,
+      nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true,                // Maximum sandboxing
+      sandbox: true,
+      backgroundThrottling: false,     // Keep rendering even when hidden
     },
+  })
+
+  // Inject transparent CSS before page loads
+  win.webContents.on('dom-ready', () => {
+    win.webContents.insertCSS(
+      'html, body { background: transparent !important; margin: 0; padding: 0; overflow: hidden; }'
+    ).catch(() => {})
   })
 
   win.webContents.setFrameRate(Math.min(fps, 60))
@@ -124,12 +135,14 @@ export function updateParams(
 ): void {
   const inst = instances.get(webcompId)
   if (!inst) return
+  /* Clear cached frames so next render gets fresh pixels */
+  inst.frameCache.clear()
   inst.win.webContents.executeJavaScript(`
     window.FADE_PARAMS = ${JSON.stringify(params)};
     window.dispatchEvent(new CustomEvent('fade:params', {
       detail: ${JSON.stringify(params)}
     }));
-  `)
+  `).catch(() => {})
 }
 
 export function reloadWebComp(webcompId: string): void {
