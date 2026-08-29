@@ -234,6 +234,7 @@ void HeadlessCompositor::renderFrame(const FrameDescriptor &fd) {
 }
 
 void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
+  std::cerr << "[DBG] doRender frame=" << fd.frame << " clips=" << fd.clips.size() << std::endl;
 
   // ULTRA-FAST PATH
 
@@ -347,7 +348,9 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     }
     // WebComp
     if (clip.type == ClipDesc::Type::WebComp) {
+      std::cerr << "[DBG] WebComp clip file=" << clip.file << " src=" << clip.sourceFrame << std::endl;
       CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
+      std::cerr << "[DBG] WebComp cache lookup done valid=" << cfd.valid << std::endl;
       if (cfd.valid) {
         std::cout << "[WEBCOMP HIT] frame=" << fd.frame
                   << " src=" << clip.sourceFrame << "\n";
@@ -361,6 +364,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
                   << " — awaiting Electron capture\n";
         decoded.push_back({&clip, {}, 0, 0});
       }
+      std::cerr << "[DBG] WebComp decoded OK" << std::endl;
       continue;
     }
     // Safety
@@ -410,8 +414,9 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   if (decoded.size() > 1)
     needsGpu = true;
 
+  std::cerr << "[DBG] needsGpu=" << needsGpu << " decoded=" << decoded.size() << std::endl;
   if (!needsGpu) {
-
+    std::cerr << "[DBG] CPU path" << std::endl;
     SkImageInfo cpuInfo = SkImageInfo::MakeN32Premul(m_width, m_height);
     auto cpuSurface = SkSurfaces::Raster(cpuInfo);
 
@@ -444,18 +449,21 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           fade::drawing::drawSvg(canvas, *cp.clip, m_width, m_height);
           continue;
         }
-        // WebComp: draw captured RGBA pixels just like video
+        // WebComp: draw captured pixels
         if (cp.clip->type == ClipDesc::Type::WebComp) {
           if (!cp.rgba.empty()) {
+            std::cerr << "[DBG] WebComp draw imgW=" << cp.imgW << " imgH=" << cp.imgH
+                      << " rgba.size=" << cp.rgba.size() << std::endl;
             drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
-                             /*useGpu=*/false);
+                             /*useGpu=*/false, cp.rgba.size());
+            std::cerr << "[DBG] WebComp draw done" << std::endl;
           }
           continue;
         }
         if (cp.rgba.empty())
           continue;
         drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
-                         /*useGpu=*/false);
+                         /*useGpu=*/false, cp.rgba.size());
       }
 
       // Read composed frame from Raster surface
@@ -472,6 +480,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   }
 
   //   GPU path
+  std::cerr << "[DBG] GPU path" << std::endl;
   m_gpuKeepAliveSurfaces.clear();
   m_gpuKeepAliveImages.clear();
   SkCanvas *canvas = m_surface->getCanvas();
@@ -663,7 +672,13 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
                                           const ClipDesc &clip,
                                           const uint8_t *rgba, int imgW,
                                           int imgH, bool useGpu,
-                                          int64_t frame) {
+                                          size_t actualDataSize, int64_t frame) {
+  /* Safety: reject null buffers */
+  if (!rgba) {
+    std::cerr << "[drawClipOnCanvas] null rgba, skipping" << std::endl;
+    return;
+  }
+
   // Use actual decoded dimensions
   if (imgW <= 0 || imgH <= 0) {
     imgW = m_width;
@@ -671,7 +686,20 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
   }
 
   const size_t rowBytes = static_cast<size_t>(imgW) * 4;
-  const size_t dataBytes = rowBytes * imgH;
+  size_t dataBytes = rowBytes * imgH;
+
+  /* Clamp to actual buffer size to prevent heap overread */
+  if (actualDataSize > 0 && dataBytes > actualDataSize) {
+    std::cerr << "[drawClipOnCanvas] WARN: dataBytes=" << dataBytes
+              << " > actualDataSize=" << actualDataSize
+              << " imgW=" << imgW << " imgH=" << imgH
+              << " — clamping" << std::endl;
+    // Derive safe height from actual data
+    imgH = static_cast<int>(actualDataSize / rowBytes);
+    if (imgH <= 0) return;
+    dataBytes = rowBytes * imgH;
+  }
+
   SkImageInfo info = SkImageInfo::Make(imgW, imgH, kRGBA_8888_SkColorType,
                                        kPremul_SkAlphaType);
 

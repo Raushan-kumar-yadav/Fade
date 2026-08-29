@@ -95,7 +95,7 @@ private:
 
   void drawClipOnCanvas(SkCanvas *canvas, const ClipDesc &clip,
                         const uint8_t *rgba, int imgW, int imgH, bool useGpu,
-                        int64_t frame = 0);
+                        size_t actualDataSize = 0, int64_t frame = 0);
 
   // SkSL effect pipeline
   // Load
