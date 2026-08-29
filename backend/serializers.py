@@ -153,3 +153,10 @@ def _serialize_clip_type_fields(
             )
             if fd is not None:
                 data["compFrameDescriptor"] = fd
+
+    elif clip_type == "webcomp":
+        webcomp_id = getattr(clip, "webcompId", "")
+        data["webcompId"] = webcomp_id
+        data["file"] = f"webcomp://{webcomp_id}"
+        data["runtimeParams"] = getattr(clip, "_runtimeParams", {})
+

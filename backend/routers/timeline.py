@@ -58,12 +58,24 @@ def addClip(req: AddClipRequest):
         clip = ImageClip(startFrame=req.startFrame, duration=req.duration,
                          assetId=req.assetId, filepath=asset.filepath)
         clip_type = "image"
+
+    elif clip_type == "webcomp":
+        from backend.timeline.clips.webComp import WebCompClip
+        clip = WebCompClip(
+            startFrame=body.get("startFrame", 0),
+            duration=body.get("duration", 150),
+            webcompId=body.get("webcompId", ""),
+            mediaOffset=body.get("mediaOffset", 0),
+        )
+
     else:
         clip = VideoClip(startFrame=req.startFrame, duration=req.duration, assetId=req.assetId)
         if engine.scheduler:
             clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
             engine.scheduler.registerClip(clip.clipId, asset)
         clip_type = "video"
+
+    
 
     from backend.history.commandStack import AddClipCommand
     engine.commandStack.execute(AddClipCommand(track, clip))
@@ -270,3 +282,73 @@ def timelineState():
     data["totalFrames"] = totalFrames
     data["fps"] = getattr(tl, "fps", fps)
     return data
+
+@router.post("/webcomp/create")
+async def createWebcomp(body:dict):
+    from backend.media.asset.webCompAsset import webCompAsset
+    import shutil
+
+    name = body.get("name","Untitled webCompo")
+    template = body.get("template" , "bland")
+    project_dir = engine.project.filePath or ""
+    project_root = os.path.dirname(project_dir) if project_dir else str(path.home() / ".fade") 
+
+    safe_name = name.lower().replace(" ","-")
+    folder = os.path.join(project_root , "webComps" , safe_name)
+    os.makedirs(folder , exist_ok=True)
+
+        # Create folder
+    safe_name = name.lower().replace(" ", "-")
+    folder = os.path.join(project_root, "webcomps", safe_name)
+    os.makedirs(folder, exist_ok=True)
+    
+    # Copy template
+    template_dir = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "webcomps", template)
+    if os.path.isdir(template_dir):
+        shutil.copytree(template_dir, folder, dirs_exist_ok=True)
+    else:
+        # Create blank files
+        _create_blank_webcomp(folder, name)
+    
+    asset = WebCompAsset(name=name, folderPath=folder)
+    asset.saveMeta()
+    _library.add(asset)
+    
+    return {"assetId": asset.assetId, "folderPath": folder, "name": name}
+
+
+    def _create_blank_webcomp(folder: str, name: str):
+
+         
+        with open(os.path.join(folder, "index.html"), "w") as f:
+            f.write(f"""<!DOCTYPE html>
+            <html><head>
+            <meta charset="utf-8">
+            <link rel="stylesheet" href="style.css">
+            </head><body>
+            <div id="scene">
+              <h1 class="title">{name}</h1>
+            </div>
+            <script src="script.js"></script>
+            </body></html>""")
+
+        with open(os.path.join(folder, "style.css"), "w") as f:
+                    f.write("""* { margin: 0; padding: 0; box-sizing: border-box; }
+            body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+            #scene { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+            .title { font-family: 'Inter', sans-serif; font-size: 72px; color: white; }
+            """)
+
+            
+        with open(os.path.join(folder, "script.js"), "w") as f:
+                    f.write("""// Fade WebComp
+            // Globals: window.FADE_FRAME, window.FADE_TIME, window.FADE_FPS, window.FADE_PARAMS
+            window.addEventListener('fade:frame', (e) => {
+              const { frame, time } = e.detail;
+              // Animate here based on frame/time
+            });
+            window.addEventListener('fade:params', (e) => {
+              const params = e.detail;
+              // React to param changes here
+            });
+            """)
