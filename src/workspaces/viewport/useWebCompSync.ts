@@ -37,9 +37,9 @@ function base(): string {
 
 /** Frames ahead to prefetch during playback */
 const PREFETCH_AHEAD   = 6;
-/** How long to pause captures after a params change (ms) — lets DOM settle */
+ 
 const PARAMS_SETTLE_MS = 300;
-/** Sleep between tick iterations (ms) */
+/** Sleep between tick iterations   */
 const TICK_SLEEP_MS    = 30;
 
 function sleep(ms: number) {
@@ -49,22 +49,17 @@ function sleep(ms: number) {
 export function useWebCompSync() {
   const api = (window as any).electronAPI;
 
-  const knownIdsRef   = useRef<Set<string>>(new Set());
-  const wcClipsRef    = useRef<WcClip[]>([]);
-  const curFrameRef   = useRef<number>(0);
+  const knownIdsRef = useRef<Set<string>>(new Set());
+  const wcClipsRef = useRef<WcClip[]>([]);
+  const curFrameRef = useRef<number>(0);
 
-  /**
-   * pushedRef: frames already successfully cached in the native engine.
-   * pendingRef: frames whose capture is currently in flight (to prevent dups).
-   * generationRef: bumped on every params change; stale captures are dropped.
-   * settleUntilRef: timestamp before which no captures should fire.
-   */
+  
   const pushedRef     = useRef<Map<string, Set<number>>>(new Map());
   const pendingRef    = useRef<Map<string, Set<number>>>(new Map());
   const generationRef = useRef<number>(0);
   const settleUntilRef = useRef<number>(0);
 
-  /* ── Track playhead ────────────────────────────────────────────────────── */
+  /*   Track playhead   */
   useEffect(() => {
     const onFrame = (e: Event) => {
       curFrameRef.current = (e as CustomEvent).detail ?? 0;
@@ -77,12 +72,11 @@ export function useWebCompSync() {
     };
   }, []);
 
-  /* ── On seek/stop: clear pushed so frames are re-verified ─────────────── */
+  /*   On seek/stop */
   useEffect(() => {
     const onReset = () => {
       for (const set of pushedRef.current.values()) set.clear();
-      // Don't clear pending — those captures are still in flight; they'll check
-      // generation and discard themselves if needed.
+    
     };
     window.addEventListener('fade:seek',  onReset);
     window.addEventListener('fade:stop',  onReset);
@@ -94,14 +88,14 @@ export function useWebCompSync() {
     };
   }, []);
 
-  /* ── Params change: bump generation + set settle window ───────────────── */
+  /* Params change */
   useEffect(() => {
     const onParamsChange = (e: Event) => {
       const { webcompId } = (e as CustomEvent<{ webcompId: string }>).detail ?? {};
       generationRef.current++;
       settleUntilRef.current = Date.now() + PARAMS_SETTLE_MS;
 
-      // Clear pushed cache for this webcomp so we re-capture with new params
+      // Clear pushed cache  
       if (webcompId) {
         pushedRef.current.get(webcompId)?.clear();
         pendingRef.current.get(webcompId)?.clear();
@@ -117,83 +111,91 @@ export function useWebCompSync() {
     return () => window.removeEventListener('fade:webcomp-params-changed', onParamsChange);
   }, []);
 
-  /* ── Prefetch loop ─────────────────────────────────────────────────────── */
-  useEffect(() => {
-    if (!api?.webcompPushToNative) return;
+ 
+  const perClipLoopsRef = useRef<Map<string, AbortController>>(new Map());
 
-    let running = true;
+  const spawnLoopForClip = (webcompId: string) => {
+    if (!api?.webcompPushToNative) return;
+    if (perClipLoopsRef.current.has(webcompId)) return; // already running
+
+    const ctrl = new AbortController();
+    perClipLoopsRef.current.set(webcompId, ctrl);
 
     const loop = async () => {
-      while (running) {
+      while (!ctrl.signal.aborted) {
         await sleep(TICK_SLEEP_MS);
-        if (!running) break;
+        if (ctrl.signal.aborted) break;
 
         // Respect params-change settle window
         if (Date.now() < settleUntilRef.current) continue;
 
-        const clips = wcClipsRef.current;
-        if (clips.length === 0) continue;
+        // Find the clip data for this webcompId
+        const clip = wcClipsRef.current.find(c => c.webcompId === webcompId);
+        if (!clip) { await sleep(200); continue; }
 
-        const cur = curFrameRef.current;
-        const myGen = generationRef.current;
+        const pushed  = pushedRef.current.get(webcompId);
+        const pending = pendingRef.current.get(webcompId);
+        if (!pushed || !pending) continue;
 
-        for (const clip of clips) {
-          if (!running) break;
+        const cur    = curFrameRef.current;
+        const myGen  = generationRef.current;
 
-          const pushed  = pushedRef.current.get(clip.webcompId)!;
-          const pending = pendingRef.current.get(clip.webcompId)!;
+        for (let delta = 0; delta <= PREFETCH_AHEAD; delta++) {
+          if (ctrl.signal.aborted) break;
+          if (Date.now() < settleUntilRef.current) break;
 
-          for (let delta = 0; delta <= PREFETCH_AHEAD; delta++) {
-            if (!running) break;
-            if (Date.now() < settleUntilRef.current) break; // re-check settle
+          const absFrame = cur + delta;
+          const srcFrame = absFrame - clip.startFrame;
+          if (srcFrame < 0 || srcFrame >= clip.duration) continue;
 
-            const absFrame = cur + delta;
-            const srcFrame = absFrame - clip.startFrame;
-            if (srcFrame < 0 || srcFrame >= clip.duration) continue;
+          if (pushed.has(srcFrame) || pending.has(srcFrame)) continue;
 
-            // Skip if already cached or already in flight
-            if (pushed.has(srcFrame) || pending.has(srcFrame)) continue;
+          pending.add(srcFrame);
 
-            // Mark in-flight immediately to prevent duplicate captures
-            pending.add(srcFrame);
-
-            // Fire capture without blocking the loop — but track it
-            const capGen = myGen;
-            api.webcompPushToNative(
-              clip.webcompId,
-              srcFrame,
-              clip.width,
-              clip.height,
-            ).then((ok: boolean) => {
-              pending.delete(srcFrame);
-
-              // Discard if params changed while we were capturing
-              if (generationRef.current !== capGen) {
-                console.log(`[WebCompSync] discard stale capture f=${srcFrame} (gen mismatch ${capGen}≠${generationRef.current})`);
-                return;
+          const capGen = myGen;
+          api.webcompPushToNative(
+            webcompId,
+            srcFrame,
+            clip.width,
+            clip.height,
+          ).then((ok: boolean) => {
+            pending.delete(srcFrame);
+            if (generationRef.current !== capGen) {
+              console.log(`[WebCompSync:${webcompId.slice(-4)}] discard stale f=${srcFrame}`);
+              return;
+            }
+            if (ok) {
+              pushed.add(srcFrame);
+              if (pushed.size > 120) {
+                const oldest = pushed.values().next().value;
+                if (oldest !== undefined) pushed.delete(oldest);
               }
-
-              if (ok) {
-                pushed.add(srcFrame);
-                // Keep pushed set bounded
-                if (pushed.size > 120) {
-                  const oldest = pushed.values().next().value;
-                  if (oldest !== undefined) pushed.delete(oldest);
-                }
-              }
-            }).catch(() => {
-              pending.delete(srcFrame);
-            });
-          }
+            }
+          }).catch(() => { pending.delete(srcFrame); });
         }
       }
+      perClipLoopsRef.current.delete(webcompId);
+      console.log(`[WebCompSync] loop stopped for ${webcompId.slice(-4)}`);
     };
 
     loop();
-    return () => { running = false; };
+    console.log(`[WebCompSync] loop started for ${webcompId.slice(-4)}`);
+  };
+
+  const stopLoopForClip = (webcompId: string) => {
+    perClipLoopsRef.current.get(webcompId)?.abort();
+    perClipLoopsRef.current.delete(webcompId);
+  };
+
+  // Cleanup all loops on unmount
+  useEffect(() => {
+    return () => {
+      for (const ctrl of perClipLoopsRef.current.values()) ctrl.abort();
+      perClipLoopsRef.current.clear();
+    };
   }, []);
 
-  /* ── Sync offscreen windows with timeline state ────────────────────────── */
+  /* Sync offscreen windows with timeline state   */
   const syncWindows = async () => {
     if (!api?.webcompCreate) return;
 
@@ -220,13 +222,13 @@ export function useWebCompSync() {
           if (!asset?.folderPath) continue;
           const htmlUrl = 'file:///' + asset.folderPath.replace(/\\/g, '/') + '/index.html';
           clips.push({
-            clipId:     clip.clipId,
-            webcompId:  assetId,
+            clipId: clip.clipId,
+            webcompId: assetId,
             startFrame: clip.startFrame,
-            duration:   clip.duration,
-            width:      asset.width  ?? 1920,
-            height:     asset.height ?? 1080,
-            fps:        asset.fps    ?? 30,
+            duration: clip.duration,
+            width: asset.width  ?? 1920,
+            height: asset.height ?? 1080,
+            fps: asset.fps    ?? 30,
             htmlUrl,
           });
         }
@@ -242,15 +244,17 @@ export function useWebCompSync() {
       try {
         await api.webcompCreate({
           webcompId: clip.webcompId,
-          htmlUrl:   clip.htmlUrl,
-          width:     clip.width,
-          height:    clip.height,
-          fps:       clip.fps,
+          htmlUrl: clip.htmlUrl,
+          width: clip.width,
+          height: clip.height,
+          fps: clip.fps,
         });
         knownIdsRef.current.add(clip.webcompId);
         pushedRef.current.set(clip.webcompId,  new Set());
         pendingRef.current.set(clip.webcompId, new Set());
-        console.log('[WebCompSync] Created offscreen window for', clip.webcompId);
+         
+        spawnLoopForClip(clip.webcompId);
+        console.log('[WebCompSync] Created offscreen window + loop for', clip.webcompId.slice(-8));
       } catch (e) {
         console.error('[WebCompSync] webcompCreate failed', e);
       }
@@ -259,16 +263,17 @@ export function useWebCompSync() {
     /* Destroy windows no longer needed */
     for (const id of Array.from(knownIdsRef.current)) {
       if (!newIds.has(id)) {
+        stopLoopForClip(id);          
         api.webcompDestroy?.(id);
         knownIdsRef.current.delete(id);
         pushedRef.current.delete(id);
         pendingRef.current.delete(id);
-        console.log('[WebCompSync] Destroyed offscreen window for', id);
+        console.log('[WebCompSync] Destroyed offscreen window for', id.slice(-8));
       }
     }
   };
 
-  /* Initial sync + re-sync on track changes */
+  /* Initial sync   */
   useEffect(() => {
     syncWindows();
     const handler = () => { syncWindows(); };

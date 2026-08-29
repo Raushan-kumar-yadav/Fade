@@ -9,9 +9,8 @@ import WebCompInspectorPanel from './WebCompInspectorPanel';
 import './InspectorPanel.css';
 
 
-// ── Vec4 Color Picker ─────────────────────────────────────────────────────────
-// Renders when 4 consecutive params share a base name like color_r/g/b/a
-
+// Vec4 Color Picker  
+ 
 interface Vec4Props {
   label:  string;
   r: number; g: number; b: number; a: number;
@@ -60,14 +59,14 @@ function Vec4ColorPicker({ label, r, g, b, a, onChange }: Vec4Props) {
   );
 }
 
-// ── Keyframe diamond button ────────────────────────────────────────────────────
+// Keyframe diamond button  
 
 interface KeyframeBtnProps {
   isAnimated: boolean;
-  hasKf:      boolean;
-  onToggle:   () => void;
-  onPrev:     () => void;
-  onNext:     () => void;
+  hasKf: boolean;
+  onToggle: () => void;
+  onPrev: () => void;
+  onNext: () => void;
 }
 
 function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBtnProps) {
@@ -93,13 +92,13 @@ function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBt
   );
 }
 
-// ── Keyframe Track Editor (click diamond to open) ─────────────────────────────
+// Keyframe Track Editor  
 
 interface KFTrackProps {
-  clipId:  string;
+  clipId: string;
   paramId: string;
-  label:   string;
-  frames:  number[];
+  label: string;
+  frames: number[];
   currentFrame: number;
   onRefresh: () => void;
 }
@@ -108,18 +107,18 @@ const TL_H  = 48;   // timeline SVG height px
 const TL_PAD = 16;  // left/right padding in frame-space
 
 function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh }: KFTrackProps) {
-  const [kfData,   setKfData]   = useState<KFDef[]>([]);
-  const [loading,  setLoading]  = useState(false);
-  const [selSet,   setSelSet]   = useState<Set<number>>(new Set());
+  const [kfData, setKfData] = useState<KFDef[]>([]);
+  const [loading, setLoading]  = useState(false);
+  const [selSet, setSelSet] = useState<Set<number>>(new Set());
   const [ctxMenu,  setCtxMenu]  = useState<{ x: number; y: number; frame: number } | null>(null);
-  // Timeline zoom/pan (in frame units)
-  const [tlZoom,   setTlZoom]   = useState(1);  // pixels per frame
-  const [tlPan,    setTlPan]    = useState(0);   // left offset in frame units
+ 
+  const [tlZoom, setTlZoom] = useState(1);  // pixels per frame
+  const [tlPan, setTlPan] = useState(0);   // left offset in frame units
   // Box selection
   const [boxSel,   setBoxSel]   = useState<{ x0: number; x1: number } | null>(null);
   // Drag-to-move
   const draggingKf = useRef<{ frames: number[]; startPx: number } | null>(null);
-  const svgRef     = useRef<SVGSVGElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -131,7 +130,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Key bindings ─────────────────────────────────────────────────────────
+  // Key bindings  
   useEffect(() => {
     const onKey = async (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).matches('input,select,textarea')) return;
@@ -151,14 +150,14 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     return () => window.removeEventListener('keydown', onKey);
   }, [selSet, kfData, clipId, paramId, onRefresh, load]);
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
+  // Helpers  
   const svgWidth = () => svgRef.current?.clientWidth ?? 300;
   const maxFrame = useMemo(() => {
     const all = kfData.map(k => k.frame);
     return all.length > 0 ? Math.max(...all) : 100;
   }, [kfData]);
 
-  // pixels-per-frame (with zoom)
+  // pixels-per-frame  
   const ppf = useMemo(() => {
     const w = svgWidth() - TL_PAD * 2;
     return w / (maxFrame || 1) * tlZoom;
@@ -170,14 +169,14 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
   const xToFrame = useCallback((px: number) =>
     Math.round((px - TL_PAD) / ppf + tlPan), [ppf, tlPan]);
 
-  // ── Scroll = zoom ─────────────────────────────────────────────────────────
+  // Scroll = zoom  
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
     setTlZoom(z => Math.max(0.1, Math.min(50, z * factor)));
   }, []);
 
-  // ── Pan / box-select on SVG background ───────────────────────────────────
+  // Pan / box-select on SVG background  
   const panStart = useRef<{ clientX: number; startPan: number; moved: boolean } | null>(null);
 
   const onBgDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -198,7 +197,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
 
   const onBgUp = useCallback(() => { panStart.current = null; }, []);
 
-  // ── Diamond drag-to-move ──────────────────────────────────────────────────
+  // Diamond drag-to-move  
   const onDiamondDown = useCallback((frame: number, e: React.MouseEvent) => {
     e.stopPropagation();
     const sel = selSet.has(frame)
@@ -210,7 +209,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
 
   const onDiamondMove = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (!draggingKf.current) return;
-    // Just move via clientX delta — actual commit happens on mouseup
+    
   }, []);
 
   const onDiamondUp = useCallback(async (e: React.MouseEvent<SVGSVGElement>) => {
@@ -225,7 +224,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     draggingKf.current = null;
   }, [ppf, clipId, paramId, onRefresh, load]);
 
-  // ── Delete/copy helpers ───────────────────────────────────────────────────
+  // Delete/copy helpers  
   const deleteKf = useCallback(async (frame: number) => {
     await inspectorApi.removeKeyframe(clipId, paramId, frame);
     setCtxMenu(null);
@@ -250,7 +249,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
 
   if (loading) return <div className="insp-kftrack-loading">Loading…</div>;
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // Render  
   const playX = frameToX(currentFrame);
 
   return (
@@ -376,7 +375,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
   );
 }
 
-// ── Blend Mode Selector ──────────────────────────────────────────────────────
+//   Blend Mode Selector  
 
 const BLEND_MODES = [
   { value: 0,  label: 'Normal' },
@@ -428,18 +427,18 @@ function BlendModeSelector({ param, clipId, onChange }: {
   );
 }
 
-// ── Single param row ────────────────────────────────────────────────────────
+//   Single param row  
 
 interface ParamRowProps {
-  param:       ParamRow;
-  clipId:      string;
+  param: ParamRow;
+  clipId: string;
   currentFrame: number;
-  onChange:    (id: string, value: number) => void;
-  onRefresh:   () => void;
+  onChange: (id: string, value: number) => void;
+  onRefresh: () => void;
 }
 
 function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: ParamRowProps) {
-  // Blend mode gets its own dedicated dropdown UI
+   
   if (param.id === 'blend_mode') {
     return <BlendModeSelector param={param} clipId={clipId} onChange={onChange} />;
   }
@@ -502,7 +501,7 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
 
   const pct = ((localVal - param.min) / (param.max - param.min)) * 100;
 
-  // Format value nicely: integers as int, small decimals with precision
+  // Format value nicely 
   const fmtVal = (v: number) => {
     if (v % 1 === 0) return v.toFixed(0);
     if (Math.abs(v) < 10) return v.toFixed(3);
@@ -594,7 +593,7 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
   );
 }
 
-// ── Group header ───────────────────────────────────────────────────────────────
+// Group header  
 
 function GroupHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
@@ -605,7 +604,7 @@ function GroupHeader({ label, open, onToggle }: { label: string; open: boolean; 
   );
 }
 
-// ── Masks Panel ───────────────────────────────────────────────────────────────
+//   Masks Panel  
 
 function MasksPanel({ clipId }: { clipId: string }) {
   const [masks, setMasks] = useState<MaskInfo[]>([]);
@@ -620,7 +619,7 @@ function MasksPanel({ clipId }: { clipId: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Listen for mask changes from OverlayCanvas
+  
   useEffect(() => {
     const handler = (e: Event) => {
       const targetId = (e as CustomEvent<string>).detail;
@@ -660,9 +659,9 @@ function MasksPanel({ clipId }: { clipId: string }) {
   );
 }
 
-// ── Main Inspector Panel ──────────────────────────────────────────────────────
+//   Main Inspector Panel  
 
-/** Detect groups of 4 params that form a vec4 color: base_r, base_g, base_b, base_a */
+ 
 function extractVec4Groups(params: ParamRow[]): { rendered: Set<string>; groups: Map<string, ParamRow[]> } {
   const rendered = new Set<string>();
   const groups   = new Map<string, ParamRow[]>();
@@ -682,7 +681,7 @@ function extractVec4Groups(params: ParamRow[]): { rendered: Set<string>; groups:
 }
 
 export default function InspectorPanel() {
-  const { selected }          = useSelection();
+  const { selected, setSelected } = useSelection();
   const [data, setData]       = useState<ClipParams | null>(null);
   const [currentFrame, setCF] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -718,10 +717,17 @@ export default function InspectorPanel() {
         [...new Set(d.params.map(p => p.group))].forEach(g => { if (!(g in next)) next[g] = true; });
         return next;
       });
-    } catch (err) {
-      console.error('[Inspector] fetch error', err);
+    } catch (err: any) {
+      
+      const msg = String(err?.message ?? err);
+      if (msg.includes('not found') || msg.includes('"detail"')) {
+        setData(null);
+        setSelected(null);  // deselect the dead clip
+      } else {
+        console.error('[Inspector] fetch error', err);
+      }
     } finally { setLoading(false); }
-  }, [selected]);
+  }, [selected, setSelected]);
 
   useEffect(() => { refresh(); }, [selected?.type === 'clip' ? selected.clipId : null, currentFrame]);
 
@@ -800,7 +806,7 @@ export default function InspectorPanel() {
     );
   }
 
-  // WebComp clips → generic params (transform/opacity/blend) + WebComp-specific extras
+  // WebComp clips → generic params  
   const isWebComp = data.clipType === 'WebCompClip'
     || (selected.type === 'clip' && (selected as any).clipType === 'webcomp')
     || data.clipType.toLowerCase().includes('webcomp');
@@ -859,7 +865,7 @@ export default function InspectorPanel() {
         <InspectorEffectsPanel clipId={data.clipId} />
       </div>
 
-      {/* WebComp extras: runtime params + source info (appended below standard params) */}
+      
       {isWebComp && (
         <WebCompInspectorPanel
           clipId={data.clipId}
@@ -874,7 +880,7 @@ export default function InspectorPanel() {
 }
 
 
-// ── Inspector Effects Panel (inline, compact) ─────────────────────────────────
+// Inspector Effects Panel  
 
 function InspectorEffectsPanel({ clipId }: { clipId: string }) {
   const [effects, setEffects] = useState<EffectInfo[]>([]);
