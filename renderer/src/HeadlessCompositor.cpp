@@ -487,8 +487,8 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
 
   //   GPU path
   std::cerr << "[DBG] GPU path" << std::endl;
-  m_gpuKeepAliveSurfaces.clear();
-  m_gpuKeepAliveImages.clear();
+  // Do NOT clear keepalive vectors here — the previous frame's GPU objects
+  // must stay alive until after the final flushAndSubmit below.
   SkCanvas *canvas = m_surface->getCanvas();
   canvas->clear(SK_ColorBLACK);
 
@@ -649,7 +649,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       if (blended) {
         SkPaint p;
         std::cerr << "[TRANS] drawImage blended...\n";
-
+        m_gpuKeepAliveImages.push_back(blended); // keep alive until final flush
         const float cw = static_cast<float>(m_width);
         const float ch = static_cast<float>(m_height);
         canvas->drawImageRect(blended, SkRect::MakeWH(cw, ch),

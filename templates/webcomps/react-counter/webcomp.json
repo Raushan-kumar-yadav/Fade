@@ -1,0 +1,13 @@
+﻿{
+  "name": "React Counter",
+  "description": "Remotion-style React animation — demonstrates useCurrentFrame, interpolate, spring",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationFrames": 150,
+  "params": [
+    { "id": "title",    "label": "Title",        "type": "text",   "default": "FADE" },
+    { "id": "accent",   "label": "Accent Color", "type": "color",  "default": "#00f0ff" },
+    { "id": "subtitle", "label": "Subtitle",     "type": "text",   "default": "React-powered motion" }
+  ]
+}

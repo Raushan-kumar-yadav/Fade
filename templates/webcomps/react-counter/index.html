@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>React Counter — Fade WebComp</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1920px; height: 1080px;
+    background: transparent; overflow: hidden;
+    font-family: 'Inter', sans-serif;
+  }
+  #root { width: 1920px; height: 1080px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- 1. React from CDN (no build step needed) -->
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<!-- 2. Babel for in-browser JSX transform (dev convenience — swap for pre-built in prod) -->
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- 3. Fade React Runtime — provides useCurrentFrame, interpolate, spring, etc. -->
+<script src="../../_runtime/fade-react.js"></script>
+
+<!-- 4. Your composition — written exactly like a Remotion component -->
+<script type="text/babel">
+const {
+  FadeComposition,
+  useCurrentFrame,
+  useVideoConfig,
+  useParams,
+  interpolate,
+  spring,
+  Easing,
+  mount,
+} = window.FadeReact;
+
+// ── Sub-components (pure React, no Fade-specific imports needed) ──────────
+
+function Background({ accent }) {
+  const frame = useCurrentFrame();
+  const hue = interpolate(frame, [0, 150], [200, 260]);
+  return (
+    <div style={{
+      position: 'absolute', inset: 0,
+      background: `radial-gradient(ellipse at 50% 40%, ${accent}22 0%, #050510 60%)`,
+    }}/>
+  );
+}
+
+function CounterDigit({ value, accent }) {
+  const frame = useCurrentFrame();
+  // Spring in on first 20 frames
+  const scale = spring({ frame, fps: 30, config: { stiffness: 180, damping: 14 }, delay: 10 });
+  const opacity = interpolate(frame, [0, 15], [0, 1]);
+
+  return (
+    <div style={{
+      fontFamily: 'Inter, sans-serif',
+      fontWeight: 900,
+      fontSize: 320,
+      lineHeight: 1,
+      color: accent,
+      opacity,
+      transform: `scale(${interpolate(scale, [0, 1], [0.5, 1])})`,
+      textShadow: `0 0 80px ${accent}88, 0 0 200px ${accent}44`,
+      letterSpacing: '-0.05em',
+    }}>
+      {String(value).padStart(2, '0')}
+    </div>
+  );
+}
+
+function ProgressBar({ accent }) {
+  const frame = useCurrentFrame();
+  const { durationFrames } = useVideoConfig();
+  const progress = frame / (durationFrames - 1);
+  const width = interpolate(frame, [0, durationFrames - 1], [0, 100]);
+
+  return (
+    <div style={{ position: 'relative', width: 800, height: 4, background: '#ffffff18', borderRadius: 2 }}>
+      <div style={{
+        position: 'absolute', left: 0, top: 0, height: '100%',
+        width: `${width}%`,
+        background: `linear-gradient(90deg, ${accent}, #ffffff)`,
+        borderRadius: 2,
+        boxShadow: `0 0 16px ${accent}`,
+      }}/>
+    </div>
+  );
+}
+
+function Label({ text, delay = 0 }) {
+  const frame = useCurrentFrame();
+  const opacity = interpolate(frame, [delay, delay + 20], [0, 1]);
+  const y = interpolate(frame, [delay, delay + 20], [20, 0]);
+  return (
+    <div style={{
+      opacity,
+      transform: `translateY(${y}px)`,
+      fontFamily: 'Inter, sans-serif',
+      fontWeight: 300,
+      fontSize: 32,
+      letterSpacing: '0.4em',
+      textTransform: 'uppercase',
+      color: '#ffffff88',
+      textAlign: 'center',
+    }}>
+      {text}
+    </div>
+  );
+}
+
+// ── Root Composition ──────────────────────────────────────────────────────
+function Composition() {
+  const frame = useCurrentFrame();
+  const { fps, durationFrames } = useVideoConfig();
+  const params = useParams();
+
+  const title    = params.title    ?? 'FADE';
+  const accent   = params.accent   ?? '#00f0ff';
+  const subtitle = params.subtitle ?? 'React-powered motion';
+
+  // Which second are we on?
+  const seconds = Math.floor(frame / fps);
+  const currentSecond = frame % fps === 0 ? seconds : seconds;
+
+  // Slide-in for title
+  const titleX = interpolate(
+    spring({ frame, fps, config: { stiffness: 120, damping: 18 }, delay: 0 }),
+    [0, 1], [-200, 0]
+  );
+  const titleOpacity = interpolate(frame, [0, 20], [0, 1]);
+
+  return (
+    <div style={{
+      width: 1920, height: 1080,
+      position: 'relative',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 32,
+      background: '#050510',
+    }}>
+      <Background accent={accent} />
+
+      {/* Title */}
+      <div style={{
+        fontFamily: 'Inter, sans-serif',
+        fontWeight: 900,
+        fontSize: 96,
+        letterSpacing: '0.2em',
+        color: '#fff',
+        opacity: titleOpacity,
+        transform: `translateX(${titleX}px)`,
+        textTransform: 'uppercase',
+      }}>
+        {title}
+      </div>
+
+      {/* Live frame counter */}
+      <CounterDigit value={frame} accent={accent} />
+
+      {/* Subtitle */}
+      <Label text={subtitle} delay={5} />
+
+      {/* Progress bar */}
+      <ProgressBar accent={accent} />
+
+      {/* Frame / time info */}
+      <div style={{
+        position: 'absolute',
+        bottom: 48, right: 80,
+        fontFamily: 'Inter, sans-serif',
+        fontSize: 24,
+        color: '#ffffff44',
+        fontWeight: 300,
+        letterSpacing: '0.1em',
+      }}>
+        {frame} / {durationFrames} &nbsp;·&nbsp; {(frame / fps).toFixed(2)}s
+      </div>
+    </div>
+  );
+}
+
+// ── Mount ────────────────────────────────────────────────────────────────
+mount(
+  <FadeComposition durationFrames={150}>
+    <Composition />
+  </FadeComposition>
+);
+</script>
+</body>
+</html>
