@@ -825,3 +825,119 @@ ALL_TOOLS = [
     add_shape_clip,
     delete_composition,
 ]
+
+
+# ─── WebComp tools ──────────────────────────────────────────────────
+
+@tool
+def create_webcomp(
+    name: str,
+    html: str = "",
+    css: str = "",
+    js: str = "",
+    template: str = "blank",
+    duration_seconds: float = 5.0,
+) -> str:
+    """Create a WebComp — an HTML/CSS/JS scene rendered as video pixels on the timeline.
+
+    The page receives these globals each frame (injected by Electron):
+      window.FADE_FRAME  (int)     — current frame number
+      window.FADE_TIME   (float)   — current time in seconds
+      window.FADE_FPS    (float)   — project FPS
+      window.FADE_PARAMS (object)  — runtime params from Properties panel
+
+    Listen for frame updates:
+      window.addEventListener('fade:frame', (e) => {
+        const { frame, time } = e.detail;
+        // animate here
+      });
+
+    Templates: blank, lower-third
+    If html/css/js are provided, they override the template files.
+    """
+    body: dict = {"name": name, "template": template}
+    result = _post("/timeline/webcomp/create", body)
+    asset_id = result.get("assetId", "")
+    folder = result.get("folderPath", "")
+
+    # Override template files if custom code provided
+    if html:
+        _post("/timeline/webcomp/write-file", {
+            "webcompId": asset_id, "filename": "index.html", "content": html
+        })
+    if css:
+        _post("/timeline/webcomp/write-file", {
+            "webcompId": asset_id, "filename": "style.css", "content": css
+        })
+    if js:
+        _post("/timeline/webcomp/write-file", {
+            "webcompId": asset_id, "filename": "script.js", "content": js
+        })
+
+    return json.dumps({
+        "status": "ok",
+        "assetId": asset_id,
+        "folderPath": folder,
+        "name": name,
+        "message": f"WebComp '{name}' created. Use add_webcomp_to_timeline() to place it.",
+    })
+
+
+@tool
+def add_webcomp_to_timeline(
+    webcomp_id: str,
+    track_index: int = 0,
+    start_frame: int = 0,
+    duration: int = 150,
+) -> str:
+    """Add an existing WebComp asset to the timeline as a clip.
+
+    Args:
+        webcomp_id: The assetId returned by create_webcomp
+        track_index: Which video track (0 = top)
+        start_frame: Where on the timeline to place it
+        duration: Length in frames
+    """
+    result = _post("/timeline/add-clip", {
+        "trackIndex": track_index,
+        "startFrame": start_frame,
+        "duration": duration,
+        "assetId": webcomp_id,
+        "clipType": "webcomp",
+        "webcompId": webcomp_id,
+    })
+    return json.dumps(result)
+
+
+@tool
+def edit_webcomp_file(
+    webcomp_id: str,
+    filename: str,
+    content: str,
+) -> str:
+    """Write or overwrite a file inside a WebComp folder.
+
+    Common filenames: index.html, style.css, script.js
+    For surgical single-line edits, prefer editing the file path directly.
+
+    Args:
+        webcomp_id: The assetId of the WebComp
+        filename: File to write (e.g. "style.css")
+        content: Full file content
+    """
+    result = _post("/timeline/webcomp/write-file", {
+        "webcompId": webcomp_id,
+        "filename": filename,
+        "content": content,
+    })
+    return json.dumps(result)
+
+
+WEBCOMP_TOOLS = [
+    create_webcomp,
+    add_webcomp_to_timeline,
+    edit_webcomp_file,
+]
+
+# Append WebComp tools to TOOLS
+TOOLS.extend(WEBCOMP_TOOLS)

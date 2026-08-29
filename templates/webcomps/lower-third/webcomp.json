@@ -1,0 +1,14 @@
+{
+  "name": "Lower Third",
+  "version": "1.0",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationFrames": 150,
+  "entry": "index.html",
+  "params": [
+    { "id": "name", "type": "string", "default": "John Smith", "label": "Name" },
+    { "id": "title", "type": "string", "default": "Senior Editor", "label": "Title" },
+    { "id": "accentColor", "type": "color", "default": "#667eea", "label": "Accent Color" }
+  ]
+}

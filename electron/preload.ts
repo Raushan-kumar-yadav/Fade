@@ -43,6 +43,18 @@ export interface ElectronAPI {
     filters?: { name: string; extensions: string[] }[]
     defaultPath?: string
   }) => Promise<string | undefined>
+
+  //     WebComp  
+  webcompCreate: (opts: {
+    webcompId: string; htmlUrl: string;
+    width: number; height: number; fps: number;
+  }) => Promise<boolean>
+  webcompCaptureFrame: (webcompId: string, frame: number) => Promise<Buffer | null>
+  webcompPrefetch: (webcompId: string, startFrame: number, count: number) => Promise<boolean>
+  webcompUpdateParams: (webcompId: string, params: Record<string, any>) => void
+  webcompReload: (webcompId: string) => void
+  webcompDestroy: (webcompId: string) => void
+  webcompPushToNative: (webcompId: string, frame: number, width: number, height: number) => Promise<boolean>
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -90,5 +102,27 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   showOpenDialog: (opts?: any): Promise<string | undefined> =>
     ipcRenderer.invoke('dialog:open', opts),
+
+  //   WebComp  
+  webcompCreate: (opts: any): Promise<boolean> =>
+    ipcRenderer.invoke('webcomp:create', opts),
+
+  webcompCaptureFrame: (id: string, frame: number): Promise<Buffer | null> =>
+    ipcRenderer.invoke('webcomp:capture-frame', id, frame),
+
+  webcompPrefetch: (id: string, start: number, count: number): Promise<boolean> =>
+    ipcRenderer.invoke('webcomp:prefetch', id, start, count),
+
+  webcompUpdateParams: (id: string, params: Record<string, any>): void =>
+    ipcRenderer.send('webcomp:update-params', id, params),
+
+  webcompReload: (id: string): void =>
+    ipcRenderer.send('webcomp:reload', id),
+
+  webcompDestroy: (id: string): void =>
+    ipcRenderer.send('webcomp:destroy', id),
+
+  webcompPushToNative: (id: string, frame: number, w: number, h: number): Promise<boolean> =>
+    ipcRenderer.invoke('webcomp:push-to-native', id, frame, w, h),
 
 } satisfies ElectronAPI)

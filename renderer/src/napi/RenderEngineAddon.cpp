@@ -417,6 +417,29 @@ Napi::Value SetPreviewScale(const Napi::CallbackInfo &info) {
   return Napi::Number::New(env, g_previewScale);
 }
 
+Napi::Value PushWebCompFrame(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 5) {
+    Napi::TypeError::New(env,
+                         "pushWebCompFrame(webcompId: string, frame: number, "
+                         "rgbaBuffer: Buffer, width: number, height: number)")
+        .ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  std::string webcompId = info[0].As<Napi::String>().Utf8Value();
+  int64_t frame = info[1].As<Napi::Number>().Int64Value();
+  auto buffer = info[2].As<Napi::Buffer<uint8_t>>();
+  uint32_t w = info[3].As<Napi::Number>().Uint32Value();
+  uint32_t h = info[4].As<Napi::Number>().Uint32Value();
+
+  // Cache under pseudo-path "webcomp://<id>"
+  std::string pseudoFile = "webcomp://" + webcompId;
+  schedPushFrame(pseudoFile, frame, buffer.Data(), buffer.Length(), w, h);
+
+  return Napi::Boolean::New(env, true);
+}
+
 // Addon registration
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -432,6 +455,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("startExport", Napi::Function::New(env, StartExport));
   exports.Set("cancelExport", Napi::Function::New(env, CancelExport));
   exports.Set("setPreviewScale", Napi::Function::New(env, SetPreviewScale));
+  exports.Set("pushWebCompFrame", Napi::Function::New(env, PushWebCompFrame));
   return exports;
 }
 

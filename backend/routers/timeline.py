@@ -59,14 +59,15 @@ def addClip(req: AddClipRequest):
                          assetId=req.assetId, filepath=asset.filepath)
         clip_type = "image"
 
-    elif clip_type == "webcomp":
+    elif asset.mediaType == MediaType.webcomp:
         from backend.timeline.clips.webComp import WebCompClip
         clip = WebCompClip(
-            startFrame=body.get("startFrame", 0),
-            duration=body.get("duration", 150),
-            webcompId=body.get("webcompId", ""),
-            mediaOffset=body.get("mediaOffset", 0),
+            startFrame=req.startFrame,
+            duration=req.duration,
+            webcompId=req.assetId,
+            mediaOffset=0,
         )
+        clip_type = "webcomp"
 
     else:
         clip = VideoClip(startFrame=req.startFrame, duration=req.duration, assetId=req.assetId)
@@ -283,72 +284,103 @@ def timelineState():
     data["fps"] = getattr(tl, "fps", fps)
     return data
 
+def _create_blank_webcomp(folder: str, name: str) -> None:
+    """Create minimal blank WebComp files in the given folder."""
+    with open(os.path.join(folder, "index.html"), "w", encoding="utf-8") as f:
+        f.write(f"""<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="style.css">
+</head><body>
+<div id="scene">
+  <h1 class="title">{name}</h1>
+</div>
+<script src="script.js"></script>
+</body></html>""")
+
+    with open(os.path.join(folder, "style.css"), "w", encoding="utf-8") as f:
+        f.write("""* { margin: 0; padding: 0; box-sizing: border-box; }
+body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+#scene { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+.title { font-family: 'Inter', sans-serif; font-size: 72px; color: white; }
+""")
+
+    with open(os.path.join(folder, "script.js"), "w", encoding="utf-8") as f:
+        f.write("""// Fade WebComp
+// Globals: window.FADE_FRAME, window.FADE_TIME, window.FADE_FPS, window.FADE_PARAMS
+window.addEventListener('fade:frame', (e) => {
+  const { frame, time } = e.detail;
+  // Animate here based on frame/time
+});
+window.addEventListener('fade:params', (e) => {
+  const params = e.detail;
+  // React to param changes here
+});
+""")
+
+
 @router.post("/webcomp/create")
-async def createWebcomp(body:dict):
-    from backend.media.asset.webCompAsset import webCompAsset
+async def createWebcomp(body: dict):
+    """Create a new WebComp asset (folder on disk with HTML/CSS/JS)."""
+    from pathlib import Path
+    from backend.media.asset.webCompAsset import WebCompAsset
     import shutil
 
-    name = body.get("name","Untitled webCompo")
-    template = body.get("template" , "bland")
+    name = body.get("name", "Untitled WebComp")
+    template = body.get("template", "blank")
     project_dir = engine.project.filePath or ""
-    project_root = os.path.dirname(project_dir) if project_dir else str(path.home() / ".fade") 
+    project_root = os.path.dirname(project_dir) if project_dir else str(Path.home() / ".fade")
 
-    safe_name = name.lower().replace(" ","-")
-    folder = os.path.join(project_root , "webComps" , safe_name)
-    os.makedirs(folder , exist_ok=True)
-
-        # Create folder
-    safe_name = name.lower().replace(" ", "-")
+    safe_name = name.lower().replace(" ", "-").replace("/", "-")
     folder = os.path.join(project_root, "webcomps", safe_name)
     os.makedirs(folder, exist_ok=True)
-    
-    # Copy template
+
+    # Copy template if it exists
     template_dir = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "webcomps", template)
     if os.path.isdir(template_dir):
         shutil.copytree(template_dir, folder, dirs_exist_ok=True)
     else:
-        # Create blank files
         _create_blank_webcomp(folder, name)
-    
-    asset = WebCompAsset(name=name, folderPath=folder)
+
+    proj = engine.project
+    asset = WebCompAsset(
+        name=name,
+        folderPath=folder,
+        width=proj.width if proj else 1920,
+        height=proj.height if proj else 1080,
+        fps=proj.fps if proj else 30.0,
+    )
     asset.saveMeta()
     _library.add(asset)
-    
+
     return {"assetId": asset.assetId, "folderPath": folder, "name": name}
 
 
-    def _create_blank_webcomp(folder: str, name: str):
+@router.post("/webcomp/read-file")
+async def readWebcompFile(webcompId: str = "", filename: str = ""):
+    """Read a file from a WebComp folder."""
+    asset = _library.get(webcompId)
+    if not asset or not hasattr(asset, "folderPath"):
+        raise HTTPException(404, "WebComp not found")
+    filepath = os.path.join(asset.folderPath, filename)
+    if not os.path.isfile(filepath):
+        raise HTTPException(404, f"File not found: {filename}")
+    with open(filepath, "r", encoding="utf-8") as f:
+        content = f.read()
+    return {"content": content, "filename": filename}
 
-         
-        with open(os.path.join(folder, "index.html"), "w") as f:
-            f.write(f"""<!DOCTYPE html>
-            <html><head>
-            <meta charset="utf-8">
-            <link rel="stylesheet" href="style.css">
-            </head><body>
-            <div id="scene">
-              <h1 class="title">{name}</h1>
-            </div>
-            <script src="script.js"></script>
-            </body></html>""")
 
-        with open(os.path.join(folder, "style.css"), "w") as f:
-                    f.write("""* { margin: 0; padding: 0; box-sizing: border-box; }
-            body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
-            #scene { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-            .title { font-family: 'Inter', sans-serif; font-size: 72px; color: white; }
-            """)
-
-            
-        with open(os.path.join(folder, "script.js"), "w") as f:
-                    f.write("""// Fade WebComp
-            // Globals: window.FADE_FRAME, window.FADE_TIME, window.FADE_FPS, window.FADE_PARAMS
-            window.addEventListener('fade:frame', (e) => {
-              const { frame, time } = e.detail;
-              // Animate here based on frame/time
-            });
-            window.addEventListener('fade:params', (e) => {
-              const params = e.detail;
-              // React to param changes here
-            });
-            """)
+@router.post("/webcomp/write-file")
+async def writeWebcompFile(body: dict):
+    """Write a file to a WebComp folder."""
+    webcomp_id = body.get("webcompId", "")
+    filename = body.get("filename", "")
+    content = body.get("content", "")
+    asset = _library.get(webcomp_id)
+    if not asset or not hasattr(asset, "folderPath"):
+        raise HTTPException(404, "WebComp not found")
+    filepath = os.path.join(asset.folderPath, filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+    return {"ok": True, "filename": filename}

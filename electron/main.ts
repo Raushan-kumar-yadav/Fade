@@ -2,6 +2,10 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import fs from 'fs'
+import {
+  createWebComp, captureFrame, prefetchFrames,
+  updateParams, reloadWebComp, destroyWebComp, destroyAll
+} from './webComp/webCompRenderer'
 
 const isDev = process.env.NODE_ENV === 'development'
 let mainWindow: BrowserWindow | null = null
@@ -239,6 +243,51 @@ ipcMain.on('export:cancel', () => {
   console.log('[Export] Cancelled')
 })
 
+//   WebComp IPC  
+ipcMain.handle('webcomp:create', async (_, opts: {
+  webcompId: string; htmlUrl: string;
+  width: number; height: number; fps: number;
+}) => {
+  createWebComp(opts.webcompId, opts.htmlUrl, opts.width, opts.height, opts.fps)
+  return true
+})
+
+ipcMain.handle('webcomp:capture-frame', async (_, webcompId: string, frame: number) => {
+  const rgba = await captureFrame(webcompId, frame)
+  return rgba
+})
+
+ipcMain.handle('webcomp:prefetch', async (_, webcompId: string, startFrame: number, count: number) => {
+  await prefetchFrames(webcompId, startFrame, count)
+  return true
+})
+
+ipcMain.on('webcomp:update-params', (_, webcompId: string, params: any) => {
+  updateParams(webcompId, params)
+})
+
+ipcMain.on('webcomp:reload', (_, webcompId: string) => {
+  reloadWebComp(webcompId)
+})
+
+ipcMain.on('webcomp:destroy', (_, webcompId: string) => {
+  destroyWebComp(webcompId)
+})
+
+// Push WebComp frame into native C++ scheduler cache
+ipcMain.handle('webcomp:push-to-native', async (_, webcompId: string, frame: number, width: number, height: number) => {
+  const rgba = await captureFrame(webcompId, frame)
+  if (rgba && renderEngine) {
+    try {
+      (renderEngine as any).pushWebCompFrame(webcompId, frame, rgba, width, height)
+      return true
+    } catch (e) {
+      console.error('[WebComp] pushWebCompFrame failed:', e)
+    }
+  }
+  return false
+})
+
 //   File dialogs  
 ipcMain.handle('dialog:save', async (_event, opts) => {
   if (!mainWindow) return undefined
@@ -278,5 +327,6 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   appQuitting  = true
   pyKilledByUs = true
+  destroyAll()  // Clean up all WebComp offscreen windows
   pyProcess?.kill()
 })

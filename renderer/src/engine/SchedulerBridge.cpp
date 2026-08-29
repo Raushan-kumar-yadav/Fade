@@ -268,6 +268,20 @@ public:
     std::cout << "[MiniScheduler] Preview scale -> " << m_scale << "\n";
   }
 
+  // Push externally-captured RGBA into the cache (used by WebComp)
+  void pushFrame(const std::string &pseudoPath, int64_t frame,
+                 const uint8_t *rgba, size_t dataSize, uint32_t width,
+                 uint32_t height) {
+    CacheKey key{pseudoPath, frame};
+    auto entry = std::make_shared<CachedEntry>();
+    entry->rgba.assign(rgba, rgba + dataSize);
+    entry->width = width;
+    entry->height = height;
+    m_cache.put(key, entry);
+    std::cout << "[SCHED] Pushed WebComp frame " << pseudoPath << " f=" << frame
+              << " " << width << "x" << height << "\n";
+  }
+
 private:
   MiniScheduler() : m_pool(4), m_scale(0.5f) {}
 
@@ -313,3 +327,10 @@ void schedSetDeviceContext(void *deviceCtx) {
 }
 
 void schedSetPreviewScale(float scale) { MiniScheduler::get().setScale(scale); }
+
+void schedPushFrame(const std::string &pseudoPath, int64_t frame,
+                    const uint8_t *rgba, size_t dataSize, uint32_t width,
+                    uint32_t height) {
+  MiniScheduler::get().pushFrame(pseudoPath, frame, rgba, dataSize, width,
+                                 height);
+}

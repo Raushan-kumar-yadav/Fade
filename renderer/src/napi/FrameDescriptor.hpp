@@ -43,7 +43,8 @@ struct ClipDesc {
     Text,
     Pen,
     Svg,
-    Comp
+    Comp,
+    WebComp
   } type = Type::Video;
 
   // Solid color
@@ -209,6 +210,8 @@ inline FrameDescriptor parseFrameDescriptorFromJson(const nlohmann::json &j,
       cd.type = ClipDesc::Type::Svg;
     else if (typeStr == "comp")
       cd.type = ClipDesc::Type::Comp;
+    else if (typeStr == "webcomp")
+      cd.type = ClipDesc::Type::WebComp;
     else
       cd.type = ClipDesc::Type::Video;
 

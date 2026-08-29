@@ -344,6 +344,24 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
     }
+    // WebComp
+    if (clip.type == ClipDesc::Type::WebComp) {
+      CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
+      if (cfd.valid) {
+        std::cout << "[WEBCOMP HIT] frame=" << fd.frame
+                  << " src=" << clip.sourceFrame << "\n";
+        std::vector<uint8_t> rgbaCopy(cfd.data, cfd.data + cfd.dataSize);
+        decoded.push_back(
+            {&clip, std::move(rgbaCopy), (int)cfd.width, (int)cfd.height});
+        releaseCachedFrame(cfd);
+      } else {
+        std::cout << "[WEBCOMP MISS] frame=" << fd.frame
+                  << " src=" << clip.sourceFrame
+                  << " — awaiting Electron capture\n";
+        decoded.push_back({&clip, {}, 0, 0});
+      }
+      continue;
+    }
     // Safety
     if (clip.file.empty()) {
       decoded.push_back({&clip, {}, 0, 0});
@@ -423,6 +441,14 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         }
         if (cp.clip->type == ClipDesc::Type::Svg) {
           fade::drawing::drawSvg(canvas, *cp.clip, m_width, m_height);
+          continue;
+        }
+        // WebComp: draw captured RGBA pixels just like video
+        if (cp.clip->type == ClipDesc::Type::WebComp) {
+          if (!cp.rgba.empty()) {
+            drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
+                             /*useGpu=*/false);
+          }
           continue;
         }
         if (cp.rgba.empty())
