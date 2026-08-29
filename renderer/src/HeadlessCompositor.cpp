@@ -235,7 +235,8 @@ void HeadlessCompositor::renderFrame(const FrameDescriptor &fd) {
 }
 
 void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
-  std::cerr << "[DBG] doRender frame=" << fd.frame << " clips=" << fd.clips.size() << std::endl;
+  std::cerr << "[DBG] doRender frame=" << fd.frame
+            << " clips=" << fd.clips.size() << std::endl;
 
   // ULTRA-FAST PATH
 
@@ -349,9 +350,11 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     }
     // WebComp
     if (clip.type == ClipDesc::Type::WebComp) {
-      std::cerr << "[DBG] WebComp clip file=" << clip.file << " src=" << clip.sourceFrame << std::endl;
+      std::cerr << "[DBG] WebComp clip file=" << clip.file
+                << " src=" << clip.sourceFrame << std::endl;
       CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
-      std::cerr << "[DBG] WebComp cache lookup done valid=" << cfd.valid << std::endl;
+      std::cerr << "[DBG] WebComp cache lookup done valid=" << cfd.valid
+                << std::endl;
       if (cfd.valid) {
         std::cout << "[WEBCOMP HIT] frame=" << fd.frame
                   << " src=" << clip.sourceFrame << "\n";
@@ -415,7 +418,8 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   if (decoded.size() > 1)
     needsGpu = true;
 
-  std::cerr << "[DBG] needsGpu=" << needsGpu << " decoded=" << decoded.size() << std::endl;
+  std::cerr << "[DBG] needsGpu=" << needsGpu << " decoded=" << decoded.size()
+            << std::endl;
   if (!needsGpu) {
     std::cerr << "[DBG] CPU path" << std::endl;
     SkImageInfo cpuInfo = SkImageInfo::MakeN32Premul(m_width, m_height);
@@ -453,8 +457,9 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         // WebComp: draw captured pixels
         if (cp.clip->type == ClipDesc::Type::WebComp) {
           if (!cp.rgba.empty()) {
-            std::cerr << "[DBG] WebComp draw imgW=" << cp.imgW << " imgH=" << cp.imgH
-                      << " rgba.size=" << cp.rgba.size() << std::endl;
+            std::cerr << "[DBG] WebComp draw imgW=" << cp.imgW
+                      << " imgH=" << cp.imgH << " rgba.size=" << cp.rgba.size()
+                      << std::endl;
             drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
                              /*useGpu=*/false, cp.rgba.size());
             std::cerr << "[DBG] WebComp draw done" << std::endl;
@@ -504,12 +509,22 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       return renderGenerativeToImage(cl);
     if (cp.rgba.empty())
       return nullptr;
-    const size_t rowBytes =
-        static_cast<size_t>(cp.imgW > 0 ? cp.imgW : m_width) * 4;
-    const size_t dataBytes = rowBytes * (cp.imgH > 0 ? cp.imgH : m_height);
-    SkImageInfo ii = SkImageInfo::Make(
-        cp.imgW > 0 ? cp.imgW : m_width, cp.imgH > 0 ? cp.imgH : m_height,
-        kRGBA_8888_SkColorType, kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
+
+    int imgW = cp.imgW > 0 ? cp.imgW : m_width;
+    int imgH = cp.imgH > 0 ? cp.imgH : m_height;
+    const size_t rowBytes = static_cast<size_t>(imgW) * 4;
+    size_t dataBytes = rowBytes * static_cast<size_t>(imgH);
+
+    if (dataBytes > cp.rgba.size()) {
+      imgH = static_cast<int>(cp.rgba.size() / rowBytes);
+      if (imgH <= 0)
+        return nullptr;
+      dataBytes = rowBytes * static_cast<size_t>(imgH);
+    }
+
+    SkImageInfo ii =
+        SkImageInfo::Make(imgW, imgH, kRGBA_8888_SkColorType,
+                          kPremul_SkAlphaType, SkColorSpace::MakeSRGB());
     sk_sp<SkData> px = SkData::MakeWithCopy(cp.rgba.data(), dataBytes);
     return SkImages::RasterFromData(ii, px, rowBytes);
   };
@@ -669,12 +684,10 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     m_onFrameReady(fd.frame);
 }
 
-void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
-                                          const ClipDesc &clip,
-                                          const uint8_t *rgba, int imgW,
-                                          int imgH, bool useGpu,
-                                          size_t actualDataSize, int64_t frame) {
-  /* Safety: reject null buffers */
+void HeadlessCompositor::drawClipOnCanvas(
+    SkCanvas *canvas, const ClipDesc &clip, const uint8_t *rgba, int imgW,
+    int imgH, bool useGpu, size_t actualDataSize, int64_t frame) {
+
   if (!rgba) {
     std::cerr << "[drawClipOnCanvas] null rgba, skipping" << std::endl;
     return;
@@ -689,20 +702,20 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
   const size_t rowBytes = static_cast<size_t>(imgW) * 4;
   size_t dataBytes = rowBytes * imgH;
 
-  /* Clamp to actual buffer size to prevent heap overread */
   if (actualDataSize > 0 && dataBytes > actualDataSize) {
-    // Only warn once per (imgW, imgH) pair
-    static std::set<std::pair<int,int>> warnedSizes;
+
+    static std::set<std::pair<int, int>> warnedSizes;
     if (warnedSizes.find({imgW, imgH}) == warnedSizes.end()) {
       warnedSizes.insert({imgW, imgH});
       std::cerr << "[drawClipOnCanvas] WARN: dataBytes=" << dataBytes
-                << " > actualDataSize=" << actualDataSize
-                << " imgW=" << imgW << " imgH=" << imgH
+                << " > actualDataSize=" << actualDataSize << " imgW=" << imgW
+                << " imgH=" << imgH
                 << " — clamping (will only warn once per size)" << std::endl;
     }
     // Derive safe height from actual data
     imgH = static_cast<int>(actualDataSize / rowBytes);
-    if (imgH <= 0) return;
+    if (imgH <= 0)
+      return;
     dataBytes = rowBytes * imgH;
   }
 
@@ -1281,7 +1294,7 @@ void HeadlessCompositor::play() {
 
 void HeadlessCompositor::pause() {
   m_playing.store(false);
-  m_sleepCv.notify_all(); // wake play thread immediately
+  m_sleepCv.notify_all();
   if (m_playThread.joinable())
     m_playThread.join();
 }
@@ -1320,7 +1333,7 @@ static int tcpRecvAll(SOCKET s, char *buf, int needed) {
   while (total < needed) {
     int r = recv(s, buf + total, needed - total, 0);
     if (r <= 0)
-      return total; // connection closed or error
+      return total;
     total += r;
   }
   return total;
