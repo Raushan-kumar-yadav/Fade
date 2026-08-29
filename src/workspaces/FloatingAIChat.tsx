@@ -35,7 +35,7 @@ const TIMELINE_TOOLS = new Set([
   'add_transition','add_transitions_between_all_clips',
   'apply_effect_to_clip','patch_clip_effect','remove_effect',
   'set_effect_param','set_clip_param','undo','redo','place_clip',
-  'create_news_video',
+  'create_news_video','create_webcomp','add_webcomp_to_timeline',
 ])
 
 // Tools that modify the LIBRARY

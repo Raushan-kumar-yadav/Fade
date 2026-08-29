@@ -1,45 +1,26 @@
-/**
- * useWebCompSync.ts
- *
- * Manages offscreen BrowserWindows for WebComp clips and prefetches frames
- * into the native render engine's cache.
- *
- * KEY FIX — params-change glitch:
- *   When params change the offscreen DOM needs time to react.  We introduce a
- *   "generation" counter: every params change bumps it and sets a brief
- *   "settle" window (PARAMS_SETTLE_MS) during which the prefetch loop will NOT
- *   capture anything.  Any in-flight captures that complete during/after the
- *   settle window are discarded (they carry the old generation and are stale).
- *
- * KEY FIX — duplicate pushes:
- *   A "pending" Set tracks frames currently being captured.  We only await one
- *   capture per (webcompId, srcFrame) at a time.  The interval-based loop is
- *   replaced by a single async loop with a controlled sleep to avoid overlapping
- *   ticks.
- */
-
+ 
 import { useEffect, useRef } from 'react';
 
 interface WcClip {
-  clipId:     string;
+  clipId: string;
   webcompId:  string;
   startFrame: number;
-  duration:   number;
-  width:      number;
-  height:     number;
-  fps:        number;
-  htmlUrl:    string;
+  duration: number;
+  width: number;
+  height: number;
+  fps: number;
+  htmlUrl: string;
 }
 
 function base(): string {
   return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`;
 }
 
-/** Frames ahead to prefetch during playback */
-const PREFETCH_AHEAD   = 6;
  
+const PREFETCH_AHEAD = 6;
+const PREWARM_AHEAD = 90;   
+const PREWARM_FRAMES = 12;
 const PARAMS_SETTLE_MS = 300;
-/** Sleep between tick iterations   */
 const TICK_SLEEP_MS    = 30;
 
 function sleep(ms: number) {
@@ -54,15 +35,25 @@ export function useWebCompSync() {
   const curFrameRef = useRef<number>(0);
 
   
-  const pushedRef     = useRef<Map<string, Set<number>>>(new Map());
-  const pendingRef    = useRef<Map<string, Set<number>>>(new Map());
+  const pushedRef = useRef<Map<string, Set<number>>>(new Map());
+  const pendingRef = useRef<Map<string, Set<number>>>(new Map());
   const generationRef = useRef<number>(0);
   const settleUntilRef = useRef<number>(0);
 
-  /*   Track playhead   */
+ 
   useEffect(() => {
     const onFrame = (e: Event) => {
-      curFrameRef.current = (e as CustomEvent).detail ?? 0;
+      const newFrame = (e as CustomEvent).detail ?? 0;
+      const oldFrame = curFrameRef.current;
+      curFrameRef.current = newFrame;
+
+      // Detect seek/loop 
+      const delta = newFrame - oldFrame;
+      if (delta < 0 || delta > PREFETCH_AHEAD + 2) {
+        // Playhead jumped  
+        for (const set of pushedRef.current.values()) set.clear();
+        for (const set of pendingRef.current.values()) set.clear();
+      }
     };
     window.addEventListener('fade:frame', onFrame);
     window.addEventListener('fade:seek',  onFrame);
@@ -129,49 +120,78 @@ export function useWebCompSync() {
         // Respect params-change settle window
         if (Date.now() < settleUntilRef.current) continue;
 
-        // Find the clip data for this webcompId
-        const clip = wcClipsRef.current.find(c => c.webcompId === webcompId);
-        if (!clip) { await sleep(200); continue; }
+       
+        const clips = wcClipsRef.current.filter(c => c.webcompId === webcompId);
+        if (clips.length === 0) { await sleep(200); continue; }
 
         const pushed  = pushedRef.current.get(webcompId);
         const pending = pendingRef.current.get(webcompId);
         if (!pushed || !pending) continue;
 
-        const cur    = curFrameRef.current;
+        const cur = curFrameRef.current;
         const myGen  = generationRef.current;
 
-        for (let delta = 0; delta <= PREFETCH_AHEAD; delta++) {
-          if (ctrl.signal.aborted) break;
-          if (Date.now() < settleUntilRef.current) break;
+ 
+        for (const clip of clips) {
+ 
+          for (let delta = 0; delta <= PREFETCH_AHEAD; delta++) {
+            if (ctrl.signal.aborted) break;
+            if (Date.now() < settleUntilRef.current) break;
 
-          const absFrame = cur + delta;
-          const srcFrame = absFrame - clip.startFrame;
-          if (srcFrame < 0 || srcFrame >= clip.duration) continue;
+            const absFrame = cur + delta;
+            const srcFrame = absFrame - clip.startFrame;
+            if (srcFrame < 0 || srcFrame >= clip.duration) continue;
 
-          if (pushed.has(srcFrame) || pending.has(srcFrame)) continue;
+            if (pushed.has(srcFrame) || pending.has(srcFrame)) continue;
 
-          pending.add(srcFrame);
+            pending.add(srcFrame);
 
-          const capGen = myGen;
-          api.webcompPushToNative(
-            webcompId,
-            srcFrame,
-            clip.width,
-            clip.height,
-          ).then((ok: boolean) => {
-            pending.delete(srcFrame);
-            if (generationRef.current !== capGen) {
-              console.log(`[WebCompSync:${webcompId.slice(-4)}] discard stale f=${srcFrame}`);
-              return;
-            }
-            if (ok) {
-              pushed.add(srcFrame);
-              if (pushed.size > 120) {
-                const oldest = pushed.values().next().value;
-                if (oldest !== undefined) pushed.delete(oldest);
+            const capGen = myGen;
+            api.webcompPushToNative(
+              webcompId,
+              srcFrame,
+              clip.width,
+              clip.height,
+            ).then((ok: boolean) => {
+              pending.delete(srcFrame);
+              if (generationRef.current !== capGen) {
+                console.log(`[WebCompSync:${webcompId.slice(-4)}] discard stale f=${srcFrame}`);
+                return;
               }
+              if (ok) {
+                pushed.add(srcFrame);
+                if (pushed.size > 120) {
+                  const oldest = pushed.values().next().value;
+                  if (oldest !== undefined) pushed.delete(oldest);
+                }
+              }
+            }).catch(() => { pending.delete(srcFrame); });
+          }
+
+           
+          const timeUntilClip = clip.startFrame - cur;
+          if (timeUntilClip > 0 && timeUntilClip <= PREWARM_AHEAD) {
+            for (let f = 0; f < Math.min(PREWARM_FRAMES, clip.duration); f++) {
+              if (ctrl.signal.aborted) break;
+              if (pushed.has(f) || pending.has(f)) continue;
+
+              pending.add(f);
+              const capGen = myGen;
+              api.webcompPushToNative(
+                webcompId, f, clip.width, clip.height,
+              ).then((ok: boolean) => {
+                pending.delete(f);
+                if (generationRef.current !== capGen) return;
+                if (ok) {
+                  pushed.add(f);
+                  if (pushed.size > 120) {
+                    const oldest = pushed.values().next().value;
+                    if (oldest !== undefined) pushed.delete(oldest);
+                  }
+                }
+              }).catch(() => { pending.delete(f); });
             }
-          }).catch(() => { pending.delete(srcFrame); });
+          }
         }
       }
       perClipLoopsRef.current.delete(webcompId);
@@ -196,79 +216,104 @@ export function useWebCompSync() {
   }, []);
 
   /* Sync offscreen windows with timeline state   */
+  const syncBusyRef = useRef<boolean>(false);
+  const syncQueuedRef = useRef<boolean>(false);
+
   const syncWindows = async () => {
-    if (!api?.webcompCreate) return;
+ 
+    if (syncBusyRef.current) {
+      syncQueuedRef.current = true;
+      return;
+    }
+    syncBusyRef.current = true;
 
-    let clips: WcClip[] = [];
     try {
-      const [stateRes, listRes] = await Promise.all([
-        fetch(`${base()}/timeline/state`),
-        fetch(`${base()}/timeline/webcomp/list`),
-      ]);
-      if (!stateRes.ok || !listRes.ok) return;
+      if (!api?.webcompCreate) return;
 
-      const stateData = await stateRes.json();
-      const listData  = await listRes.json();
-
-      const assetMap = new Map<string, any>();
-      for (const a of (listData.webcomps ?? [])) assetMap.set(a.assetId, a);
-
-      for (const track of (stateData.tracks ?? [])) {
-        for (const clip of (track.clips ?? [])) {
-          if (clip.type !== 'webcomp') continue;
-          const assetId = clip.webcompId ?? clip.assetId;
-          if (!assetId) continue;
-          const asset = assetMap.get(assetId);
-          if (!asset?.folderPath) continue;
-          const htmlUrl = 'file:///' + asset.folderPath.replace(/\\/g, '/') + '/index.html';
-          clips.push({
-            clipId: clip.clipId,
-            webcompId: assetId,
-            startFrame: clip.startFrame,
-            duration: clip.duration,
-            width: asset.width  ?? 1920,
-            height: asset.height ?? 1080,
-            fps: asset.fps    ?? 30,
-            htmlUrl,
-          });
-        }
-      }
-    } catch { return; }
-
-    wcClipsRef.current = clips;
-    const newIds = new Set(clips.map(c => c.webcompId));
-
-    /* Create windows for new IDs */
-    for (const clip of clips) {
-      if (knownIdsRef.current.has(clip.webcompId)) continue;
+      let clips: WcClip[] = [];
       try {
-        await api.webcompCreate({
-          webcompId: clip.webcompId,
-          htmlUrl: clip.htmlUrl,
-          width: clip.width,
-          height: clip.height,
-          fps: clip.fps,
-        });
+        const [stateRes, listRes] = await Promise.all([
+          fetch(`${base()}/timeline/state`),
+          fetch(`${base()}/timeline/webcomp/list`),
+        ]);
+        if (!stateRes.ok || !listRes.ok) return;
+
+        const stateData = await stateRes.json();
+        const listData  = await listRes.json();
+
+        const assetMap = new Map<string, any>();
+        for (const a of (listData.webcomps ?? [])) assetMap.set(a.assetId, a);
+
+        for (const track of (stateData.tracks ?? [])) {
+          for (const clip of (track.clips ?? [])) {
+            if (clip.type !== 'webcomp') continue;
+            const assetId = clip.webcompId ?? clip.assetId;
+            if (!assetId) continue;
+            const asset = assetMap.get(assetId);
+            if (!asset?.folderPath) continue;
+            const htmlUrl = 'file:///' + asset.folderPath.replace(/\\/g, '/') + '/index.html';
+            clips.push({
+              clipId: clip.clipId,
+              webcompId: assetId,
+              startFrame: clip.startFrame,
+              duration: clip.duration,
+              width: asset.width  ?? 1920,
+              height: asset.height ?? 1080,
+              fps: asset.fps    ?? 30,
+              htmlUrl,
+            });
+          }
+        }
+      } catch { return; }
+
+      wcClipsRef.current = clips;
+      const newIds = new Set(clips.map(c => c.webcompId));
+
+ 
+      for (const clip of clips) {
+        if (knownIdsRef.current.has(clip.webcompId)) continue;
+
+ 
         knownIdsRef.current.add(clip.webcompId);
         pushedRef.current.set(clip.webcompId,  new Set());
         pendingRef.current.set(clip.webcompId, new Set());
-         
-        spawnLoopForClip(clip.webcompId);
-        console.log('[WebCompSync] Created offscreen window + loop for', clip.webcompId.slice(-8));
-      } catch (e) {
-        console.error('[WebCompSync] webcompCreate failed', e);
-      }
-    }
 
-    /* Destroy windows no longer needed */
-    for (const id of Array.from(knownIdsRef.current)) {
-      if (!newIds.has(id)) {
-        stopLoopForClip(id);          
-        api.webcompDestroy?.(id);
-        knownIdsRef.current.delete(id);
-        pushedRef.current.delete(id);
-        pendingRef.current.delete(id);
-        console.log('[WebCompSync] Destroyed offscreen window for', id.slice(-8));
+        try {
+          await api.webcompCreate({
+            webcompId: clip.webcompId,
+            htmlUrl: clip.htmlUrl,
+            width: clip.width,
+            height: clip.height,
+            fps: clip.fps,
+          });
+          spawnLoopForClip(clip.webcompId);
+          console.log('[WebCompSync] Created offscreen window + loop for', clip.webcompId.slice(-8));
+        } catch (e) {
+          console.error('[WebCompSync] webcompCreate failed', e);
+  
+          knownIdsRef.current.delete(clip.webcompId);
+          pushedRef.current.delete(clip.webcompId);
+          pendingRef.current.delete(clip.webcompId);
+        }
+      }
+
+      /* Destroy windows no longer needed */
+      for (const id of Array.from(knownIdsRef.current)) {
+        if (!newIds.has(id)) {
+          stopLoopForClip(id);          
+          api.webcompDestroy?.(id);
+          knownIdsRef.current.delete(id);
+          pushedRef.current.delete(id);
+          pendingRef.current.delete(id);
+          console.log('[WebCompSync] Destroyed offscreen window for', id.slice(-8));
+        }
+      }
+    } finally {
+      syncBusyRef.current = false;
+ 
+      if (syncQueuedRef.current) {
+        syncQueuedRef.current = false;
+        syncWindows();
       }
     }
   };
@@ -276,9 +321,19 @@ export function useWebCompSync() {
   /* Initial sync   */
   useEffect(() => {
     syncWindows();
-    const handler = () => { syncWindows(); };
-    window.addEventListener('fade:tracks-changed', handler);
-    return () => window.removeEventListener('fade:tracks-changed', handler);
+    // Debounce 
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const handler = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => { syncWindows(); }, 100);
+    };
+    window.addEventListener('fade:tracks-changed',   handler);
+    window.addEventListener('fade:timeline-changed',  handler);  // SSE from backend
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('fade:tracks-changed',   handler);
+      window.removeEventListener('fade:timeline-changed',  handler);
+    };
   }, []);
 
   /* Cleanup all windows on unmount */
@@ -287,7 +342,7 @@ export function useWebCompSync() {
       if (!api?.webcompDestroy) return;
       for (const id of Array.from(knownIdsRef.current)) api.webcompDestroy(id);
       knownIdsRef.current.clear();
-      wcClipsRef.current   = [];
+      wcClipsRef.current = [];
       pushedRef.current.clear();
       pendingRef.current.clear();
     };

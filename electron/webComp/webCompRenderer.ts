@@ -24,16 +24,16 @@ export async function createWebComp(
     width,
     height,
     show: false,
-    frame: false,                      // No title bar — full capture area
+    frame: false,                      // No title bar 
     transparent: true,                 // Transparent background
-    backgroundColor: '#00000000',      // ARGB transparent
+    backgroundColor: '#00000000', // ARGB transparent
     paintWhenInitiallyHidden: true,
     webPreferences: {
       offscreen: true,
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true,                   // Safe: runtime is served via HTTP, not file://
-      backgroundThrottling: false,     // Keep rendering even when hidden
+      sandbox: true,                   
+      backgroundThrottling: false,     
     },
   })
 
@@ -48,6 +48,15 @@ export async function createWebComp(
 
   const readyPromise = new Promise<void>(resolve => {
     win.webContents.once('did-finish-load', () => resolve())
+    win.webContents.once('did-fail-load', (_ev: any, code: number, desc: string) => {
+      console.error(`[WebComp] did-fail-load ${webcompId}: ${code} ${desc}`)
+      resolve()   
+    })
+    // Timeout safety 
+    setTimeout(() => {
+      console.warn(`[WebComp] readyPromise timeout for ${webcompId}`)
+      resolve()
+    }, 10_000)
   })
   win.loadURL(htmlUrl)
 
@@ -60,7 +69,7 @@ export async function createWebComp(
   instances.set(webcompId, inst)
   console.log(`[WebComp] Created ${webcompId} (${width}x${height}@${fps}fps)`)
 
-  // Wait for page to finish loading so the first capture attempt always succeeds
+  // Wait for page  
   await readyPromise
   inst.ready = true
   console.log(`[WebComp] Ready ${webcompId}`)
@@ -92,7 +101,7 @@ export async function captureFrame(
       }));
     `)
 
-    // Wait for render (double rAF ensures paint is complete)
+    // Wait for render  
     await inst.win.webContents.executeJavaScript(
       `new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`
     )
@@ -102,7 +111,7 @@ export async function captureFrame(
     const size = nativeImage.getSize()
     const bgra = nativeImage.toBitmap()
 
-    // Swizzle BGRA → RGBA (Chromium outputs BGRA, Skia expects RGBA)
+    // Swizzle BGRA  
     const rgba = Buffer.alloc(size.width * size.height * 4)
     for (let i = 0; i < size.width * size.height; i++) {
       const o = i * 4
@@ -112,7 +121,7 @@ export async function captureFrame(
       rgba[o + 3] = bgra[o + 3]  // A ← A
     }
 
-    // LRU cache — keep last MAX_CACHE_FRAMES frames
+    // LRU cache  
     inst.frameCache.set(frame, rgba)
     if (inst.frameCache.size > MAX_CACHE_FRAMES) {
       const oldest = inst.frameCache.keys().next().value
@@ -139,7 +148,7 @@ export function updateParams(
 ): void {
   const inst = instances.get(webcompId)
   if (!inst) return
-  /* Clear cached frames so next render gets fresh pixels */
+  /* Clear cached frames  */
   inst.frameCache.clear()
   inst.win.webContents.executeJavaScript(`
     window.FADE_PARAMS = ${JSON.stringify(params)};
