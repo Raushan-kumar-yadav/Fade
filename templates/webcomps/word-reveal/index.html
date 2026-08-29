@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Word Reveal</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1920px; height: 1080px;
+    background: transparent; overflow: hidden;
+  }
+  .scene {
+    width: 1920px; height: 1080px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    position: relative;
+  }
+
+  /* Vignette overlay */
+  .vignette {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.55) 100%);
+    pointer-events: none;
+  }
+
+  .text-block {
+    text-align: center;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* Each line is a flex container of word-spans */
+  .line {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25em;
+    overflow: visible;
+    margin-bottom: 0.05em;
+  }
+
+  .word {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(60px);
+    filter: blur(12px);
+    /* JS will animate these */
+    will-change: opacity, transform, filter;
+  }
+
+  .line1 .word, .line2 .word {
+    font-family: 'Playfair Display', serif;
+    font-weight: 900;
+    font-size: 200px;
+    line-height: 0.9;
+    color: #ffffff;
+    letter-spacing: -0.02em;
+  }
+
+  .caption .word {
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 300;
+    font-size: 42px;
+    letter-spacing: 0.45em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.5);
+    filter: blur(6px);
+  }
+
+  /* Accent line under line2 */
+  .accent-bar {
+    width: 0;
+    height: 5px;
+    border-radius: 3px;
+    margin: 28px auto 36px;
+    background: #6c63ff;
+    transition: none;
+  }
+
+  /* Floating orbs background */
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .orb1 { width: 700px; height: 700px; left: -180px;  top: -200px;  background: #6c63ff; }
+  .orb2 { width: 600px; height: 600px; right: -120px; bottom: -180px; background: #ff6b9d; }
+  .orb3 { width: 500px; height: 500px; left: 50%;     top: 50%;      background: #43e8d8; transform: translate(-50%,-50%); }
+</style>
+</head>
+<body>
+<div class="scene" id="scene">
+  <div class="orb orb1" id="orb1"></div>
+  <div class="orb orb2" id="orb2"></div>
+  <div class="orb orb3" id="orb3"></div>
+  <div class="vignette"></div>
+
+  <div class="text-block">
+    <div class="line line1" id="line1"></div>
+    <div class="line line2" id="line2"></div>
+    <div class="accent-bar" id="accentBar"></div>
+    <div class="line caption" id="caption"></div>
+  </div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

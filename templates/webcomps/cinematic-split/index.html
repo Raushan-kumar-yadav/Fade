@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Cinematic Split</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@700&family=Montserrat:wght@200;400&display=swap" rel="stylesheet"/>
+<style>
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body {
+    width:1920px; height:1080px;
+    background:transparent; overflow:hidden;
+  }
+
+  .scene {
+    width:1920px; height:1080px;
+    position:relative;
+    background:#0c0b08;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+  }
+
+  /* Film grain texture overlay */
+  .grain {
+    position:absolute; inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='512' height='512' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size:256px 256px;
+    opacity:0.4;
+    mix-blend-mode:overlay;
+    pointer-events:none;
+  }
+
+  /* Light leak flash */
+  .flash {
+    position:absolute; inset:0;
+    background:radial-gradient(ellipse 60% 50% at 50% 50%, #ffffff, transparent);
+    opacity:0;
+    pointer-events:none;
+  }
+
+  /* Letterbox bars */
+  .bar-top, .bar-bar-bottom {
+    position:absolute; left:0; right:0;
+    background:#0c0b08;
+    height:120px;
+  }
+  .bar-top    { top:0; }
+  .bar-bottom { bottom:0; }
+
+  /* Center divider line */
+  .divider {
+    position:absolute;
+    left:160px; right:160px; top:50%;
+    height:1px;
+    background:linear-gradient(90deg, transparent, rgba(232,220,200,0.3), transparent);
+    transform:scaleX(0);
+  }
+
+  /* Top half clip */
+  .half-top {
+    overflow:hidden;
+    height:240px;
+    display:flex; align-items:flex-end; justify-content:center;
+    margin-bottom:2px;
+  }
+  .half-bottom {
+    overflow:hidden;
+    height:240px;
+    display:flex; align-items:flex-start; justify-content:center;
+    margin-top:2px;
+  }
+
+  /* Main words */
+  .word-top, .word-bottom {
+    font-family:'Cormorant Garamond', serif;
+    font-weight:700;
+    font-size:240px;
+    line-height:0.85;
+    letter-spacing:0.15em;
+    text-transform:uppercase;
+    display:block;
+    will-change:transform,opacity;
+  }
+  .word-top    { transform:translateY(-100%); }
+  .word-bottom { transform:translateY(100%);  }
+
+  /* Eyebrow */
+  .eyebrow {
+    font-family:'Montserrat',sans-serif;
+    font-weight:200;
+    font-size:26px;
+    letter-spacing:0.6em;
+    text-transform:uppercase;
+    text-indent:0.6em;
+    opacity:0;
+    transform:translateY(10px);
+    margin-top:28px;
+  }
+
+  /* Decorative corner brackets */
+  .bracket {
+    position:absolute;
+    width:60px; height:60px;
+    opacity:0;
+  }
+  .bracket::before, .bracket::after {
+    content:'';
+    position:absolute;
+    background:currentColor;
+  }
+  .bracket::before { width:100%; height:2px; top:0; left:0; }
+  .bracket::after  { width:2px; height:100%; top:0; left:0; }
+
+  .br-tl { top:80px;  left:80px;  }
+  .br-tr { top:80px;  right:80px; transform:scaleX(-1); }
+  .br-bl { bottom:80px; left:80px;  transform:scaleY(-1); }
+  .br-br { bottom:80px; right:80px; transform:scale(-1,-1); }
+</style>
+</head>
+<body>
+<div class="scene" id="scene">
+  <div class="grain"></div>
+  <div class="flash" id="flash"></div>
+
+ 
+  <div class="bar-top" id="barTop"></div>
+  <div class="bar-bottom" id="barBottom"></div>
+
+  
+  <div class="bracket br-tl" id="br1"></div>
+  <div class="bracket br-tr" id="br2"></div>
+  <div class="bracket br-bl" id="br3"></div>
+  <div class="bracket br-br" id="br4"></div>
+
+  <div class="divider" id="divider"></div>
+
+  <div class="half-top">
+    <span class="word-top" id="wordTop">CINEMATIC</span>
+  </div>
+  <div class="half-bottom">
+    <span class="word-bottom" id="wordBottom">UNIVERSE</span>
+  </div>
+  <div class="eyebrow" id="eyebrow">2024 · OFFICIAL TRAILER</div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

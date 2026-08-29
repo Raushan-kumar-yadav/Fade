@@ -1,0 +1,16 @@
+{
+  "name": "Word Reveal",
+  "version": "1.0",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationFrames": 210,
+  "entry": "index.html",
+  "params": [
+    { "id": "line1",    "type": "string",  "default": "The Future",    "label": "Line 1" },
+    { "id": "line2",    "type": "string",  "default": "Is Now",        "label": "Line 2" },
+    { "id": "caption",  "type": "string",  "default": "A New Chapter", "label": "Caption" },
+    { "id": "accent",   "type": "color",   "default": "#6c63ff",       "label": "Accent" },
+    { "id": "stagger",  "type": "number",  "default": 8,               "label": "Word Stagger (frames)" }
+  ]
+}

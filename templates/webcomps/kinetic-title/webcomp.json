@@ -1,0 +1,16 @@
+{
+  "name": "Kinetic Title",
+  "version": "1.0",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationFrames": 180,
+  "entry": "index.html",
+  "params": [
+    { "id": "headline", "type": "string",  "default": "BREAKING NEWS",  "label": "Headline" },
+    { "id": "subline",  "type": "string",  "default": "Live Coverage",   "label": "Sub-line" },
+    { "id": "color1",   "type": "color",   "default": "#ff6b35",         "label": "Color A" },
+    { "id": "color2",   "type": "color",   "default": "#f7c59f",         "label": "Color B" },
+    { "id": "dark",     "type": "boolean", "default": true,              "label": "Dark Background" }
+  ]
+}

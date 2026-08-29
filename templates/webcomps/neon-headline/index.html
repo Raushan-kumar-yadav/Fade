@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Neon Headline</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400&display=swap" rel="stylesheet"/>
+<style>
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  html,body {
+    width:1920px; height:1080px;
+    background:transparent; overflow:hidden;
+  }
+
+  .scene {
+    width:1920px; height:1080px;
+    position:relative;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    background:#05050f;
+  }
+
+  /* Grid scanlines */
+  .scanlines {
+    position:absolute; inset:0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 3px,
+      rgba(0,255,231,0.015) 3px, rgba(0,255,231,0.015) 4px
+    );
+    pointer-events:none;
+    opacity:0;
+  }
+
+  /* Radial glow behind text */
+  .glow-field {
+    position:absolute;
+    width:1200px; height:600px;
+    left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    border-radius:50%;
+    background:radial-gradient(ellipse, rgba(0,255,231,0.12) 0%, transparent 70%);
+    opacity:0;
+    pointer-events:none;
+  }
+
+  /* Horizontal rule lines */
+  .rule { position:absolute; left:160px; right:160px; height:1px; opacity:0; }
+  .rule-top    { top:310px; }
+  .rule-bottom { bottom:310px; }
+
+  /* Top label */
+  .top-label {
+    font-family:'Rajdhani',sans-serif;
+    font-weight:300;
+    font-size:32px;
+    letter-spacing:0.7em;
+    text-transform:uppercase;
+    color:rgba(0,255,231,0.6);
+    opacity:0;
+    transform:translateY(-20px);
+    margin-bottom:24px;
+    text-indent:0.7em; /* compensate letter-spacing */
+  }
+
+  /* Main neon text */
+  .main-wrap { position:relative; }
+  .main-text {
+    font-family:'Orbitron',sans-serif;
+    font-weight:900;
+    font-size:210px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:transparent;
+    -webkit-text-stroke: 2px #00ffe7;
+    opacity:0;
+    transform:scale(0.88);
+    display:block;
+    position:relative;
+  }
+  /* Neon glow copies */
+  .main-text::before,
+  .main-text::after {
+    content:attr(data-text);
+    position:absolute; inset:0;
+    font-family:inherit; font-weight:inherit; font-size:inherit;
+    letter-spacing:inherit;
+    -webkit-text-stroke:0;
+    opacity:0;
+    pointer-events:none;
+  }
+  .main-text::before {
+    color:#00ffe7;
+    filter:blur(8px);
+  }
+  .main-text::after {
+    color:#00ffe7;
+    filter:blur(32px);
+    opacity:0;
+  }
+
+  /* Tagline */
+  .tagline {
+    font-family:'Rajdhani',sans-serif;
+    font-weight:400;
+    font-size:40px;
+    letter-spacing:0.35em;
+    text-transform:uppercase;
+    color:rgba(255,255,255,0.45);
+    margin-top:20px;
+    opacity:0;
+    transform:translateY(16px);
+    text-indent:0.35em;
+  }
+
+  /* Flicker keyframe */
+  @keyframes flicker {
+    0%,19%,21%,23%,25%,54%,56%,100% { opacity:1; }
+    20%,24%,55% { opacity:0.4; }
+  }
+</style>
+</head>
+<body>
+<div class="scene" id="scene">
+  <div class="scanlines"  id="scanlines"></div>
+  <div class="glow-field" id="glowField"></div>
+  <div class="rule rule-top"    id="ruleTop"    style="background:linear-gradient(90deg,transparent,#00ffe7,transparent)"></div>
+  <div class="rule rule-bottom" id="ruleBottom" style="background:linear-gradient(90deg,transparent,#00ffe7,transparent)"></div>
+
+  <div class="top-label" id="topLabel">STUDIO PRESENTS</div>
+
+  <div class="main-wrap">
+    <span class="main-text" id="mainText" data-text="ILLUMINATE">ILLUMINATE</span>
+  </div>
+
+  <div class="tagline" id="tagline">Beyond the visible</div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

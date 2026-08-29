@@ -189,27 +189,83 @@ async function apiAddWebCompClip(assetId: string, startFrame: number, duration: 
 
 //   WebComp Create Modal
 
-const WC_TEMPLATES = [
-  { id: 'blank',       label: '◻ Blank',       hint: 'Empty canvas' },
-  { id: 'lower-third', label: '▬ Lower Third',  hint: 'Animated name card' },
-];
+// ── Template icons by id ───────────────────────────────────────────────────────
+const TEMPLATE_ICONS: Record<string, string> = {
+  'blank':           '◻',
+  'lower-third':     '▬',
+  'kinetic-title':   '⚡',
+  'word-reveal':     '✦',
+  'neon-headline':   '⬡',
+  'cinematic-split': '◈',
+};
+
+const TEMPLATE_HINTS: Record<string, string> = {
+  'blank':           'Empty transparent canvas',
+  'lower-third':     'Animated slide-in name card',
+  'kinetic-title':   'High-energy Bebas Neue reveal',
+  'word-reveal':     'Staggered blur word animation',
+  'neon-headline':   'Electric Orbitron glow flicker',
+  'cinematic-split': 'Film-style split with light leak',
+};
+
+interface WcTemplate {
+  id: string; name: string; description: string;
+  width: number; height: number; fps: number;
+  durationFrames: number; params: any[];
+}
 
 function WebCompCreateModal({ onSubmit, onCancel }: {
   onSubmit: (name: string, template: string) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [name, setName]         = useState('My WebComp');
+  const [name, setName]         = useState('');
   const [template, setTemplate] = useState('blank');
   const [creating, setCreating] = useState(false);
   const [error, setError]       = useState('');
+  const [templates, setTemplates] = useState<WcTemplate[]>([]);
+  const [loading, setLoading]   = useState(true);
   const nameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { nameRef.current?.select(); }, []);
+  // Auto-name from template selection
+  const autoNamed = useRef(true);
+
+  // Fetch template list from backend on mount
+  useEffect(() => {
+    fetch(`${base()}/timeline/webcomp/templates`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.templates?.length) {
+          setTemplates(d.templates);
+          const first = d.templates[0].id;
+          setTemplate(first);
+          if (autoNamed.current) setName(d.templates[0].name);
+        } else {
+          // Fallback static list
+          setTemplates([
+            { id: 'blank',       name: 'Blank',       description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
+            { id: 'lower-third', name: 'Lower Third', description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
+          ]);
+        }
+      })
+      .catch(() => {
+        setTemplates([
+          { id: 'blank',       name: 'Blank',       description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
+          { id: 'lower-third', name: 'Lower Third', description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
+        ]);
+      })
+      .finally(() => { setLoading(false); setTimeout(() => nameRef.current?.select(), 80); });
+  }, []);
+
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
     document.addEventListener('keydown', h, true);
     return () => document.removeEventListener('keydown', h, true);
   }, [onCancel]);
+
+  const selectTemplate = (t: WcTemplate) => {
+    setTemplate(t.id);
+    if (autoNamed.current) setName(t.name);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -221,40 +277,74 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
 
   return ReactDOM.createPortal(
     <div className="lib-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
-      <form className="lib-modal" onSubmit={handleSubmit}>
+      <form className="lib-modal" onSubmit={handleSubmit} style={{ width: 480, maxHeight: '80vh' }}>
         <div className="lib-modal__header">
           <span className="lib-modal__title" style={{ color: '#a78bfa' }}>⊞ New WebComp</span>
           <button type="button" className="lib-modal__close" onClick={onCancel}>✕</button>
         </div>
-        <div className="lib-modal__body">
-          <label className="lib-comp-cfg__label">Name</label>
+        <div className="lib-modal__body" style={{ overflowY: 'auto', maxHeight: 'calc(80vh - 120px)' }}>
+          <label className="lib-comp-cfg__label">NAME</label>
           <input ref={nameRef} className="lib-comp-cfg__input" value={name}
-            onChange={e => setName(e.target.value)} placeholder="WebComp name…" />
+            onChange={e => { setName(e.target.value); autoNamed.current = false; }}
+            placeholder="WebComp name…" />
 
-          <label className="lib-comp-cfg__label" style={{ marginTop: 12 }}>Template</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-            {WC_TEMPLATES.map(t => (
-              <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
-                padding: '8px 10px', borderRadius: 6,
-                border: `1px solid ${template === t.id ? '#a78bfa' : '#2a2a38'}`,
-                background: template === t.id ? 'rgba(167,139,250,0.1)' : 'transparent',
-                transition: 'all 0.12s' }}>
-                <input type="radio" name="template" value={t.id} checked={template === t.id}
-                  onChange={() => setTemplate(t.id)} style={{ accentColor: '#a78bfa' }} />
-                <div>
-                  <div style={{ fontSize: 12, color: '#e0e0ec', fontWeight: 600 }}>{t.label}</div>
-                  <div style={{ fontSize: 10, color: '#5a5a74' }}>{t.hint}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-          {error && <div className="lib-comp-cfg__error" style={{ marginTop: 8 }}>⚠ {error}</div>}
+          <label className="lib-comp-cfg__label" style={{ marginTop: 16 }}>TEMPLATE</label>
+
+          {loading ? (
+            <div style={{ padding: '20px 0', textAlign: 'center', color: '#5a5a74', fontSize: 12 }}>
+              Loading templates…
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
+              {templates.map(t => {
+                const active = template === t.id;
+                const icon   = TEMPLATE_ICONS[t.id] ?? '◈';
+                const hint   = TEMPLATE_HINTS[t.id] ?? t.description ?? '';
+                return (
+                  <label key={t.id} onClick={() => selectTemplate(t)}
+                    style={{ display: 'flex', flexDirection: 'column', gap: 4, cursor: 'pointer',
+                      padding: '10px 12px', borderRadius: 8,
+                      border: `1px solid ${active ? '#a78bfa' : '#2a2a38'}`,
+                      background: active ? 'rgba(167,139,250,0.1)' : 'rgba(255,255,255,0.02)',
+                      transition: 'all 0.12s', position: 'relative' }}>
+                    <input type="radio" name="template" value={t.id} checked={active}
+                      onChange={() => selectTemplate(t)}
+                      style={{ position: 'absolute', top: 10, right: 10, accentColor: '#a78bfa' }} />
+                    {/* Icon + name */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span style={{ fontSize: 18, opacity: 0.8 }}>{icon}</span>
+                      <span style={{ fontSize: 12, color: '#e0e0ec', fontWeight: 600, lineHeight: 1.2 }}>{t.name}</span>
+                    </div>
+                    {/* Hint */}
+                    <div style={{ fontSize: 10, color: '#5a5a74', lineHeight: 1.4, paddingLeft: 2 }}>{hint}</div>
+                    {/* Meta pills */}
+                    <div style={{ display: 'flex', gap: 4, marginTop: 2, flexWrap: 'wrap' }}>
+                      {t.durationFrames > 0 && (
+                        <span style={{ fontSize: 9, color: '#6b7280', background: 'rgba(255,255,255,0.05)',
+                          borderRadius: 4, padding: '1px 5px' }}>{t.durationFrames}fr</span>
+                      )}
+                      {t.params.length > 0 && (
+                        <span style={{ fontSize: 9, color: '#6b7280', background: 'rgba(255,255,255,0.05)',
+                          borderRadius: 4, padding: '1px 5px' }}>{t.params.length} param{t.params.length > 1 ? 's' : ''}</span>
+                      )}
+                      {t.width && (
+                        <span style={{ fontSize: 9, color: '#6b7280', background: 'rgba(255,255,255,0.05)',
+                          borderRadius: 4, padding: '1px 5px' }}>{t.width}×{t.height}</span>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+          {error && <div className="lib-comp-cfg__error" style={{ marginTop: 10 }}>⚠ {error}</div>}
         </div>
         <div className="lib-modal__footer">
           <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
           <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create"
             style={{ background: '#7c3aed' }}
-            disabled={creating || !name.trim()}>
+            disabled={creating || !name.trim() || loading}>
             {creating ? 'Creating…' : '✓ Create WebComp'}
           </button>
         </div>
@@ -263,6 +353,7 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
     document.body
   );
 }
+
 
 //   Context menu portal  
 

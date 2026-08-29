@@ -1,0 +1,16 @@
+{
+  "name": "Neon Headline",
+  "version": "1.0",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationFrames": 180,
+  "entry": "index.html",
+  "params": [
+    { "id": "topLabel",  "type": "string", "default": "STUDIO PRESENTS",  "label": "Top Label" },
+    { "id": "mainText",  "type": "string", "default": "ILLUMINATE", "label": "Main Text" },
+    { "id": "tagline",   "type": "string", "default": "Beyond the visible", "label": "Tagline" },
+    { "id": "neonColor", "type": "color",  "default": "#00ffe7", "label": "Neon Color" },
+    { "id": "bgColor",   "type": "color",  "default": "#05050f", "label": "Background" }
+  ]
+}

@@ -22,6 +22,7 @@
 #include <gpu/ganesh/GrDirectContext.h>
 #include <gpu/ganesh/SkSurfaceGanesh.h>
 #include <mutex>
+#include <set>
 #include <vector>
 
 #define WIN32_LEAN_AND_MEAN
@@ -690,10 +691,15 @@ void HeadlessCompositor::drawClipOnCanvas(SkCanvas *canvas,
 
   /* Clamp to actual buffer size to prevent heap overread */
   if (actualDataSize > 0 && dataBytes > actualDataSize) {
-    std::cerr << "[drawClipOnCanvas] WARN: dataBytes=" << dataBytes
-              << " > actualDataSize=" << actualDataSize
-              << " imgW=" << imgW << " imgH=" << imgH
-              << " — clamping" << std::endl;
+    // Only warn once per (imgW, imgH) pair
+    static std::set<std::pair<int,int>> warnedSizes;
+    if (warnedSizes.find({imgW, imgH}) == warnedSizes.end()) {
+      warnedSizes.insert({imgW, imgH});
+      std::cerr << "[drawClipOnCanvas] WARN: dataBytes=" << dataBytes
+                << " > actualDataSize=" << actualDataSize
+                << " imgW=" << imgW << " imgH=" << imgH
+                << " — clamping (will only warn once per size)" << std::endl;
+    }
     // Derive safe height from actual data
     imgH = static_cast<int>(actualDataSize / rowBytes);
     if (imgH <= 0) return;

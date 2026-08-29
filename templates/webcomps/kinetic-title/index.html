@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Kinetic Title</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;700;900&display=swap" rel="stylesheet"/>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 1920px; height: 1080px;
+    background: transparent;
+    overflow: hidden;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .scene {
+    width: 1920px; height: 1080px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Background slab */
+  .bg {
+    position: absolute; inset: 0;
+    background: #0a0a0f;
+    opacity: 0;
+    transition: none;
+  }
+
+  /* Decorative grid lines */
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255,107,53,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,107,53,0.04) 1px, transparent 1px);
+    background-size: 80px 80px;
+    opacity: 0;
+  }
+
+  /* Horizontal accent bar */
+  .bar-top, .bar-bottom {
+    position: absolute;
+    left: 0; right: 0;
+    height: 3px;
+    transform-origin: left center;
+    transform: scaleX(0);
+  }
+  .bar-top    { top: 340px; }
+  .bar-bottom { bottom: 340px; }
+
+  /* Main headline */
+  .headline-wrap {
+    position: relative;
+    overflow: hidden;
+    line-height: 1;
+  }
+  .headline {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 220px;
+    letter-spacing: 0.05em;
+    color: #fff;
+    transform: translateY(110%);
+    display: block;
+    -webkit-text-stroke: 1px rgba(255,255,255,0.1);
+  }
+
+  /* Subline */
+  .subline-wrap {
+    position: relative;
+    overflow: hidden;
+    margin-top: 12px;
+  }
+  .subline {
+    font-family: 'Inter', sans-serif;
+    font-size: 48px;
+    font-weight: 300;
+    letter-spacing: 0.55em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.6);
+    transform: translateY(110%);
+    display: block;
+  }
+
+  /* Animated highlight box behind headline */
+  .highlight {
+    position: absolute;
+    top: 0; left: -20px; right: -20px; bottom: 0;
+    transform: scaleX(0);
+    transform-origin: left center;
+  }
+
+  /* Scan line */
+  .scan {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,107,53,0.8), transparent);
+    top: 50%;
+    opacity: 0;
+    transform: scaleX(0);
+  }
+
+  /* Frame counter */
+  .frame-num {
+    position: absolute;
+    bottom: 60px; right: 80px;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 0.2em;
+    color: rgba(255,255,255,0.15);
+    opacity: 0;
+  }
+</style>
+</head>
+<body>
+<div class="scene" id="scene">
+  <div class="bg"    id="bg"></div>
+  <div class="grid"  id="grid"></div>
+  <div class="scan"  id="scan"></div>
+
+  <div class="bar-top"    id="barTop"></div>
+  <div class="bar-bottom" id="barBottom"></div>
+
+  <div class="highlight" id="highlight"></div>
+
+  <div class="headline-wrap">
+    <span class="headline" id="headline">BREAKING NEWS</span>
+  </div>
+  <div class="subline-wrap">
+    <span class="subline" id="subline">Live Coverage</span>
+  </div>
+
+  <div class="frame-num" id="frameNum">F000</div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "Cinematic Split",
+  "version": "1.0",
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "durationFrames": 200,
+  "entry": "index.html",
+  "params": [
+    { "id": "topWord",    "type": "string", "default": "CINEMATIC", "label": "Top Word" },
+    { "id": "bottomWord", "type": "string", "default": "UNIVERSE", "label": "Bottom Word" },
+    { "id": "eyebrow",    "type": "string", "default": "2024 · OFFICIAL TRAILER", "label": "Eyebrow" },
+    { "id": "flashColor", "type": "color",  "default": "#ffffff", "label": "Flash Color" },
+    { "id": "textColor",  "type": "color",  "default": "#e8dcc8", "label": "Text Color" }
+  ]
+}

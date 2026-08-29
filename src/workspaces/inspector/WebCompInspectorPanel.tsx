@@ -32,11 +32,16 @@ async function fetchInfo(clipId: string): Promise<WebCompClipInfo | null> {
 }
 
 async function patchParams(clipId: string, webcompId: string, params: Record<string, any>) {
+  // Signal the prefetch loop to pause and discard in-flight captures
+  window.dispatchEvent(new CustomEvent('fade:webcomp-params-changed', {
+    detail: { webcompId },
+  }));
+
   await fetch(`${base()}/timeline/webcomp/runtime-params`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ clipId, params }),
   });
-  // Also push live to the offscreen window
+  // Push live to the offscreen window (after backend is updated)
   (window as any).electronAPI?.webcompUpdateParams?.(webcompId, params);
 }
 

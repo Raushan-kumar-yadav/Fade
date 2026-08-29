@@ -366,6 +366,41 @@ async def createWebcomp(body: dict):
     }
 
 
+@router.get("/timeline/webcomp/templates")
+async def listWebcompTemplates():
+    """Scan templates/webcomps directory and return available templates."""
+    import json as _json
+    templates_dir = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "webcomps")
+    templates_dir = os.path.normpath(templates_dir)
+    results = []
+    if not os.path.isdir(templates_dir):
+        return {"templates": results}
+    for entry in sorted(os.listdir(templates_dir)):
+        folder = os.path.join(templates_dir, entry)
+        if not os.path.isdir(folder):
+            continue
+        meta_path = os.path.join(folder, "webcomp.json")
+        if not os.path.isfile(meta_path):
+            continue
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = _json.load(f)
+        except Exception:
+            meta = {}
+        results.append({
+            "id":            entry,
+            "name":          meta.get("name",          entry.replace("-", " ").title()),
+            "description":   meta.get("description",   ""),
+            "width":         meta.get("width",          1920),
+            "height":        meta.get("height",         1080),
+            "fps":           meta.get("fps",            30),
+            "durationFrames":meta.get("durationFrames", 150),
+            "params":        meta.get("params",         []),
+        })
+    return {"templates": results}
+
+
+
 @router.post("/timeline/webcomp/read-file")
 async def readWebcompFile(webcompId: str = "", filename: str = ""):
     """Read a file from a WebComp folder."""
