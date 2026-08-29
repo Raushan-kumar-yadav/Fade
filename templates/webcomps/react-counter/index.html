@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>React Counter — Fade WebComp</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&display=swap" rel="stylesheet"/>
+<title>React Counter â€” Fade WebComp</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -18,14 +17,11 @@
 <div id="root"></div>
 
 <!-- 1. React from CDN (no build step needed) -->
-<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<!-- 2. Babel for in-browser JSX transform (dev convenience — swap for pre-built in prod) -->
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<!-- 3. Fade React Runtime — provides useCurrentFrame, interpolate, spring, etc. -->
-<script src="../../_runtime/fade-react.js"></script>
+<!-- 2. Babel for in-browser JSX transform (dev convenience â€” swap for pre-built in prod) -->
+<!-- 3. Fade React Runtime â€” provides useCurrentFrame, interpolate, spring, etc. -->
+<script src="file:///E:/Editor_SIH/Fade/templates/webcomps/_runtime/fade-react.js"></script>
 
-<!-- 4. Your composition — written exactly like a Remotion component -->
+<!-- 4. Your composition â€” written exactly like a Remotion component -->
 <script type="text/babel">
 const {
   FadeComposition,
@@ -38,7 +34,7 @@ const {
   mount,
 } = window.FadeReact;
 
-// ── Sub-components (pure React, no Fade-specific imports needed) ──────────
+// â”€â”€ Sub-components (pure React, no Fade-specific imports needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function Background({ accent }) {
   const frame = useCurrentFrame();
@@ -114,7 +110,7 @@ function Label({ text, delay = 0 }) {
   );
 }
 
-// ── Root Composition ──────────────────────────────────────────────────────
+// â”€â”€ Root Composition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Composition() {
   const frame = useCurrentFrame();
   const { fps, durationFrames } = useVideoConfig();
@@ -181,13 +177,13 @@ function Composition() {
         fontWeight: 300,
         letterSpacing: '0.1em',
       }}>
-        {frame} / {durationFrames} &nbsp;·&nbsp; {(frame / fps).toFixed(2)}s
+        {frame} / {durationFrames} &nbsp;Â·&nbsp; {(frame / fps).toFixed(2)}s
       </div>
     </div>
   );
 }
 
-// ── Mount ────────────────────────────────────────────────────────────────
+// â”€â”€ Mount â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 mount(
   <FadeComposition durationFrames={150}>
     <Composition />

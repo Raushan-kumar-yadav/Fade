@@ -832,47 +832,57 @@ ALL_TOOLS = [
 @tool
 def create_webcomp(
     name: str,
-    html: str = "",
     css: str = "",
     js: str = "",
+    html_body: str = "",
     template: str = "blank",
     duration_seconds: float = 5.0,
 ) -> str:
-    """Create a WebComp — an animated HTML/CSS/JS scene rendered as video pixels on the timeline.
+    """Create a WebComp — an animated CSS/JS scene rendered as video pixels on the timeline.
 
-    The page receives these globals each frame (Electron injects them):
-      window.FADE_FRAME  — current frame number (int, 0-indexed)
-      window.FADE_TIME   — current time in seconds (float)
-      window.FADE_FPS    — project FPS
-      window.FADE_WIDTH  — canvas width in pixels
-      window.FADE_HEIGHT — canvas height in pixels
-      window.FADE_PARAMS — runtime params from the inspector panel (object)
+    HOW FILES ARE SAVED (you never need to worry about paths):
+      - Project saved → <project-folder>/webcomps/<name>/   (travels with the project)
+      - No project    → C:/Users/<user>/.fade/webcomps/<name>/  (global fallback)
+    The backend handles this automatically.
 
-    Listen for frame updates:
+    WHAT THE BACKEND GENERATES FOR YOU:
+      index.html  ← auto-generated with the correct runtime <script> tag.
+                    YOU MUST NOT WRITE THIS FILE. Provide html_body instead if
+                    you need custom DOM elements inside the scene div.
+      style.css   ← written from your `css` argument
+      script.js   ← written from your `js` argument
+
+    GLOBALS INJECTED EACH FRAME by Electron:
+      window.FADE_FRAME   — current frame number (int, 0-indexed)
+      window.FADE_TIME    — current time in seconds (float)
+      window.FADE_FPS     — project FPS
+      window.FADE_WIDTH   — canvas width  (1920)
+      window.FADE_HEIGHT  — canvas height (1080)
+      window.FADE_PARAMS  — runtime params from the inspector panel (object)
+
+    LISTEN FOR FRAME EVENTS in script.js:
       window.addEventListener('fade:frame', (e) => {
         const { frame, time } = e.detail;
-        // update animation here
+        // your animation code here
       });
 
+    FADE REACT (Remotion-style) — available with NO import needed:
+      const { useCurrentFrame, interpolate, spring, mount, FadeComposition } = window.FadeReact;
+
     Args:
-        name: Human-readable name
-        html: Full index.html (overrides template if provided)
-        css: style.css content (overrides template)
-        js: script.js content (overrides template)
-        template: Starter template — "blank" | "lower-third" | "neon-headline" | "kinetic-title"
+        name: Human-readable name for the WebComp
+        css: style.css content (pure CSS, no <style> tags)
+        js: script.js content (pure JS, no <script> tags)
+        html_body: Optional inner HTML for <div id="scene"> — only plain DOM
+                        elements like <div>, <canvas>, <h1>, <video>.
+                        Do NOT include <head>, <script src>, <link href>, or CDN refs.
+        template:       Starter template — "blank" | "lower-third" | "neon-headline" | "kinetic-title"
         duration_seconds: Default clip duration when placed on timeline
     """
-    body: dict = {"name": name, "template": template}
+    body: dict = {"name": name, "template": template, "js": js, "css": css, "html_body": html_body}
     result = _post("/timeline/webcomp/create", body)
     asset_id = result.get("assetId", "")
     folder = result.get("folderPath", "")
-
-    if html:
-        _post("/timeline/webcomp/write-file", {"webcompId": asset_id, "filename": "index.html", "content": html})
-    if css:
-        _post("/timeline/webcomp/write-file", {"webcompId": asset_id, "filename": "style.css", "content": css})
-    if js:
-        _post("/timeline/webcomp/write-file", {"webcompId": asset_id, "filename": "script.js", "content": js})
 
     return json.dumps({
         "status": "ok",
@@ -960,13 +970,17 @@ def read_webcomp_file(webcomp_id: str, filename: str) -> str:
 def edit_webcomp_file(webcomp_id: str, filename: str, content: str) -> str:
     """Write or overwrite a file inside a WebComp folder.
 
-    Common files: index.html, style.css, script.js, webcomp.json
-    After editing, call reload_webcomp() to see changes in the preview immediately.
+    ALLOWED files: script.js, style.css, webcomp.json
+    NEVER write index.html — the backend owns it and auto-generates it correctly.
+    If you write index.html anyway the backend will silently sanitise it, but
+    your custom DOM structure will be overwritten on the next create.
+
+    After editing script.js or style.css, call reload_webcomp() to see changes immediately.
 
     Args:
         webcomp_id: The assetId of the WebComp
-        filename: File to write (e.g. "script.js")
-        content: Full file content to write
+        filename: File to write — "script.js" | "style.css" | "webcomp.json"
+        content: Full file content to write (pure JS / CSS / JSON — no <script> or <style> tags)
     """
     result = _post("/timeline/webcomp/write-file", {"webcompId": webcomp_id, "filename": filename, "content": content})
     return json.dumps(result)

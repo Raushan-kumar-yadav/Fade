@@ -11,6 +11,7 @@ import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
 import { SelectionContext, type SelectedItem } from './context/selectionContext'
 import ToolboxWidget      from './workspaces/tools/ToolboxWidget'
+import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
 type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export'
@@ -112,6 +113,9 @@ function MediaOfflineBanner({
 // ── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  // Live push notifications from backend — one SSE connection for the whole app
+  useLibrarySSE()
+
   const [activeTab,      setActiveTab]      = useState<TabId>('home')
   const [showSettings,   setShowSettings]   = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)

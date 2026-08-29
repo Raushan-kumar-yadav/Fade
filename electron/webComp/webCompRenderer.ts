@@ -14,10 +14,10 @@ interface WebCompInstance {
 const instances = new Map<string, WebCompInstance>()
 const MAX_CACHE_FRAMES = 60
 
-export function createWebComp(
+export async function createWebComp(
   webcompId: string, htmlUrl: string,
   width: number, height: number, fps: number
-): void {
+): Promise<void> {
   if (instances.has(webcompId)) destroyWebComp(webcompId)
 
   const win = new BrowserWindow({
@@ -32,7 +32,7 @@ export function createWebComp(
       offscreen: true,
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true,
+      sandbox: true,                   // Safe: runtime is served via HTTP, not file://
       backgroundThrottling: false,     // Keep rendering even when hidden
     },
   })
@@ -57,9 +57,13 @@ export function createWebComp(
     ready: false,
     readyPromise,
   }
-  readyPromise.then(() => { inst.ready = true })
   instances.set(webcompId, inst)
   console.log(`[WebComp] Created ${webcompId} (${width}x${height}@${fps}fps)`)
+
+  // Wait for page to finish loading so the first capture attempt always succeeds
+  await readyPromise
+  inst.ready = true
+  console.log(`[WebComp] Ready ${webcompId}`)
 }
 
 export async function captureFrame(

@@ -418,6 +418,18 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   if (decoded.size() > 1)
     needsGpu = true;
 
+  // Force GPU path whenever any clip carries pixel data (WebComp, video, image).
+  // Uploading 1920×1080 RGBA as a GPU texture and compositing in a shader is
+  // ~3× faster than the CPU memcpy path (~88ms vs ~240ms per frame).
+  if (!needsGpu) {
+    for (const auto &cp : decoded) {
+      if (!cp.rgba.empty()) {
+        needsGpu = true;
+        break;
+      }
+    }
+  }
+
   std::cerr << "[DBG] needsGpu=" << needsGpu << " decoded=" << decoded.size()
             << std::endl;
   if (!needsGpu) {

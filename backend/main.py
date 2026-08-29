@@ -41,7 +41,7 @@ import json as _json
 import threading
 import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.state import engine
@@ -255,6 +255,51 @@ app.include_router(effects.router)
 app.include_router(transitions.router)
 app.include_router(audio.router)
 app.include_router(export_.router)
+
+# ── WebComp Runtime static file ───────────────────────────────────────────────
+# Serve fade-react.js over HTTP so WebComp index.html can reference it as
+# http://127.0.0.1:PORT/runtime/fade-react.js — no file:// security issues.
+from fastapi.responses import FileResponse as _FileResponse
+import pathlib as _pathlib
+
+_RUNTIME_JS = (
+    _pathlib.Path(__file__).parent.parent / "templates" / "webcomps" / "_runtime" / "fade-react.js"
+)
+
+@app.get("/runtime/fade-react.js", include_in_schema=False)
+async def serve_runtime_js():
+    if not _RUNTIME_JS.exists():
+        from fastapi import HTTPException
+        raise HTTPException(404, "fade-react.js not found")
+    return _FileResponse(str(_RUNTIME_JS), media_type="application/javascript")
+
+
+# ── Server-Sent Events endpoint ──────────────────────────────────────────────
+# The frontend connects once and receives real-time push notifications whenever
+# the library, webcomps, compositions, or timeline are mutated by any caller
+# (AI agent, drag-drop import, etc.).  Each event has the form:
+#   event: <scope>
+#   data: {"scope":"library","ts":1234567890.0}
+@app.get("/events")
+async def sse_events(request: Request):
+    from starlette.responses import StreamingResponse
+    from backend.events import event_stream
+
+    async def _guarded():
+        async for chunk in event_stream():
+            if await request.is_disconnected():
+                break
+            yield chunk
+
+    return StreamingResponse(
+        _guarded(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx buffering
+            "Connection": "keep-alive",
+        },
+    )
 
 
 def _findFreePort(start: int = 8000, end: int = 8010) -> int:

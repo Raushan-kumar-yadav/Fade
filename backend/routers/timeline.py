@@ -89,6 +89,7 @@ def addClip(req: AddClipRequest):
         except Exception as _e:
             print(f"[addClip] waveform submit error: {_e}", flush=True)
 
+    from backend.events import notify; notify("timeline")
     return {
         "clipId": clip.clipId, "trackId": track.trackId,
         "startFrame": clip.startFrame, "duration": clip.duration,
@@ -121,6 +122,7 @@ def addSvgClip(req: AddSvgClipRequest):
     from backend.history.commandStack import AddClipCommand
     engine.commandStack.execute(AddClipCommand(track, clip))
     _clipTrackMap[clip.clipId] = req.trackIndex
+    from backend.events import notify; notify("timeline")
     return {"clipId": clip.clipId, "trackId": track.trackId,
             "startFrame": clip.startFrame, "duration": clip.duration,
             "filepath": clip.filepath, "type": "svg"}
@@ -149,6 +151,7 @@ def moveClip(req: MoveClipRequest):
         MoveClipCommand(clip, tl.tracks[srcIdx], tl.tracks[dstIdx], oldStart, newStart)
     )
     _clipTrackMap[req.clipId] = dstIdx
+    from backend.events import notify; notify("timeline")
     return {"status": "ok"}
 
 
@@ -165,6 +168,7 @@ def deleteClip(clipId: str):
                 if engine.scheduler:
                     engine.scheduler.unregisterClip(clipId)
                 _clipTrackMap.pop(clipId, None)
+                from backend.events import notify; notify("timeline")
                 return {"status": "ok"}
     raise HTTPException(404, f"Clip {clipId!r} not found")
 
@@ -179,6 +183,7 @@ def trimClip(req: TrimClipRequest):
         if clip:
             engine.commandStack.execute(TrimClipCommand(clip, req.side, req.frameDelta))
             track.clips.sort(key=lambda c: c.startFrame)
+            from backend.events import notify; notify("timeline")
             return {"clipId": clip.clipId, "startFrame": clip.startFrame, "duration": clip.duration}
     raise HTTPException(404, f"Clip {req.clipId!r} not found")
 
@@ -204,6 +209,7 @@ def splitClip(req: SplitClipRequest):
             _clipTrackMap[clip.clipId] = trackIndex
             if right:
                 _clipTrackMap[right.clipId] = trackIndex
+            from backend.events import notify; notify("timeline")
             return {
                 "leftClipId": clip.clipId, "rightClipId": right.clipId if right else None,
                 "splitFrame": req.frame, "trackId": track.trackId,
@@ -214,12 +220,14 @@ def splitClip(req: SplitClipRequest):
 @router.post("/history/undo")
 def undoAction():
     desc = engine.commandStack.undo()
+    from backend.events import notify; notify("timeline")
     return {"undone": desc, "canUndo": engine.commandStack.canUndo, "canRedo": engine.commandStack.canRedo}
 
 
 @router.post("/history/redo")
 def redoAction():
     desc = engine.commandStack.redo()
+    from backend.events import notify; notify("timeline")
     return {"redone": desc, "canUndo": engine.commandStack.canUndo, "canRedo": engine.commandStack.canRedo}
 
 
@@ -285,65 +293,171 @@ def timelineState():
     data["fps"] = getattr(tl, "fps", fps)
     return data
 
+def _runtime_script_tag() -> str:
+    """Return an HTTP <script> tag for fade-react.js served by this server.
+    Uses http://127.0.0.1:PORT/runtime/fade-react.js which Electron can always
+    load without sandbox or webSecurity restrictions.
+    """
+    port = int(os.environ.get("BACKEND_PORT", 8000))
+    return f'<script src="http://127.0.0.1:{port}/runtime/fade-react.js"></script>'
+
+
+def _build_index_html(name: str, css_file: bool = True, html_body: str = "") -> str:
+    """Generate a self-contained index.html boilerplate.
+
+    File location strategy (already handled by caller):
+      - Project saved  → <project-dir>/webcomps/<name>/index.html
+      - No project     → ~/.fade/webcomps/<name>/index.html
+
+    The runtime <script> always uses an absolute file:// URL — no relative
+    path guessing, works from any folder on any machine.
+    """
+    runtime_tag = _runtime_script_tag()
+    css_link = '<link rel="stylesheet" href="style.css">' if css_file else ''
+    inner = html_body.strip() if html_body.strip() else '<!-- DOM built by script.js -->'
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+{css_link}
+{runtime_tag}
+</head>
+<body>
+<div id="scene">
+{inner}
+</div>
+<script src="script.js"></script>
+</body>
+</html>"""
+
+
+def _patch_runtime_in_html(content: str) -> str:
+    """Fix runtime script references in a template's index.html.
+
+    Replaces ANY src pointing to fade-react.js with the canonical HTTP URL:
+      http://127.0.0.1:PORT/runtime/fade-react.js
+
+    Also strips unpkg/jsdelivr CDN scripts and Google Fonts links.
+    """
+    import re
+    port = int(os.environ.get("BACKEND_PORT", 8000))
+    correct_url = f"http://127.0.0.1:{port}/runtime/fade-react.js"
+
+    # Replace ANY src pointing to fade-react.js (relative, file://, or old http://)
+    content = re.sub(
+        r'src=["\'][^"\']*/fade-react\.js["\']',
+        f'src="{correct_url}"',
+        content,
+    )
+    # Strip unpkg / jsdelivr CDN <script> tags entirely
+    content = re.sub(
+        r'<script[^>]+src=["\']https?://(?:unpkg|cdn\.jsdelivr|cdnjs)[^>]+></script>',
+        '',
+        content,
+        flags=re.IGNORECASE,
+    )
+    # Strip Google Fonts / preconnect link tags
+    content = re.sub(r'<link[^>]+https://fonts\.googleapis[^>]+>', '', content)
+    content = re.sub(r'<link[^>]+https://fonts\.gstatic[^>]+>', '', content)
+    content = re.sub(r'<link[^>]*preconnect[^>]*href=["\']https?://[^>]+>', '', content)
+    return content
+
+
 def _create_blank_webcomp(folder: str, name: str) -> None:
     """Create minimal blank WebComp files in the given folder."""
     with open(os.path.join(folder, "index.html"), "w", encoding="utf-8") as f:
-        f.write(f"""<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<link rel="stylesheet" href="style.css">
-</head><body>
-<div id="scene">
-  <h1 class="title">{name}</h1>
-</div>
-<script src="script.js"></script>
-</body></html>""")
+        f.write(_build_index_html(name))
 
     with open(os.path.join(folder, "style.css"), "w", encoding="utf-8") as f:
         f.write("""* { margin: 0; padding: 0; box-sizing: border-box; }
 body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
 #scene { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
-.title { font-family: 'Inter', sans-serif; font-size: 72px; color: white; }
+.title { font-family: system-ui, sans-serif; font-size: 72px; color: white; }
 """)
 
     with open(os.path.join(folder, "script.js"), "w", encoding="utf-8") as f:
-        f.write("""// Fade WebComp
-// Globals: window.FADE_FRAME, window.FADE_TIME, window.FADE_FPS, window.FADE_PARAMS
+        f.write("""// Fade WebComp — write your animation logic here.
+// Globals injected each frame:
+//   window.FADE_FRAME  — current frame index (int)
+//   window.FADE_TIME   — current time in seconds (float)
+//   window.FADE_FPS    — project fps
+//   window.FADE_PARAMS — runtime params from the inspector (object)
 window.addEventListener('fade:frame', (e) => {
   const { frame, time } = e.detail;
-  // Animate here based on frame/time
+  // TODO: animate
 });
 window.addEventListener('fade:params', (e) => {
   const params = e.detail;
-  // React to param changes here
+  // TODO: react to inspector param changes
 });
 """)
+
 
 
 @router.post("/timeline/webcomp/create")
 async def createWebcomp(body: dict):
-    """Create a new WebComp asset (folder on disk with HTML/CSS/JS)."""
+    """Create a new WebComp asset (folder on disk with HTML/CSS/JS).
+    
+    Accepts optional 'js' and 'css' strings — the backend writes them into
+    script.js and style.css and auto-generates a correct index.html.
+    The caller never needs to know about file paths or runtime URLs.
+    """
     from pathlib import Path
     from backend.media.asset.webCompAsset import WebCompAsset
     import shutil
 
     name = body.get("name", "Untitled WebComp")
-    template = body.get("template", "blank")
-    project_dir = engine.project.filePath or ""
+    template  = body.get("template", "blank")
+    js_code = body.get("js", "")       # agent animation logic   
+    css_code  = body.get("css", "")      # agent styles           
+    html_body = body.get("html_body", "") # inner DOM snippet only   
+    project_dir  = engine.project.filePath or ""
     project_root = os.path.dirname(project_dir) if project_dir else str(Path.home() / ".fade")
 
     safe_name = name.lower().replace(" ", "-").replace("/", "-")
-    folder = os.path.join(project_root, "webcomps", safe_name)
+    webcomps_root = os.path.join(project_root, "webcomps")
+    folder = os.path.join(webcomps_root, safe_name)
     os.makedirs(folder, exist_ok=True)
 
-    # Copy template if it exists
-    template_dir = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "webcomps", template)
+    # Always sync _runtime next to webcomps 
+    templates_base = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "templates", "webcomps")
+    )
+    runtime_src = os.path.join(templates_base, "_runtime")
+    if os.path.isdir(runtime_src):
+        shutil.copytree(runtime_src, os.path.join(webcomps_root, "_runtime"), dirs_exist_ok=True)
+
+    # Copy template (or blank)
+    template_dir = os.path.join(templates_base, template)
     if os.path.isdir(template_dir):
         shutil.copytree(template_dir, folder, dirs_exist_ok=True)
     else:
         _create_blank_webcomp(folder, name)
 
-    proj = engine.project
+ 
+    index_path = os.path.join(folder, "index.html")
+    template_was_copied = os.path.isdir(template_dir)
+
+    if template_was_copied and not html_body:
+        # Template has its own DOM structure  
+        with open(index_path, "r", encoding="utf-8") as f:
+            existing = f.read()
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write(_patch_runtime_in_html(existing))
+    else:
+        # Blank comp or agent supplied html_body — generate clean boilerplate
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write(_build_index_html(name, html_body=html_body))
+
+    # Write agent-supplied JS / CSS if provided
+    if js_code:
+        with open(os.path.join(folder, "script.js"), "w", encoding="utf-8") as f:
+            f.write(js_code)
+    if css_code:
+        with open(os.path.join(folder, "style.css"), "w", encoding="utf-8") as f:
+            f.write(css_code)
+
+    proj  = engine.project
     asset = WebCompAsset(
         name=name,
         folderPath=folder,
@@ -351,10 +465,11 @@ async def createWebcomp(body: dict):
         height=proj.height if proj else 1080,
         fps=proj.fps if proj else 30.0,
     )
-    asset._loadMeta()           
-    asset.saveMeta()          
+    asset._loadMeta()
+    asset.saveMeta()
     _library[asset.assetId] = asset
 
+    from backend.events import notify; notify("webcomps")
     return {
         "assetId": asset.assetId,
         "name": asset.name,
@@ -402,14 +517,16 @@ async def listWebcompTemplates():
 
 
 @router.post("/timeline/webcomp/read-file")
-async def readWebcompFile(webcompId: str = "", filename: str = ""):
+async def readWebcompFile(body: dict):
     """Read a file from a WebComp folder."""
-    asset = _library.get(webcompId)
+    webcomp_id = body.get("webcompId", "")
+    filename   = body.get("filename", "")
+    asset = _library.get(webcomp_id)
     if not asset or not hasattr(asset, "folderPath"):
-        raise HTTPException(404, "WebComp not found")
+        raise HTTPException(404, f"WebComp {webcomp_id!r} not found")
     filepath = os.path.join(asset.folderPath, filename)
     if not os.path.isfile(filepath):
-        raise HTTPException(404, f"File not found: {filename}")
+        raise HTTPException(404, f"File not found in WebComp: {filename}")
     with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()
     return {"content": content, "filename": filename}
@@ -417,17 +534,30 @@ async def readWebcompFile(webcompId: str = "", filename: str = ""):
 
 @router.post("/timeline/webcomp/write-file")
 async def writeWebcompFile(body: dict):
-    """Write a file to a WebComp folder."""
+    """Write a file to a WebComp folder.
+    
+    When writing index.html the backend automatically:
+    - Patches any ../../_runtime/fade-react.js to the correct absolute file:// URL
+    - Strips blocked external CDN <script> tags (unpkg, jsdelivr, cdnjs)
+    - Strips Google Fonts / external link tags
+    
+    The agent should write only script.js and style.css — never index.html.
+    If index.html must be written, the backend sanitises it silently.
+    """
     webcomp_id = body.get("webcompId", "")
-    filename = body.get("filename", "")
-    content = body.get("content", "")
+    filename   = body.get("filename", "")
+    content    = body.get("content", "")
     asset = _library.get(webcomp_id)
     if not asset or not hasattr(asset, "folderPath"):
         raise HTTPException(404, "WebComp not found")
+    # Auto-patch index.html to fix runtime path and strip CDN URLs
+    if filename == "index.html":
+        content = _patch_runtime_in_html(content)
     filepath = os.path.join(asset.folderPath, filename)
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(content)
+    from backend.events import notify; notify("webcomps")
     return {"ok": True, "filename": filename}
 
 
@@ -544,6 +674,7 @@ async def setWebcompRuntimeParams(body: dict):
     if not hasattr(clip, "_runtimeParams"):
         raise HTTPException(400, "Clip is not a WebComp")
     clip._runtimeParams.update(params)
+    from backend.events import notify; notify("timeline")
     return {"ok": True, "runtimeParams": clip._runtimeParams}
 
 
@@ -595,6 +726,7 @@ async def deleteWebcomp(webcomp_id: str):
     if webcomp_id not in _library:
         raise HTTPException(404, f"WebComp {webcomp_id!r} not found")
     del _library[webcomp_id]
+    from backend.events import notify; notify("webcomps")
     return {"ok": True}
 
 

@@ -61,11 +61,11 @@ def _top_empty_track(startFrame: int, duration: int):
 
 
 class CreateCompRequest(BaseModel):
-    name:        str   = "Composition"
-    width:       int   = 1920
-    height:      int   = 1080
-    fps:         float = 30.0
-    totalFrames: int   = 900
+    name: str = "Composition"
+    width: int = 1920
+    height: int = 1080
+    fps: float = 30.0
+    totalFrames: int = 900
 
 
 class CompRenameRequest(BaseModel):
@@ -73,10 +73,10 @@ class CompRenameRequest(BaseModel):
 
 
 class AddCompClipRequest(BaseModel):
-    compId:      str
-    trackIndex:  int | None = None
-    startFrame:  int = 0
-    duration:    int = 90
+    compId: str
+    trackIndex: int | None = None
+    startFrame: int = 0
+    duration: int = 90
     mediaOffset: int = 0
 
 
@@ -85,21 +85,21 @@ def listComps():
     if engine.project is None:
         return {"comps": []}
     root_id  = engine.project.timelines[0].timelineId if engine.project.timelines else ""
-    proj_w   = engine.project.width
-    proj_h   = engine.project.height
+    proj_w = engine.project.width
+    proj_h = engine.project.height
     proj_fps = engine.project.fps
     comps = []
     for tl in engine.project.timelines:
         comps.append({
-            "compId":       tl.timelineId,
-            "name":         tl.name,
-            "isRoot":       tl.timelineId == root_id,
-            "width":        getattr(tl, "width",       proj_w),
-            "height":       getattr(tl, "height",      proj_h),
-            "fps":          getattr(tl, "fps",         proj_fps),
-            "totalFrames":  getattr(tl, "totalFrames", 900),
-            "trackCount":   len(tl.tracks),
-            "clipCount":    sum(len(t.clips) for t in tl.tracks),
+            "compId": tl.timelineId,
+            "name": tl.name,
+            "isRoot": tl.timelineId == root_id,
+            "width": getattr(tl, "width", proj_w),
+            "height": getattr(tl, "height", proj_h),
+            "fps": getattr(tl, "fps", proj_fps),
+            "totalFrames": getattr(tl, "totalFrames", 900),
+            "trackCount": len(tl.tracks),
+            "clipCount": sum(len(t.clips) for t in tl.tracks),
         })
     return {"comps": comps}
 
@@ -110,11 +110,12 @@ def createComp(req: CreateCompRequest):
         raise HTTPException(400, "No active project")
     comp = engine.createComposition(name=req.name, width=req.width, height=req.height,
                                     fps=req.fps, total_frames=req.totalFrames)
+    from backend.events import notify; notify("comps")
     return {
-        "compId":      comp.timelineId, "name": comp.name,
-        "width":       getattr(comp, "width",       req.width),
-        "height":      getattr(comp, "height",      req.height),
-        "fps":         getattr(comp, "fps",         req.fps),
+        "compId": comp.timelineId, "name": comp.name,
+        "width": getattr(comp, "width", req.width),
+        "height": getattr(comp, "height", req.height),
+        "fps": getattr(comp, "fps", req.fps),
         "totalFrames": getattr(comp, "totalFrames", req.totalFrames),
         "isRoot": False, "trackCount": 0, "clipCount": 0,
     }
@@ -125,6 +126,7 @@ def deleteComp(compId: str):
     ok = engine.deleteComposition(compId)
     if not ok:
         raise HTTPException(404, f"Composition {compId!r} not found or is root")
+    from backend.events import notify; notify("comps")
     return {"status": "ok"}
 
 
@@ -137,6 +139,7 @@ def renameCompRoute(compId: str, req: CompRenameRequest):
     if not name:
         raise HTTPException(400, "Name cannot be empty")
     tl.name = name
+    from backend.events import notify; notify("comps")
     return {"compId": compId, "name": name}
 
 
@@ -180,21 +183,21 @@ def getCompState(compId: str):
         clips_out = []
         for clip in track.clips:
             clips_out.append({
-                "clipId":     getattr(clip, "clipId", ""),
-                "type":       getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video")),
-                "name":       getattr(clip, "name", getattr(clip, "compId", getattr(clip, "assetId", "Clip"))),
+                "clipId": getattr(clip, "clipId", ""),
+                "type": getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video")),
+                "name": getattr(clip, "name", getattr(clip, "compId", getattr(clip, "assetId", "Clip"))),
                 "startFrame": getattr(clip, "startFrame", 0),
-                "duration":   getattr(clip, "duration", 90),
-                "assetId":    getattr(clip, "assetId", None),
-                "compId":     getattr(clip, "compId", None),
+                "duration": getattr(clip, "duration", 90),
+                "assetId": getattr(clip, "assetId", None),
+                "compId": getattr(clip, "compId", None),
             })
         tracks_out.append({
             "trackId": track.trackId, "name": track.name,
-            "type":    getattr(track, "TRACK_TYPE", "video"),
-            "muted":   track.muted,
-            "solo":    getattr(track, "solo", False),
-            "locked":  track.locked,
-            "clips":   clips_out,
+            "type": getattr(track, "TRACK_TYPE", "video"),
+            "muted": track.muted,
+            "solo": getattr(track, "solo", False),
+            "locked": track.locked,
+            "clips": clips_out,
         })
     return {"timelineId": tl.timelineId, "name": tl.name,
             "tracks": tracks_out, "totalFrames": comp_total, "fps": comp_fps}
@@ -217,4 +220,5 @@ def addCompClip(req: AddCompClipRequest):
                     duration=req.duration, compId=req.compId, mediaOffset=req.mediaOffset)
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
+    from backend.events import notify; notify("timeline")
     return clip.toDict()

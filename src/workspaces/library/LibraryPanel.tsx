@@ -614,6 +614,11 @@ export default function LibraryPanel({ onAddToTimeline }: {
     if ((window as any).__FADE_PORT__) refreshComps();
     else { const h = () => refreshComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
   }, [refreshComps]);
+  useEffect(() => {
+    const h = () => refreshComps();
+    window.addEventListener('fade:comps-changed', h);
+    return () => window.removeEventListener('fade:comps-changed', h);
+  }, [refreshComps]);
 
   //   Load webcomps
   const refreshWebComps = useCallback(async () => {
@@ -622,6 +627,11 @@ export default function LibraryPanel({ onAddToTimeline }: {
   useEffect(() => {
     if ((window as any).__FADE_PORT__) refreshWebComps();
     else { const h = () => refreshWebComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
+  }, [refreshWebComps]);
+  useEffect(() => {
+    const h = () => refreshWebComps();
+    window.addEventListener('fade:webcomps-changed', h);
+    return () => window.removeEventListener('fade:webcomps-changed', h);
   }, [refreshWebComps]);
 
   //   Asset handlers  

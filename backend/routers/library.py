@@ -69,6 +69,7 @@ def _import_file(filepath: str) -> dict:
 
 @router.get("/library/assets")
 def listAssets():
+    from backend.media.asset.baseAsset import MediaType
     return [
         {
             "assetId":  a.assetId,
@@ -77,6 +78,8 @@ def listAssets():
             "type": a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType),
         }
         for a in _library.values()
+         
+        if getattr(a, 'mediaType', None) != MediaType.webcomp
     ]
 
 
@@ -84,12 +87,15 @@ def listAssets():
 def importAsset(req: ImportRequest):
     if not os.path.exists(req.filepath):
         raise HTTPException(404, f"File not found: {req.filepath}")
-    return _import_file(req.filepath)
+    result = _import_file(req.filepath)
+    from backend.events import notify; notify("library")
+    return result
 
 
 @router.delete("/library/assets/{assetId}")
 def deleteAsset(assetId: str):
     _library.pop(assetId, None)
+    from backend.events import notify; notify("library")
 
 
 @router.post("/library/relink/{assetId}")
@@ -104,6 +110,7 @@ def relinkAsset(assetId: str, req: RelinkRequest):
         except Exception:
             pass
     print(f"[Library] Relinked {assetId[:8]}... -> {req.filepath}", flush=True)
+    from backend.events import notify; notify("library")
     return {"assetId": assetId, "filepath": req.filepath,
             "filename": os.path.basename(req.filepath), "hasAudio": asset.hasAudio}
 
@@ -126,6 +133,7 @@ def download_search(req: DownloadSearchRequest):
             "title": r["title"],
             "durationFrames": int(r["duration_sec"] * fps),
         })
+    from backend.events import notify; notify("library")
     return {"assets": imported}
 
 
@@ -138,6 +146,7 @@ def download_images(req: DownloadImagesRequest):
     for r in results:
         info = _import_file(r["filepath"])
         imported.append({"assetId": info["assetId"], "filename": info["filename"], "title": r["title"]})
+    from backend.events import notify; notify("library")
     return {"assets": imported}
 
 
@@ -150,4 +159,5 @@ def generate_image_endpoint(req: GenerateImageRequest):
     for r in results:
         info = _import_file(r["filepath"])
         imported.append({"assetId": info["assetId"], "filename": info["filename"], "title": r["title"]})
+    from backend.events import notify; notify("library")
     return {"assets": imported}
