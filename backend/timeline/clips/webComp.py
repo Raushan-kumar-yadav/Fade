@@ -13,7 +13,7 @@ class webComp(BaseClip):
         clipId: str = "",
         startFrame: int = 0,
         duration: int = 90,
-        compId: str = "",
+        webcompId: str = "",
         mediaOffset: int = 0,
     ) -> None:
         super().__init__(
@@ -21,18 +21,19 @@ class webComp(BaseClip):
             startFrame,
             duration,
         )
-        self.compId = compId
+        self.webcompId = webcompId    
         self.mediaOffset = mediaOffset
+        self._runtimeParams: dict = {}
 
     # Timeline helpers  
 
     def sourceFrame(self, timelineFrame: int) -> int:
-        """Convert a timeline frame to the inner comp's local frame."""
+         
         return max(0, (timelineFrame - self.startFrame) + self.mediaOffset)
 
     # BaseClip abstract implementations  
     def render(self, canvas, frame: int) -> None:
-        """No-op: composition rendering is done by the C++ HeadlessCompositor."""
+       
         pass
 
     def getThumbnail(self, frame: int, width: int = 160, height: int = 90) -> bytes:
@@ -46,22 +47,24 @@ class webComp(BaseClip):
             "clipId": self.clipId,
             "startFrame": self.startFrame,
             "duration": self.duration,
-            "compId": self.compId,
+            "webcompId": self.webcompId,
             "mediaOffset": self.mediaOffset,
+            "runtimeParams": self._runtimeParams,
             "transform": self.transform.toDict(),
             "effects": [e.toDict() for e in self.effects],
         }
-
     @classmethod
-    def fromDict(cls, data: dict) -> "CompClip":
+    def fromDict(cls, data: dict) -> "WebCompClip":
         from backend.animation.transform import Transform
         c = cls(
             clipId=data["clipId"],
             startFrame=data["startFrame"],
             duration=data["duration"],
-            compId=data.get("compId", ""),
+            webcompId=data.get("webcompId", ""),
             mediaOffset=data.get("mediaOffset", 0),
         )
+        c._runtimeParams = data.get("runtimeParams", {})
         if "transform" in data:
             c.transform = Transform.fromDict(data["transform"])
         return c
+
