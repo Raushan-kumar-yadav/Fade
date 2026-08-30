@@ -15,22 +15,38 @@ router = APIRouter()
 #   helpers  
 
 def _active_timeline():
+    """Return the UI-active timeline (may be a comp). Only use for read operations."""
     tl = engine.activeTimeline
     if tl is None:
         raise HTTPException(400, "No active timeline")
     return tl
 
 
+def _resolve_timeline(comp_id: str | None = None):
+    """Resolve which timeline to target for clip creation.
+
+    - comp_id=None  → always root/main timeline (safe default; never affected by which
+                       comp tab the user has open in the UI).
+    - comp_id=<id>  → the specific comp timeline with that id, so the agent can
+                       explicitly target any comp without the user having to open it.
+
+    This is the single place all clip-creation routes should call.
+    """
+    if comp_id:
+        tl = engine.getTimeline(comp_id)
+        if tl is None:
+            raise HTTPException(404, f"Comp timeline {comp_id!r} not found")
+        return tl
+    tl = engine.rootTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    return tl
+
+
 def _find_clip(clipId: str):
-    tl = _active_timeline()
-    for track in tl.tracks:
-        for clip in track.clips:
-            if clip.clipId == clipId:
-                return clip, track
+    """Search every timeline in the project for the clip."""
     if engine.project:
         for timeline in engine.project.timelines:
-            if timeline is tl:
-                continue
             for track in timeline.tracks:
                 for clip in track.clips:
                     if clip.clipId == clipId:
@@ -38,8 +54,10 @@ def _find_clip(clipId: str):
     raise HTTPException(404, f"Clip {clipId!r} not found")
 
 
-def _top_empty_track(startFrame: int, duration: int):
-    tl = _active_timeline()
+def _top_empty_track(startFrame: int, duration: int, tl=None):
+    """Find or create a non-overlapping video track in `tl` (defaults to root timeline)."""
+    if tl is None:
+        tl = _resolve_timeline()
     endFrame = startFrame + duration
     video_tracks = [t for t in tl.tracks if not getattr(t, 'isAudio', lambda: False)()]
     for track in reversed(video_tracks):
@@ -126,9 +144,10 @@ class TextClipRequest(BaseModel):
     trackIndex:  int | None = None
     startFrame:  int = 0
     duration:    int = 150
-    text: str = "New Text"      # promoted 
-    fontFamily: str = "Arial"         # promoted  
-    style:       dict = {}             # full style dict override  
+    text: str = "New Text"      # promoted
+    fontFamily: str = "Arial"   # promoted
+    style:       dict = {}       # full style dict override
+    compId: str | None = None   # target comp; None = root/main timeline
 
 
 class TextPatchRequest(BaseModel):
@@ -139,8 +158,8 @@ class TextPatchRequest(BaseModel):
 
 @router.post("/clips/text")
 def addTextClip(req: TextClipRequest):
-    tl    = _active_timeline()
-    track = _top_empty_track(req.startFrame, req.duration)
+    tl    = _resolve_timeline(req.compId)
+    track = _top_empty_track(req.startFrame, req.duration, tl)
     # Merge: promoted fields take priority over style dict
     merged_style = {"fontFamily": req.fontFamily, **req.style}
     clip  = TextClip(clipId=str(uuid.uuid4()), startFrame=req.startFrame,
@@ -187,6 +206,7 @@ class ShapeClipRequest(BaseModel):
     style: dict  = {}
     x: float = 960.0
     y: float = 540.0
+    compId: str | None = None   # target comp; None = root/main timeline
 
 
 class ShapePatchRequest(BaseModel):
@@ -196,13 +216,14 @@ class ShapePatchRequest(BaseModel):
 
 @router.post("/clips/shape")
 def addShapeClip(req: ShapeClipRequest):
-    tl    = _active_timeline()
-    track = _top_empty_track(req.startFrame, req.duration)
+    tl    = _resolve_timeline(req.compId)
+    track = _top_empty_track(req.startFrame, req.duration, tl)
     clip  = ShapeClip(clipId=str(uuid.uuid4()), startFrame=req.startFrame,
                       duration=req.duration, style=ShapeStyle.fromDict(req.style))
     clip.transform.position.setBase(req.x, req.y)
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
+    notify("timeline")
     return clip.toDict()
 
 
@@ -229,6 +250,7 @@ class PenClipRequest(BaseModel):
     isClosed: bool = False
     points: list = []
     style: dict = {}
+    compId: str | None = None   # target comp; None = root/main timeline
 
 
 class PenPointsRequest(BaseModel):
@@ -243,8 +265,8 @@ class PathKeyframeRequest(BaseModel):
 
 @router.post("/clips/pen")
 def addPenClip(req: PenClipRequest):
-    tl    = _active_timeline()
-    track = _top_empty_track(req.startFrame, req.duration)
+    tl    = _resolve_timeline(req.compId)
+    track = _top_empty_track(req.startFrame, req.duration, tl)
     clip  = PenClip(clipId=str(uuid.uuid4()), startFrame=req.startFrame,
                     duration=req.duration, isClosed=req.isClosed,
                     style=ShapeStyle.fromDict(req.style))
@@ -254,6 +276,7 @@ def addPenClip(req: PenClipRequest):
                       outX=float(p.get("outX",0)), outY=float(p.get("outY",0)))
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
+    notify("timeline")
     return clip.toDict()
 
 
@@ -431,8 +454,13 @@ def getSelectedClip():
         return {"clip": None}
     try:
         clip, track = _find_clip(_state._selected_clip_id)
-        tl = _active_timeline()
-        track_idx = tl.tracks.index(track) if track in tl.tracks else -1
+        # Search all timelines for the track — don't depend on which comp is active in UI
+        tl = next(
+            (tl for tl in (engine.project.timelines if engine.project else [])
+             if track in tl.tracks),
+            None
+        )
+        track_idx = tl.tracks.index(track) if tl and track in tl.tracks else -1
         return {"clip": {
             "clipId": clip.clipId, "trackIndex": track_idx,
             "startFrame": clip.startFrame, "duration": clip.duration,

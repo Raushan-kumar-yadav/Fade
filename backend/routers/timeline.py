@@ -21,7 +21,8 @@ class AddClipRequest(BaseModel):
     trackIndex: int
     startFrame: int
     duration: int
-    mediaOffset: int = 0   # in-point offset in frames (from ChromaDB scene hit)
+    mediaOffset: int = 0       # in-point offset in frames (from ChromaDB scene hit)
+    compId: str | None = None  # target comp; None = root/main timeline (never the UI active comp)
 
 
 class MoveClipRequest(BaseModel):
@@ -43,9 +44,16 @@ class SplitClipRequest(BaseModel):
 
 @router.post("/timeline/add-clip")
 def addClip(req: AddClipRequest):
-    tl = engine.activeTimeline
-    if tl is None:
-        raise HTTPException(400, "No active timeline")
+    # Resolve target timeline: explicit compId beats root; never use engine.activeTimeline
+    # (which would silently redirect to whichever comp tab the user has open in the UI).
+    if req.compId:
+        tl = engine.getTimeline(req.compId)
+        if tl is None:
+            raise HTTPException(404, f"Comp timeline {req.compId!r} not found")
+    else:
+        tl = engine.rootTimeline
+        if tl is None:
+            raise HTTPException(400, "No active timeline")
     asset = _library.get(req.assetId)
     if asset is None:
         raise HTTPException(404, f"Asset {req.assetId!r} not in library")
