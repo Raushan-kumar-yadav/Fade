@@ -249,6 +249,7 @@ class TextClip(BaseClip):
     def toDict(self) -> dict:
         return {
             "clipType": self.clipType,
+            "type": self.clipType,        # canonical key used by VideoTrack.fromDict
             "clipId": self.clipId,
             "startFrame": self.startFrame,
             "duration": self.duration,

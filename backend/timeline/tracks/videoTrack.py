@@ -70,21 +70,38 @@ class VideoTrack(BaseTrack):
 
     @classmethod
     def fromDict(cls, data: dict) -> "VideoTrack":
-        from backend.timeline.clips.videoClip import VideoClip
-        from backend.timeline.clips.imageClip import ImageClip
-        from backend.timeline.clips.webComp import WebCompClip
+        from backend.timeline.clips.videoClip  import VideoClip
+        from backend.timeline.clips.imageClip   import ImageClip
+        from backend.timeline.clips.textClip    import TextClip
+        from backend.timeline.clips.shapeClip   import ShapeClip
+        from backend.timeline.clips.penClip     import PenClip
+        from backend.timeline.clips.svgClip     import SvgClip
+        from backend.timeline.clips.compClip    import CompClip
+        from backend.timeline.clips.webComp     import WebCompClip
         from backend.timeline.transitions.transition import Transition
+
+        _CLIP_REGISTRY = {
+            "video":   VideoClip,
+            "image":   ImageClip,
+            "text":    TextClip,
+            "shape":   ShapeClip,
+            "pen":     PenClip,
+            "svg":     SvgClip,
+            "comp":    CompClip,
+            "webcomp": WebCompClip,
+        }
+
         t = cls(name=data["name"])
         t._applyBaseDict(data)
         t.opacity = data.get("opacity", 1.0)
         for clipData in data.get("clips", []):
-            clip_type = clipData.get("type", "video")
-            if clip_type == "webcomp":
-                t.clips.append(WebCompClip.fromDict(clipData))
-            elif clip_type == "image":
-                t.clips.append(ImageClip.fromDict(clipData))
-            else:
-                t.clips.append(VideoClip.fromDict(clipData))
+            # Clips serialized with "type" (VideoClip, ImageClip…) or "clipType" (TextClip, ShapeClip…)
+            clip_type = clipData.get("type") or clipData.get("clipType") or "video"
+            clip_cls  = _CLIP_REGISTRY.get(clip_type, VideoClip)
+            try:
+                t.clips.append(clip_cls.fromDict(clipData))
+            except Exception as e:
+                print(f"[VideoTrack] WARNING: could not load clip type={clip_type!r}: {e}", flush=True)
         for td in data.get("transitions", []):
             t.transitions.append(Transition.fromDict(td))
         return t
