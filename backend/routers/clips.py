@@ -2,6 +2,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from backend.state import engine, _library, _clipTrackMap
+from backend.events import notify
 from backend.timeline.clips.textClip  import TextClip,  TextStyle,  MaskLayer
 from backend.timeline.clips.shapeClip import ShapeClip, ShapeStyle
 from backend.timeline.clips.penClip   import PenClip,   BezierPoint
@@ -11,7 +12,7 @@ from backend.timeline.tracks.videoTrack import VideoTrack
 router = APIRouter()
 
 
-# ── helpers ────────────────────────────────────────────────────────────────
+#   helpers  
 
 def _active_timeline():
     tl = engine.activeTimeline
@@ -68,15 +69,15 @@ def _clip_param_schema(clip) -> list:
     sx, sy = t.scale.get()
     ax, ay = t.anchor.get()
     base = [
-        {"id": "opacity",    "label": "Opacity",    "type": "float", "min": 0,    "max": 1,    "default": round(t.opacity.get(), 4),   "group": "Transform"},
-        {"id": "blend_mode", "label": "Blend Mode", "type": "int",   "min": 0,    "max": 11,   "default": (lambda bm: int(bm.get()) if hasattr(bm, "get") else int(bm) if bm else 0)(getattr(clip, "blendMode", 0)), "group": "Transform"},
-        {"id": "pos_x",      "label": "Position X", "type": "float", "min": -3840,"max": 3840, "default": round(px, 2),                "group": "Transform"},
-        {"id": "pos_y",      "label": "Position Y", "type": "float", "min": -2160,"max": 2160, "default": round(py, 2),                "group": "Transform"},
-        {"id": "scale_x",    "label": "Scale X",    "type": "float", "min": 0,    "max": 10,   "default": round(sx, 4),                "group": "Transform"},
-        {"id": "scale_y",    "label": "Scale Y",    "type": "float", "min": 0,    "max": 10,   "default": round(sy, 4),                "group": "Transform"},
-        {"id": "rotation",   "label": "Rotation",   "type": "float", "min": -360, "max": 360,  "default": round(t.rotation.get(), 2),  "group": "Transform"},
-        {"id": "anchor_x",   "label": "Anchor X",   "type": "float", "min": -1920,"max": 1920, "default": round(ax, 2),                "group": "Transform"},
-        {"id": "anchor_y",   "label": "Anchor Y",   "type": "float", "min": -1080,"max": 1080, "default": round(ay, 2),                "group": "Transform"},
+        {"id": "opacity",    "label": "Opacity", "type": "float", "min": 0, "max": 1, "default": round(t.opacity.get(), 4),   "group": "Transform"},
+        {"id": "blend_mode", "label": "Blend Mode", "type": "int",   "min": 0, "max": 11,   "default": (lambda bm: int(bm.get()) if hasattr(bm, "get") else int(bm) if bm else 0)(getattr(clip, "blendMode", 0)), "group": "Transform"},
+        {"id": "pos_x", "label": "Position X", "type": "float", "min": -3840,"max": 3840, "default": round(px, 2), "group": "Transform"},
+        {"id": "pos_y", "label": "Position Y", "type": "float", "min": -2160,"max": 2160, "default": round(py, 2), "group": "Transform"},
+        {"id": "scale_x", "label": "Scale X", "type": "float", "min": 0, "max": 10, "default": round(sx, 4), "group": "Transform"},
+        {"id": "scale_y", "label": "Scale Y", "type": "float", "min": 0, "max": 10, "default": round(sy, 4), "group": "Transform"},
+        {"id": "rotation", "label": "Rotation",   "type": "float", "min": -360, "max": 360,  "default": round(t.rotation.get(), 2),  "group": "Transform"},
+        {"id": "anchor_x", "label": "Anchor X", "type": "float", "min": -1920,"max": 1920, "default": round(ax, 2), "group": "Transform"},
+        {"id": "anchor_y", "label": "Anchor Y", "type": "float", "min": -1080,"max": 1080, "default": round(ay, 2), "group": "Transform"},
     ]
     if isinstance(clip, TextClip):
         s = clip.style
@@ -94,42 +95,45 @@ def _clip_param_schema(clip) -> list:
         fill   = s.fillColor   or [0.4, 0.4, 1.0, 1.0]
         stroke = s.strokeColor or [1.0, 1.0, 1.0, 1.0]
         base += [
-            {"id": "shape_w",  "label": "Width",        "type": "float", "min": 1, "max": 3840, "default": s.width,       "group": "Shape"},
-            {"id": "shape_h",  "label": "Height",       "type": "float", "min": 1, "max": 2160, "default": s.height,      "group": "Shape"},
-            {"id": "fill_r",   "label": "Fill R",       "type": "float", "min": 0, "max": 1,    "default": fill[0],       "group": "Shape"},
-            {"id": "fill_g",   "label": "Fill G",       "type": "float", "min": 0, "max": 1,    "default": fill[1],       "group": "Shape"},
-            {"id": "fill_b",   "label": "Fill B",       "type": "float", "min": 0, "max": 1,    "default": fill[2],       "group": "Shape"},
-            {"id": "fill_a",   "label": "Fill A",       "type": "float", "min": 0, "max": 1,    "default": fill[3],       "group": "Shape"},
-            {"id": "stroke_r", "label": "Stroke R",     "type": "float", "min": 0, "max": 1,    "default": stroke[0],     "group": "Shape"},
-            {"id": "stroke_g", "label": "Stroke G",     "type": "float", "min": 0, "max": 1,    "default": stroke[1],     "group": "Shape"},
-            {"id": "stroke_b", "label": "Stroke B",     "type": "float", "min": 0, "max": 1,    "default": stroke[2],     "group": "Shape"},
-            {"id": "stroke_w", "label": "Stroke Width", "type": "float", "min": 0, "max": 50,   "default": s.strokeWidth, "group": "Shape"},
+            {"id": "shape_w", "label": "Width", "type": "float", "min": 1, "max": 3840, "default": s.width, "group": "Shape"},
+            {"id": "shape_h", "label": "Height", "type": "float", "min": 1, "max": 2160, "default": s.height, "group": "Shape"},
+            {"id": "fill_r", "label": "Fill R", "type": "float", "min": 0, "max": 1, "default": fill[0], "group": "Shape"},
+            {"id": "fill_g", "label": "Fill G", "type": "float", "min": 0, "max": 1, "default": fill[1], "group": "Shape"},
+            {"id": "fill_b", "label": "Fill B", "type": "float", "min": 0, "max": 1, "default": fill[2], "group": "Shape"},
+            {"id": "fill_a",   "label": "Fill A", "type": "float", "min": 0, "max": 1, "default": fill[3], "group": "Shape"},
+            {"id": "stroke_r", "label": "Stroke R", "type": "float", "min": 0, "max": 1, "default": stroke[0], "group": "Shape"},
+            {"id": "stroke_g", "label": "Stroke G", "type": "float", "min": 0, "max": 1, "default": stroke[1], "group": "Shape"},
+            {"id": "stroke_b", "label": "Stroke B", "type": "float", "min": 0, "max": 1, "default": stroke[2], "group": "Shape"},
+            {"id": "stroke_w", "label": "Stroke Width", "type": "float", "min": 0, "max": 50, "default": s.strokeWidth, "group": "Shape"},
         ]
     elif isinstance(clip, PenClip):
         s  = clip.style
         sc = s.strokeColor if hasattr(s, 'strokeColor') else [1.0, 1.0, 1.0, 1.0]
         fc = s.fillColor   if hasattr(s, 'fillColor')   else [0.0, 0.0, 0.0, 0.0]
         base += [
-            {"id": "stroke_r", "label": "Stroke R",     "type": "float", "min": 0, "max": 1,  "default": sc[0],         "group": "Path"},
-            {"id": "stroke_g", "label": "Stroke G",     "type": "float", "min": 0, "max": 1,  "default": sc[1],         "group": "Path"},
-            {"id": "stroke_b", "label": "Stroke B",     "type": "float", "min": 0, "max": 1,  "default": sc[2],         "group": "Path"},
+            {"id": "stroke_r", "label": "Stroke R", "type": "float", "min": 0, "max": 1,  "default": sc[0], "group": "Path"},
+            {"id": "stroke_g", "label": "Stroke G", "type": "float", "min": 0, "max": 1,  "default": sc[1], "group": "Path"},
+            {"id": "stroke_b", "label": "Stroke B", "type": "float", "min": 0, "max": 1,  "default": sc[2], "group": "Path"},
             {"id": "stroke_w", "label": "Stroke Width", "type": "float", "min": 0, "max": 50, "default": s.strokeWidth, "group": "Path"},
-            {"id": "fill_a",   "label": "Fill Alpha",   "type": "float", "min": 0, "max": 1,  "default": fc[3],         "group": "Path"},
+            {"id": "fill_a",   "label": "Fill Alpha",   "type": "float", "min": 0, "max": 1,  "default": fc[3], "group": "Path"},
         ]
     return base
 
 
-# ── Text ───────────────────────────────────────────────────────────────────
+#   Text  
 
 class TextClipRequest(BaseModel):
-    trackIndex: int | None = None
-    startFrame: int = 0
-    duration:   int = 150
-    style:      dict = {}
+    trackIndex:  int | None = None
+    startFrame:  int = 0
+    duration:    int = 150
+    text: str = "New Text"      # promoted 
+    fontFamily: str = "Arial"         # promoted  
+    style:       dict = {}             # full style dict override  
 
 
 class TextPatchRequest(BaseModel):
-    style:     dict | None = None
+    text: str | None = None       # direct text content update
+    style: dict | None = None
     transform: dict | None = None
 
 
@@ -137,10 +141,15 @@ class TextPatchRequest(BaseModel):
 def addTextClip(req: TextClipRequest):
     tl    = _active_timeline()
     track = _top_empty_track(req.startFrame, req.duration)
+    # Merge: promoted fields take priority over style dict
+    merged_style = {"fontFamily": req.fontFamily, **req.style}
     clip  = TextClip(clipId=str(uuid.uuid4()), startFrame=req.startFrame,
-                     duration=req.duration, style=TextStyle.fromDict(req.style))
+                     duration=req.duration, style=TextStyle.fromDict(merged_style))
+    # Always apply the promoted text field directly
+    clip.style.text = req.text
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
+    notify("timeline")
     return clip.toDict()
 
 
@@ -157,6 +166,8 @@ def updateTextClip(clipId: str, req: TextPatchRequest):
     clip, _ = _find_clip(clipId)
     if not isinstance(clip, TextClip):
         raise HTTPException(400, "Not a text clip")
+    if req.text is not None:
+        clip.style.text = req.text           # direct text update
     if req.style:
         for k, v in req.style.items():
             if hasattr(clip.style, k):
@@ -164,21 +175,22 @@ def updateTextClip(clipId: str, req: TextPatchRequest):
     if req.transform:
         from backend.animation.transform import Transform
         clip.transform = Transform.fromDict(req.transform)
+    notify("timeline")
     return clip.toDict()
 
 
-# ── Shape ──────────────────────────────────────────────────────────────────
+# Shape  
 
 class ShapeClipRequest(BaseModel):
     startFrame: int   = 0
-    duration:   int   = 150
-    style:      dict  = {}
+    duration: int   = 150
+    style: dict  = {}
     x: float = 960.0
     y: float = 540.0
 
 
 class ShapePatchRequest(BaseModel):
-    style:     dict | None = None
+    style: dict | None = None
     transform: dict | None = None
 
 
@@ -209,18 +221,18 @@ def updateShapeClip(clipId: str, req: ShapePatchRequest):
     return clip.toDict()
 
 
-# ── Pen ────────────────────────────────────────────────────────────────────
+#   Pen  
 
 class PenClipRequest(BaseModel):
     startFrame: int  = 0
-    duration:   int  = 150
-    isClosed:   bool = False
-    points:     list = []
-    style:      dict = {}
+    duration: int  = 150
+    isClosed: bool = False
+    points: list = []
+    style: dict = {}
 
 
 class PenPointsRequest(BaseModel):
-    points:   list       = []
+    points: list       = []
     isClosed: bool | None = None
 
 
@@ -286,25 +298,25 @@ def removePenPathKeyframe(clipId: str, frame: int):
     return {"removed": removed, "keyframes": clip.shapePath.track.frameIndex()}
 
 
-# ── Masks ──────────────────────────────────────────────────────────────────
+#   Masks  
 
 class MaskRequest(BaseModel):
-    name:     str   = "Mask"
+    name: str   = "Mask"
     shape:    str   = "rect"
-    mode:     str   = "add"
+    mode: str   = "add"
     inverted: bool  = False
     feather:  float = 0.0
     opacity:  float = 1.0
-    points:   list  = []
+    points: list  = []
 
 
 class MaskPatchRequest(BaseModel):
-    name:     str   | None = None
-    mode:     str   | None = None
+    name: str   | None = None
+    mode: str   | None = None
     inverted: bool  | None = None
-    feather:  float | None = None
+    feather: float | None = None
     opacity:  float | None = None
-    points:   list  | None = None
+    points: list  | None = None
 
 
 @router.post("/clips/{clipId}/mask")
@@ -398,7 +410,7 @@ def listMasks(clipId: str):
     }
 
 
-# ── Selection ──────────────────────────────────────────────────────────────
+#   Selection  
 
 import backend.state as _state
 
@@ -430,7 +442,7 @@ def getSelectedClip():
         return {"clip": None}
 
 
-# ── Params / Keyframes ─────────────────────────────────────────────────────
+#   Params / Keyframes  
 
 class ParamValueBody(BaseModel):
     value: float
@@ -438,9 +450,9 @@ class ParamValueBody(BaseModel):
 
 
 class KeyframeBody(BaseModel):
-    frame:        int
-    value:        float
-    interp:       str   = "linear"
+    frame: int
+    value: float
+    interp: str   = "linear"
     handle_in_f:  float = -5.0
     handle_in_v:  float =  0.0
     handle_out_f: float =  5.0

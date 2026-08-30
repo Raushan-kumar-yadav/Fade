@@ -66,6 +66,7 @@ from backend.routers import (
     context,
     scene_tools,
     audio_tools,
+    animation,
 )
 
 
@@ -259,6 +260,7 @@ app.include_router(effects.router)
 app.include_router(transitions.router)
 app.include_router(audio.router)
 app.include_router(audio_tools.router)
+app.include_router(animation.router)
 app.include_router(export_.router)
 app.include_router(search.router)
 app.include_router(context.router)

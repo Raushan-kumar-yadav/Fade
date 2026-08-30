@@ -26,6 +26,11 @@ def _delete(path: str) -> dict:
     r.raise_for_status()
     return r.json()
 
+def _patch(path: str, body: dict | None = None) -> dict:
+    r = httpx.patch(f"{_base()}{path}", json=body or {}, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
 def set_port(port: int) -> None:
     global _PORT
     _PORT = port
@@ -1474,3 +1479,180 @@ def get_transcript(clip_id: str, word_level: bool = False) -> str:
 
 AUDIO_TOOLS = [generate_captions, remove_silence, get_transcript]
 ALL_TOOLS.extend(AUDIO_TOOLS)
+
+
+# Animation / keyframe tools
+
+@tool
+def get_clip_params(clip_id: str) -> str:
+    """
+    List all animatable parameters for a clip with their current values,
+    valid ranges, and whether they are currently animated (have keyframes).
+
+    Always call this first to discover what you can animate on a clip before
+    calling animate_property.
+
+    Args:
+        clip_id: The clipId of any clip (text, shape, video, pen, etc.)
+    """
+    result = _get(f"/anim/{clip_id}/params")
+    params = result.get("params", [])
+    lines = [f"Clip {clip_id[:8]} ({result.get('clipType', '?')}) -- animatable params:"]
+    for p in params:
+        anim_flag = " [ANIMATED]" if p.get("animated") else ""
+        lines.append(
+            f"  {p['id']:<14} {p.get('label',''):<18} "
+            f"val={p.get('default', '?')!s:<10} "
+            f"range=[{p.get('min','?')}, {p.get('max','?')}]"
+            f"{anim_flag}"
+        )
+    return "\n".join(lines)
+
+
+@tool
+def animate_property(
+    clip_id: str,
+    param: str,
+    frame: int,
+    value: float,
+    easing: str = "ease_both",
+    handle_in_frames: float = -8.0,
+    handle_in_value: float = 0.0,
+    handle_out_frames: float = 8.0,
+    handle_out_value: float = 0.0,
+) -> str:
+    """
+    Add or update a keyframe on any animatable property of a clip.
+    Call multiple times with different frames to build an animation.
+
+    Common params (use get_clip_params to see all for a clip):
+      pos_x, pos_y         -- position in pixels (0,0 = center of frame)
+      scale_x, scale_y     -- scale multiplier (1.0 = 100%)
+      rotation             -- degrees (-360 to 360)
+      opacity              -- 0.0 (invisible) to 1.0 (fully visible)
+      anchor_x, anchor_y   -- pivot/anchor point in pixels
+      font_size            -- (TextClip) font size in pixels
+      fill_r/g/b/a         -- RGBA fill colour channels 0.0 to 1.0
+      shape_w, shape_h     -- (ShapeClip) width/height in pixels
+      stroke_w             -- stroke width in pixels
+
+    Easing options:
+      ease_both  -- slow in AND slow out (best for most motion, default)
+      ease_in    -- slow start, fast end
+      ease_out   -- fast start, slow end (good for entrances)
+      linear     -- constant speed
+      constant   -- instant jump at keyframe (no interpolation)
+      bezier     -- manual control; set handle_in/out_frames and _value
+
+    Bezier handles (only used when easing='bezier'):
+      handle_in_frames   -- frame offset of left handle (use negative, e.g. -8)
+      handle_in_value    -- value delta of left handle (0.0 = flat)
+      handle_out_frames  -- frame offset of right handle (use positive, e.g. 8)
+      handle_out_value   -- value delta of right handle
+
+    Args:
+        clip_id:           The clipId of the target clip.
+        param:             Parameter name (e.g. 'pos_x', 'opacity', 'font_size').
+        frame:             Timeline frame number to place this keyframe.
+        value:             Value at this keyframe.
+        easing:            Interpolation type (default: 'ease_both').
+        handle_in_frames:  Left bezier handle frame offset (only for easing='bezier').
+        handle_in_value:   Left bezier handle value offset.
+        handle_out_frames: Right bezier handle frame offset.
+        handle_out_value:  Right bezier handle value offset.
+    """
+    result = _post(f"/anim/{clip_id}/keyframe", {
+        "param":             param,
+        "frame":             frame,
+        "value":             value,
+        "easing":            easing,
+        "handle_in_frames":  handle_in_frames,
+        "handle_in_value":   handle_in_value,
+        "handle_out_frames": handle_out_frames,
+        "handle_out_value":  handle_out_value,
+    })
+    total = result.get("totalKeyframes", "?")
+    kf    = result.get("keyframe", {})
+    return (
+        f"Keyframe added: {param} = {value} @ frame {frame} "
+        f"(easing={kf.get('easing', easing)}, total keyframes={total})"
+    )
+
+
+@tool
+def remove_keyframe(clip_id: str, param: str, frame: int) -> str:
+    """
+    Remove a single keyframe from an animated property on a clip.
+
+    Args:
+        clip_id: The clipId.
+        param:   Parameter name (e.g. 'pos_x', 'opacity').
+        frame:   Timeline frame number of the keyframe to remove.
+    """
+    _delete(f"/anim/{clip_id}/keyframe/{param}/{frame}")
+    return f"Removed keyframe at frame {frame} for param '{param}' on clip {clip_id[:8]}."
+
+
+@tool
+def clear_animation(clip_id: str, param: str) -> str:
+    """
+    Remove ALL keyframes from a property, making it static again.
+    The property will stay at its last evaluated value.
+
+    Args:
+        clip_id: The clipId.
+        param:   Parameter name (e.g. 'pos_x', 'opacity').
+    """
+    result = _post(f"/anim/{clip_id}/clear/{param}", {})
+    removed = result.get("keyframesRemoved", 0)
+    return f"Cleared {removed} keyframe(s) from '{param}' on clip {clip_id[:8]}. Property is now static."
+
+
+@tool
+def get_keyframes(clip_id: str) -> str:
+    """
+    Return all animated properties and their full keyframe graph for a clip.
+    Shows frame, value, easing type, and bezier handle data for each keyframe.
+
+    Args:
+        clip_id: The clipId.
+    """
+    result = _get(f"/anim/{clip_id}/keyframes")
+    animated = result.get("animated", [])
+    if not animated:
+        return f"No animated properties on clip {clip_id[:8]}."
+    lines = [f"Animated properties on clip {clip_id[:8]} ({result.get('clipType', '?')}):"]
+    for prop in animated:
+        lines.append(f"\n  [{prop['param']}]")
+        for kf in prop["keyframes"]:
+            lines.append(
+                f"    frame={kf['frame']:4d}  val={kf['value']:.4f}  easing={kf['easing']}"
+                + (f"  handles=[{kf['handle_in_frames']:.1f},{kf['handle_out_frames']:.1f}]"
+                   if kf.get("easing") == "bezier" else "")
+            )
+    return "\n".join(lines)
+
+
+@tool
+def set_text_content(clip_id: str, text: str) -> str:
+    """
+    Set the text content of a TextClip.
+    Use this to update what a text clip says without recreating it.
+
+    Args:
+        clip_id: The clipId of the TextClip.
+        text:    The new text to display.
+    """
+    _patch(f"/clips/text/{clip_id}", {"text": text})
+    return f"Text clip {clip_id[:8]} content updated to: \"{text[:80]}\""
+
+
+ANIMATION_TOOLS = [
+    get_clip_params,
+    animate_property,
+    remove_keyframe,
+    clear_animation,
+    get_keyframes,
+    set_text_content,
+]
+ALL_TOOLS.extend(ANIMATION_TOOLS)
