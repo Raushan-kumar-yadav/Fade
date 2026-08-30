@@ -32,11 +32,11 @@ class Transform:
 
     def evaluateAll(self, frame: int) -> None:
         """Update all properties for the given (clip-local) frame."""
-        self.position.update(frame)
-        self.scale.update(frame)
-        self.rotation.update(frame)
-        self.opacity.update(frame)
-        self.anchor.update(frame)
+        self.position.update(frame, _prefix="pos")
+        self.scale.update(frame,    _prefix="scale")
+        self.rotation.update(frame, _prop="rotation")
+        self.opacity.update(frame,  _prop="opacity")
+        self.anchor.update(frame,   _prefix="anchor")
 
     #   Computed  
 

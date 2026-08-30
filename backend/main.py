@@ -68,6 +68,7 @@ from backend.routers import (
     audio_tools,
     animation,
     jobs,
+    debug,
 )
 
 
@@ -270,6 +271,7 @@ app.include_router(jobs.router)
 app.include_router(export_.router)
 app.include_router(search.router)
 app.include_router(context.router)
+app.include_router(debug.router)    # animation diagnostics: /debug/anim-*
 
  
 from fastapi.responses import FileResponse as _FileResponse

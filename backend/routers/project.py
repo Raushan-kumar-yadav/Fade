@@ -572,3 +572,76 @@ def postAiSettings(payload: AiSettingsPayload):
         _wt._model_cache.clear()
         print(f"[Settings] Whisper model → {payload.whisperModel} (cache cleared)", flush=True)
     return _get_ai_settings()
+
+
+# ── Generator Settings ────────────────────────────────────────────────────────
+
+class GeneratorSettingsPayload(BaseModel):
+    # Image
+    imageProvider: str | None = None       # "google" | "local"
+    imageLocalModel: str | None = None     # e.g. "gemma3:4b"
+    # TTS
+    ttsProvider: str | None = None         # "google" | "local"
+    ttsGoogleVoice: str | None = None      # e.g. "Kore"
+    ttsLocalModel: str | None = None       # e.g. "kokoro"
+    # Video
+    videoProvider: str | None = None       # "google" | "local"
+    videoLocalModel: str | None = None     # e.g. "wan2.1"
+    # Ollama server URL
+    ollamaUrl: str | None = None
+
+
+def _get_ollama_models() -> list[str]:
+    """Return installed Ollama models, or [] if Ollama not running."""
+    try:
+        import ollama
+        return [m.model for m in ollama.list().models]
+    except Exception:
+        try:
+            import requests
+            r = requests.get("http://localhost:11434/api/tags", timeout=2)
+            if r.ok:
+                return [m["name"] for m in r.json().get("models", [])]
+        except Exception:
+            pass
+    return []
+
+
+def _get_generator_settings() -> dict:
+    return {
+        "imageProvider":   _cfg.get("generators.image_provider", "google"),
+        "imageLocalModel": _cfg.get("generators.image_local_model", "gemma3:4b"),
+        "ttsProvider":     _cfg.get("generators.tts_provider", "google"),
+        "ttsGoogleVoice":  _cfg.get("generators.tts_google_voice", "Kore"),
+        "ttsLocalModel":   _cfg.get("generators.tts_local_model", "kokoro"),
+        "videoProvider":   _cfg.get("generators.video_provider", "google"),
+        "videoLocalModel": _cfg.get("generators.video_local_model", "wan2.1"),
+        "ollamaUrl":       _cfg.get("generators.ollama_url", "http://localhost:11434"),
+        "ollamaModels":    _get_ollama_models(),
+    }
+
+
+@router.get("/settings/generators")
+def getGeneratorSettings():
+    return _get_generator_settings()
+
+
+@router.post("/settings/generators")
+def postGeneratorSettings(payload: GeneratorSettingsPayload):
+    if payload.imageProvider in ("google", "local"):
+        _cfg.set("generators.image_provider", payload.imageProvider)
+    if payload.imageLocalModel is not None:
+        _cfg.set("generators.image_local_model", payload.imageLocalModel.strip())
+    if payload.ttsProvider in ("google", "local"):
+        _cfg.set("generators.tts_provider", payload.ttsProvider)
+    if payload.ttsGoogleVoice is not None:
+        _cfg.set("generators.tts_google_voice", payload.ttsGoogleVoice.strip())
+    if payload.ttsLocalModel is not None:
+        _cfg.set("generators.tts_local_model", payload.ttsLocalModel.strip())
+    if payload.videoProvider in ("google", "local"):
+        _cfg.set("generators.video_provider", payload.videoProvider)
+    if payload.videoLocalModel is not None:
+        _cfg.set("generators.video_local_model", payload.videoLocalModel.strip())
+    if payload.ollamaUrl is not None:
+        _cfg.set("generators.ollama_url", payload.ollamaUrl.strip())
+    return _get_generator_settings()

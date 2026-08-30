@@ -16,15 +16,27 @@ interface Settings {
   decoderMode: string;
   // AI Indexing
   aiVisionModel: string;
-  aiFrameInterval:  number;
+  aiFrameInterval: number;
 }
 
 interface AiSettings {
   visionModel:    string;
   frameInterval:  number;
-  whisperBackend: string;   // "faster" | "openai"
+  whisperBackend: string;
   whisperModel:   string;
   availableModels: string[];
+}
+
+interface GeneratorSettings {
+  imageProvider:   string;   // "google" | "local"
+  imageLocalModel: string;
+  ttsProvider:     string;
+  ttsGoogleVoice:  string;
+  ttsLocalModel:   string;
+  videoProvider:   string;
+  videoLocalModel: string;
+  ollamaUrl:       string;
+  ollamaModels:    string[];
 }
 
 function getPort(): number | null {
@@ -62,7 +74,7 @@ async function fetchAiSettings(): Promise<AiSettings | null> {
   } catch { return null; }
 }
 
-async function postAiSettings(delta: Partial<Pick<AiSettings,'visionModel'|'frameInterval'>>): Promise<AiSettings | null> {
+async function postAiSettings(delta: Partial<Pick<AiSettings,'visionModel'|'frameInterval'|'whisperBackend'|'whisperModel'>>): Promise<AiSettings | null> {
   const port = getPort();
   if (!port) return null;
   try {
@@ -75,16 +87,108 @@ async function postAiSettings(delta: Partial<Pick<AiSettings,'visionModel'|'fram
   } catch { return null; }
 }
 
+async function fetchGeneratorSettings(): Promise<GeneratorSettings | null> {
+  const port = getPort();
+  if (!port) return null;
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/settings/generators`);
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
+async function postGeneratorSettings(delta: Partial<GeneratorSettings>): Promise<GeneratorSettings | null> {
+  const port = getPort();
+  if (!port) return null;
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/settings/generators`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(delta),
+    });
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
 //   Tab IDs  
 
-type Tab = 'cache' | 'decoder' | 'output' | 'ai';
+type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'generators';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: 'cache',   icon: '⚡', label: 'Cache'      },
-  { id: 'decoder', icon: '🎞', label: 'Decoder'    },
-  { id: 'output',  icon: '🖼', label: 'Output'     },
-  { id: 'ai', icon: '🤖', label: 'AI Indexing'},
+  { id: 'cache',      icon: '⚡', label: 'Cache'       },
+  { id: 'decoder',    icon: '🎞', label: 'Decoder'     },
+  { id: 'output',     icon: '🖼', label: 'Output'      },
+  { id: 'ai',         icon: '🤖', label: 'AI Indexing' },
+  { id: 'generators', icon: '✨', label: 'Generators'  },
 ];
+
+const GEMINI_VOICES = [
+  'Zephyr','Puck','Charon','Kore','Fenrir','Leda','Orus','Aoede',
+  'Callirrhoe','Autonoe','Enceladus','Iapetus','Umbriel','Algieba',
+  'Despina','Erinome','Algenib','Rasalgethi','Laomedeia','Achernar',
+  'Alnilam','Schedar','Gacrux','Pulcherrima','Achird','Zubenelgenubi',
+  'Vindemiatrix','Sadachbia','Sadaltager','Sulafat',
+];
+
+const VOICE_DESCRIPTIONS: Record<string, string> = {
+  Zephyr: 'Bright', Puck: 'Upbeat', Charon: 'Informative', Kore: 'Firm',
+  Fenrir: 'Excitable', Leda: 'Youthful', Orus: 'Firm', Aoede: 'Breezy',
+  Callirrhoe: 'Easy-going', Autonoe: 'Bright', Enceladus: 'Breathy',
+  Iapetus: 'Clear', Umbriel: 'Easy-going', Algieba: 'Smooth',
+  Despina: 'Smooth', Erinome: 'Clear', Algenib: 'Gravelly',
+  Rasalgethi: 'Informative', Laomedeia: 'Upbeat', Achernar: 'Soft',
+  Alnilam: 'Firm', Schedar: 'Even', Gacrux: 'Mature',
+  Pulcherrima: 'Forward', Achird: 'Friendly', Zubenelgenubi: 'Casual',
+  Vindemiatrix: 'Gentle', Sadachbia: 'Lively', Sadaltager: 'Knowledgeable',
+  Sulafat: 'Warm',
+};
+
+//   Sub-components  
+
+function ProviderToggle({
+  id, value, onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="sp-provider-toggle">
+      <button
+        id={`${id}-google`}
+        className={`sp-toggle-btn ${value === 'google' ? 'sp-toggle-btn--active' : ''}`}
+        onClick={() => onChange('google')}
+      >
+        <span className="sp-toggle-icon">☁</span> Google API
+      </button>
+      <button
+        id={`${id}-local`}
+        className={`sp-toggle-btn ${value === 'local' ? 'sp-toggle-btn--active' : ''}`}
+        onClick={() => onChange('local')}
+      >
+        <span className="sp-toggle-icon">🖥</span> Local (Ollama)
+      </button>
+    </div>
+  );
+}
+
+function OllamaModelSelect({
+  id, value, models, fallbackLabel, onChange,
+}: {
+  id: string;
+  value: string;
+  models: string[];
+  fallbackLabel: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <select id={id} className="sp-select" value={value} onChange={e => onChange(e.target.value)}>
+      {models.length > 0
+        ? models.map(m => <option key={m} value={m}>{m}</option>)
+        : <option value={value}>{value || fallbackLabel}</option>
+      }
+    </select>
+  );
+}
 
 //   Component  
 
@@ -93,6 +197,7 @@ interface Props { onClose: () => void; }
 export default function SettingsPanel({ onClose }: Props) {
   const [s, setS] = useState<Settings | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);
+  const [gen, setGen] = useState<GeneratorSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<Tab>('cache');
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -100,6 +205,7 @@ export default function SettingsPanel({ onClose }: Props) {
   useEffect(() => {
     fetchSettings().then(setS);
     fetchAiSettings().then(setAi);
+    fetchGeneratorSettings().then(setGen);
   }, []);
 
   useEffect(() => {
@@ -119,6 +225,13 @@ export default function SettingsPanel({ onClose }: Props) {
     setSaving(true);
     const next = await postAiSettings(delta);
     if (next) setAi(next);
+    setSaving(false);
+  }, []);
+
+  const applyGen = useCallback(async (delta: Partial<GeneratorSettings>) => {
+    setSaving(true);
+    const next = await postGeneratorSettings(delta);
+    if (next) setGen(next);
     setSaving(false);
   }, []);
 
@@ -152,7 +265,7 @@ export default function SettingsPanel({ onClose }: Props) {
 
           {/* Right content */}
           <div className="sp-content">
-            {!s && tab !== 'ai' && (
+            {!s && tab !== 'ai' && tab !== 'generators' && (
               <p className="sp-loading">Connecting to engine…</p>
             )}
 
@@ -257,7 +370,6 @@ export default function SettingsPanel({ onClose }: Props) {
                       <label className="sp-label" htmlFor="set-vision-model">Vision model</label>
                       <select id="set-vision-model" className="sp-select" value={ai.visionModel}
                         onChange={e => applyAi({ visionModel: e.target.value })}>
-                        {/* Show installed models first */}
                         {ai.availableModels.length > 0
                           ? ai.availableModels.map(m => (
                               <option key={m} value={m}>{m}</option>
@@ -321,6 +433,160 @@ export default function SettingsPanel({ onClose }: Props) {
                     <div className="sp-hint sp-hint--warn">
                       ⚠ Changing these settings only affects new imports. Re-delete and re-import a video to re-index it.
                     </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* ── Generators ── */}
+            {tab === 'generators' && (
+              <>
+                {!gen ? (
+                  <p className="sp-loading">Loading generator settings…</p>
+                ) : (
+                  <>
+                    {/* ── Image Generation ── */}
+                    <div className="sp-subsection-title">🎨 Image Generation</div>
+
+                    <div className="sp-row sp-row--column">
+                      <label className="sp-label">Provider</label>
+                      <ProviderToggle
+                        id="img-provider"
+                        value={gen.imageProvider}
+                        onChange={v => applyGen({ imageProvider: v })}
+                      />
+                    </div>
+
+                    {gen.imageProvider === 'google' && (
+                      <div className="sp-hint sp-hint--info">
+                        Uses <strong>Gemini 3.1 Flash Image</strong> (Nano Banana 2).
+                        Requires a paid Google AI plan.
+                        <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="sp-link"> Enable billing →</a>
+                      </div>
+                    )}
+
+                    {gen.imageProvider === 'local' && (
+                      <div className="sp-row">
+                        <label className="sp-label" htmlFor="img-local-model">Ollama Model</label>
+                        <OllamaModelSelect
+                          id="img-local-model"
+                          value={gen.imageLocalModel}
+                          models={gen.ollamaModels}
+                          fallbackLabel="gemma3:4b"
+                          onChange={v => applyGen({ imageLocalModel: v })}
+                        />
+                      </div>
+                    )}
+
+                    {/* ── TTS ── */}
+                    <div className="sp-subsection-title">🔊 Text-to-Speech</div>
+
+                    <div className="sp-row sp-row--column">
+                      <label className="sp-label">Provider</label>
+                      <ProviderToggle
+                        id="tts-provider"
+                        value={gen.ttsProvider}
+                        onChange={v => applyGen({ ttsProvider: v })}
+                      />
+                    </div>
+
+                    {gen.ttsProvider === 'google' && (
+                      <div className="sp-row">
+                        <label className="sp-label" htmlFor="tts-voice">Voice</label>
+                        <select
+                          id="tts-voice"
+                          className="sp-select"
+                          value={gen.ttsGoogleVoice}
+                          onChange={e => applyGen({ ttsGoogleVoice: e.target.value })}
+                        >
+                          {GEMINI_VOICES.map(v => (
+                            <option key={v} value={v}>
+                              {v} — {VOICE_DESCRIPTIONS[v] ?? ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {gen.ttsProvider === 'local' && (
+                      <div className="sp-row">
+                        <label className="sp-label" htmlFor="tts-local-model">Ollama Model</label>
+                        <OllamaModelSelect
+                          id="tts-local-model"
+                          value={gen.ttsLocalModel}
+                          models={gen.ollamaModels}
+                          fallbackLabel="kokoro"
+                          onChange={v => applyGen({ ttsLocalModel: v })}
+                        />
+                      </div>
+                    )}
+
+                    {/* ── Video Generation ── */}
+                    <div className="sp-subsection-title">🎬 Video Generation</div>
+
+                    <div className="sp-row sp-row--column">
+                      <label className="sp-label">Provider</label>
+                      <ProviderToggle
+                        id="vid-provider"
+                        value={gen.videoProvider}
+                        onChange={v => applyGen({ videoProvider: v })}
+                      />
+                    </div>
+
+                    {gen.videoProvider === 'google' && (
+                      <div className="sp-hint sp-hint--info">
+                        Uses <strong>Veo 3.1</strong> — cinematic video with native audio.
+                        Requires a paid Google AI plan. Generation takes 30–120s.
+                        <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="sp-link"> Enable billing →</a>
+                      </div>
+                    )}
+
+                    {gen.videoProvider === 'local' && (
+                      <div className="sp-row">
+                        <label className="sp-label" htmlFor="vid-local-model">Ollama Model</label>
+                        <OllamaModelSelect
+                          id="vid-local-model"
+                          value={gen.videoLocalModel}
+                          models={gen.ollamaModels}
+                          fallbackLabel="wan2.1"
+                          onChange={v => applyGen({ videoLocalModel: v })}
+                        />
+                      </div>
+                    )}
+
+                    {/* ── Ollama Server ── */}
+                    <div className="sp-subsection-title">🖥 Ollama Server</div>
+
+                    <div className="sp-row">
+                      <label className="sp-label" htmlFor="ollama-url">Server URL</label>
+                      <input
+                        id="ollama-url"
+                        type="text"
+                        className="sp-input sp-input--wide"
+                        defaultValue={gen.ollamaUrl}
+                        onBlur={e => applyGen({ ollamaUrl: e.target.value })}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        placeholder="http://localhost:11434"
+                      />
+                    </div>
+
+                    <div className="sp-row">
+                      <label className="sp-label">Installed models</label>
+                      <span className="sp-badge sp-badge--info">
+                        {gen.ollamaModels.length > 0
+                          ? `${gen.ollamaModels.length} model${gen.ollamaModels.length > 1 ? 's' : ''} detected`
+                          : 'Ollama not running or no models installed'}
+                      </span>
+                    </div>
+
+                    {gen.ollamaModels.length === 0 && (
+                      <div className="sp-hint sp-hint--warn">
+                        ⚠ No Ollama models found. Start Ollama and pull models:
+                        <br /><code>ollama serve</code>
+                        <br /><code>ollama pull kokoro</code> (TTS)
+                        <br /><code>ollama pull wan2.1</code> (Video)
+                      </div>
+                    )}
                   </>
                 )}
               </>

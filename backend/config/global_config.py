@@ -12,6 +12,18 @@ _DEFAULTS: dict = {
         "frame_interval":  4.0,
         "whisper_backend": "faster",   # "faster" | "openai"
         "whisper_model":   "small",    # tiny | base | small | medium | large
+    },
+    "generators": {
+        # image
+        "image_provider":   "google",     # "google" | "local"
+        "image_local_model": "gemma3:4b", # ollama model tag for local image gen
+        # tts
+        "tts_provider":     "google",     # "google" | "local"
+        "tts_google_voice": "Kore",       # Gemini TTS voice
+        "tts_local_model":  "kokoro",     # ollama model tag for local TTS
+        # video
+        "video_provider":   "google",     # "google" | "local"
+        "video_local_model": "wan2.1",    # ollama model tag for local video gen
     }
 }
 

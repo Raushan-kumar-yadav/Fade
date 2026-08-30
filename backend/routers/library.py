@@ -7,6 +7,9 @@ from backend.state import engine, _library
 from backend.media.asset.mediaAsset import MediaAsset
 from backend.worker.worker_bus import bus as _worker_bus
 from backend.tools import YtdlpDownloader, ImageDownloader, GeminiImageGenerator
+from backend.tools.generators.tts_generator import get_tts_generator, GEMINI_VOICES
+from backend.tools.generators.video_generator import get_video_generator
+from backend.config.global_config import cfg as _cfg
 
 router = APIRouter()
 
@@ -28,6 +31,17 @@ class DownloadImagesRequest(BaseModel):
 class GenerateImageRequest(BaseModel):
     prompt: str
     numImages: int = 1
+
+
+class GenerateTTSRequest(BaseModel):
+    text: str
+    voice: str = ""    # Google voice name; empty = use config default
+
+
+class GenerateVideoRequest(BaseModel):
+    prompt: str
+    durationSeconds: int = 5
+    aspectRatio: str = "16:9"
 
 
 class RelinkRequest(BaseModel):
@@ -102,7 +116,7 @@ def importAsset(req: ImportRequest):
             _worker_bus.submit_index_video(result["assetId"], req.filepath,
                                            port=port, db_path=_get_db())
             print(f"[Library] ✓ index_video submitted to worker bus", flush=True)
-            # Register a job so the library panel shows an overlay on this card
+            
             try:
                 from backend.routers.jobs import register_asset_job as _rj
                 _rj("video_index", result["assetId"],
@@ -213,12 +227,139 @@ def download_images(req: DownloadImagesRequest):
 
 @router.post("/media/generate-image")
 def generate_image_endpoint(req: GenerateImageRequest):
+    from fastapi import HTTPException
     generator = GeminiImageGenerator()
     gen_dir = _resolve_download_dir(subdir="generations")
-    results = generator.generate(prompt=req.prompt, num_images=req.numImages, output_dir=gen_dir)
+    try:
+        results = generator.generate(prompt=req.prompt, num_images=req.numImages, output_dir=gen_dir)
+    except PermissionError as e:
+         
+        raise HTTPException(status_code=402, detail={
+            "error": "quota_exceeded",
+            "message": str(e),
+            "action": "Enable billing at https://aistudio.google.com",
+        })
+    except EnvironmentError as e:
+        raise HTTPException(status_code=503, detail={"error": "config_error", "message": str(e)})
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail={"error": "generation_failed", "message": str(e)})
+
+    if not results:
+        raise HTTPException(status_code=500, detail={
+            "error": "no_images",
+            "message": "Gemini returned no images. The model may have refused the prompt.",
+        })
+
     imported = []
     for r in results:
         info = _import_file(r["filepath"])
         imported.append({"assetId": info["assetId"], "filename": info["filename"], "title": r["title"]})
     from backend.events import notify; notify("library")
     return {"assets": imported}
+
+
+#   TTS Generation  
+
+@router.post("/media/generate-tts")
+def generate_tts_endpoint(req: GenerateTTSRequest):
+    """
+    Generate speech audio from text.
+    Provider (google/local) is read from settings/generators.
+    Returns the imported audio asset.
+    """
+    provider = _cfg.get("generators.tts_provider", "google")
+    ollama_url = _cfg.get("generators.ollama_url", "http://localhost:11434")
+    local_model = _cfg.get("generators.tts_local_model", "kokoro")
+    voice = req.voice or _cfg.get("generators.tts_google_voice", "Kore")
+
+    gen_dir = _resolve_download_dir(subdir="tts")
+    generator = get_tts_generator(provider=provider, ollama_url=ollama_url)
+
+    try:
+        if provider == "local":
+            result = generator.generate(text=req.text, output_dir=gen_dir, model=local_model)
+        else:
+            result = generator.generate(text=req.text, output_dir=gen_dir, voice=voice)
+
+    except PermissionError as e:
+        raise HTTPException(status_code=402, detail={
+            "error": "quota_exceeded",
+            "message": str(e),
+            "action": "Enable billing at https://aistudio.google.com",
+        })
+    except ConnectionError as e:
+        raise HTTPException(status_code=503, detail={
+            "error": "ollama_unavailable",
+            "message": str(e),
+            "action": "Start Ollama with: ollama serve",
+        })
+    except EnvironmentError as e:
+        raise HTTPException(status_code=503, detail={"error": "config_error", "message": str(e)})
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail={"error": "tts_failed", "message": str(e)})
+
+    info = _import_file(result["filepath"])
+    from backend.events import notify; notify("library")
+    return {"assetId": info["assetId"], "filename": info["filename"], "title": result["title"]}
+
+
+#   Video Generation  
+
+@router.post("/media/generate-video")
+def generate_video_endpoint(req: GenerateVideoRequest):
+    """
+    Generate a video from a text prompt.
+    Provider (google/local) is read from settings/generators.
+    Returns the imported video asset.
+    """
+    provider = _cfg.get("generators.video_provider", "google")
+    ollama_url = _cfg.get("generators.ollama_url", "http://localhost:11434")
+    local_model = _cfg.get("generators.video_local_model", "wan2.1")
+
+    gen_dir = _resolve_download_dir(subdir="generations/video")
+    generator = get_video_generator(provider=provider, ollama_url=ollama_url)
+
+    try:
+        if provider == "local":
+            result = generator.generate(
+                prompt=req.prompt,
+                output_dir=gen_dir,
+                model=local_model,
+                duration_seconds=req.durationSeconds,
+            )
+        else:
+            result = generator.generate(
+                prompt=req.prompt,
+                output_dir=gen_dir,
+                duration_seconds=req.durationSeconds,
+                aspect_ratio=req.aspectRatio,
+            )
+
+    except PermissionError as e:
+        raise HTTPException(status_code=402, detail={
+            "error": "quota_exceeded",
+            "message": str(e),
+            "action": "Enable billing at https://aistudio.google.com",
+        })
+    except ConnectionError as e:
+        raise HTTPException(status_code=503, detail={
+            "error": "ollama_unavailable",
+            "message": str(e),
+            "action": "Start Ollama with: ollama serve",
+        })
+    except EnvironmentError as e:
+        raise HTTPException(status_code=503, detail={"error": "config_error", "message": str(e)})
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail={"error": "video_failed", "message": str(e)})
+
+    info = _import_file(result["filepath"])
+    from backend.events import notify; notify("library")
+    return {"assetId": info["assetId"], "filename": info["filename"], "title": result["title"]}
+
+
+ 
+
+@router.get("/media/tts-voices")
+def get_tts_voices():
+    """Return available Gemini TTS voices."""
+    return {"voices": GEMINI_VOICES}

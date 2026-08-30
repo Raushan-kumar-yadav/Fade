@@ -281,3 +281,91 @@
   font-family: 'Inter', sans-serif;
   font-size: 13px;
 }
+
+/*   Provider Toggle   */
+.sp-provider-toggle {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sp-toggle-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.5);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+
+.sp-toggle-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.8);
+  border-color: rgba(255,255,255,0.2);
+}
+
+.sp-toggle-btn--active {
+  background: rgba(108,99,255,0.2);
+  border-color: rgba(108,99,255,0.6);
+  color: #a89fff;
+  box-shadow: 0 0 0 1px rgba(108,99,255,0.3);
+}
+
+.sp-toggle-btn--active:hover {
+  background: rgba(108,99,255,0.28);
+  color: #c4bcff;
+}
+
+.sp-toggle-icon {
+  font-size: 14px;
+}
+
+/*   Column row (toggle inside) */
+.sp-row--column {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+/*   Wide input (URL field)   */
+.sp-input--wide {
+  width: 100%;
+  max-width: 280px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/*   Info hint   */
+.sp-hint--info {
+  background: rgba(108,99,255,0.08);
+  border-left: 2px solid rgba(108,99,255,0.5);
+  color: rgba(180,172,255,0.85);
+}
+
+/*   Link in hint   */
+.sp-link {
+  color: #a89fff;
+  text-decoration: none;
+  font-weight: 600;
+}
+.sp-link:hover { text-decoration: underline; }
+
+/*   Code block in hint   */
+.sp-hint code {
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 11px;
+  background: rgba(255,255,255,0.07);
+  padding: 1px 5px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-top: 3px;
+}

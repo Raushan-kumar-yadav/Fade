@@ -1,6 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from backend.animation.transform import Transform
+from backend.animation import anim_debug as _dbg
 
 
 class BaseClip(ABC):
@@ -32,9 +33,15 @@ class BaseClip(ABC):
     def evaluateAll(self, frame: int) -> None:
         """Update all animatable properties for the given timeline frame."""
         lf = self.localFrame(frame)
+
+        # Debug header  
+        if _dbg.ANIM_DEBUG and frame % _dbg._LOG_EVERY_N == 0:
+            print(f"[ANIM] evaluateAll  clip={self.clipId[:8]}({type(self).__name__})  "
+                  f"timeline_frame={frame}  local_frame={lf}", flush=True)
+
         self.transform.evaluateAll(lf)
 
-        # Old animEngine-style params (_anim_params stores AnimParam objects with _base list)
+        # Old animEngine-style params 
         if hasattr(self, '_anim_params'):
             for key, ap in self._anim_params.items():
                 if ap.is_animated():
@@ -42,13 +49,7 @@ class BaseClip(ABC):
                     self.applyParam(key, val)
                 else:
                     self.applyParam(key, ap._base[0])
-
-        # New AnimatableProperty-style params (_anim_props created by the animation router)
-        if hasattr(self, '_anim_props'):
-            for key, ap in self._anim_props.items():
-                ap.update(lf)   # evaluate at clip-local frame
-                self.applyParam(key, ap.get())
-
+ 
         for effect in self.effects:
             if hasattr(effect, 'evaluateAll'):
                 effect.evaluateAll(lf)
@@ -66,9 +67,9 @@ class BaseClip(ABC):
         elif key == "blend_mode":
             bm = getattr(self, "blendMode", None)
             if hasattr(bm, "setBaseValue"):
-                bm.setBaseValue(float(round(val)))   # AnimatableProperty (videoClip / imageClip)
+                bm.setBaseValue(float(round(val)))   # AnimatableProperty 
             else:
-                self.blendMode = int(round(val))     # plain int (shape / pen / text / etc.)
+                self.blendMode = int(round(val))     # plain int 
 
     #   Mask helpers  
 

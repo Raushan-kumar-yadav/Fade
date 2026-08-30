@@ -51,22 +51,22 @@ def _evalEase(prev: Keyframe, nxt: Keyframe, ease: Interpolation, frame: float) 
     third = (p3x - p0x) / 3.0
 
     if ease == Interpolation.EaseIn:
-        # Out handle: flat (hold near start value), In handle: custom
+        # Out handle 
         p1x = p0x + third
-        p1y = prev.value + prev.handleOutValue          # use stored value offset
+        p1y = prev.value + prev.handleOutValue         
         p2x = max(p0x, min(p3x, p3x + nxt.handleInFrame)) if nxt.handleInFrame != -5.0 else p3x - third
         p2y = nxt.value + nxt.handleInValue
     elif ease == Interpolation.EaseOut:
-        # Out handle: custom, In handle: flat (hold near end value)
+        # Out handle 
         p1x = max(p0x, min(p3x, p0x + prev.handleOutFrame)) if prev.handleOutFrame != 5.0 else p0x + third
         p1y = prev.value + prev.handleOutValue
         p2x = p3x - third
-        p2y = nxt.value + nxt.handleInValue             # use stored value offset
-    else:  # EaseBoth — symmetric S-curve, both handles custom values
+        p2y = nxt.value + nxt.handleInValue             
+    else:  # EaseBoth 
         p1x = p0x + third
-        p1y = prev.value + prev.handleOutValue          # use stored value offset
+        p1y = prev.value + prev.handleOutValue        
         p2x = p3x - third
-        p2y = nxt.value + nxt.handleInValue             # use stored value offset
+        p2y = nxt.value + nxt.handleInValue            
 
     p1x = max(p0x, min(p3x, p1x))
     p2x = max(p0x, min(p3x, p2x))
@@ -161,7 +161,7 @@ class ScalarTrack:
         else:
             self._frames.insert(idx, kf.frame)
             self._keyframes.insert(idx, kf)
-        # No _recomputeNeighbours — handles are already correct
+        
 
     def removeKeyframe(self, frame: int) -> bool:
         idx = bisect.bisect_left(self._frames, frame)
@@ -193,7 +193,7 @@ class ScalarTrack:
         if idx >= n:
             return
         kf = self._keyframes[idx]
-        # Skip keyframes whose handles were set manually (by a curve preset)
+         
         if kf.manualHandles:
             return
         isFirst = idx == 0

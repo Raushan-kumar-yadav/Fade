@@ -11,13 +11,13 @@ CURVE_PRESETS: dict[str, dict] = {
     },
     "constant": {
         "interp": "constant",
-        "out_frame_frac":  0.0, "out_value_frac": 0.0,
-        "in_frame_frac":   0.0, "in_value_frac":  0.0,
+        "out_frame_frac": 0.0, "out_value_frac": 0.0,
+        "in_frame_frac": 0.0, "in_value_frac":  0.0,
         "description": "Instant jump — holds value until next keyframe.",
     },
     "ease_in": {
         "interp": "ease_in",
-        "out_frame_frac":  0.333, "out_value_frac": 0.0,
+        "out_frame_frac": 0.333, "out_value_frac": 0.0,
         "in_frame_frac":  -0.333, "in_value_frac":  0.0,
         "description": "Slow start, fast end. Great for exits.",
     },
@@ -28,17 +28,29 @@ CURVE_PRESETS: dict[str, dict] = {
         "description": "Fast start, slow end. Great for entrances.",
     },
     "ease_both": {
-        "interp": "ease_both",
-        "out_frame_frac":  0.333, "out_value_frac": 0.0,
-        "in_frame_frac":  -0.333, "in_value_frac":  0.0,
-        "description": "Slow in AND slow out. Default S-curve. Best for most motion.",
+        # Switched to bezier so handles are respected (ease_both interp hardcodes 1/3).
+        # 0.45 handles = noticeably sharper S than the default 0.333.
+        "interp": "bezier",
+        "out_frame_frac":  0.45, "out_value_frac": 0.0,
+        "in_frame_frac":  -0.45, "in_value_frac":  0.0,
+        "description": "Sharp S-curve. Slow start, fast middle, slow landing.",
     },
     # Bezier custom curves
     "smooth": {
+        # 0.48 handles — near-maximum symmetric Bezier (0.5 = control points meet at mid).
+        # Noticeably more aggressive S than ease_both.
         "interp": "bezier",
-        "out_frame_frac":  0.4,  "out_value_frac": 0.0,
-        "in_frame_frac":  -0.4,  "in_value_frac":  0.0,
-        "description": "Gentle S-curve. Smoother than ease_both, very natural.",
+        "out_frame_frac":  0.48, "out_value_frac": 0.0,
+        "in_frame_frac":  -0.48, "in_value_frac":  0.0,
+        "description": "Very smooth deep S-curve. Holds at extremes, rushes through center.",
+    },
+    "sharp_s": {
+        # Maximum symmetric Bezier S — control points almost touch at the midpoint.
+        # Object barely moves for first ~45% of time, then snaps to destination.
+        "interp": "bezier",
+        "out_frame_frac":  0.48, "out_value_frac": 0.0,
+        "in_frame_frac":  -0.48, "in_value_frac":  0.0,
+        "description": "Sharpest symmetric S-curve. Maximum slow/fast/slow contrast.",
     },
     "sharp_in": {
         "interp": "bezier",
@@ -60,9 +72,9 @@ CURVE_PRESETS: dict[str, dict] = {
     },
     "cinematic": {
         "interp": "bezier",
-        "out_frame_frac":  0.25, "out_value_frac": 0.0,
-        "in_frame_frac":  -0.55, "in_value_frac":  0.0,
-        "description": "Film-like timing, ease_out biased. Great for camera moves.",
+        "out_frame_frac":  0.2,  "out_value_frac": 0.0,
+        "in_frame_frac":  -0.65, "in_value_frac":  0.0,
+        "description": "Film-like timing — snappy start, very slow cinematic landing.",
     },
     "slow_mo": {
         "interp": "bezier",
@@ -160,6 +172,6 @@ def apply_preset_to_segment(
     in_kf.handleInFrame =  p["in_frame_frac"]  * max(seg_frames, 1.0)
     in_kf.handleInValue =  p["in_value_frac"]   * seg_value
 
-    # Mark as manually-set so auto-recompute won't overwrite them
+    # Mark as manually-set 
     out_kf.manualHandles = True
     in_kf.manualHandles  = True

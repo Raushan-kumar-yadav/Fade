@@ -1,6 +1,7 @@
 from __future__ import annotations
 from backend.animation.scalarTrack import ScalarTrack
 from backend.animation.keyframe import Keyframe, Interpolation, makeBezierKeyframe
+from backend.animation import anim_debug as _dbg
 
 
 class AnimatableProperty:
@@ -58,13 +59,13 @@ class AnimatableProperty:
 
     #   Evaluation
 
-    def update(self, frame: int) -> None:
+    def update(self, frame: int, _prop: str = "?") -> None:
         if not self._isAnimated or self._track.empty():
             self._currentValue = self._baseValue
         else:
             self._currentValue = self._track.evaluateAt(frame, self._baseValue)
 
-    def evaluate(self, frame: int) -> float:
+    def evaluate(self, frame: int, _prop: str = "?") -> float:
         if not self._isAnimated or self._track.empty():
             return self._baseValue
         return self._track.evaluateAt(frame, self._baseValue)
@@ -138,9 +139,9 @@ class Vec2Property:
         self.x = AnimatableProperty(x)
         self.y = AnimatableProperty(y)
 
-    def update(self, frame: int) -> None:
-        self.x.update(frame)
-        self.y.update(frame)
+    def update(self, frame: int, _prefix: str = "?") -> None:
+        self.x.update(frame, _prop=f"{_prefix}_x")
+        self.y.update(frame, _prop=f"{_prefix}_y")
 
     def get(self) -> tuple[float, float]:
         return (self.x.get(), self.y.get())
@@ -157,7 +158,7 @@ class Vec2Property:
     def __repr__(self) -> str:
         return f"Vec2Property({self.x.get():.2f}, {self.y.get():.2f})"
 
-    # ── Serialization ──────────────────────────────────────────────────────────
+ 
 
     def toDict(self) -> dict:
         return {"x": self.x.toDict(), "y": self.y.toDict()}
