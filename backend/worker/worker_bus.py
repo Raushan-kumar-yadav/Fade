@@ -4,19 +4,19 @@ worker_bus.py — Singleton that owns the sandbox worker process and queues.
 Usage:
     from backend.worker.worker_bus import bus
     bus.start()
-    bus.submit({"type": "waveform", "assetId": "...", "filepath": "...", "bins": 200})
-    result = bus.get_cached("assetId")   # returns None | dict
-
-The result-drain thread runs in the main process and copies completed results
-from the result_queue into waveform_cache — no FastAPI thread is blocked.
+    bus.submit_waveform("assetId", "path/to/file.mp4")
+    bus.submit_index_video("assetId", "path/to/file.mp4")
+    bus.get_index_status("assetId")  # → {"status": "pending"|"running"|"done"|"error", ...}
 """
 from __future__ import annotations
 import multiprocessing
 import threading
+import os
 from typing import Optional
 
 from backend.worker import sandbox_worker
 from backend.worker import waveform_cache
+from backend.worker import index_cache
 
 
 class WorkerBus:
@@ -77,7 +77,8 @@ class WorkerBus:
         except Exception:
             return -1
 
-    # Result helpers
+    # ── Waveform helpers ──────────────────────────────────────────────────────
+
     def get_cached(self, asset_id: str) -> dict | None:
         return waveform_cache.get(asset_id)
 
@@ -89,11 +90,32 @@ class WorkerBus:
                 return  # already cached
         waveform_cache.set_pending(asset_id)
         self.submit({
-            "type":    "waveform",
-            "assetId": asset_id,
+            "type":     "waveform",
+            "assetId":  asset_id,
             "filepath": filepath,
-            "bins":    bins,
+            "bins":     bins,
         })
+
+    # ── VideoSemantic indexing helpers ────────────────────────────────────────
+
+    def submit_index_video(self, asset_id: str, filepath: str, port: int = 8000) -> None:
+        """Enqueue a VideoSemantic indexing job (fire-and-forget, shows in GUI progress)."""
+        existing = index_cache.get(asset_id)
+        if existing and existing.get("status") in ("pending", "running", "done"):
+            return  # already queued or done
+        index_cache.set_pending(asset_id)
+        self.submit({
+            "type":     "index_video",
+            "assetId":  asset_id,
+            "filepath": filepath,
+            "port":     port,
+        })
+        print(f"[WorkerBus] index_video queued for {asset_id[:8]}", flush=True)
+
+    def get_index_status(self, asset_id: str) -> dict | None:
+        return index_cache.get(asset_id)
+
+    # ── Result drain ──────────────────────────────────────────────────────────
 
     def _drain_results(self) -> None:
         """Runs in a daemon thread in the main process. Never blocks FastAPI."""
@@ -103,16 +125,30 @@ class WorkerBus:
             except Exception:
                 continue
 
-            rtype = result.get("type", "")
+            rtype    = result.get("type", "")
             asset_id = result.get("assetId", "")
 
             if rtype == "waveform_done":
                 waveform_cache.set_result(asset_id, result["peaks"])
-                print(f"[WorkerBus] waveform done: {asset_id}", flush=True)
+                print(f"[WorkerBus] waveform done: {asset_id[:8]}", flush=True)
+
             elif rtype == "waveform_error":
                 waveform_cache.set_error(asset_id, result.get("message", "unknown"))
-                print(f"[WorkerBus] waveform error: {asset_id}: {result.get('message')}", flush=True)
-            # Future: handle whisper_done, scene_done, etc.
+                print(f"[WorkerBus] waveform error: {asset_id[:8]}: {result.get('message')}", flush=True)
+
+            elif rtype == "index_video_done":
+                index_cache.set_done(asset_id, result.get("chunks", 0))
+                print(f"[WorkerBus] index_video done: {asset_id[:8]} ({result.get('chunks')} chunks)", flush=True)
+                # Notify frontend via SSE so GUI progress widget can update
+                try:
+                    from backend.events import notify
+                    notify("library")
+                except Exception:
+                    pass
+
+            elif rtype == "index_video_error":
+                index_cache.set_error(asset_id, result.get("message", "unknown"))
+                print(f"[WorkerBus] index_video error: {asset_id[:8]}: {result.get('message')}", flush=True)
 
 
 # Global singleton — import this everywhere

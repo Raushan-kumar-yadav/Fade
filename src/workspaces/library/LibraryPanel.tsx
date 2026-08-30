@@ -189,22 +189,22 @@ async function apiAddWebCompClip(assetId: string, startFrame: number, duration: 
 
 //   WebComp Create Modal
 
-// ── Template icons by id ───────────────────────────────────────────────────────
+//   Template icons by id  
 const TEMPLATE_ICONS: Record<string, string> = {
-  'blank':           '◻',
-  'lower-third':     '▬',
-  'kinetic-title':   '⚡',
-  'word-reveal':     '✦',
-  'neon-headline':   '⬡',
+  'blank': '◻',
+  'lower-third': '▬',
+  'kinetic-title': '⚡',
+  'word-reveal': '✦',
+  'neon-headline': '⬡',
   'cinematic-split': '◈',
 };
 
 const TEMPLATE_HINTS: Record<string, string> = {
-  'blank':           'Empty transparent canvas',
-  'lower-third':     'Animated slide-in name card',
-  'kinetic-title':   'High-energy Bebas Neue reveal',
-  'word-reveal':     'Staggered blur word animation',
-  'neon-headline':   'Electric Orbitron glow flicker',
+  'blank': 'Empty transparent canvas',
+  'lower-third': 'Animated slide-in name card',
+  'kinetic-title': 'High-energy Bebas Neue reveal',
+  'word-reveal': 'Staggered blur word animation',
+  'neon-headline': 'Electric Orbitron glow flicker',
   'cinematic-split': 'Film-style split with light leak',
 };
 
@@ -218,12 +218,12 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
   onSubmit: (name: string, template: string) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [name, setName]         = useState('');
+  const [name, setName] = useState('');
   const [template, setTemplate] = useState('blank');
   const [creating, setCreating] = useState(false);
-  const [error, setError]       = useState('');
+  const [error, setError] = useState('');
   const [templates, setTemplates] = useState<WcTemplate[]>([]);
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading] = useState(true);
   const nameRef = useRef<HTMLInputElement>(null);
 
   // Auto-name from template selection
@@ -242,14 +242,14 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
         } else {
           // Fallback static list
           setTemplates([
-            { id: 'blank',       name: 'Blank',       description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
+            { id: 'blank', name: 'Blank', description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
             { id: 'lower-third', name: 'Lower Third', description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
           ]);
         }
       })
       .catch(() => {
         setTemplates([
-          { id: 'blank',       name: 'Blank',       description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
+          { id: 'blank', name: 'Blank', description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
           { id: 'lower-third', name: 'Lower Third', description: '', width: 1920, height: 1080, fps: 30, durationFrames: 150, params: [] },
         ]);
       })
@@ -575,16 +575,22 @@ export default function LibraryPanel({ onAddToTimeline }: {
   const [dragging, setDragging] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Semantic search state
+  const [semanticResults, setSemanticResults] = useState<any[] | null>(null);
+  const [semanticLoading, setSemanticLoading] = useState(false);
+  const [indexStatuses, setIndexStatuses] = useState<Record<string, string>>({}); // assetId → status
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [comps, setComps] = useState<CompMeta[]>([]);
   const [showCfg, setShowCfg] = useState(false);
-  const [renamingId, setRenamingId]  = useState<string | null>(null);
-  const [compError, setCompError]   = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [compError, setCompError] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
 
   // WebComp state
-  const [webcomps, setWebcomps]       = useState<WebCompMeta[]>([]);
-  const [showWcCfg, setShowWcCfg]     = useState(false);
-  const [wcError, setWcError]         = useState<string | null>(null);
+  const [webcomps, setWebcomps] = useState<WebCompMeta[]>([]);
+  const [showWcCfg, setShowWcCfg] = useState(false);
+  const [wcError, setWcError] = useState<string | null>(null);
 
   const openCtx = useCallback((e: React.MouseEvent, items: CtxItem[]) => {
     e.preventDefault(); e.stopPropagation();
@@ -605,6 +611,52 @@ export default function LibraryPanel({ onAddToTimeline }: {
     window.addEventListener('fade:library-changed', h);
     return () => window.removeEventListener('fade:library-changed', h);
   }, [refreshAssets]);
+
+  // Poll index status for all video assets
+  useEffect(() => {
+    const videoAssets = assets.filter(a => a.type === 'video');
+    if (!videoAssets.length) return;
+    let cancelled = false;
+    const poll = async () => {
+      const statuses: Record<string, string> = {};
+      await Promise.all(videoAssets.map(async a => {
+        try {
+          const r = await fetch(`${base()}/library/index-status/${a.assetId}`);
+          const d = await r.json();
+          statuses[a.assetId] = d.status;
+        } catch { statuses[a.assetId] = 'unknown'; }
+      }));
+      if (!cancelled) setIndexStatuses(statuses);
+    };
+    poll();
+    //   keep polling  
+    const interval = setInterval(async () => {
+      const cur = indexStatuses;
+      const stillActive = videoAssets.some(a => cur[a.assetId] === 'pending' || cur[a.assetId] === 'running');
+      if (!stillActive) { clearInterval(interval); return; }
+      await poll();
+    }, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [assets]);
+
+  // Debounced semantic search  
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (query.length < 4) { setSemanticResults(null); return; }
+    // Check if query matches any filename exactly  
+    const hasFilenameMatch = assets.some(a => a.filename.toLowerCase().includes(query.toLowerCase()));
+    if (hasFilenameMatch) { setSemanticResults(null); return; }
+    searchTimerRef.current = setTimeout(async () => {
+      setSemanticLoading(true);
+      try {
+        const r = await fetch(`${base()}/search/video?q=${encodeURIComponent(query)}&top_k=8`);
+        const d = await r.json();
+        setSemanticResults(d.results ?? []);
+      } catch { setSemanticResults([]); }
+      finally { setSemanticLoading(false); }
+    }, 500);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+  }, [query, assets]);
 
   //   Load comps
   const refreshComps = useCallback(async () => {
@@ -728,7 +780,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
   const filtered = assets.filter(a => a.filename.toLowerCase().includes(query.toLowerCase()));
 
-   
+  // Helpers for semantic results
+  const videoAssets = assets.filter(a => a.type === 'video');
+  const indexingCount = videoAssets.filter(a => indexStatuses[a.assetId] === 'pending' || indexStatuses[a.assetId] === 'running').length;
+  const allIndexed   = videoAssets.length > 0 && videoAssets.every(a => indexStatuses[a.assetId] === 'done');
+
+  const isSemanticMode = semanticResults !== null || semanticLoading;
+
   return (
     <div className="lib" onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
       onDrop={handleDrop} onContextMenu={bgCtx}>
@@ -744,8 +802,14 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
       {/* Search bar */}
       <div className="lib__search">
-        <span className="lib__search-icon">⌕</span>
-        <input className="lib__search-input" placeholder="Search…" value={query} onChange={e => setQuery(e.target.value)} />
+        <span className="lib__search-icon">{semanticLoading ? '⟳' : isSemanticMode ? '✦' : '⌕'}</span>
+        <input
+          className="lib__search-input"
+          placeholder="Search files or describe a scene…"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+        />
+        {query && <button className="lib__search-clear" onClick={() => { setQuery(''); setSemanticResults(null); }} title="Clear">✕</button>}
         <button className="lib__import-btn" title="Import" onClick={() => fileInputRef.current?.click()}>+</button>
         <input ref={fileInputRef} type="file" hidden multiple accept="video/*,image/*,audio/*,.svg" onChange={handleFileSelect} />
       </div>
@@ -757,92 +821,156 @@ export default function LibraryPanel({ onAddToTimeline }: {
         <div className="lib-comp-cfg__error" style={{ borderColor: '#a78bfa' }} onClick={() => setWcError(null)}>⚠ {wcError}</div>
       )}
 
-      {/* GRID — Comps + WebComps + Media */}
+      {/* GRID */}
       <div className="lib__grid">
-        {/* WebComps */}
-        {webcomps.map(wc => (
-          <LibCard
-            key={wc.assetId}
-            type="webcomp"
-            title={wc.name}
-            badge="WC"
-            subtitle={`${wc.width}×${wc.height} · ${wc.fps}fps`}
-            isDragging={dragging === wc.assetId}
-            onDragStart={e => {
-              setDragging(wc.assetId);
-              e.dataTransfer.setData('application/fade-webcomp', JSON.stringify(wc));
-              e.dataTransfer.effectAllowed = 'copy';
-            }}
-            onDragEnd={() => setDragging(null)}
-            onDoubleClick={() => handleAddWebCompToTimeline(wc)}
-            onContextMenu={e => openCtx(e, [
-              { icon: '↓', label: 'Add to Timeline', onClick: () => handleAddWebCompToTimeline(wc) },
-              { icon: '📁', label: 'Open Folder', onClick: () => (window as any).electronAPI?.shellOpenPath?.(wc.folderPath) },
-              { icon: '', label: '', sep: true, onClick: () => {} },
-              { icon: '✕', label: 'Delete', danger: true, onClick: async () => {
-                if (!window.confirm(`Delete WebComp "${wc.name}"?`)) return;
-                await fetch(`${base()}/timeline/webcomp/${wc.assetId}`, { method: 'DELETE' });
-                setWebcomps(p => p.filter(w => w.assetId !== wc.assetId));
-              }},
-            ])}
-          />
-        ))}
+ 
+        {isSemanticMode && (
+          <div style={{ gridColumn: '1/-1' }}>
+            {semanticLoading && (
+              <div className="lib__semantic-searching">
+                <span className="lib__spinner" style={{ display: 'inline-block', width: 14, height: 14, marginRight: 8 }} />
+                Searching scenes…
+              </div>
+            )}
 
-        {comps.map(comp => {
-          const isActive = state.activeCompId === comp.compId;
-          return (
-            <LibCard
-              key={comp.compId}
-              type="comp"
-              title={comp.name}
-              badge={comp.isRoot ? 'ROOT' : 'COMP'}
-              isActive={isActive}
-              isDragging={dragging === comp.compId}
-              onDragStart={e => {
-                if (comp.isRoot) return; // Root shouldn't be draggable
-                setDragging(comp.compId);
-                e.dataTransfer.setData('application/fade-comp', JSON.stringify(comp));
-                e.dataTransfer.effectAllowed = 'copy';
-              }}
-              onDragEnd={() => setDragging(null)}
-              renaming={renamingId === comp.compId}
-              onRenameCommit={v => handleRenameComp(comp.compId, v)}
-              onRenameCancel={() => setRenamingId(null)}
-              subtitle={`${comp.width}×${comp.height} · ${comp.fps}fps`}
-              onDoubleClick={() => handleEnterComp(comp)}
-              onContextMenu={e => compCtx(e, comp)}
-            />
-          );
-        })}
+            {!semanticLoading && semanticResults && semanticResults.length > 0 && (
+              <>
+                <div className="lib__semantic-label">✦ Scene matches for "{query}"</div>
+                {semanticResults.map((hit, i) => {
+                  const asset = assets.find(a => a.assetId === hit.assetId);
+                  const startS = Math.round(hit.start_sec);
+                  const endS   = Math.round(hit.end_sec);
+                  const score  = Math.round(hit.score * 100);
+                  return (
+                    <div key={i} className="lib__semantic-hit"
+                      onClick={() => asset && onAddToTimeline?.(asset, 0)}
+                      title={hit.text}
+                    >
+                      <div className="lib__semantic-hit-score">{score}%</div>
+                      <div className="lib__semantic-hit-info">
+                        <div className="lib__semantic-hit-name">{asset?.filename ?? hit.assetId.slice(0,8)}</div>
+                        <div className="lib__semantic-hit-time">{startS}s – {endS}s</div>
+                        <div className="lib__semantic-hit-desc">{hit.text.slice(0, 120)}{hit.text.length > 120 ? '…' : ''}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
 
-        {loading && filtered.length === 0 && (
-          <div className="lib__spinner" style={{ margin: '20px auto', gridColumn: '1/-1' }} />
+            {!semanticLoading && semanticResults && semanticResults.length === 0 && (
+              <div className="lib__semantic-empty">
+                {allIndexed
+                  ? <><span>🔍</span><p>No matching scenes found</p><small>All {videoAssets.length} video{videoAssets.length !== 1 ? 's' : ''} indexed</small></>
+                  : indexingCount > 0
+                    ? <><span>⏳</span><p>No results yet</p><small>Still indexing {indexingCount} video{indexingCount !== 1 ? 's' : ''}… try again soon</small></>
+                    : <><span>🔍</span><p>No matching scenes found</p></>}
+              </div>
+            )}
+          </div>
         )}
 
-        {filtered.map(asset => (
-          <LibCard
-            key={asset.assetId}
-            type={asset.type}
-            title={asset.filename}
-            badge={asset.type}
-            isDragging={dragging === asset.assetId}
-            onDragStart={e => {
-              setDragging(asset.assetId);
-              e.dataTransfer.setData('application/fade-asset', JSON.stringify(asset));
-              e.dataTransfer.effectAllowed = 'copy';
-            }}
-            onDragEnd={() => setDragging(null)}
-            onDoubleClick={() => onAddToTimeline?.(asset, 0)}
-            onContextMenu={e => assetCtx(e, asset)}
-            onDelete={async () => { await removeAsset(asset.assetId); setAssets(p => p.filter(a => a.assetId !== asset.assetId)); }}
-          />
-        ))}
+        {/*   Normal grid  */}
+        {!isSemanticMode && (
+          <>
+            {/* WebComps */}
+            {webcomps.map(wc => (
+              <LibCard
+                key={wc.assetId}
+                type="webcomp"
+                title={wc.name}
+                badge="WC"
+                subtitle={`${wc.width}×${wc.height} · ${wc.fps}fps`}
+                isDragging={dragging === wc.assetId}
+                onDragStart={e => {
+                  setDragging(wc.assetId);
+                  e.dataTransfer.setData('application/fade-webcomp', JSON.stringify(wc));
+                  e.dataTransfer.effectAllowed = 'copy';
+                }}
+                onDragEnd={() => setDragging(null)}
+                onDoubleClick={() => handleAddWebCompToTimeline(wc)}
+                onContextMenu={e => openCtx(e, [
+                  { icon: '↓', label: 'Add to Timeline', onClick: () => handleAddWebCompToTimeline(wc) },
+                  { icon: '📁', label: 'Open Folder', onClick: () => (window as any).electronAPI?.shellOpenPath?.(wc.folderPath) },
+                  { icon: '', label: '', sep: true, onClick: () => {} },
+                  { icon: '✕', label: 'Delete', danger: true, onClick: async () => {
+                    if (!window.confirm(`Delete WebComp "${wc.name}"?`)) return;
+                    await fetch(`${base()}/timeline/webcomp/${wc.assetId}`, { method: 'DELETE' });
+                    setWebcomps(p => p.filter(w => w.assetId !== wc.assetId));
+                  }},
+                ])}
+              />
+            ))}
 
-        {!loading && filtered.length === 0 && comps.length === 0 && (
-          <div className="lib__empty" style={{ gridColumn: '1/-1' }}>
-            <div className="lib__empty-icon">📂</div>
-            <p className="lib__empty-hint">Drop files here or click <strong>+</strong></p>
-          </div>
+            {comps.map(comp => {
+              const isActive = state.activeCompId === comp.compId;
+              return (
+                <LibCard
+                  key={comp.compId}
+                  type="comp"
+                  title={comp.name}
+                  badge={comp.isRoot ? 'ROOT' : 'COMP'}
+                  isActive={isActive}
+                  isDragging={dragging === comp.compId}
+                  onDragStart={e => {
+                    if (comp.isRoot) return;
+                    setDragging(comp.compId);
+                    e.dataTransfer.setData('application/fade-comp', JSON.stringify(comp));
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                  renaming={renamingId === comp.compId}
+                  onRenameCommit={v => handleRenameComp(comp.compId, v)}
+                  onRenameCancel={() => setRenamingId(null)}
+                  subtitle={`${comp.width}×${comp.height} · ${comp.fps}fps`}
+                  onDoubleClick={() => handleEnterComp(comp)}
+                  onContextMenu={e => compCtx(e, comp)}
+                />
+              );
+            })}
+
+            {loading && filtered.length === 0 && (
+              <div className="lib__spinner" style={{ margin: '20px auto', gridColumn: '1/-1' }} />
+            )}
+
+            {filtered.map(asset => {
+              const idxStatus = asset.type === 'video' ? (indexStatuses[asset.assetId] ?? 'not_started') : null;
+              return (
+                <div key={asset.assetId} style={{ position: 'relative' }}>
+                  {idxStatus && idxStatus !== 'done' && idxStatus !== 'not_started' && (
+                    <div className="lib__index-badge" data-status={idxStatus}>
+                      {idxStatus === 'pending' || idxStatus === 'running' ? '⏳' : idxStatus === 'error' ? '⚠' : ''}
+                    </div>
+                  )}
+                  {idxStatus === 'done' && (
+                    <div className="lib__index-badge" data-status="done">✦</div>
+                  )}
+                  <LibCard
+                    type={asset.type}
+                    title={asset.filename}
+                    badge={asset.type}
+                    isDragging={dragging === asset.assetId}
+                    onDragStart={e => {
+                      setDragging(asset.assetId);
+                      e.dataTransfer.setData('application/fade-asset', JSON.stringify(asset));
+                      e.dataTransfer.effectAllowed = 'copy';
+                    }}
+                    onDragEnd={() => setDragging(null)}
+                    onDoubleClick={() => onAddToTimeline?.(asset, 0)}
+                    onContextMenu={e => assetCtx(e, asset)}
+                    onDelete={async () => { await removeAsset(asset.assetId); setAssets(p => p.filter(a => a.assetId !== asset.assetId)); }}
+                  />
+                </div>
+              );
+            })}
+
+            {!loading && filtered.length === 0 && comps.length === 0 && (
+              <div className="lib__empty" style={{ gridColumn: '1/-1' }}>
+                <div className="lib__empty-icon">📂</div>
+                <p className="lib__empty-hint">Drop files here or click <strong>+</strong></p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

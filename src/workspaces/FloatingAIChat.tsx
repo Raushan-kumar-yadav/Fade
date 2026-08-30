@@ -16,7 +16,7 @@ interface Message {
 
 const uid = () => Math.random().toString(36).slice(2, 9)
 
-//   Module-level persistent store  
+// Module-level persistent store  
 
 const _WELCOME: Message = {
   id: 'welcome',
@@ -26,8 +26,8 @@ const _WELCOME: Message = {
 
 // These live outside React  
 let _persistedMessages: Message[]   = [_WELCOME]
-let _persistedHistory:  {role: string; text: string}[] = []
-let _persistedInput:    string      = ''
+let _persistedHistory: {role: string; text: string}[] = []
+let _persistedInput: string      = ''
 
 // Tools that modify the TIMELINE
 const TIMELINE_TOOLS = new Set([
@@ -123,8 +123,8 @@ export default function FloatingAIChat({ onClose }: Props) {
 
   // Initialise from persistent store
   const [messages, setMessages] = useState<Message[]>(_persistedMessages)
-  const [input,    setInput]    = useState(_persistedInput)
-  const [busy,     setBusy]     = useState(false)
+  const [input, setInput] = useState(_persistedInput)
+  const [busy, setBusy] = useState(false)
 
   const bottomRef  = useRef<HTMLDivElement>(null)
   const abortRef   = useRef<AbortController | null>(null)
@@ -211,7 +211,7 @@ export default function FloatingAIChat({ onClose }: Props) {
               appendMsg({ id: uid(), role: 'tool_result', text: evt.content, toolName: evt.name })
               appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
               aiText = ''
-              // ✅ Dispatch UI refresh events
+         
               dispatchToolEvents(evt.name)
             } else if (evt.type === 'done') {
               patchLast({ streaming: false })

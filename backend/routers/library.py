@@ -89,6 +89,15 @@ def importAsset(req: ImportRequest):
         raise HTTPException(404, f"File not found: {req.filepath}")
     result = _import_file(req.filepath)
     from backend.events import notify; notify("library")
+
+     
+    if result.get("type") == "video":
+        try:
+            port = int(os.environ.get("BACKEND_PORT", 8000))
+            _worker_bus.submit_index_video(result["assetId"], req.filepath, port=port)
+        except Exception as _e:
+            print(f"[Library] VideoSemantic submit error (non-fatal): {_e}", flush=True)
+
     return result
 
 
@@ -96,6 +105,23 @@ def importAsset(req: ImportRequest):
 def deleteAsset(assetId: str):
     _library.pop(assetId, None)
     from backend.events import notify; notify("library")
+    
+    try:
+        from backend.ai.VideoSemantic.indexer import delete_video_index
+        from backend.worker.index_cache import remove as _remove_index
+        delete_video_index(assetId)
+        _remove_index(assetId)
+    except Exception:
+        pass
+
+
+@router.get("/library/index-status/{assetId}")
+def getIndexStatus(assetId: str):
+    """Check VideoSemantic indexing progress for an asset."""
+    status = _worker_bus.get_index_status(assetId)
+    if not status:
+        return {"assetId": assetId, "status": "not_started"}
+    return {"assetId": assetId, **status}
 
 
 @router.post("/library/relink/{assetId}")

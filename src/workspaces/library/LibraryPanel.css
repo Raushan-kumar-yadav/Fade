@@ -352,3 +352,121 @@
   border-top: 1px solid #222230;
   background: #1a1a28;
 }
+
+/* ── Search clear button ────────────────────────────────────────────────────── */
+.lib__search-clear {
+  background: none; border: none; color: var(--lib-muted);
+  font-size: 11px; cursor: pointer; padding: 2px 5px;
+  border-radius: 4px; line-height: 1; flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+.lib__search-clear:hover { color: #ff8080; background: #ff5f5f18; }
+
+/* ── Index status badge on video cards ──────────────────────────────────────── */
+.lib__index-badge {
+  position: absolute; top: 4px; right: 4px; z-index: 10;
+  font-size: 9px; padding: 2px 5px; border-radius: 10px;
+  font-weight: 700; letter-spacing: 0.04em; pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+.lib__index-badge[data-status="pending"],
+.lib__index-badge[data-status="running"] {
+  background: rgba(250, 180, 30, 0.18);
+  border: 1px solid rgba(250, 180, 30, 0.4);
+  color: #fab41e;
+  animation: lib-badge-pulse 1.4s ease-in-out infinite;
+}
+.lib__index-badge[data-status="done"] {
+  background: rgba(13, 207, 180, 0.12);
+  border: 1px solid rgba(13, 207, 180, 0.3);
+  color: #0dcfb4;
+}
+.lib__index-badge[data-status="error"] {
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.3);
+  color: #ff6060;
+}
+@keyframes lib-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+/* ── Semantic search results ────────────────────────────────────────────────── */
+.lib__semantic-searching {
+  display: flex; align-items: center;
+  color: var(--lib-muted); font-size: 11px;
+  padding: 12px 4px;
+  animation: lib-fade-in 0.2s ease;
+}
+
+.lib__semantic-label {
+  font-size: 10px; font-weight: 700;
+  color: #a78bfa; letter-spacing: 0.06em;
+  padding: 8px 2px 6px;
+  text-transform: uppercase;
+}
+
+.lib__semantic-hit {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 10px; margin-bottom: 4px;
+  background: var(--lib-bg-elevated);
+  border: 1px solid var(--lib-border);
+  border-radius: 7px; cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  animation: lib-fade-in 0.2s ease;
+}
+.lib__semantic-hit:hover {
+  border-color: #a78bfa44;
+  background: #1e1e2e;
+  transform: translateY(-1px);
+}
+
+.lib__semantic-hit-score {
+  flex-shrink: 0;
+  font-size: 11px; font-weight: 800;
+  color: #a78bfa;
+  background: rgba(167, 139, 250, 0.1);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  border-radius: 6px;
+  padding: 3px 7px;
+  min-width: 36px; text-align: center;
+  align-self: center;
+}
+
+.lib__semantic-hit-info { flex: 1; min-width: 0; }
+
+.lib__semantic-hit-name {
+  font-size: 11px; font-weight: 600;
+  color: var(--lib-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin-bottom: 1px;
+}
+
+.lib__semantic-hit-time {
+  font-size: 9px; color: #a78bfa; font-weight: 600;
+  margin-bottom: 3px;
+}
+
+.lib__semantic-hit-desc {
+  font-size: 10px; color: var(--lib-muted);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.lib__semantic-empty {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 32px 16px;
+  color: var(--lib-muted); text-align: center;
+  animation: lib-fade-in 0.25s ease;
+}
+.lib__semantic-empty span { font-size: 28px; margin-bottom: 4px; }
+.lib__semantic-empty p    { font-size: 12px; font-weight: 600; color: #7a7a9a; margin: 0; }
+.lib__semantic-empty small{ font-size: 10px; color: #4a4a64; }
+
+@keyframes lib-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

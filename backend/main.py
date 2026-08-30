@@ -12,14 +12,14 @@ os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _FFMPEG_DIRS = [
     str(_PROJECT_ROOT / "tools" / "ffmpeg"),   # bundled  
-    r"D:\ffmpeg\FFmpeg",                        # dev machine fallback A
+    r"D:\ffmpeg\FFmpeg",                         
     r"C:\Users\raush\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0-full_build\bin",  # fallback B
 ]
 for _d in _FFMPEG_DIRS:
     if os.path.isdir(_d) and _d not in os.environ.get("PATH", ""):
         os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
         print(f"[main] Added ffmpeg to PATH: {_d}", flush=True)
-        break  # use the first valid directory only
+        break   
 
 faulthandler.enable()
 
@@ -62,6 +62,7 @@ from backend.routers import (
     transitions,
     audio,
     export_,
+    search,
 )
 
 
@@ -255,10 +256,9 @@ app.include_router(effects.router)
 app.include_router(transitions.router)
 app.include_router(audio.router)
 app.include_router(export_.router)
+app.include_router(search.router)
 
-# ── WebComp Runtime static file ───────────────────────────────────────────────
-# Serve fade-react.js over HTTP so WebComp index.html can reference it as
-# http://127.0.0.1:PORT/runtime/fade-react.js — no file:// security issues.
+ 
 from fastapi.responses import FileResponse as _FileResponse
 import pathlib as _pathlib
 
@@ -274,12 +274,8 @@ async def serve_runtime_js():
     return _FileResponse(str(_RUNTIME_JS), media_type="application/javascript")
 
 
-# ── Server-Sent Events endpoint ──────────────────────────────────────────────
-# The frontend connects once and receives real-time push notifications whenever
-# the library, webcomps, compositions, or timeline are mutated by any caller
-# (AI agent, drag-drop import, etc.).  Each event has the form:
-#   event: <scope>
-#   data: {"scope":"library","ts":1234567890.0}
+# Server-Sent Events endpoint  
+ 
 @app.get("/events")
 async def sse_events(request: Request):
     from starlette.responses import StreamingResponse
