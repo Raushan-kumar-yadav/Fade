@@ -159,3 +159,7 @@ def apply_preset_to_segment(
     out_kf.handleOutValue =  p["out_value_frac"]  * seg_value
     in_kf.handleInFrame =  p["in_frame_frac"]  * max(seg_frames, 1.0)
     in_kf.handleInValue =  p["in_value_frac"]   * seg_value
+
+    # Mark as manually-set so auto-recompute won't overwrite them
+    out_kf.manualHandles = True
+    in_kf.manualHandles  = True

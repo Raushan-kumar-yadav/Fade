@@ -191,14 +191,19 @@ const TimelineClip = memo(function TimelineClip({
         return;
       }
 
-      // Selection
+      // Selection — ctrl/shift+click toggles individual clips  
       const isMulti = e.ctrlKey || e.shiftKey || e.metaKey;
-      dispatch({
-        type: "SELECT_CLIP",
-        clipId: clip.id,
-        trackId: track.id,
-        multi: isMulti,
-      });
+      if (isMulti && clip.isSelected) {
+        // ctrl+click on already-selected clip → deselect it
+        dispatch({ type: "DESELECT_CLIP", clipId: clip.id });
+      } else {
+        dispatch({
+          type: "SELECT_CLIP",
+          clipId: clip.id,
+          trackId: track.id,
+          multi: isMulti,
+        });
+      }
       // Update InspectorPanel
       setSelected({
         type: 'clip',
@@ -329,8 +334,9 @@ const TimelineClip = memo(function TimelineClip({
               if (data)
                 dispatch({
                   type: "SET_TRACKS",
-                  tracks: (data.tracks ?? []).map((t: any) =>
-                    mapBackendTrack(t),
+                  tracks: mapBackendTracksPreservingOrder(
+                    state.tracks,
+                    data.tracks ?? [],
                   ),
                 });
             });

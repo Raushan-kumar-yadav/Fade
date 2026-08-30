@@ -7,3 +7,5 @@ _library: dict[str, MediaAsset] = {}
 _clipTrackMap: dict[str, int] = {}
 _exportJobs: dict[str, object] = {}
 _selected_clip_id: str | None = None
+# Multi-select: all currently selected clipIds from the frontend
+_selected_clip_ids: set[str] = set()

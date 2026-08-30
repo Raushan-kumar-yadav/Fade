@@ -39,21 +39,34 @@ def _evalBezier(prev: Keyframe, nxt: Keyframe, frame: float) -> float:
 
 
 def _evalEase(prev: Keyframe, nxt: Keyframe, ease: Interpolation, frame: float) -> float:
+    """Evaluate an ease-mode segment.
+
+    Frame (X) control-points use canonical 1/3-segment positions to guarantee
+    the S-curve shape regardless of handles.  Value (Y) control-points use the
+    stored handle values so that apply_curve_preset() overrides (overshoot,
+    bounce, fade shapes) are respected.
+    """
     p0x = float(prev.frame)
     p3x = float(nxt.frame)
     third = (p3x - p0x) / 3.0
 
     if ease == Interpolation.EaseIn:
-        p1x, p1y = p0x + third, prev.value
-        p2x = max(p0x, min(p3x, p3x + nxt.handleInFrame))
+        # Out handle: flat (hold near start value), In handle: custom
+        p1x = p0x + third
+        p1y = prev.value + prev.handleOutValue          # use stored value offset
+        p2x = max(p0x, min(p3x, p3x + nxt.handleInFrame)) if nxt.handleInFrame != -5.0 else p3x - third
         p2y = nxt.value + nxt.handleInValue
     elif ease == Interpolation.EaseOut:
-        p1x = max(p0x, min(p3x, p0x + prev.handleOutFrame))
+        # Out handle: custom, In handle: flat (hold near end value)
+        p1x = max(p0x, min(p3x, p0x + prev.handleOutFrame)) if prev.handleOutFrame != 5.0 else p0x + third
         p1y = prev.value + prev.handleOutValue
-        p2x, p2y = p3x - third, nxt.value
-    else:  # EaseBoth
-        p1x, p1y = p0x + third, prev.value
-        p2x, p2y = p3x - third, nxt.value
+        p2x = p3x - third
+        p2y = nxt.value + nxt.handleInValue             # use stored value offset
+    else:  # EaseBoth — symmetric S-curve, both handles custom values
+        p1x = p0x + third
+        p1y = prev.value + prev.handleOutValue          # use stored value offset
+        p2x = p3x - third
+        p2y = nxt.value + nxt.handleInValue             # use stored value offset
 
     p1x = max(p0x, min(p3x, p1x))
     p2x = max(p0x, min(p3x, p2x))
@@ -139,6 +152,17 @@ class ScalarTrack:
             self._keyframes.insert(idx, kf)
         self._recomputeNeighbours(idx)
 
+    def _insertDirect(self, kf: Keyframe) -> None:
+        """Insert keyframe without triggering auto-handle recompute.
+        Used during deserialization to preserve saved bezier handles."""
+        idx = bisect.bisect_left(self._frames, kf.frame)
+        if idx < len(self._frames) and self._frames[idx] == kf.frame:
+            self._keyframes[idx] = kf   # replace existing
+        else:
+            self._frames.insert(idx, kf.frame)
+            self._keyframes.insert(idx, kf)
+        # No _recomputeNeighbours — handles are already correct
+
     def removeKeyframe(self, frame: int) -> bool:
         idx = bisect.bisect_left(self._frames, frame)
         if idx >= len(self._frames) or self._frames[idx] != frame:
@@ -169,6 +193,9 @@ class ScalarTrack:
         if idx >= n:
             return
         kf = self._keyframes[idx]
+        # Skip keyframes whose handles were set manually (by a curve preset)
+        if kf.manualHandles:
+            return
         isFirst = idx == 0
         isLast  = idx == n - 1
 

@@ -117,6 +117,10 @@ function TimelineInner() {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewWidth, setViewWidth] = useState(800);
 
+  // Rubber-band / box-select state
+  const boxOriginRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
+  const [boxRect, setBoxRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+
   const tw = totalWidth(state);
   const th = totalTrackHeight(state);
 
@@ -279,11 +283,84 @@ function TimelineInner() {
     (frame: number) => {
       dispatch({ type: "SEEK", frame });
       playbackSeek(frame).catch(() => {});
-   
       const api = (window as any).electronAPI;
       api?.renderSeek(frame);
     },
     [dispatch],
+  );
+
+  // Rubber-band box-select — pointer tool, from any empty/background area
+  const onContentMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      if (state.selectedTool !== "pointer") return;
+      // Block if the click landed ON or INSIDE a clip element or a UI control
+      const target = e.target as HTMLElement;
+      const onClip = !!target.closest('.tl-clip, .tl-track-row__resize, .tl-toolbar, [data-no-boxselect]');
+      if (onClip) return;
+
+      e.preventDefault();
+      const el = contentRef.current;
+      if (!el) return;
+
+      const rect = el.getBoundingClientRect();
+      boxOriginRef.current = {
+        x: e.clientX - rect.left + el.scrollLeft,
+        y: e.clientY - rect.top  + el.scrollTop,
+        scrollLeft: el.scrollLeft,
+        scrollTop:  el.scrollTop,
+      };
+
+      const isAdditive = e.ctrlKey || e.metaKey || e.shiftKey;
+
+      const onMouseMove = (ev: MouseEvent) => {
+        const el2 = contentRef.current;
+        const orig = boxOriginRef.current;
+        if (!el2 || !orig) return;
+        const rect2 = el2.getBoundingClientRect();
+        const curX = ev.clientX - rect2.left + el2.scrollLeft;
+        const curY = ev.clientY - rect2.top  + el2.scrollTop;
+        setBoxRect({
+          x: Math.min(orig.x, curX),
+          y: Math.min(orig.y, curY),
+          w: Math.abs(curX - orig.x),
+          h: Math.abs(curY - orig.y),
+        });
+      };
+
+      const onMouseUp = () => {
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup",   onMouseUp);
+
+        const orig = boxOriginRef.current;
+        boxOriginRef.current = null;
+        setBoxRect(null);
+
+        if (!orig) return;
+        const el2 = contentRef.current;
+        if (!el2) return;
+        const rect2 = el2.getBoundingClientRect();
+        const endX  = (window.event as MouseEvent | null)?.clientX ?? 0;
+        const endY  = (window.event as MouseEvent | null)?.clientY ?? 0;
+        const curX  = endX - rect2.left + el2.scrollLeft;
+        const curY  = endY - rect2.top  + el2.scrollTop;
+
+        const frameStart = Math.round(Math.min(orig.x, curX) / state.zoomX);
+        const frameEnd   = Math.round(Math.max(orig.x, curX) / state.zoomX);
+
+        if (frameEnd - frameStart < 2) {
+          // Tiny click — clear selection
+          if (!isAdditive) dispatch({ type: "CLEAR_SELECTION" });
+          return;
+        }
+
+        dispatch({ type: "BOX_SELECT_CLIPS", frameStart, frameEnd, additive: isAdditive });
+      };
+
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup",   onMouseUp);
+    },
+    [state.selectedTool, state.zoomX, dispatch],
   );
 
   return (
@@ -327,6 +404,7 @@ function TimelineInner() {
           className="tl-content"
           style={{ gridColumn: "2", gridRow: "3" }}
           onScroll={onContentScroll}
+          onMouseDown={onContentMouseDown}
         >
           <div style={{ width: tw, minHeight: th, position: "relative" }}>
             {state.tracks.map((track, idx) => (
@@ -337,6 +415,22 @@ function TimelineInner() {
                 scrollLeft={scrollLeft}
               />
             ))}
+
+            {/* Rubber-band selection overlay */}
+            {boxRect && boxRect.w > 4 && boxRect.h > 4 && (
+              <div
+                className="tl-box-select"
+                style={{
+                  position: "absolute",
+                  left:   boxRect.x,
+                  top:    boxRect.y,
+                  width:  boxRect.w,
+                  height: boxRect.h,
+                  pointerEvents: "none",
+                  zIndex: 99,
+                }}
+              />
+            )}
           </div>
         </div>
 

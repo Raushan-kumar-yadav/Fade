@@ -84,7 +84,7 @@ class AnimatableProperty:
         animated = f", {len(self._track)} kf" if self._isAnimated else ""
         return f"AnimatableProperty({self._currentValue:.3f}{animated})"
 
-    # ── Serialization ──────────────────────────────────────────────────────────
+    #   Serialization  
 
     def toDict(self) -> dict:
         d: dict = {"base": self._baseValue, "animated": self._isAnimated}
@@ -98,6 +98,7 @@ class AnimatableProperty:
                     "hiV": kf.handleInValue,
                     "hoF": kf.handleOutFrame,
                     "hoV": kf.handleOutValue,
+                    "manual": kf.manualHandles,
                 }
                 for kf in self._track.keyframes()
             ]
@@ -107,7 +108,7 @@ class AnimatableProperty:
     def fromDict(cls, data: dict, defaultValue: float = 0.0) -> "AnimatableProperty":
         ap = cls(defaultValue)
         if isinstance(data, (int, float)):
-            # Legacy: plain number stored, no keyframes
+            # Legacy 
             ap._baseValue = float(data)
             ap._currentValue = ap._baseValue
             return ap
@@ -116,15 +117,17 @@ class AnimatableProperty:
         ap._isAnimated = data.get("animated", False)
         for kd in data.get("keyframes", []):
             kf = Keyframe(
-                frame          = kd["frame"],
-                value          = kd["value"],
-                interp         = Interpolation(kd.get("interp", 2)),
+                frame = kd["frame"],
+                value = kd["value"],
+                interp = Interpolation(kd.get("interp", 2)),
                 handleInFrame  = kd.get("hiF", -5.0),
-                handleInValue  = kd.get("hiV",  0.0),
-                handleOutFrame = kd.get("hoF",  5.0),
-                handleOutValue = kd.get("hoV",  0.0),
+                handleInValue  = kd.get("hiV", 0.0),
+                handleOutFrame = kd.get("hoF", 5.0),
+                handleOutValue = kd.get("hoV", 0.0),
+                manualHandles  = kd.get("manual", False),
             )
-            ap._track.insertKeyframe(kf)
+             
+            ap._track._insertDirect(kf)
         return ap
 
 

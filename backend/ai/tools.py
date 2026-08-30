@@ -168,7 +168,186 @@ def set_clip_param(clip_id: str, key: str, value: float) -> str:
     _post(f"/clips/{clip_id}/params/{key}", {"value": value})
     return f"Set {key}={value} on clip {clip_id}."
 
-# text clips  
+
+@tool
+def update_clip(clip_id: str, params: dict) -> str:
+    """Update any combination of properties on a single clip in one call.
+
+    This is the preferred way to change clip properties when you know the clipId.
+    Pass a flat dict with any mix of the keys below — only the keys you include
+    are changed; everything else is left untouched.
+
+    TRANSFORM / ANIMATABLE  (all numeric):
+        pos_x, pos_y – position in pixels
+        scale_x, scale_y – scale (1.0 = 100%)
+        rotation – degrees
+        opacity – 0.0 – 1.0
+        anchor_x, anchor_y – anchor point in pixels
+
+    TIMING:
+        startFrame – move clip start
+        duration – clip length in frames
+        (both optional; omit either to keep its current value)
+
+    TEXT STYLE  (TextClip only — pass any TextStyle fields):
+        text – new text content
+        fontSize – pt size
+        fontFamily – font name
+        bold, italic – bool
+        color – [r, g, b, a] 0-255
+        textAlign – 'left' | 'center' | 'right'
+        letterSpacing – em units
+        lineHeight – em units
+        (and any other TextStyle field by its camelCase name)
+
+    SHAPE STYLE  (ShapeClip only):
+        fillColor – [r, g, b, a] 0-255
+        strokeColor – [r, g, b, a] 0-255
+        strokeWidth – px
+        borderRadius – px
+        width, height – dimensions in px
+
+    WEBCOMP PARAMS  (WebCompClip only):
+        Pass any key that the component exposes; values are forwarded directly.
+
+    Examples:
+        update_clip(id, {"opacity": 0.5, "pos_x": 100})
+        update_clip(id, {"text": "Hello", "fontSize": 64, "bold": True})
+        update_clip(id, {"startFrame": 30, "duration": 90})
+        update_clip(id, {"fillColor": [255, 80, 0, 255], "strokeWidth": 3})
+
+    Args:
+        clip_id: The clipId to update.
+        params:  Dict of property names → values (see categories above).
+    """
+    TRANSFORM_PARAMS = {"pos_x", "pos_y", "scale_x", "scale_y",
+                        "rotation", "opacity", "anchor_x", "anchor_y"}
+    TIMING_PARAMS    = {"startFrame", "duration"}
+
+    # Partition keys into categories
+    transform = {k: params[k] for k in params if k in TRANSFORM_PARAMS}
+    timing    = {k: params[k] for k in params if k in TIMING_PARAMS}
+    other = {k: params[k] for k in params
+             if k not in TRANSFORM_PARAMS and k not in TIMING_PARAMS}
+
+    # --- 1. Transform / animatable params ---
+    applied: list[str] = []
+    errors:  list[str] = []
+
+    for key, val in transform.items():
+        try:
+            _post(f"/clips/{clip_id}/params/{key}", {"value": float(val)})
+            applied.append(f"{key}={val}")
+        except Exception as exc:
+            errors.append(f"{key}: {exc}")
+
+    # --- 2. Timing ---
+    if timing:
+        try:
+            _post(f"/clips/{clip_id}/trim", timing)
+            applied.append(f"timing={timing}")
+        except Exception as exc:
+            errors.append(f"timing: {exc}")
+
+    # --- 3. Text / Shape / WebComp style — try all routes; first success wins ---
+    if other:
+        # Separate text key from rest of style
+        text_content = other.pop("text", None)
+
+        # Try text clip
+        try:
+            body: dict = {}
+            if text_content is not None:
+                body["text"] = text_content
+            if other:
+                body["style"] = other
+            if body:
+                _patch(f"/clips/text/{clip_id}", body)
+                if text_content is not None:
+                    applied.append(f"text={text_content!r}")
+                if other:
+                    applied.append(f"style={list(other.keys())}")
+        except Exception:
+            # Not a text clip — try shape
+            if other:
+                try:
+                    _patch(f"/clips/shape/{clip_id}", {"style": other})
+                    applied.append(f"shape_style={list(other.keys())}")
+                except Exception:
+                    # Fall back to WebComp params
+                    try:
+                        all_params = dict(other)
+                        if text_content is not None:
+                            all_params["text"] = text_content
+                        _post(f"/webcomp/{clip_id}/params",
+                              {"params": all_params})
+                        applied.append(f"webcomp_params={list(all_params.keys())}")
+                    except Exception as exc:
+                        errors.append(f"style/params: {exc}")
+
+    if errors:
+        return (f"update_clip {clip_id[:8]}: applied [{', '.join(applied)}] "
+                f"| ERRORS: {'; '.join(errors)}")
+    return f"update_clip {clip_id[:8]}: {', '.join(applied) or 'nothing changed'}"
+
+
+@tool
+def bulk_update_clips(updates: list[dict]) -> str:
+    """Apply parameter or text-style changes to multiple clips in a single call.
+
+    Each item in `updates` is a dict describing one operation. Supported schemas:
+
+      { "clipId": "abc", "param": "opacity",   "value": 0.8 }
+        → calls POST /clips/{clipId}/params/{param}  (transform / opacity / etc.)
+
+      { "clipId": "abc", "style": { "fontSize": 72, "bold": true } }
+        → calls PATCH /clips/text/{clipId}  (text-clip style fields)
+
+      { "clipId": "abc", "startFrame": 30, "duration": 90 }
+        → calls POST /clips/{clipId}/trim  (move in/out points)
+
+    Args:
+        updates: List of operation dicts as described above.
+
+    Returns a summary string listing each result.
+    """
+    lines: list[str] = []
+    for op in updates:
+        clip_id = op.get("clipId", "")
+        if not clip_id:
+            lines.append("SKIP: missing clipId")
+            continue
+        try:
+            if "param" in op:
+                _post(f"/clips/{clip_id}/params/{op['param']}", {"value": op["value"]})
+                lines.append(f"OK  {clip_id[:8]} → {op['param']}={op['value']}")
+            elif "style" in op:
+                _patch(f"/clips/text/{clip_id}", {"style": op["style"]})
+                lines.append(f"OK  {clip_id[:8]} → style {list(op['style'].keys())}")
+            elif "startFrame" in op or "duration" in op:
+                body: dict = {}
+                if "startFrame" in op: body["startFrame"] = op["startFrame"]
+                if "duration"   in op: body["duration"]   = op["duration"]
+                _post(f"/clips/{clip_id}/trim", body)
+                lines.append(f"OK  {clip_id[:8]} → trim {body}")
+            else:
+                lines.append(f"SKIP {clip_id[:8]}: no recognised op keys")
+        except Exception as exc:
+            lines.append(f"ERR {clip_id[:8]}: {exc}")
+    return "\n".join(lines) if lines else "No updates performed."
+
+
+@tool
+def get_selected_clips() -> str:
+    """Return info on ALL clips currently selected in the timeline (not just one).
+
+    Each entry includes clipId, trackId, type, startFrame, duration, and param values.
+    Use this before bulk operations so you know which clips the user has highlighted.
+    """
+    result = _get("/clips/selected-all")
+    return json.dumps(result, indent=2)
+
+
 
 @tool
 def add_text_clip(
@@ -946,10 +1125,13 @@ ALL_TOOLS = [
     search_news,
     create_news_video,
     get_selected_clip,
+    get_selected_clips,
     list_effects_catalog,
     apply_effect_to_clip,
     patch_clip_effect,
     place_clip,
+    update_clip,
+    bulk_update_clips,
     # Composition tools
     create_composition,
     list_compositions,

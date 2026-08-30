@@ -33,7 +33,8 @@ class BaseClip(ABC):
         """Update all animatable properties for the given timeline frame."""
         lf = self.localFrame(frame)
         self.transform.evaluateAll(lf)
-        
+
+        # Old animEngine-style params (_anim_params stores AnimParam objects with _base list)
         if hasattr(self, '_anim_params'):
             for key, ap in self._anim_params.items():
                 if ap.is_animated():
@@ -41,6 +42,12 @@ class BaseClip(ABC):
                     self.applyParam(key, val)
                 else:
                     self.applyParam(key, ap._base[0])
+
+        # New AnimatableProperty-style params (_anim_props created by the animation router)
+        if hasattr(self, '_anim_props'):
+            for key, ap in self._anim_props.items():
+                ap.update(lf)   # evaluate at clip-local frame
+                self.applyParam(key, ap.get())
 
         for effect in self.effects:
             if hasattr(effect, 'evaluateAll'):

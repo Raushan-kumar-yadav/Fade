@@ -8,21 +8,34 @@ from backend.events import notify
 router = APIRouter(tags=["animation"])
 
 
-# helpers  
+# helpers
 
-def _active_tl():
-    tl = engine.activeTimeline if engine else None
-    if tl is None:
-        raise HTTPException(400, "No active timeline")
-    return tl
+def _all_timelines():
+    """Return root timeline + all nested comp timelines."""
+    tls = []
+    if engine is None:
+        return tls
+    if engine.rootTimeline:
+        tls.append(engine.rootTimeline)
+    for comp in getattr(engine, "comps", {}).values():
+        tl = getattr(comp, "timeline", None)
+        if tl and tl is not engine.rootTimeline:
+            tls.append(tl)
+    return tls
 
 
 def _find_clip(clip_id: str):
-    tl = _active_tl()
-    clip, track = tl.findClip(clip_id)
-    if clip is None:
-        raise HTTPException(404, f"Clip '{clip_id}' not found")
-    return clip, track
+    """Search all timelines (root + nested comps) for a clip."""
+    for tl in _all_timelines():
+        clip, track = tl.findClip(clip_id)
+        if clip is not None:
+            return clip, track
+     
+    if engine and engine.activeTimeline:
+        clip, track = engine.activeTimeline.findClip(clip_id)
+        if clip is not None:
+            return clip, track
+    raise HTTPException(404, f"Clip '{clip_id}' not found in any timeline")
 
 
 # Map param id 
@@ -138,53 +151,85 @@ def _kf_to_dict(kf) -> dict:
     }
 
 
-# Request models  
+# Request models
 
 class AddKeyframeRequest(BaseModel):
     param: str
     frame: int
     value: float
-    easing: str = "ease_both"   # constant | linear | bezier | ease_in | ease_out | ease_both
-     
+    easing: str = "ease_both"  
+    preset: str = ""
     handle_in_frames:  float = -8.0   # negative = left side
     handle_in_value:   float =  0.0
     handle_out_frames: float =  8.0   # positive = right side
     handle_out_value:  float =  0.0
 
 
-# Routes  
+class UpdateKeyframeRequest(BaseModel):
+    value: float | None = None
+    easing: str | None = None
+    preset: str | None = None
+    handle_in_frames:  float | None = None
+    handle_in_value:   float | None = None
+    handle_out_frames: float | None = None
+    handle_out_value:  float | None = None
+
+
+# Routes
 
 @router.post("/anim/{clipId}/keyframe")
 def addKeyframe(clipId: str, req: AddKeyframeRequest):
-    """
-    Add or update a keyframe on any animatable property.
-    The frame is relative to timeline start (not clip-local).
-    """
+    
     from backend.animation.keyframe import Keyframe, Interpolation
+    from backend.animation.curve_presets import apply_preset_to_segment, CURVE_PRESETS
 
     clip, _ = _find_clip(clipId)
 
     easing_int = _EASING_MAP.get(req.easing.lower(), 5)  # default ease_both
+
+ 
+    if req.preset:
+        p = CURVE_PRESETS.get(req.preset)
+        if p is None:
+            raise HTTPException(400, f"Unknown preset '{req.preset}'. Use GET /anim/presets.")
+        easing_int = _EASING_MAP.get(p["interp"], 2)  # bezier
 
     try:
         prop = _resolve_property(clip, req.param)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
-    # Build keyframe 
     local_frame = req.frame - clip.startFrame
 
     kf = Keyframe(
-        frame = local_frame,
-        value = req.value,
-        interp = Interpolation(easing_int),
-        handleInFrame  = req.handle_in_frames,
-        handleInValue  = req.handle_in_value,
-        handleOutFrame = req.handle_out_frames,
-        handleOutValue = req.handle_out_value,
+        frame=local_frame,
+        value=req.value,
+        interp=Interpolation(easing_int),
+        handleInFrame=req.handle_in_frames,
+        handleInValue=req.handle_in_value,
+        handleOutFrame=req.handle_out_frames,
+        handleOutValue=req.handle_out_value,
     )
     prop._isAnimated = True
     prop._track.insertKeyframe(kf)
+
+    #   Preset 
+    if req.preset and req.preset in CURVE_PRESETS:
+        kfs_sorted = prop._track.keyframes()   # sorted by frame
+        idx = next((i for i, k in enumerate(kfs_sorted) if k.frame == local_frame), None)
+        if idx is not None:
+        
+            if idx > 0:
+                prev = kfs_sorted[idx - 1]
+                sf = float(kf.frame - prev.frame)
+                sv = kf.value - prev.value
+                apply_preset_to_segment(req.preset, sf, sv, out_kf=prev, in_kf=kf)
+   
+            if idx < len(kfs_sorted) - 1:
+                nxt = kfs_sorted[idx + 1]
+                sf = float(nxt.frame - kf.frame)
+                sv = nxt.value - kf.value
+                apply_preset_to_segment(req.preset, sf, sv, out_kf=kf, in_kf=nxt)
 
     notify("timeline")
     return {
@@ -195,6 +240,64 @@ def addKeyframe(clipId: str, req: AddKeyframeRequest):
         "keyframe": _kf_to_dict(kf),
         "totalKeyframes": len(prop._track),
     }
+
+
+@router.patch("/anim/{clipId}/keyframe/{param}/{frame}")
+def updateKeyframe(clipId: str, param: str, frame: int, req: UpdateKeyframeRequest):
+    """
+    Update an existing keyframe's value and/or easing/preset in place.
+    frame = timeline frame number (not clip-local).
+    Passing preset= reshapes bezier handles based on actual segment length.
+    """
+    from backend.animation.keyframe import Interpolation
+    from backend.animation.curve_presets import apply_preset_to_segment, CURVE_PRESETS
+
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    local_frame = frame - clip.startFrame
+    kfs = prop._track.keyframes()
+    kf = next((k for k in kfs if k.frame == local_frame), None)
+    if kf is None:
+        raise HTTPException(404, f"No keyframe at frame {frame} for '{param}'")
+
+    if req.value is not None:
+        kf.value = req.value
+    if req.easing is not None and req.preset is None:
+        kf.interp = Interpolation(_EASING_MAP.get(req.easing.lower(), int(kf.interp)))
+    if req.handle_in_frames is not None:
+        kf.handleInFrame = req.handle_in_frames
+    if req.handle_in_value is not None:
+        kf.handleInValue = req.handle_in_value
+    if req.handle_out_frames is not None:
+        kf.handleOutFrame = req.handle_out_frames
+    if req.handle_out_value is not None:
+        kf.handleOutValue = req.handle_out_value
+
+     
+    if req.preset:
+        if req.preset not in CURVE_PRESETS:
+            raise HTTPException(400, f"Unknown preset '{req.preset}'.")
+        idx = next((i for i, k in enumerate(kfs) if k.frame == local_frame), None)
+        if idx is not None:
+            p = CURVE_PRESETS[req.preset]
+            kf.interp = Interpolation(_EASING_MAP.get(p["interp"], 2))
+            if idx > 0:
+                prev = kfs[idx - 1]
+                sf = float(kf.frame - prev.frame)
+                sv = kf.value - prev.value
+                apply_preset_to_segment(req.preset, sf, sv, out_kf=prev, in_kf=kf)
+            if idx < len(kfs) - 1:
+                nxt = kfs[idx + 1]
+                sf = float(nxt.frame - kf.frame)
+                sv = nxt.value - kf.value
+                apply_preset_to_segment(req.preset, sf, sv, out_kf=kf, in_kf=nxt)
+
+    notify("timeline")
+    return {"clipId": clipId, "param": param, "frame": frame, "keyframe": _kf_to_dict(kf)}
 
 
 @router.delete("/anim/{clipId}/keyframe/{param}/{frame}")
@@ -402,8 +505,8 @@ class MoveKeyframeRequest(BaseModel):
     param: str
     from_frame: int
     to_frame: int
-    recompute_handles: bool = True  # recalculate neighbour handles after move
-    preset: str | None = None  # optionally apply a curve preset after move
+    recompute_handles: bool = True   
+    preset: str | None = None   
 
 
 @router.post("/anim/{clipId}/move-keyframe")

@@ -119,7 +119,16 @@ export type TimelineAction =
       rightClip: Clip;
     }
   | { type: "SELECT_CLIP"; clipId: string; trackId: string; multi: boolean }
+  | { type: "DESELECT_CLIP"; clipId: string }  // ctrl+click an already-selected clip
   | { type: "CLEAR_SELECTION" }
+  | {
+      // Rubber-band / box select: mark all clips that overlap [frameStart, frameEnd]
+      // across all visible tracks. additive=true keeps currently selected clips.
+      type: "BOX_SELECT_CLIPS";
+      frameStart: number;
+      frameEnd: number;
+      additive: boolean;
+    }
   | { type: "COMMIT_MOVE" }
   | {
       type: "TRIM_CLIP";

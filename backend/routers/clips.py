@@ -195,6 +195,7 @@ def updateTextClip(clipId: str, req: TextPatchRequest):
         from backend.animation.transform import Transform
         clip.transform = Transform.fromDict(req.transform)
     notify("timeline")
+    notify("render")    # signal viewport to re-render current frame immediately
     return clip.toDict()
 
 
@@ -440,11 +441,19 @@ import backend.state as _state
 
 class SelectClipRequest(BaseModel):
     clipId: str | None = None
+    # Multi-select: all currently selected clip IDs from the frontend
+    selectedIds: list[str] | None = None
 
 
 @router.post("/clips/select")
 def selectClip(req: SelectClipRequest):
     _state._selected_clip_id = req.clipId
+    if req.selectedIds is not None:
+        _state._selected_clip_ids = set(req.selectedIds)
+    elif req.clipId:
+        _state._selected_clip_ids = {req.clipId}
+    else:
+        _state._selected_clip_ids = set()
     return {"selectedClipId": _state._selected_clip_id}
 
 
@@ -470,7 +479,40 @@ def getSelectedClip():
         return {"clip": None}
 
 
-#   Params / Keyframes  
+@router.get("/clips/selected-all")
+def getSelectedClips():
+    """Return all currently selected clips across all timelines."""
+    results = []
+    ids = _state._selected_clip_ids
+    if not ids:
+        # Fallback: single-select
+        if _state._selected_clip_id:
+            ids = {_state._selected_clip_id}
+        else:
+            return {"clips": []}
+    try:
+        timelines = engine.project.timelines if engine.project else []
+        for tl in timelines:
+            tl_id = getattr(tl, "compId", getattr(tl, "id", "root"))
+            for track_idx, track in enumerate(tl.tracks):
+                for clip in track.clips:
+                    if clip.clipId not in ids:
+                        continue
+                    results.append({
+                        "clipId":      clip.clipId,
+                        "trackId":     track.trackId,
+                        "trackIndex":  track_idx,
+                        "compId":      tl_id,
+                        "startFrame":  clip.startFrame,
+                        "duration":    clip.duration,
+                        "type":        type(clip).__name__,
+                        "effectCount": len(getattr(clip, "effects", [])),
+                    })
+    except Exception:
+        pass
+    return {"clips": results}
+
+
 
 class ParamValueBody(BaseModel):
     value: float
@@ -580,3 +622,137 @@ def removeKeyframe(clipId: str, key: str, frame: int):
     if not removed:
         raise HTTPException(404, f"No keyframe at frame {frame}")
     return {"status": "ok"}
+
+
+# ── Bulk Update ────────────────────────────────────────────────────────────────
+
+class BulkUpdateRequest(BaseModel):
+    clip_ids: list[str]
+    style: dict = {}          # TextStyle fields (fontSize, color, etc.)
+    transform: dict = {}      # Transform fields (pos_x, pos_y, scale_x, etc.)
+    include_text: bool = False  # if False, 'text' key in style is ignored
+
+
+@router.post("/clips/bulk-update")
+def bulkUpdateClips(req: BulkUpdateRequest):
+    """
+    Apply style/transform params to multiple clips at once.
+
+    - style dict is applied to TextClip.style (skipping 'text' unless include_text=True)
+    - transform dict keys: pos_x, pos_y, scale_x, scale_y, rotation, opacity, anchor_x, anchor_y
+    - Returns per-clip results with ok/error status
+    """
+    from backend.animation.transform import Transform
+    results = []
+    for cid in req.clip_ids:
+        try:
+            clip, _ = _find_clip(cid)
+        except HTTPException:
+            results.append({"clipId": cid, "status": "error", "error": "not found"})
+            continue
+        try:
+            if req.style and isinstance(clip, TextClip):
+                for k, v in req.style.items():
+                    if k == "text" and not req.include_text:
+                        continue
+                    if hasattr(clip.style, k):
+                        setattr(clip.style, k, v)
+            if req.transform:
+                _apply_transform_dict(clip, req.transform)
+            results.append({"clipId": cid, "status": "ok"})
+        except Exception as exc:
+            results.append({"clipId": cid, "status": "error", "error": str(exc)})
+    notify("timeline")
+    notify("render")
+    return {"updated": len([r for r in results if r["status"] == "ok"]), "results": results}
+
+
+# ── Set static param (no keyframe) ─────────────────────────────────────────────
+
+class SetParamRequest(BaseModel):
+    clip_id: str
+    param: str    # e.g. 'font_size', 'pos_x', 'opacity', 'scale_x'
+    value: float
+
+
+@router.post("/clips/set-param")
+def setClipParam(req: SetParamRequest):
+    """
+    Directly set a static (non-animated) parameter value on a clip.
+    This does NOT add a keyframe — it sets the base value.
+
+    Useful for one-shot changes: move a clip, resize, change opacity, etc.
+    For animated changes use POST /anim/{clipId}/keyframe instead.
+    """
+    clip, _ = _find_clip(req.clip_id)
+    _apply_single_param(clip, req.param, req.value)
+    notify("timeline")
+    notify("render")
+    return {"clipId": req.clip_id, "param": req.param, "value": req.value}
+
+
+def _apply_transform_dict(clip, transform: dict) -> None:
+    """Apply a dict of transform param names → float values to a clip's transform."""
+    t = clip.transform
+    _TRANSFORM_SETTERS = {
+        "pos_x":    lambda v: t.position.setX(v),
+        "pos_y":    lambda v: t.position.setY(v),
+        "scale_x":  lambda v: t.scale.setX(v),
+        "scale_y":  lambda v: t.scale.setY(v),
+        "rotation": lambda v: setattr(t, "_rotation_base", v) or t.rotation.setBase(v),
+        "opacity":  lambda v: t.opacity.setBase(v),
+        "anchor_x": lambda v: t.anchor.setX(v),
+        "anchor_y": lambda v: t.anchor.setY(v),
+    }
+    for k, v in transform.items():
+        setter = _TRANSFORM_SETTERS.get(k)
+        if setter:
+            try:
+                setter(float(v))
+            except Exception:
+                pass
+
+
+def _apply_single_param(clip, param: str, value: float) -> None:
+    """Set a single named param directly on a clip (static, no keyframe)."""
+    t = clip.transform
+    # Transform params
+    transform_map = {
+        "pos_x":    lambda: t.position.setX(value),
+        "pos_y":    lambda: t.position.setY(value),
+        "scale_x":  lambda: t.scale.setX(value),
+        "scale_y":  lambda: t.scale.setY(value),
+        "rotation": lambda: t.rotation.setBase(value),
+        "opacity":  lambda: t.opacity.setBase(value),
+        "anchor_x": lambda: t.anchor.setX(value),
+        "anchor_y": lambda: t.anchor.setY(value),
+    }
+    if param in transform_map:
+        transform_map[param]()
+        return
+    # Text-specific params
+    if isinstance(clip, TextClip):
+        text_map = {
+            "font_size":    lambda: setattr(clip.style, "fontSize", value),
+            "tracking":     lambda: setattr(clip.style, "letterSpacing", value),
+            "line_height":  lambda: setattr(clip.style, "lineHeight", value),
+            "fill_r":       lambda: clip.style.color.__setitem__(0, value),
+            "fill_g":       lambda: clip.style.color.__setitem__(1, value),
+            "fill_b":       lambda: clip.style.color.__setitem__(2, value),
+            "fill_a":       lambda: clip.style.color.__setitem__(3, value),
+        }
+        if param in text_map:
+            text_map[param]()
+            return
+    # Shape-specific
+    from backend.timeline.clips.shapeClip import ShapeClip
+    if isinstance(clip, ShapeClip):
+        shape_map = {
+            "shape_w": lambda: setattr(clip.style, "width", value),
+            "shape_h": lambda: setattr(clip.style, "height", value),
+            "stroke_w": lambda: setattr(clip.style, "strokeWidth", value),
+        }
+        if param in shape_map:
+            shape_map[param]()
+            return
+    raise HTTPException(400, f"Unknown param '{param}' for this clip type")

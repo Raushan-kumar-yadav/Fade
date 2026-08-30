@@ -54,9 +54,20 @@ export function mapBackendTracksPreservingOrder(
   currentTracks: Track[],
   backendTracks: any[],
 ): Track[] {
+  // Build a clipId → isSelected map from the current (in-memory) state
+  const selectedIds = new Map<string, boolean>();
+  currentTracks.forEach((t) =>
+    t.clips.forEach((c) => selectedIds.set(c.id, c.isSelected)),
+  );
+
   const mappedById = new Map(
     backendTracks.map((track) => {
       const mapped = mapBackendTrack(track);
+      // Restore isSelected for each clip that existed before the refetch
+      mapped.clips = mapped.clips.map((c) => ({
+        ...c,
+        isSelected: selectedIds.get(c.id) ?? false,
+      }));
       return [mapped.id, mapped] as const;
     }),
   );
@@ -188,6 +199,33 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       const tracks = state.tracks.map((t) => ({
         ...t,
         clips: t.clips.map((c) => ({ ...c, isSelected: false })),
+      }));
+      return { ...state, tracks };
+    }
+
+    case "DESELECT_CLIP": {
+      const tracks = state.tracks.map((t) => ({
+        ...t,
+        clips: t.clips.map((c) => ({
+          ...c,
+          isSelected: c.id === action.clipId ? false : c.isSelected,
+        })),
+      }));
+      return { ...state, tracks };
+    }
+
+    case "BOX_SELECT_CLIPS": {
+      const { frameStart, frameEnd, additive } = action;
+      const tracks = state.tracks.map((t) => ({
+        ...t,
+        clips: t.clips.map((c) => {
+          const clipEnd = c.startFrame + c.duration;
+          const overlaps = c.startFrame < frameEnd && clipEnd > frameStart;
+          return {
+            ...c,
+            isSelected: overlaps ? true : additive ? c.isSelected : false,
+          };
+        }),
       }));
       return { ...state, tracks };
     }
@@ -447,7 +485,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
       const data = await fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
       if (!data) return;
-      const tracks: Track[] = (data.tracks ?? []).map(mapBackendTrack);
+      const tracks: Track[] = mapBackendTracksPreservingOrder(
+        stateRef.current.tracks,
+        data.tracks ?? [],
+      );
       dispatch({ type: 'SET_TRACKS', tracks });
       const tf = data.totalFrames;
       if (tf) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: tf });
@@ -467,7 +508,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         .then(r => r.ok ? r.json() : null)
         .then(data => {
           if (!data) return;
-          const tracks: Track[] = (data.tracks ?? []).map(mapBackendTrack);
+          const tracks: Track[] = mapBackendTracksPreservingOrder(
+            stateRef.current.tracks,
+            data.tracks ?? [],
+          );
           dispatch({ type: 'SET_TRACKS', tracks });
           const tf = data.totalFrames;
           if (tf) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: tf });
@@ -477,6 +521,21 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
     return () => clearInterval(burstId);
   }, [state.activeCompId]);
+
+  // Sync multi-selection to backend so AI tools can query all selected clips
+  useEffect(() => {
+    const port: number = (window as any).__FADE_PORT__ ?? 8000;
+    const selectedIds = state.tracks
+      .flatMap((t) => t.clips.filter((c) => c.isSelected).map((c) => c.id));
+    fetch(`http://127.0.0.1:${port}/clips/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clipId: selectedIds[0] ?? null,
+        selectedIds,
+      }),
+    }).catch(() => {});
+  }, [state.tracks]);
 
 
   useEffect(() => {
