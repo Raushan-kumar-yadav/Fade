@@ -97,7 +97,9 @@ def importAsset(req: ImportRequest):
         print(f"[Library] Queueing VideoSemantic index for {result['assetId'][:8]} ({os.path.basename(req.filepath)})", flush=True)
         try:
             port = int(os.environ.get("BACKEND_PORT", 8000))
-            _worker_bus.submit_index_video(result["assetId"], req.filepath, port=port)
+            from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
+            _worker_bus.submit_index_video(result["assetId"], req.filepath,
+                                           port=port, db_path=_get_db())
             print(f"[Library] ✓ index_video submitted to worker bus", flush=True)
         except Exception as _e:
             print(f"[Library] ✗ VideoSemantic submit error (non-fatal): {_e}", flush=True)
@@ -105,7 +107,8 @@ def importAsset(req: ImportRequest):
     elif result.get("type") == "image":
         print(f"[Library] Queueing ImageSemantic index for {result['assetId'][:8]} ({os.path.basename(req.filepath)})", flush=True)
         try:
-            _worker_bus.submit_index_image(result["assetId"], req.filepath)
+            from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
+            _worker_bus.submit_index_image(result["assetId"], req.filepath, db_path=_get_db())
             print(f"[Library] ✓ index_image submitted to worker bus", flush=True)
         except Exception as _e:
             print(f"[Library] ✗ ImageSemantic submit error (non-fatal): {_e}", flush=True)

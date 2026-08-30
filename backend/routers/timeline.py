@@ -21,6 +21,7 @@ class AddClipRequest(BaseModel):
     trackIndex: int
     startFrame: int
     duration: int
+    mediaOffset: int = 0   # in-point offset in frames (from ChromaDB scene hit)
 
 
 class MoveClipRequest(BaseModel):
@@ -70,7 +71,8 @@ def addClip(req: AddClipRequest):
         clip_type = "webcomp"
 
     else:
-        clip = VideoClip(startFrame=req.startFrame, duration=req.duration, assetId=req.assetId)
+        clip = VideoClip(startFrame=req.startFrame, duration=req.duration,
+                         assetId=req.assetId, mediaOffset=req.mediaOffset)
         if engine.scheduler:
             clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
             engine.scheduler.registerClip(clip.clipId, asset)

@@ -183,14 +183,20 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     if (e.dataTransfer.types.includes('application/fade-asset') ||
         e.dataTransfer.types.includes('application/fade-transition') ||
         e.dataTransfer.types.includes('application/fade-comp') ||
-        e.dataTransfer.types.includes('application/fade-webcomp')) {
+        e.dataTransfer.types.includes('application/fade-webcomp') ||
+        e.dataTransfer.types.includes('application/fade-scene-hit') ||
+        e.dataTransfer.types.includes('text/fade-scene-hit')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       setDropOver(true);
     }
   }, []);
 
-  const onDragLeave = useCallback(() => setDropOver(false), []);
+  const onDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    // Only clear dropOver if we've truly left the row, not just moved onto a child
+    if (rowRef.current && rowRef.current.contains(e.relatedTarget as Node)) return;
+    setDropOver(false);
+  }, []);
 
   const onDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -333,6 +339,54 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         }
       } catch (err) {
         console.error('[TrackRow] Failed to drop webcomp', err);
+        dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+      }
+      return;
+    }
+
+     
+    // ── Handle Scene-Hit Drop (semantic search result with in/out points) ──
+    const rawSceneHit =
+      e.dataTransfer.getData('application/fade-scene-hit') ||
+      e.dataTransfer.getData('text/fade-scene-hit');  // Electron fallback
+    if (rawSceneHit) {
+      let hit: { assetId: string; filename: string; type: string; inFrames: number; duration: number };
+      try { hit = JSON.parse(rawSceneHit); }
+      catch { return; }
+
+      const optimisticClip: Clip = {
+        id: `tmp-${Date.now()}`,
+        name: hit.filename,
+        startFrame: frame,
+        duration:   hit.duration,
+        type: hit.type === 'image' ? 'image' : 'video',
+        isSelected: false,
+      };
+      dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: optimisticClip });
+
+      try {
+        const result = await addClipToTimeline(
+          hit.assetId, trackIndex, frame, hit.duration, hit.inFrames,
+        );
+        if (result) {
+          // Replace optimistic with real clip
+          dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+          dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: {
+            id:         result.clipId,
+            name:       hit.filename,
+            startFrame: result.startFrame,
+            duration:   result.duration,
+            type:       optimisticClip.type,
+            isSelected: false,
+          }});
+          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+        } else {
+          // API returned null — rollback
+          dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+          console.warn('[TrackRow] addClipToTimeline returned null for scene hit', hit.assetId);
+        }
+      } catch (err) {
+        console.error('[TrackRow] Failed to drop scene hit', err);
         dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
       }
       return;

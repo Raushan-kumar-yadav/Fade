@@ -1,15 +1,4 @@
-"""
-backend/routers/scene_tools.py
-Agent-accessible routes for scene-aware timeline operations.
-
-Routes:
-  GET  /scene/search                     — semantic search ChromaDB
-  POST /scene/add-video-clip             — search → add VideoClip
-  POST /scene/add-image-clip             — search → add ImageClip
-  GET  /scene/clip-info/{clipId}         — get clip + scene context
-  DELETE /scene/remove-clip/{clipId}     — remove clip from timeline
-  GET  /scene/list-clips                 — all timeline clips with asset info
-"""
+ 
 from __future__ import annotations
 import os
 from fastapi import APIRouter, HTTPException
@@ -19,7 +8,7 @@ from backend.state import engine, _library, _clipTrackMap
 router = APIRouter(tags=["scene"])
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# helpers  
 
 def _active_timeline():
     tl = engine.activeTimeline
@@ -68,21 +57,21 @@ def _top_empty_track(start_frame: int, duration: int, prefer_index: int = -1):
     return new_track
 
 
-# ── Request models ────────────────────────────────────────────────────────────
+# Request models  
 
 class AddClipBySceneRequest(BaseModel):
-    description: str          # natural language query
-    track: int = -1           # -1 = auto-find free track
-    frameOnTimeline: int = 0  # where to place the clip on timeline
-    topK: int = 1             # use N-th best result (1 = top)
-    durationOverride: int | None = None  # frames; None = use source segment length
+    description: str          
+    track: int = -1           
+    frameOnTimeline: int = 0   
+    topK: int = 1             
+    durationOverride: int | None = None  
 
 
 class RemoveClipRequest(BaseModel):
     clipId: str
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+#   Routes  
 
 @router.get("/scene/search")
 def sceneSearch(q: str, k: int = 8, type: str = "all"):
@@ -124,15 +113,15 @@ def addVideoClipByScene(req: AddClipBySceneRequest):
         raise HTTPException(404, "No indexed video scenes match that description")
 
     hit = hits[min(req.topK - 1, len(hits) - 1)]
-    asset_id   = hit["assetId"]
+    asset_id = hit["assetId"]
     start_sec  = hit["start_sec"]
-    end_sec    = hit["end_sec"]
-    asset      = _library.get(asset_id)
+    end_sec = hit["end_sec"]
+    asset = _library.get(asset_id)
 
     if not asset:
         raise HTTPException(404, f"Asset '{asset_id}' not in library")
 
-    fps           = _fps()
+    fps = _fps()
     media_offset  = _sec_to_frames(start_sec)
     clip_duration = req.durationOverride or _sec_to_frames(end_sec - start_sec)
     clip_duration = max(1, clip_duration)
@@ -159,17 +148,17 @@ def addVideoClipByScene(req: AddClipBySceneRequest):
     )
 
     return {
-        "clipId":        clip.clipId,
-        "assetId":       asset_id,
-        "filename":      os.path.basename(asset.filepath),
-        "startFrame":    clip.startFrame,
-        "duration":      clip_duration,
-        "mediaOffset":   media_offset,
-        "inPointSec":    start_sec,
-        "outPointSec":   end_sec,
-        "score":         hit["score"],
-        "sceneText":     hit["text"],
-        "trackIndex":    engine.activeTimeline.tracks.index(track),
+        "clipId": clip.clipId,
+        "assetId": asset_id,
+        "filename": os.path.basename(asset.filepath),
+        "startFrame": clip.startFrame,
+        "duration": clip_duration,
+        "mediaOffset": media_offset,
+        "inPointSec": start_sec,
+        "outPointSec": end_sec,
+        "score": hit["score"],
+        "sceneText": hit["text"],
+        "trackIndex": engine.activeTimeline.tracks.index(track),
     }
 
 
@@ -187,9 +176,9 @@ def addImageClipByScene(req: AddClipBySceneRequest):
     if not hits:
         raise HTTPException(404, "No indexed images match that description")
 
-    hit      = hits[min(req.topK - 1, len(hits) - 1)]
+    hit = hits[min(req.topK - 1, len(hits) - 1)]
     asset_id = hit["assetId"]
-    asset    = _library.get(asset_id)
+    asset = _library.get(asset_id)
 
     if not asset:
         raise HTTPException(404, f"Asset '{asset_id}' not in library")
@@ -215,12 +204,12 @@ def addImageClipByScene(req: AddClipBySceneRequest):
     )
 
     return {
-        "clipId":     clip.clipId,
-        "assetId":    asset_id,
-        "filename":   os.path.basename(asset.filepath),
+        "clipId": clip.clipId,
+        "assetId": asset_id,
+        "filename": os.path.basename(asset.filepath),
         "startFrame": clip.startFrame,
         "duration":   clip_duration,
-        "score":      hit["score"],
+        "score": hit["score"],
         "sceneText":  hit["text"],
         "trackIndex": engine.activeTimeline.tracks.index(track),
     }
@@ -236,11 +225,11 @@ def getClipInfo(clipId: str):
 
     clip, track, track_idx = _find_clip_in_timeline(clipId)
     asset   = _library.get(getattr(clip, "assetId", ""))
-    fps     = _fps()
+    fps = _fps()
 
-    media_offset    = getattr(clip, "mediaOffset", 0)
-    in_point_sec    = media_offset / fps
-    out_point_sec   = (media_offset + clip.duration) / fps
+    media_offset = getattr(clip, "mediaOffset", 0)
+    in_point_sec = media_offset / fps
+    out_point_sec = (media_offset + clip.duration) / fps
 
     # Try to fetch related scene text from ChromaDB
     scene_text = None
@@ -260,19 +249,19 @@ def getClipInfo(clipId: str):
             scene_text = " | ".join(h["text"] for h in overlapping[:3])
 
     return {
-        "clipId":       clip.clipId,
-        "type":         getattr(clip, "CLIP_TYPE", "unknown"),
-        "assetId":      getattr(clip, "assetId", None),
-        "filename":     os.path.basename(asset.filepath) if asset else None,
-        "filepath":     asset.filepath if asset else None,
-        "startFrame":   clip.startFrame,
-        "duration":     clip.duration,
-        "mediaOffset":  media_offset,
-        "inPointSec":   round(in_point_sec, 3),
-        "outPointSec":  round(out_point_sec, 3),
-        "trackIndex":   track_idx,
-        "trackName":    getattr(track, "name", f"Track {track_idx}"),
-        "sceneText":    scene_text,
+        "clipId": clip.clipId,
+        "type": getattr(clip, "CLIP_TYPE", "unknown"),
+        "assetId": getattr(clip, "assetId", None),
+        "filename": os.path.basename(asset.filepath) if asset else None,
+        "filepath": asset.filepath if asset else None,
+        "startFrame": clip.startFrame,
+        "duration": clip.duration,
+        "mediaOffset": media_offset,
+        "inPointSec": round(in_point_sec, 3),
+        "outPointSec": round(out_point_sec, 3),
+        "trackIndex": track_idx,
+        "trackName": getattr(track, "name", f"Track {track_idx}"),
+        "sceneText": scene_text,
     }
 
 
@@ -304,18 +293,18 @@ def listClips():
             asset    = _library.get(getattr(clip, "assetId", ""))
             offset   = getattr(clip, "mediaOffset", 0)
             clips_out.append({
-                "clipId":       clip.clipId,
-                "type":         getattr(clip, "CLIP_TYPE", "unknown"),
-                "assetId":      getattr(clip, "assetId", None),
-                "filename":     os.path.basename(asset.filepath) if asset else None,
-                "startFrame":   clip.startFrame,
-                "startSec":     round(clip.startFrame / fps, 3),
-                "duration":     clip.duration,
-                "durationSec":  round(clip.duration / fps, 3),
-                "inPointSec":   round(offset / fps, 3),
-                "outPointSec":  round((offset + clip.duration) / fps, 3),
-                "trackIndex":   ti,
-                "trackName":    getattr(track, "name", f"Track {ti}"),
+                "clipId": clip.clipId,
+                "type": getattr(clip, "CLIP_TYPE", "unknown"),
+                "assetId": getattr(clip, "assetId", None),
+                "filename": os.path.basename(asset.filepath) if asset else None,
+                "startFrame": clip.startFrame,
+                "startSec": round(clip.startFrame / fps, 3),
+                "duration": clip.duration,
+                "durationSec": round(clip.duration / fps, 3),
+                "inPointSec": round(offset / fps, 3),
+                "outPointSec": round((offset + clip.duration) / fps, 3),
+                "trackIndex": ti,
+                "trackName": getattr(track, "name", f"Track {ti}"),
             })
 
     clips_out.sort(key=lambda c: (c["trackIndex"], c["startFrame"]))

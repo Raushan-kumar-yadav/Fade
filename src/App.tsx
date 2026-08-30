@@ -181,6 +181,7 @@ export default function App() {
     setOfflineAssets(result.missing_assets ?? [])
     setActiveTab('video')
     window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+    window.dispatchEvent(new CustomEvent('fade:library-changed'))   // refresh library panel
     window.dispatchEvent(new CustomEvent('fade:project-loaded', { detail: result }))
   }, [])
 

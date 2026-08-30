@@ -100,8 +100,8 @@ def transcribe(filepath: str, model_name: str | None = None,
         for seg in result.get("segments", []):
             segments.append({
                 "start_s": round(seg["start"], 3),
-                "end_s":   round(seg["end"], 3),
-                "text":    seg["text"].strip(),
+                "end_s": round(seg["end"], 3),
+                "text": seg["text"].strip(),
             })
 
     print(f"[Whisper] Done — {len(segments)} segments", flush=True)

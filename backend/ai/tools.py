@@ -1207,7 +1207,7 @@ def search_video_scenes(query: str, top_k: int = 5) -> str:
     for i, hit in enumerate(results, 1):
         score = round(hit.get("score", 0) * 100)
         lines.append(f"{i}. [{score}% match] assetId={hit['assetId']}")
-        lines.append(f"   Time: {hit['start_sec']:.1f}s – {hit['end_sec']:.1f}s")
+        lines.append(f" Time: {hit['start_sec']:.1f}s – {hit['end_sec']:.1f}s")
         lines.append(f"   {hit.get('text','')[:200]}")
         lines.append("")
     return "\n".join(lines)
@@ -1246,3 +1246,121 @@ VIDEOSEMANTIC_TOOLS = [
 ]
 
 ALL_TOOLS.extend(VIDEOSEMANTIC_TOOLS)
+
+
+#   Scene-Aware Clip Management Tools  
+
+@tool
+def add_video_clip_by_scene(
+    description: str,
+    frame_on_timeline: int,
+    track: int = -1,
+    top_k: int = 1,
+    duration_frames: int = 0,
+) -> str:
+    """
+    Search indexed video scenes by natural language description and add the best-matching
+    clip to the timeline at the specified frame position.
+    Uses in/out points from ChromaDB so the clip plays the exact matching segment.
+
+    Args:
+        description: Natural language description of the scene (e.g. "woman in red dress dancing")
+        frame_on_timeline: Frame position on the timeline where the clip should start
+        track: Track index (-1 = auto-find a free track)
+        top_k: Which result to use (1 = best match, 2 = second best, etc.)
+        duration_frames: Override clip duration in frames (0 = use source segment length)
+    """
+    body: dict = {
+        "description": description,
+        "frameOnTimeline": frame_on_timeline,
+        "track": track,
+        "topK": top_k,
+    }
+    if duration_frames > 0:
+        body["durationOverride"] = duration_frames
+    result = _post("/scene/add-video-clip", body)
+    return (
+        f"Added VideoClip {result['clipId'][:8]} from '{result['filename']}' "
+        f"[{result['inPointSec']:.1f}s\u2013{result['outPointSec']:.1f}s] "
+        f"at frame {result['startFrame']} (score={result['score']:.0%})\n"
+        f"Scene: {result.get('sceneText','')[:120]}"
+    )
+
+
+@tool
+def add_image_clip_by_scene(
+    description: str,
+    frame_on_timeline: int,
+    track: int = -1,
+    top_k: int = 1,
+    duration_frames: int = 150,
+) -> str:
+    """
+    Search indexed images by natural language description and add the best-matching
+    image asset as a clip on the timeline.
+
+    Args:
+        description: Natural language description of the image (e.g. "sunset over mountains")
+        frame_on_timeline: Frame position on the timeline where the clip should start
+        track: Track index (-1 = auto-find a free track)
+        top_k: Which result to use (1 = best match, 2 = second best, etc.)
+        duration_frames: Duration of the image clip in frames (default 150 = 5s @ 30fps)
+    """
+    result = _post("/scene/add-image-clip", {
+        "description": description,
+        "frameOnTimeline": frame_on_timeline,
+        "track": track,
+        "topK": top_k,
+        "durationOverride": duration_frames,
+    })
+    return (
+        f"Added ImageClip {result['clipId'][:8]} from '{result['filename']}' "
+        f"at frame {result['startFrame']} (score={result['score']:.0%})\n"
+        f"Description: {result.get('sceneText','')[:120]}"
+    )
+
+
+@tool
+def get_clip_info(clip_id: str) -> str:
+    """
+    Get detailed information about a specific clip: asset filename, in/out points,
+    track index, duration, and any indexed scene text.
+
+    Args:
+        clip_id: The clipId of the clip to inspect
+    """
+    result = _get(f"/scene/clip-info/{clip_id}")
+    return json.dumps(result, indent=2)
+
+
+@tool
+def remove_clip(clip_id: str) -> str:
+    """
+    Remove a clip from the active timeline by its clipId.
+
+    Args:
+        clip_id: The clipId of the clip to remove
+    """
+    result = _delete(f"/scene/remove-clip/{clip_id}")
+    return f"Removed clip {clip_id[:8]} from track {result.get('trackIndex', '?')}"
+
+
+@tool
+def list_timeline_clips() -> str:
+    """
+    List all clips on the active timeline with asset filenames, time positions,
+    in/out points, and track indices.
+    """
+    result = _get("/scene/list-clips")
+    return json.dumps(result, indent=2)
+
+
+SCENE_CLIP_TOOLS = [
+    add_video_clip_by_scene,
+    add_image_clip_by_scene,
+    get_clip_info,
+    remove_clip,
+    list_timeline_clips,
+]
+
+ALL_TOOLS.extend(SCENE_CLIP_TOOLS)

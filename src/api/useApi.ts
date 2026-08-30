@@ -1,9 +1,4 @@
-/**
- * useApi.ts
- * Thin typed wrapper around the Fade backend REST + WebSocket API.
- * All calls go to the port stored in window.__FADE_PORT__ (injected by Electron
- * preload) or fall back to 8000 for browser dev.
- */
+ 
 
 function base(): string {
   const port = (window as any).__FADE_PORT__ ?? 8000;
@@ -15,7 +10,7 @@ function wsBase(): string {
   return `ws://127.0.0.1:${port}`;
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+//   Types  
 
 export interface AssetItem {
   assetId: string;
@@ -68,12 +63,13 @@ export async function addClipToTimeline(
   trackIndex: number,
   startFrame: number,
   duration: number,
+  mediaOffset = 0,
 ): Promise<{ clipId: string; startFrame: number; duration: number } | null> {
   try {
     const r = await fetch(`${base()}/timeline/add-clip`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetId, trackIndex, startFrame, duration }),
+      body: JSON.stringify({ assetId, trackIndex, startFrame, duration, mediaOffset }),
     });
     if (!r.ok) return null;
     return r.json();

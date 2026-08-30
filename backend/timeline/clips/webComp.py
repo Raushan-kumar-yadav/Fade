@@ -57,6 +57,7 @@ class WebCompClip(BaseClip):
     @classmethod
     def fromDict(cls, data: dict) -> "WebCompClip":
         from backend.animation.transform import Transform
+        from backend.timeline.effects.skslEffect import SkslEffect
         c = cls(
             clipId=data["clipId"],
             startFrame=data["startFrame"],
@@ -67,4 +68,12 @@ class WebCompClip(BaseClip):
         c._runtimeParams = data.get("runtimeParams", {})
         if "transform" in data:
             c.transform = Transform.fromDict(data["transform"])
+        # Restore effects
+        for ed in data.get("effects", []):
+            t = ed.get("type", "")
+            if t.startswith("sksl:") or "typeId" in ed:
+                try:
+                    c.effects.append(SkslEffect.fromDict(ed))
+                except Exception as ex:
+                    print(f"[WebCompClip] effect restore failed: {ex}")
         return c

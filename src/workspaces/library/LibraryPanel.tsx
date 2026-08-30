@@ -2,7 +2,7 @@ import React, {
   useState, useEffect, useCallback, useRef, useLayoutEffect,
 } from 'react';
 import ReactDOM from 'react-dom';
-import { fetchAssets, importAsset, removeAsset, type AssetItem } from '../../api/useApi';
+import { fetchAssets, importAsset, removeAsset, addClipToTimeline, type AssetItem } from '../../api/useApi';
 import { useTimeline } from '../timeline/TimelineContext';
 import './LibraryPanel.css';
 
@@ -841,9 +841,34 @@ export default function LibraryPanel({ onAddToTimeline }: {
                   const startS = Math.round(hit.start_sec);
                   const endS   = Math.round(hit.end_sec);
                   const score  = Math.round(hit.score * 100);
+                  const fps = state.fps ?? 30;
+                  const inFrames  = Math.round(hit.start_sec * fps);
+                  const outFrames = Math.round(hit.end_sec   * fps);
+                  const dur = Math.max(1, outFrames - inFrames);
                   return (
                     <div key={i} className="lib__semantic-hit"
-                      onClick={() => asset && onAddToTimeline?.(asset, 0)}
+                      draggable
+                      onDragStart={e => {
+                        e.dataTransfer.effectAllowed = 'copy';
+                        const payload = JSON.stringify({
+                          assetId:    hit.assetId,
+                          filename:   asset?.filename ?? hit.assetId.slice(0, 8),
+                          type:       asset?.type ?? 'video',
+                          start_sec:  hit.start_sec,
+                          end_sec:    hit.end_sec,
+                          inFrames,
+                          outFrames,
+                          duration:   dur,
+                        });
+                        e.dataTransfer.setData('application/fade-scene-hit', payload);
+                        e.dataTransfer.setData('text/fade-scene-hit', payload); // Electron fallback
+                      }}
+                      onClick={async () => {
+                        if (!asset) return;
+                        const frame = state.currentFrame ?? 0;
+                        await addClipToTimeline(hit.assetId, 0, frame, dur, inFrames);
+                        window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+                      }}
                       title={hit.text}
                     >
                       <div className="lib__semantic-hit-score">{score}%</div>

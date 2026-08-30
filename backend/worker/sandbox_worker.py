@@ -4,7 +4,7 @@ import multiprocessing
 import sys
 
  
-_AI_FRAME_INTERVAL: float = 4.0   # seconds between sampled frames
+_AI_FRAME_INTERVAL: float = 4.0    
 
 
 #   Waveform  
@@ -90,8 +90,8 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
         if not frames:
             raise RuntimeError("ffmpeg extracted 0 frames")
 
-        #     + Transcription in PARALLEL  
-        # Both are independent: vision needs tmp_dir frames, whisper needs filepath.
+        
+      
         print(f"[SandboxWorker] Starting vision + transcription in parallel…", flush=True)
 
         def _run_vision() -> list[dict]:
@@ -127,7 +127,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
             transcribe_future: Future = pool.submit(_run_transcribe)
 
             # Block until both complete
-            scenes     = vision_future.result()
+            scenes = vision_future.result()
             transcript = transcribe_future.result()
 
         print(f"[SandboxWorker] Both done — {len(scenes)} scenes, {len(transcript)} transcript segs", flush=True)
@@ -140,7 +140,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
     return count
 
 
-#   Image indexing (vision only, no ffmpeg/whisper)  
+#   Image indexing  
 
 def _do_index_image(asset_id: str, filepath: str, vision_model: str = "") -> bool:
     """
@@ -202,6 +202,10 @@ def worker_main(job_queue: multiprocessing.Queue,
             ffmpeg_exe   = job.get("ffmpeg_exe", "")
             vision_model = job.get("vision_model", "")
             frame_interval = float(job.get("frame_interval", 4.0))
+            db_path      = job.get("db_path", "")
+            if db_path:
+                from backend.ai.VideoSemantic.indexer import switch_db as _sw
+                _sw(db_path)
             try:
                 chunks = _do_index_video(asset_id, filepath, port,
                                          ffmpeg_exe=ffmpeg_exe,
@@ -216,6 +220,10 @@ def worker_main(job_queue: multiprocessing.Queue,
             asset_id     = job["assetId"]
             filepath     = job["filepath"]
             vision_model = job.get("vision_model", "")
+            db_path      = job.get("db_path", "")
+            if db_path:
+                from backend.ai.VideoSemantic.indexer import switch_db as _sw
+                _sw(db_path)
             try:
                 ok = _do_index_image(asset_id, filepath, vision_model=vision_model)
                 result_queue.put({"type": "index_image_done", "assetId": asset_id, "saved": ok})

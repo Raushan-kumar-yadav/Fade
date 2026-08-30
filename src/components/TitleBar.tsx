@@ -138,14 +138,24 @@ export default function TitleBar({
   }, [projectName]);
 
   const handleOpen = useCallback(async () => {
-    // Show file picker first (no loading yet)
     const el = (window as any).electronAPI;
-    const filepath: string | undefined = await el?.showOpenDialog({
-      filters: [{ name: 'Fade Project', extensions: ['fade'] }],
+
+    // Try folder picker first (new project format)
+    let filepath: string | undefined = await el?.showOpenDialog({
+      title: 'Open Project',
+      properties: ['openDirectory'],
+      buttonLabel: 'Open Project',
     });
+
+    // Fall back to .fade file picker (legacy single-file format)
+    if (!filepath) {
+      filepath = await el?.showOpenDialog({
+        title: 'Open Project File',
+        filters: [{ name: 'Fade Project', extensions: ['fade'] }],
+      });
+    }
     if (!filepath) return;
 
-    // Now show loading overlay — file could be large
     onLoadStart?.('Loading project…');
     try {
       const port = (window as any).__FADE_PORT__ ?? 8000;

@@ -92,14 +92,14 @@ class WorkerBus:
 
     # VideoSemantic indexing helpers  
 
-    def submit_index_video(self, asset_id: str, filepath: str, port: int = 8000) -> None:
+    def submit_index_video(self, asset_id: str, filepath: str, port: int = 8000,
+                           db_path: str = "") -> None:
         """Enqueue a VideoSemantic indexing job (fire-and-forget, shows in GUI progress)."""
         existing = index_cache.get(asset_id)
         if existing and existing.get("status") in ("pending", "running", "done"):
             return  # already queued or done
         index_cache.set_pending(asset_id)
 
-         
         import shutil
         ffmpeg_exe = shutil.which("ffmpeg") or ""
         if not ffmpeg_exe:
@@ -113,7 +113,7 @@ class WorkerBus:
                 if os.path.isfile(c):
                     ffmpeg_exe = c
                     break
- 
+
         from backend.config.global_config import cfg as _cfg
         vision_model   = _cfg.get("ai.vision_model",   "moondream:latest")
         frame_interval = _cfg.get("ai.frame_interval", 4.0)
@@ -127,9 +127,10 @@ class WorkerBus:
             "ffmpeg_exe": ffmpeg_exe,
             "vision_model":   vision_model,
             "frame_interval": frame_interval,
+            "db_path": db_path,   # empty = use default
         })
 
-    def submit_index_image(self, asset_id: str, filepath: str) -> None:
+    def submit_index_image(self, asset_id: str, filepath: str, db_path: str = "") -> None:
         """Queue a single-image description + ChromaDB save job."""
         from backend.config.global_config import cfg as _cfg
         vision_model = _cfg.get("ai.vision_model", "moondream:latest")
@@ -140,6 +141,7 @@ class WorkerBus:
             "assetId": asset_id,
             "filepath": filepath,
             "vision_model": vision_model,
+            "db_path": db_path,   # empty = use default
         })
 
     def get_index_status(self, asset_id: str) -> dict | None:

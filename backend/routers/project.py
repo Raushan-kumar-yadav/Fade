@@ -1,5 +1,7 @@
 from fastapi import APIRouter
-from backend.state import engine
+from backend.state import engine, _library, _clipTrackMap
+from backend.worker.worker_bus import bus as _worker_bus
+from backend.media.asset.mediaAsset import MediaAsset
 
 router = APIRouter()
 
@@ -22,16 +24,15 @@ def newProject(name: str = "Untitled Project",
                fps: float = 30.0, mediaDownloadPath: str = ""):
     from backend.timeline.tracks.videoTrack import VideoTrack
     from backend.timeline.tracks.audioTrack import AudioTrack
-    
+
     engine.newProject(name=name, width=width, height=height, fps=fps)
-    
-    # Initialize with default tracks
+
     tl = engine.activeTimeline
     if tl:
         for track_name in ["Video 1", "Video 2", "Video 3"]:
             tl.addTrack(VideoTrack(track_name))
         tl.addTrack(AudioTrack("Audio 1"))
-        
+
     if mediaDownloadPath:
         engine.project.settings.mediaDownloadPath = mediaDownloadPath
     return {"status": "ok", "project": engine.project.toDict()}
@@ -40,97 +41,268 @@ def newProject(name: str = "Untitled Project",
 from pydantic import BaseModel
 from fastapi import HTTPException
 import os
+import shutil
 import json as _json
-from backend.state import _library
-from backend.worker.worker_bus import bus as _worker_bus
-from backend.media.asset.mediaAsset import MediaAsset
 
 
 class SaveRequest(BaseModel):
-    filepath: str
+    
+    folderPath: str | None = None
+    filepath: str | None = None
 
 
 class LoadRequest(BaseModel):
-    filepath: str
+    filepath: str   # may be a folder or a .fade file
 
+
+# Folder structure helpers  
+
+def _project_folder(req: SaveRequest) -> "Path":
+    from pathlib import Path
+    if req.folderPath:
+        return Path(req.folderPath)
+    # Legacy: derive folder from filepath stem
+    p = Path(req.filepath)
+    if p.suffix == ".fade":
+        return p.parent / p.stem
+    return p
+
+
+def _migrate_chroma_to_project(proj_folder: "Path", asset_ids: set[str]) -> int:
+    """
+    Ensure the project's chroma_db has all entries for *asset_ids*.
+    - If currently on scratch DB: copy entries then switch to project DB.
+    - If already on project DB: reopen client fresh (picks up worker-written data) and count.
+    Returns total chunk count in project DB for these assets.
+    """
+    from pathlib import Path
+    from backend.ai.VideoSemantic.indexer import (
+        _col, _img_col, switch_db, get_db_path
+    )
+    import chromadb
+
+    dest_path = str(proj_folder / "chroma_db")
+    src_path  = get_db_path()
+
+    if src_path != dest_path:
+        # ── Scratch → Project: copy entries, then switch ──────────────────────
+        # Open destination as a separate client (src _col still valid)
+        dest_client = chromadb.PersistentClient(path=dest_path)
+        dest_vid = dest_client.get_or_create_collection(
+            name="video_segments", metadata={"hnsw:space": "cosine"}
+        )
+        dest_img = dest_client.get_or_create_collection(
+            name="image_assets", metadata={"hnsw:space": "cosine"}
+        )
+        total = 0
+        for aid in asset_ids:
+            try:
+                res = _col.get(where={"assetId": aid},
+                               include=["embeddings", "documents", "metadatas"])
+                if res["ids"]:
+                    dest_vid.upsert(ids=res["ids"], embeddings=res["embeddings"],
+                                    documents=res["documents"], metadatas=res["metadatas"])
+                    total += len(res["ids"])
+                    print(f"[Project] ChromaDB migrated video: {len(res['ids'])} chunks for {aid[:8]}", flush=True)
+            except Exception as e:
+                print(f"[Project] ChromaDB video migrate skip {aid[:8]}: {e}", flush=True)
+            try:
+                res2 = _img_col.get(where={"assetId": aid},
+                                    include=["embeddings", "documents", "metadatas"])
+                if res2["ids"]:
+                    dest_img.upsert(ids=res2["ids"], embeddings=res2["embeddings"],
+                                    documents=res2["documents"], metadatas=res2["metadatas"])
+                    total += len(res2["ids"])
+                    print(f"[Project] ChromaDB migrated image: {len(res2['ids'])} for {aid[:8]}", flush=True)
+            except Exception as e:
+                print(f"[Project] ChromaDB image migrate skip {aid[:8]}: {e}", flush=True)
+        del dest_client   # close separate client before switch_db opens another
+        switch_db(dest_path)
+        print(f"[Project] ChromaDB migrated scratch→project: {total} entries", flush=True)
+    else:
+        # ── Already on project DB: reopen to pick up worker-written data ──────
+        switch_db(dest_path)
+        # Re-import _col after switch so we get the fresh client
+        from backend.ai.VideoSemantic.indexer import _col as _fresh_col, _img_col as _fresh_img
+        total = 0
+        for aid in asset_ids:
+            try:
+                total += len(_fresh_col.get(where={"assetId": aid}, limit=100)["ids"])
+            except Exception:
+                pass
+            try:
+                total += len(_fresh_img.get(where={"assetId": aid}, limit=1)["ids"])
+            except Exception:
+                pass
+        print(f"[Project] ChromaDB on project DB: {total} entries found", flush=True)
+
+    return total
+
+
+def _copy_webcomp_to_project(wc_asset, proj_folder: "Path") -> str:
+    """
+    Copy a WebComp folder into <proj_folder>/assets/webcomps/<name>/.
+    Returns the new folderPath.
+    """
+    from pathlib import Path
+    src = Path(wc_asset.folderPath)
+    if not src.is_dir():
+        return wc_asset.folderPath   # already missing, leave as-is
+
+    dest_root = proj_folder / "assets" / "webcomps" / src.name
+    if dest_root.resolve() == src.resolve():
+        return str(src)  # already inside the project folder
+
+    if dest_root.exists():
+        shutil.rmtree(dest_root)
+    shutil.copytree(src, dest_root)
+    print(f"[Project] WebComp copied: {src.name} → {dest_root}", flush=True)
+    return str(dest_root)
+
+
+#   Save  
 
 @router.post("/project/save")
 def saveProject(req: SaveRequest):
     from pathlib import Path
     from backend.media.asset.webCompAsset import WebCompAsset
     from backend.media.asset.baseAsset import MediaType
+
     if engine is None or engine.project is None:
         raise HTTPException(503, "No active project")
+
+    proj_folder = _project_folder(req)
+    proj_folder.mkdir(parents=True, exist_ok=True)
+    anchor_path = proj_folder / "project.fade"
+
     tl = engine.activeTimeline
     proj_dict = engine.project.toDict()
     if tl is not None:
         proj_dict["timeline"] = tl.toDict()
 
-    #   Regular media assets (video / audio / image)  
-    proj_dict["assets"] = {
+    #   Regular media assets 
+    media_assets = {
         asset_id: asset.filepath
         for asset_id, asset in _library.items()
         if getattr(asset, "filepath", None) and os.path.exists(asset.filepath)
+        and getattr(asset, "mediaType", None) != MediaType.webcomp
     }
+    proj_dict["assets"] = media_assets
 
-    #   WebComp assets    
-    # Saved as full dicts  
-    proj_dict["webcompAssets"] = [
-        asset.toDict()
-        for asset in _library.values()
-        if getattr(asset, "mediaType", None) == MediaType.webcomp
-    ]
+    #   WebComp assets 
+    wc_dicts = []
+    for asset in _library.values():
+        if getattr(asset, "mediaType", None) != MediaType.webcomp:
+            continue
+        new_folder = _copy_webcomp_to_project(asset, proj_folder)
+        d = asset.toDict()
+        d["folderPath"] = new_folder
+        wc_dicts.append(d)
+    proj_dict["webcompAssets"] = wc_dicts
 
-    # Persist the project-level media download path
+    #   Settings  
     proj_dict["mediaDownloadPath"] = getattr(
         getattr(engine.project, "settings", None), "mediaDownloadPath", ""
     ) or ""
+    proj_dict["projectFolder"] = str(proj_folder)
 
-    path = Path(req.filepath)
-    if not path.suffix:
-        path = path.with_suffix(".fade")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_json.dumps(proj_dict, indent=2), encoding="utf-8")
-    engine.project.filePath = str(path)
-    engine.project.isDirty  = False
-    wc_count = len(proj_dict["webcompAssets"])
-    print(f"[Project] Saved -> {path}  ({len(proj_dict['assets'])} media, {wc_count} webcomp assets)", flush=True)
-    return {"status": "ok", "filepath": str(path)}
+    #   ChromaDB — migrate from scratch/current DB to project folder, then switch
+    all_asset_ids = set(media_assets.keys()) | {d.get("assetId", "") for d in wc_dicts}
+    chroma_chunks = _migrate_chroma_to_project(proj_folder, all_asset_ids)
+    proj_dict["chromaDbBundled"] = True
+    proj_dict["chromaDbChunks"] = chroma_chunks
+
+    # Verify clip  
+    clip_count = 0
+    effect_count = 0
+    if tl:
+        for track in tl.tracks:
+            clip_count += len(track.clips)
+            for clip in track.clips:
+                effect_count += len(getattr(clip, "effects", []))  # BaseClip.effects
+
+    anchor_path.write_text(_json.dumps(proj_dict, indent=2), encoding="utf-8")
+    engine.project.filePath = str(anchor_path)
+    engine.project.isDirty = False
+
+    print(
+        f"[Project] ✓ Saved → {anchor_path}\n"
+        f"  Clips: {clip_count}  Effects: {effect_count}  "
+        f"Media: {len(media_assets)}  WebComps: {len(wc_dicts)}  "
+        f"ChromaDB chunks: {chroma_chunks}",
+        flush=True,
+    )
+    return {
+        "status": "ok",
+        "filepath": str(anchor_path),
+        "folderPath": str(proj_folder),
+        "clips": clip_count,
+        "effects": effect_count,
+        "mediaAssets": len(media_assets),
+        "webcomps": len(wc_dicts),
+        "chromaDbChunks": chroma_chunks,
+    }
 
 
+#   Load  
 
 @router.post("/project/load")
 def loadProject(req: LoadRequest):
     from pathlib import Path
     from backend.timeline.timeline import Timeline
     from backend.media.asset.webCompAsset import WebCompAsset
-    path = Path(req.filepath)
-    if not path.exists():
-        raise HTTPException(404, f"Project file not found: {path}")
-    data = _json.loads(path.read_text(encoding="utf-8"))
-    proj = engine.loadProject(str(path))
-    proj.filePath = str(path)
+
+    given = Path(req.filepath)
+
+    # Accept either a folder  
+    if given.is_dir():
+        anchor_path = given / "project.fade"
+    else:
+        anchor_path = given
+
+    if not anchor_path.exists():
+        raise HTTPException(404, f"Project file not found: {anchor_path}")
+
+    data = _json.loads(anchor_path.read_text(encoding="utf-8"))
+    proj_folder = Path(data.get("projectFolder", str(anchor_path.parent)))
+
+    proj = engine.loadProject(str(anchor_path))
+    proj.filePath = str(anchor_path)
+
     tl_data = data.get("timeline")
     if tl_data:
         tl = Timeline.fromDict(tl_data)
-        for track in tl.tracks:
+        for ti, track in enumerate(tl.tracks):
             for clip in track.clips:
+                # Wire decoder scheduler for video clips
                 if hasattr(clip, "setScheduler") and engine.scheduler:
-                    clip.setScheduler(engine.scheduler, proj.fps)
+                    clip.setScheduler(engine.scheduler, proj.fps if proj else 30.0)
+                # Register the clip asset  
+                if hasattr(clip, "assetId") and clip.assetId and engine.scheduler:
+                    asset = None  
+                    _clipTrackMap[clip.clipId] = ti
         proj.timelines = [tl]
     else:
         tl = engine.activeTimeline
 
-    # Restore project-level download path
     saved_dl_path = data.get("mediaDownloadPath", "")
     if saved_dl_path and hasattr(proj, "settings") and proj.settings is not None:
         proj.settings.mediaDownloadPath = saved_dl_path
+
+    #   Point ChromaDB at project-local DB  
+    proj_chroma = proj_folder / "chroma_db"
+    if data.get("chromaDbBundled") and proj_chroma.is_dir():
+        try:
+            from backend.ai.VideoSemantic.indexer import switch_db
+            switch_db(str(proj_chroma))
+            print(f"[Project] ChromaDB switched to project DB: {proj_chroma}", flush=True)
+        except Exception as e:
+            print(f"[Project] ChromaDB switch failed (non-fatal): {e}", flush=True)
 
     _library.clear()
     missing: list[str] = []
     offline_assets: list[dict] = []
 
-    # Restore regular media assets  
     def _register(asset_id: str, filepath: str) -> bool:
         if not asset_id or not filepath or asset_id in _library:
             return False
@@ -146,19 +318,30 @@ def loadProject(req: LoadRequest):
                 pass
         return True
 
+    #   Restore regular media assets  
     for asset_id, filepath in data.get("assets", {}).items():
         _register(asset_id, filepath)
 
-    # Restore WebComp assets  
+    #   Restore WebComp assets 
     wc_restored = 0
-    wc_offline  = 0
+    wc_offline = 0
     for wc_data in data.get("webcompAssets", []):
-        asset_id   = wc_data.get("assetId", "")
-        folder     = wc_data.get("folderPath", "")
+        asset_id = wc_data.get("assetId", "")
+        folder = wc_data.get("folderPath", "")
         if not asset_id:
             continue
         if asset_id in _library:
-            continue   
+            continue
+
+        
+        if folder and not os.path.isdir(folder):
+            # Try relative to project folder
+            rel = proj_folder / "assets" / "webcomps" / Path(folder).name
+            if rel.is_dir():
+                folder = str(rel)
+                wc_data = dict(wc_data)
+                wc_data["folderPath"] = folder
+
         if not os.path.isdir(folder):
             print(f"[Project] WARNING: WebComp folder missing: {folder}", flush=True)
             wc_offline += 1
@@ -168,21 +351,21 @@ def loadProject(req: LoadRequest):
                 "filename_hint": wc_data.get("name", asset_id[:12]),
             })
             continue
+
         asset = WebCompAsset.fromDict(wc_data)
-        asset._loadMeta()   # refresh params  
+        asset._loadMeta()
         _library[asset_id] = asset
         wc_restored += 1
         print(f"[Project] WebComp restored: {asset.name} ({asset_id[-8:]})", flush=True)
 
-    #   Scan timeline for any media clips not caught above  
+    # ── Scan timeline for any unlisted clips ──
     if tl:
         for track in tl.tracks:
             for clip in track.clips:
-                # Skip webcomp clips 
                 if getattr(clip, "webcompId", None):
                     continue
                 aid = getattr(clip, "assetId", "")
-                fp  = getattr(clip, "filepath", "")
+                fp = getattr(clip, "filepath", "")
                 if not aid:
                     continue
                 registered = _register(aid, fp)
@@ -195,21 +378,87 @@ def loadProject(req: LoadRequest):
                         "filename_hint": hint,
                     })
 
+    #   Wire decoder scheduler  
+    if tl and engine.scheduler:
+        for track in tl.tracks:
+            for clip in track.clips:
+                aid = getattr(clip, "assetId", "")
+                if aid and aid in _library:
+                    try:
+                        engine.scheduler.registerClip(clip.clipId, _library[aid])
+                    except Exception as e:
+                        print(f"[Project] scheduler.registerClip failed for {aid[:8]}: {e}", flush=True)
+
+    #   Check and submit missing semantic indexes in background
+    try:
+        from backend.ai.VideoSemantic.indexer import is_asset_indexed, get_db_path
+        from backend.media.asset.baseAsset import MediaType
+        port    = int(os.environ.get("BACKEND_PORT", 8000))
+        db_path = get_db_path()   # project DB (switch_db already called above)
+        indexed_count = 0
+        queued_count  = 0
+        for aid, asset in list(_library.items()):
+            mt = getattr(asset, "mediaType", None)
+            if mt == MediaType.webcomp:
+                continue
+            fp = getattr(asset, "filepath", "")
+            if not fp or not os.path.exists(fp):
+                continue
+            if is_asset_indexed(aid):
+                indexed_count += 1
+                print(f"[Project] ✓ Already indexed: {aid[:8]} ({os.path.basename(fp)})", flush=True)
+            else:
+                if mt == MediaType.image:
+                    _worker_bus.submit_index_image(aid, fp, db_path=db_path)
+                    print(f"[Project] ↑ Queued image index: {aid[:8]} ({os.path.basename(fp)})", flush=True)
+                else:
+                    _worker_bus.submit_index_video(aid, fp, port=port, db_path=db_path)
+                    print(f"[Project] ↑ Queued video index: {aid[:8]} ({os.path.basename(fp)})", flush=True)
+                queued_count += 1
+        print(f"[Project] Semantic index: {indexed_count} already indexed, {queued_count} queued", flush=True)
+    except Exception as _ie:
+        print(f"[Project] Semantic index check failed (non-fatal): {_ie}", flush=True)
+
+    #   Count clips + effects
+    clip_count = sum(len(t.clips) for t in tl.tracks) if tl else 0
+    effect_count = sum(
+        len(getattr(c, "effects", []))
+        for t in tl.tracks for c in t.clips
+    ) if tl else 0
+
     for fp in missing:
         print(f"[Project] WARNING: asset file missing: {fp}", flush=True)
     if offline_assets:
         print(f"[Project] {len(offline_assets)} asset(s) offline: "
-              + ", ".join(a['filename_hint'] for a in offline_assets), flush=True)
-    print(f"[Project] Loaded <- {path}  "
-          f"({len(_library) - wc_restored} media + {wc_restored} webcomp restored, "
-          f"{len(offline_assets)} offline)", flush=True)
+              + ", ".join(a["filename_hint"] for a in offline_assets), flush=True)
+
+    print(
+        f"[Project] ✓ Loaded ← {anchor_path}\n"
+        f"  Clips: {clip_count}  Effects: {effect_count}  "
+        f"Media: {len(_library) - wc_restored}  WebComps: {wc_restored}  "
+        f"Offline: {len(offline_assets)}",
+        flush=True,
+    )
+
+    # Notify frontend  
+    try:
+        from backend.events import notify
+        notify("project")
+    except Exception:
+        pass
+
     return {
         "status": "ok",
         "project": proj.toDict(),
         "timeline": tl.toDict() if tl else {},
         "missing_assets": offline_assets,
+        "clips": clip_count,
+        "effects": effect_count,
+        "chromaDbBundled": data.get("chromaDbBundled", False),
     }
 
+
+# Performance Settings  
 
 class SettingsPayload(BaseModel):
     cacheMaxMB: int | None = None
@@ -273,19 +522,18 @@ def postSettings(payload: SettingsPayload):
     return _get_settings()
 
 
-#   AI Indexing settings
+# ── AI Indexing Settings ──────────────────────────────────────────────────────
 
 from backend.config.global_config import cfg as _cfg
 
 class AiSettingsPayload(BaseModel):
-    visionModel:    str   | None = None
-    frameInterval:  float | None = None
-    whisperBackend: str   | None = None   # "faster" | "openai"
-    whisperModel:   str   | None = None   # tiny | base | small | medium | large
+    visionModel: str | None = None
+    frameInterval: float | None = None
+    whisperBackend: str | None = None
+    whisperModel: str | None = None
 
 
 def _get_ai_settings() -> dict:
-    """Return current AI indexing settings + list of installed Ollama models."""
     available: list[str] = []
     try:
         import ollama
@@ -294,10 +542,10 @@ def _get_ai_settings() -> dict:
         pass
 
     return {
-        "visionModel":     _cfg.get("ai.vision_model",    "moondream:latest"),
-        "frameInterval":   _cfg.get("ai.frame_interval",  4.0),
-        "whisperBackend":  _cfg.get("ai.whisper_backend", "faster"),
-        "whisperModel":    _cfg.get("ai.whisper_model",   "small"),
+        "visionModel": _cfg.get("ai.vision_model", "moondream:latest"),
+        "frameInterval": _cfg.get("ai.frame_interval", 4.0),
+        "whisperBackend": _cfg.get("ai.whisper_backend", "faster"),
+        "whisperModel": _cfg.get("ai.whisper_model", "small"),
         "availableModels": available,
     }
 
