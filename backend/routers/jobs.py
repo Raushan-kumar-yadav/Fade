@@ -265,22 +265,97 @@ def _run_image_download(parent_job_id: str, query: str,
 
 
 def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
-    from backend.tools import GeminiImageGenerator
+    from backend.config.global_config import cfg as _cfg
     from backend.routers.library import _resolve_download_dir
     from backend.events import notify as _notify
 
-    _update_job(job_id, status="running", progress=0.1,
-                message="Generating with Gemini…")
+    provider = _cfg.get("generators.image_provider", "google")
+    gen_dir   = _resolve_download_dir(subdir="generations")
+
+    # ── Dispatch to the right generator ───────────────────────────────────────
+    if provider == "comfyui":
+        from backend.tools.generators.comfyui_generator import ComfyUIImageGenerator
+        base_url    = _cfg.get("generators.comfyui_url",   "http://127.0.0.1:8188")
+        model_name  = _cfg.get("generators.comfyui_model", "v1-5-pruned-emaonly.safetensors")
+        comfyui_path = _cfg.get("generators.comfyui_path", "")
+        width       = int(_cfg.get("generators.comfyui_width",  512))
+        height      = int(_cfg.get("generators.comfyui_height", 512))
+        steps       = int(_cfg.get("generators.comfyui_steps",  20))
+        cfg_scale   = float(_cfg.get("generators.comfyui_cfg",  7.0))
+
+        _update_job(job_id, status="running", progress=0.05,
+                    message=f"{'Starting' if comfyui_path else 'Connecting to'} ComfyUI — {model_name}…")
+        try:
+            generator = ComfyUIImageGenerator(base_url=base_url)
+            results = generator.generate(
+                prompt=prompt,
+                output_dir=gen_dir,
+                model_name=model_name,
+                width=width, height=height,
+                steps=steps, cfg=cfg_scale,
+                num_images=num_images,
+                comfyui_path=comfyui_path,
+            )
+        except ConnectionError as exc:
+            _update_job(job_id, status="error", message="ComfyUI not running", error=str(exc))
+            return
+        except Exception as exc:
+            _update_job(job_id, status="error", message="ComfyUI generation failed", error=str(exc))
+            return
+
+    elif provider == "stability":
+        from backend.tools.generators.stability_generator import StabilityImageGenerator
+        stab_model  = _cfg.get("generators.stability_model",  "core")
+        stab_style  = _cfg.get("generators.stability_style",  "")
+        stab_width  = int(_cfg.get("generators.stability_width",  1024))
+        stab_height = int(_cfg.get("generators.stability_height", 1024))
+        _update_job(job_id, status="running", progress=0.1,
+                    message=f"Generating with Stability AI ({stab_model})…")
+        try:
+            results = StabilityImageGenerator().generate(
+                prompt=prompt,
+                output_dir=gen_dir,
+                num_images=num_images,
+                model=stab_model,
+                width=stab_width,
+                height=stab_height,
+                style_preset=stab_style,
+            )
+        except PermissionError as exc:
+            _update_job(job_id, status="error", message="Stability AI: auth/credits error", error=str(exc))
+            return
+        except Exception as exc:
+            _update_job(job_id, status="error", message="Stability AI generation failed", error=str(exc))
+            return
+
+    elif provider == "local":
+
+        # Ollama / local SDXL — not yet implemented, fall through to Gemini with a warning
+        _update_job(job_id, status="running", progress=0.05,
+                    message="Local image gen not implemented yet — falling back to Gemini…")
+        from backend.tools import GeminiImageGenerator
+        try:
+            results = GeminiImageGenerator().generate(prompt=prompt, num_images=num_images, output_dir=gen_dir)
+        except Exception as exc:
+            _update_job(job_id, status="error", message="Generation failed", error=str(exc))
+            return
+
+    else:  # "google" or any unknown value
+        from backend.tools import GeminiImageGenerator
+        _update_job(job_id, status="running", progress=0.1,
+                    message="Generating with Gemini Imagen…")
+        try:
+            results = GeminiImageGenerator().generate(prompt=prompt, num_images=num_images, output_dir=gen_dir)
+        except Exception as exc:
+            _update_job(job_id, status="error", message="Gemini generation failed", error=str(exc))
+            return
+
+    # ── Import results into library ────────────────────────────────────────────
     try:
-        generator = GeminiImageGenerator()
-        gen_dir = _resolve_download_dir(subdir="generations")
-        results = generator.generate(
-            prompt=prompt, num_images=num_images, output_dir=gen_dir,
-        )
         asset_ids = []
         for i, r in enumerate(results):
             _update_job(job_id,
-                        progress=0.8 + 0.2 * (i + 1) / max(num_images, 1),
+                        progress=0.8 + 0.2 * (i + 1) / max(len(results), 1),
                         message=f"Importing result {i + 1}/{len(results)}…")
             info = _import_and_index(r["filepath"])
             asset_ids.append(info["assetId"])
@@ -289,7 +364,7 @@ def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
                     message=f"Generated {len(asset_ids)} image(s)",
                     assetIds=asset_ids)
         _notify("library")
-        # Notify agent if it scheduled this job
+
         try:
             from backend.ai.agent_jobs import on_job_done as _aj
             for aid in asset_ids:
@@ -298,7 +373,7 @@ def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
             pass
 
     except Exception as exc:
-        _update_job(job_id, status="error", message="Failed", error=str(exc))
+        _update_job(job_id, status="error", message="Import failed", error=str(exc))
 
 
 def _start(fn, *args) -> None:

@@ -358,7 +358,7 @@ def loadProject(req: LoadRequest):
         wc_restored += 1
         print(f"[Project] WebComp restored: {asset.name} ({asset_id[-8:]})", flush=True)
 
-    # ── Scan timeline for any unlisted clips ──
+    # Scan timeline for any unlisted clips  
     if tl:
         for track in tl.tracks:
             for clip in track.clips:
@@ -389,12 +389,12 @@ def loadProject(req: LoadRequest):
                     except Exception as e:
                         print(f"[Project] scheduler.registerClip failed for {aid[:8]}: {e}", flush=True)
 
-    #   Check and submit missing semantic indexes in background
+    #   Check and submit 
     try:
         from backend.ai.VideoSemantic.indexer import is_asset_indexed, get_db_path
         from backend.media.asset.baseAsset import MediaType
         port    = int(os.environ.get("BACKEND_PORT", 8000))
-        db_path = get_db_path()   # project DB (switch_db already called above)
+        db_path = get_db_path()   # project DB 
         indexed_count = 0
         queued_count  = 0
         for aid, asset in list(_library.items()):
@@ -522,7 +522,7 @@ def postSettings(payload: SettingsPayload):
     return _get_settings()
 
 
-# ── AI Indexing Settings ──────────────────────────────────────────────────────
+# AI Indexing Settings    
 
 from backend.config.global_config import cfg as _cfg
 
@@ -565,30 +565,34 @@ def postAiSettings(payload: AiSettingsPayload):
         _cfg.set("ai.whisper_backend", payload.whisperBackend)
         from backend.ai import whisper_tool as _wt
         _wt._model_cache.clear()
-        print(f"[Settings] Whisper backend → {payload.whisperBackend} (cache cleared)", flush=True)
-    if payload.whisperModel is not None and payload.whisperModel in ("tiny", "base", "small", "medium", "large", "large-v2", "large-v3"):
-        _cfg.set("ai.whisper_model", payload.whisperModel)
-        from backend.ai import whisper_tool as _wt
-        _wt._model_cache.clear()
-        print(f"[Settings] Whisper model → {payload.whisperModel} (cache cleared)", flush=True)
-    return _get_ai_settings()
-
-
-# ── Generator Settings ────────────────────────────────────────────────────────
+# Generator Settings  
 
 class GeneratorSettingsPayload(BaseModel):
     # Image
-    imageProvider: str | None = None       # "google" | "local"
-    imageLocalModel: str | None = None     # e.g. "gemma3:4b"
+    imageProvider:    str | None = None  # "google" | "comfyui" | "local" | "stability"
+    imageLocalModel:  str | None = None
+    # ComfyUI
+    comfyuiUrl:       str | None = None
+    comfyuiPath:      str | None = None
+    comfyuiModel:     str | None = None
+    comfyuiWidth:     int | None = None
+    comfyuiHeight:    int | None = None
+    comfyuiSteps:     int | None = None
+    comfyuiCfg:       float | None = None
+    # Stability AI
+    stabilityModel:   str | None = None  # "core" | "ultra" | "sd3"
+    stabilityStyle:   str | None = None  # "" | "photographic" | "anime" | ...
+    stabilityWidth:   int | None = None
+    stabilityHeight:  int | None = None
     # TTS
-    ttsProvider: str | None = None         # "google" | "local"
-    ttsGoogleVoice: str | None = None      # e.g. "Kore"
-    ttsLocalModel: str | None = None       # e.g. "kokoro"
+    ttsProvider:      str | None = None
+    ttsGoogleVoice:   str | None = None
+    ttsLocalModel:    str | None = None
     # Video
-    videoProvider: str | None = None       # "google" | "local"
-    videoLocalModel: str | None = None     # e.g. "wan2.1"
-    # Ollama server URL
-    ollamaUrl: str | None = None
+    videoProvider:    str | None = None
+    videoLocalModel:  str | None = None
+    # Ollama
+    ollamaUrl:        str | None = None
 
 
 def _get_ollama_models() -> list[str]:
@@ -607,17 +611,58 @@ def _get_ollama_models() -> list[str]:
     return []
 
 
+def _get_comfyui_models(base_url: str) -> list[str]:
+    """Return checkpoint models installed in ComfyUI, or [] if not running."""
+    try:
+        import requests
+        r = requests.get(f"{base_url.rstrip('/')}/models/checkpoints", timeout=2)
+        if r.ok:
+            return r.json() or []
+    except Exception:
+        pass
+    return []
+
+
+def _get_comfyui_status(base_url: str) -> bool:
+    """True if ComfyUI server is responding."""
+    try:
+        import requests
+        r = requests.get(f"{base_url.rstrip('/')}/system_stats", timeout=2)
+        return r.ok
+    except Exception:
+        return False
+
+
 def _get_generator_settings() -> dict:
+    comfyui_url = _cfg.get("generators.comfyui_url", "http://127.0.0.1:8188")
     return {
-        "imageProvider":   _cfg.get("generators.image_provider", "google"),
-        "imageLocalModel": _cfg.get("generators.image_local_model", "gemma3:4b"),
-        "ttsProvider":     _cfg.get("generators.tts_provider", "google"),
-        "ttsGoogleVoice":  _cfg.get("generators.tts_google_voice", "Kore"),
-        "ttsLocalModel":   _cfg.get("generators.tts_local_model", "kokoro"),
-        "videoProvider":   _cfg.get("generators.video_provider", "google"),
-        "videoLocalModel": _cfg.get("generators.video_local_model", "wan2.1"),
-        "ollamaUrl":       _cfg.get("generators.ollama_url", "http://localhost:11434"),
-        "ollamaModels":    _get_ollama_models(),
+        "imageProvider":    _cfg.get("generators.image_provider", "google"),
+        "imageLocalModel":  _cfg.get("generators.image_local_model", "gemma3:4b"),
+        # ComfyUI
+        "comfyuiUrl":       comfyui_url,
+        "comfyuiPath":      _cfg.get("generators.comfyui_path", ""),
+        "comfyuiModel":     _cfg.get("generators.comfyui_model", "v1-5-pruned-emaonly.safetensors"),
+        "comfyuiWidth":     _cfg.get("generators.comfyui_width", 512),
+        "comfyuiHeight":    _cfg.get("generators.comfyui_height", 512),
+        "comfyuiSteps":     _cfg.get("generators.comfyui_steps", 20),
+        "comfyuiCfg":       _cfg.get("generators.comfyui_cfg", 7.0),
+        "comfyuiRunning":   _get_comfyui_status(comfyui_url),
+        "comfyuiModels":    _get_comfyui_models(comfyui_url),
+        # Stability AI
+        "stabilityModel":   _cfg.get("generators.stability_model", "core"),
+        "stabilityStyle":   _cfg.get("generators.stability_style", ""),
+        "stabilityWidth":   _cfg.get("generators.stability_width", 1024),
+        "stabilityHeight":  _cfg.get("generators.stability_height", 1024),
+        # TTS
+        "ttsProvider":      _cfg.get("generators.tts_provider", "google"),
+        "ttsGoogleVoice":   _cfg.get("generators.tts_google_voice", "Kore"),
+        "ttsLocalModel":    _cfg.get("generators.tts_local_model", "kokoro"),
+        # Video
+        "videoProvider":    _cfg.get("generators.video_provider", "google"),
+        "videoLocalModel":  _cfg.get("generators.video_local_model", "wan2.1"),
+        # Ollama
+        "ollamaUrl":        _cfg.get("generators.ollama_url", "http://localhost:11434"),
+        "ollamaModels":     _get_ollama_models(),
     }
 
 
@@ -628,20 +673,47 @@ def getGeneratorSettings():
 
 @router.post("/settings/generators")
 def postGeneratorSettings(payload: GeneratorSettingsPayload):
-    if payload.imageProvider in ("google", "local"):
+    if payload.imageProvider in ("google", "comfyui", "local", "stability"):
         _cfg.set("generators.image_provider", payload.imageProvider)
     if payload.imageLocalModel is not None:
         _cfg.set("generators.image_local_model", payload.imageLocalModel.strip())
+    # ComfyUI
+    if payload.comfyuiUrl is not None:
+        _cfg.set("generators.comfyui_url", payload.comfyuiUrl.strip())
+    if payload.comfyuiPath is not None:
+        _cfg.set("generators.comfyui_path", payload.comfyuiPath.strip())
+    if payload.comfyuiModel is not None:
+        _cfg.set("generators.comfyui_model", payload.comfyuiModel.strip())
+    if payload.comfyuiWidth is not None:
+        _cfg.set("generators.comfyui_width", max(256, min(2048, payload.comfyuiWidth)))
+    if payload.comfyuiHeight is not None:
+        _cfg.set("generators.comfyui_height", max(256, min(2048, payload.comfyuiHeight)))
+    if payload.comfyuiSteps is not None:
+        _cfg.set("generators.comfyui_steps", max(1, min(150, payload.comfyuiSteps)))
+    if payload.comfyuiCfg is not None:
+        _cfg.set("generators.comfyui_cfg", max(1.0, min(20.0, payload.comfyuiCfg)))
+    # Stability AI
+    if payload.stabilityModel in ("core", "ultra", "sd3"):
+        _cfg.set("generators.stability_model", payload.stabilityModel)
+    if payload.stabilityStyle is not None:
+        _cfg.set("generators.stability_style", payload.stabilityStyle.strip())
+    if payload.stabilityWidth is not None:
+        _cfg.set("generators.stability_width", max(256, min(2048, payload.stabilityWidth)))
+    if payload.stabilityHeight is not None:
+        _cfg.set("generators.stability_height", max(256, min(2048, payload.stabilityHeight)))
+    # TTS
     if payload.ttsProvider in ("google", "local"):
         _cfg.set("generators.tts_provider", payload.ttsProvider)
     if payload.ttsGoogleVoice is not None:
         _cfg.set("generators.tts_google_voice", payload.ttsGoogleVoice.strip())
     if payload.ttsLocalModel is not None:
         _cfg.set("generators.tts_local_model", payload.ttsLocalModel.strip())
+    # Video
     if payload.videoProvider in ("google", "local"):
         _cfg.set("generators.video_provider", payload.videoProvider)
     if payload.videoLocalModel is not None:
         _cfg.set("generators.video_local_model", payload.videoLocalModel.strip())
+    # Ollama
     if payload.ollamaUrl is not None:
         _cfg.set("generators.ollama_url", payload.ollamaUrl.strip())
     return _get_generator_settings()

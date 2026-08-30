@@ -35,7 +35,7 @@ class GenerateImageRequest(BaseModel):
 
 class GenerateTTSRequest(BaseModel):
     text: str
-    voice: str = ""    # Google voice name; empty = use config default
+    voice: str = ""    # Google voice name; empty  
 
 
 class GenerateVideoRequest(BaseModel):
@@ -228,12 +228,51 @@ def download_images(req: DownloadImagesRequest):
 @router.post("/media/generate-image")
 def generate_image_endpoint(req: GenerateImageRequest):
     from fastapi import HTTPException
-    generator = GeminiImageGenerator()
+    provider = _cfg.get("generators.image_provider", "google")
     gen_dir = _resolve_download_dir(subdir="generations")
+
     try:
-        results = generator.generate(prompt=req.prompt, num_images=req.numImages, output_dir=gen_dir)
+        if provider == "comfyui":
+            from backend.tools.generators.comfyui_generator import ComfyUIImageGenerator
+            comfyui_url = _cfg.get("generators.comfyui_url",    "http://127.0.0.1:8188")
+            comfyui_model = _cfg.get("generators.comfyui_model",  "v1-5-pruned-emaonly.safetensors")
+            comfyui_w  = _cfg.get("generators.comfyui_width",  512)
+            comfyui_h = _cfg.get("generators.comfyui_height", 512)
+            comfyui_steps = _cfg.get("generators.comfyui_steps",  20)
+            comfyui_cfg   = _cfg.get("generators.comfyui_cfg",    7.0)
+            gen = ComfyUIImageGenerator(base_url=comfyui_url)
+            results = gen.generate(
+                prompt=req.prompt,
+                output_dir=gen_dir,
+                model_name=comfyui_model,
+                width=comfyui_w,
+                height=comfyui_h,
+                steps=comfyui_steps,
+                cfg=comfyui_cfg,
+                num_images=req.numImages,
+            )
+
+        elif provider == "local":
+            # Ollama image gen (experimental)
+            from backend.tools.generators.tts_generator import LocalTTSGenerator
+            raise RuntimeError(
+                "Ollama image generation is not yet stable.\n"
+                "Please use ComfyUI for local image generation."
+            )
+
+        else:
+            # Default: Google Gemini
+            results = GeminiImageGenerator().generate(
+                prompt=req.prompt, num_images=req.numImages, output_dir=gen_dir
+            )
+
+    except ConnectionError as e:
+        raise HTTPException(status_code=503, detail={
+            "error": "comfyui_unavailable",
+            "message": str(e),
+            "action": "Start ComfyUI: python main.py --listen 127.0.0.1 --port 8188",
+        })
     except PermissionError as e:
-         
         raise HTTPException(status_code=402, detail={
             "error": "quota_exceeded",
             "message": str(e),
@@ -247,7 +286,7 @@ def generate_image_endpoint(req: GenerateImageRequest):
     if not results:
         raise HTTPException(status_code=500, detail={
             "error": "no_images",
-            "message": "Gemini returned no images. The model may have refused the prompt.",
+            "message": f"No images returned by {provider} generator. Check server logs.",
         })
 
     imported = []

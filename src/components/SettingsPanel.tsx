@@ -20,23 +20,41 @@ interface Settings {
 }
 
 interface AiSettings {
-  visionModel:    string;
+  visionModel: string;
   frameInterval:  number;
   whisperBackend: string;
-  whisperModel:   string;
+  whisperModel: string;
   availableModels: string[];
 }
 
 interface GeneratorSettings {
-  imageProvider:   string;   // "google" | "local"
+  imageProvider: string;
   imageLocalModel: string;
-  ttsProvider:     string;
-  ttsGoogleVoice:  string;
-  ttsLocalModel:   string;
-  videoProvider:   string;
+  // ComfyUI
+  comfyuiUrl: string;
+  comfyuiPath: string;
+  comfyuiModel: string;
+  comfyuiWidth: number;
+  comfyuiHeight: number;
+  comfyuiSteps: number;
+  comfyuiCfg: number;
+  comfyuiRunning: boolean;
+  comfyuiModels: string[];
+  // Stability AI
+  stabilityModel: string;   // "core" | "ultra" | "sd3"
+  stabilityStyle: string;   // "" | "photographic" | "anime" | ...
+  stabilityWidth: number;
+  stabilityHeight: number;
+  // TTS
+  ttsProvider: string;
+  ttsGoogleVoice: string;
+  ttsLocalModel: string;
+  // Video
+  videoProvider: string;
   videoLocalModel: string;
-  ollamaUrl:       string;
-  ollamaModels:    string[];
+  // Ollama
+  ollamaUrl: string;
+  ollamaModels: string[];
 }
 
 function getPort(): number | null {
@@ -57,9 +75,9 @@ async function postSettings(delta: Partial<Settings>): Promise<Settings | null> 
   if (!port) return null;
   try {
     const r = await fetch(`http://127.0.0.1:${port}/settings`, {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(delta),
+      body: JSON.stringify(delta),
     });
     return r.ok ? r.json() : null;
   } catch { return null; }
@@ -81,7 +99,7 @@ async function postAiSettings(delta: Partial<Pick<AiSettings,'visionModel'|'fram
     const r = await fetch(`http://127.0.0.1:${port}/settings/ai`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(delta),
+      body:  JSON.stringify(delta),
     });
     return r.ok ? r.json() : null;
   } catch { return null; }
@@ -114,10 +132,10 @@ async function postGeneratorSettings(delta: Partial<GeneratorSettings>): Promise
 type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'generators';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: 'cache',      icon: '⚡', label: 'Cache'       },
-  { id: 'decoder',    icon: '🎞', label: 'Decoder'     },
-  { id: 'output',     icon: '🖼', label: 'Output'      },
-  { id: 'ai',         icon: '🤖', label: 'AI Indexing' },
+  { id: 'cache', icon: '⚡', label: 'Cache'       },
+  { id: 'decoder', icon: '🎞', label: 'Decoder'     },
+  { id: 'output', icon: '🖼', label: 'Output'      },
+  { id: 'ai', icon: '🤖', label: 'AI Indexing' },
   { id: 'generators', icon: '✨', label: 'Generators'  },
 ];
 
@@ -144,6 +162,30 @@ const VOICE_DESCRIPTIONS: Record<string, string> = {
 
 //   Sub-components  
 
+function ProviderToggle3({
+  id, value, options, onChange,
+}: {
+  id: string;
+  value: string;
+  options: { value: string; icon: string; label: string }[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="sp-provider-toggle">
+      {options.map(o => (
+        <button
+          key={o.value}
+          id={`${id}-${o.value}`}
+          className={`sp-toggle-btn ${value === o.value ? 'sp-toggle-btn--active' : ''}`}
+          onClick={() => onChange(o.value)}
+        >
+          <span className="sp-toggle-icon">{o.icon}</span> {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ProviderToggle({
   id, value, onChange,
 }: {
@@ -152,22 +194,15 @@ function ProviderToggle({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="sp-provider-toggle">
-      <button
-        id={`${id}-google`}
-        className={`sp-toggle-btn ${value === 'google' ? 'sp-toggle-btn--active' : ''}`}
-        onClick={() => onChange('google')}
-      >
-        <span className="sp-toggle-icon">☁</span> Google API
-      </button>
-      <button
-        id={`${id}-local`}
-        className={`sp-toggle-btn ${value === 'local' ? 'sp-toggle-btn--active' : ''}`}
-        onClick={() => onChange('local')}
-      >
-        <span className="sp-toggle-icon">🖥</span> Local (Ollama)
-      </button>
-    </div>
+    <ProviderToggle3
+      id={id}
+      value={value}
+      options={[
+        { value: 'google', icon: '☁', label: 'Google API' },
+        { value: 'local',  icon: '🖥', label: 'Local'      },
+      ]}
+      onChange={onChange}
+    />
   );
 }
 
@@ -450,9 +485,15 @@ export default function SettingsPanel({ onClose }: Props) {
 
                     <div className="sp-row sp-row--column">
                       <label className="sp-label">Provider</label>
-                      <ProviderToggle
+                      <ProviderToggle3
                         id="img-provider"
                         value={gen.imageProvider}
+                        options={[
+                          { value: 'google',    icon: '☁',  label: 'Google API'    },
+                          { value: 'stability', icon: '🎨',  label: 'Stability AI'  },
+                          { value: 'comfyui',   icon: '🏛',  label: 'ComfyUI'       },
+                          { value: 'local',     icon: '🖥',  label: 'Ollama'        },
+                        ]}
                         onChange={v => applyGen({ imageProvider: v })}
                       />
                     </div>
@@ -463,6 +504,235 @@ export default function SettingsPanel({ onClose }: Props) {
                         Requires a paid Google AI plan.
                         <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="sp-link"> Enable billing →</a>
                       </div>
+                    )}
+
+                    {/* ── Stability AI ── */}
+                    {gen.imageProvider === 'stability' && (
+                      <>
+                        <div className="sp-hint sp-hint--info">
+                          🎨 <strong>Stability AI</strong> — cloud generation, no GPU needed.
+                          Uses your <code>STABILITY_API_KEY</code> from <code>.env</code>.
+                          Free credits on signup at{' '}
+                          <a href="https://platform.stability.ai" target="_blank" rel="noreferrer" className="sp-link">platform.stability.ai →</a>
+                        </div>
+
+                        {/* Engine */}
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="stab-model">Engine</label>
+                          <select id="stab-model" className="sp-select"
+                            value={gen.stabilityModel}
+                            onChange={e => applyGen({ stabilityModel: e.target.value })}>
+                            <option value="core">Core — fastest, best value (~2 credits)</option>
+                            <option value="sd3">SD 3.5 — high quality (~4 credits)</option>
+                            <option value="ultra">Ultra — best quality (~8 credits)</option>
+                          </select>
+                        </div>
+
+                        {/* Style preset */}
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="stab-style">Style Preset</label>
+                          <select id="stab-style" className="sp-select"
+                            value={gen.stabilityStyle}
+                            onChange={e => applyGen({ stabilityStyle: e.target.value })}>
+                            <option value="">None (default)</option>
+                            <option value="photographic">Photographic</option>
+                            <option value="digital-art">Digital Art</option>
+                            <option value="anime">Anime</option>
+                            <option value="cinematic">Cinematic</option>
+                            <option value="3d-model">3D Model</option>
+                            <option value="comic-book">Comic Book</option>
+                            <option value="fantasy-art">Fantasy Art</option>
+                            <option value="neon-punk">Neon Punk</option>
+                            <option value="isometric">Isometric</option>
+                            <option value="pixel-art">Pixel Art</option>
+                          </select>
+                        </div>
+
+                        {/* Resolution */}
+                        <div className="sp-row">
+                          <label className="sp-label">Resolution</label>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <select id="stab-width" className="sp-select"
+                              value={gen.stabilityWidth}
+                              onChange={e => applyGen({ stabilityWidth: parseInt(e.target.value) })}>
+                              <option value={512}>512</option>
+                              <option value={768}>768</option>
+                              <option value={1024}>1024</option>
+                              <option value={1536}>1536</option>
+                            </select>
+                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>×</span>
+                            <select id="stab-height" className="sp-select"
+                              value={gen.stabilityHeight}
+                              onChange={e => applyGen({ stabilityHeight: parseInt(e.target.value) })}>
+                              <option value={512}>512</option>
+                              <option value={768}>768</option>
+                              <option value={1024}>1024</option>
+                              <option value={1536}>1536</option>
+                            </select>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {gen.imageProvider === 'comfyui' && (
+                      <>
+                        {/* Status indicator */}
+                        <div className="sp-row">
+                          <label className="sp-label">Status</label>
+                          <span className={`sp-badge ${gen.comfyuiRunning ? 'sp-badge--ok' : 'sp-badge--err'}`}>
+                            {gen.comfyuiRunning ? '● Running' : '○ Not running'}
+                          </span>
+                        </div>
+
+                        {/* Installation folder picker */}
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="comfyui-path">Installation Folder</label>
+                          <div style={{ display: 'flex', gap: 6, flex: 1, minWidth: 0 }}>
+                            <input
+                              id="comfyui-path"
+                              type="text"
+                              className="sp-input sp-input--wide"
+                              style={{ flex: 1 }}
+                              value={gen.comfyuiPath}
+                              onChange={e => setGen({ ...gen, comfyuiPath: e.target.value })}
+                              onBlur={e => applyGen({ comfyuiPath: e.target.value })}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                              placeholder="e.g. D:\ComfyUI"
+                            />
+                            <button
+                              className="sp-btn sp-btn--sm"
+                              title="Browse for ComfyUI folder"
+                              onClick={async () => {
+                                const el = (window as any).electronAPI;
+                                if (!el?.showOpenDialog) return;
+                                const folder: string | undefined = await el.showOpenDialog({
+                                  title: 'Select ComfyUI Installation Folder',
+                                  properties: ['openDirectory'],
+                                });
+                                if (folder) {
+                                  setGen({ ...gen, comfyuiPath: folder });
+                                  applyGen({ comfyuiPath: folder });
+                                }
+                              }}
+                            >📁</button>
+                          </div>
+                        </div>
+
+                        {!gen.comfyuiRunning && (
+                          <div className="sp-hint sp-hint--warn">
+                            {gen.comfyuiPath ? (
+                              <>
+                                ⚡ ComfyUI is not running — Fade will start it automatically when you generate an image.
+                                <br />
+                                <span style={{ opacity: 0.7, fontSize: 11 }}>Folder: <code>{gen.comfyuiPath}</code></span>
+                              </>
+                            ) : (
+                              <>
+                                ⚠ ComfyUI is not running.<br />
+                                Set the Installation Folder above for auto-start, or start it manually:<br />
+                                <code>python main.py --listen 127.0.0.1 --port 8188</code>
+                              </>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="comfyui-url">Server URL</label>
+                          <input
+                            id="comfyui-url"
+                            type="text"
+                            className="sp-input sp-input--wide"
+                            defaultValue={gen.comfyuiUrl}
+                            onBlur={e => applyGen({ comfyuiUrl: e.target.value })}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            placeholder="http://127.0.0.1:8188"
+                          />
+                        </div>
+
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="comfyui-model">Checkpoint Model</label>
+                          {gen.comfyuiModels.length > 0 ? (
+                            <select
+                              id="comfyui-model"
+                              className="sp-select"
+                              value={gen.comfyuiModel}
+                              onChange={e => applyGen({ comfyuiModel: e.target.value })}
+                            >
+                              {gen.comfyuiModels.map(m => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              id="comfyui-model"
+                              type="text"
+                              className="sp-input sp-input--wide"
+                              defaultValue={gen.comfyuiModel}
+                              onBlur={e => applyGen({ comfyuiModel: e.target.value })}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                              placeholder="v1-5-pruned-emaonly.safetensors"
+                            />
+                          )}
+                        </div>
+
+                        {gen.comfyuiModels.length === 0 && gen.comfyuiRunning && (
+                          <div className="sp-hint sp-hint--warn">
+                            ⚠ No checkpoint models found.<br />
+                            Download <strong>v1-5-pruned-emaonly.safetensors</strong> from HuggingFace and place it in:<br />
+                            <code>D:\Comfy-Desktop\ComfyUI-Installs\ComfyUI\ComfyUI\models\checkpoints</code>
+                          </div>
+                        )}
+
+                        {/* Size */}
+                        <div className="sp-row">
+                          <label className="sp-label">Width × Height</label>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <select id="comfyui-width" className="sp-select" value={gen.comfyuiWidth}
+                              onChange={e => applyGen({ comfyuiWidth: parseInt(e.target.value) })}>
+                              <option value={256}>256</option>
+                              <option value={512}>512</option>
+                              <option value={768}>768</option>
+                              <option value={1024}>1024</option>
+                            </select>
+                            <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>×</span>
+                            <select id="comfyui-height" className="sp-select" value={gen.comfyuiHeight}
+                              onChange={e => applyGen({ comfyuiHeight: parseInt(e.target.value) })}>
+                              <option value={256}>256</option>
+                              <option value={512}>512</option>
+                              <option value={768}>768</option>
+                              <option value={1024}>1024</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {gen.comfyuiWidth > 512 && (
+                          <div className="sp-hint sp-hint--warn" style={{ marginTop: 0 }}>
+                            ⚠ 4GB VRAM: stay at 512×512. Higher res may OOM.
+                          </div>
+                        )}
+
+                        {/* Steps */}
+                        <div className="sp-row">
+                          <label className="sp-label">Steps</label>
+                          <input id="comfyui-steps" type="range" className="sp-range" min={10} max={50} step={5}
+                            value={gen.comfyuiSteps}
+                            onChange={e => setGen({ ...gen, comfyuiSteps: parseInt(e.target.value) })}
+                            onMouseUp={e => applyGen({ comfyuiSteps: parseInt((e.target as HTMLInputElement).value) })}
+                          />
+                          <span className="sp-badge">{gen.comfyuiSteps}</span>
+                        </div>
+
+                        {/* CFG */}
+                        <div className="sp-row">
+                          <label className="sp-label">CFG Scale</label>
+                          <input id="comfyui-cfg" type="range" className="sp-range" min={1} max={15} step={0.5}
+                            value={gen.comfyuiCfg}
+                            onChange={e => setGen({ ...gen, comfyuiCfg: parseFloat(e.target.value) })}
+                            onMouseUp={e => applyGen({ comfyuiCfg: parseFloat((e.target as HTMLInputElement).value) })}
+                          />
+                          <span className="sp-badge">{gen.comfyuiCfg.toFixed(1)}</span>
+                        </div>
+                      </>
                     )}
 
                     {gen.imageProvider === 'local' && (

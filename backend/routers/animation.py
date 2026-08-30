@@ -63,7 +63,7 @@ def _resolve_property(clip, param: str):
 
     if isinstance(clip, TextClip):
         s = clip.style
-        # Text uses a generic _anim_params dict (via animEngine / applyParam pattern)
+        # Text uses a generic _anim_params dict  
         text_props = {
             "font_size": _get_anim_param(clip, "font_size",   s.fontSize),
             "fill_r": _get_anim_param(clip, "fill_r", s.color[0]),
@@ -159,10 +159,10 @@ class AddKeyframeRequest(BaseModel):
     value: float
     easing: str = "ease_both"  
     preset: str = ""
-    handle_in_frames:  float = -8.0   # negative = left side
-    handle_in_value:   float =  0.0
-    handle_out_frames: float =  8.0   # positive = right side
-    handle_out_value:  float =  0.0
+    handle_in_frames:  float | None = None    
+    handle_in_value: float | None = None
+    handle_out_frames: float | None = None   
+    handle_out_value:  float | None = None
 
 
 class UpdateKeyframeRequest(BaseModel):
@@ -185,14 +185,26 @@ def addKeyframe(clipId: str, req: AddKeyframeRequest):
 
     clip, _ = _find_clip(clipId)
 
+   
+    effective_preset = req.preset
+    if not effective_preset and req.easing.lower() in CURVE_PRESETS:
+        effective_preset = req.easing.lower()
+
     easing_int = _EASING_MAP.get(req.easing.lower(), 5)  # default ease_both
 
- 
-    if req.preset:
-        p = CURVE_PRESETS.get(req.preset)
+    if effective_preset:
+        p = CURVE_PRESETS.get(effective_preset)
         if p is None:
-            raise HTTPException(400, f"Unknown preset '{req.preset}'. Use GET /anim/presets.")
+            raise HTTPException(400, f"Unknown preset '{effective_preset}'. Use GET /anim/presets.")
         easing_int = _EASING_MAP.get(p["interp"], 2)  # bezier
+
+    # Determine whether the caller explicitly set handles  
+    explicit_handles = (
+        req.handle_in_frames is not None or
+        req.handle_out_frames is not None or
+        req.handle_in_value  is not None or
+        req.handle_out_value is not None
+    )
 
     try:
         prop = _resolve_property(clip, req.param)
@@ -205,16 +217,16 @@ def addKeyframe(clipId: str, req: AddKeyframeRequest):
         frame=local_frame,
         value=req.value,
         interp=Interpolation(easing_int),
-        handleInFrame=req.handle_in_frames,
-        handleInValue=req.handle_in_value,
-        handleOutFrame=req.handle_out_frames,
-        handleOutValue=req.handle_out_value,
+        handleInFrame=req.handle_in_frames  if req.handle_in_frames  is not None else -8.0,
+        handleInValue=req.handle_in_value   if req.handle_in_value   is not None else  0.0,
+        handleOutFrame=req.handle_out_frames if req.handle_out_frames is not None else  8.0,
+        handleOutValue=req.handle_out_value  if req.handle_out_value  is not None else  0.0,
     )
     prop._isAnimated = True
     prop._track.insertKeyframe(kf)
 
-    #   Preset 
-    if req.preset and req.preset in CURVE_PRESETS:
+    # Apply preset handles  
+    if effective_preset and effective_preset in CURVE_PRESETS and not explicit_handles:
         kfs_sorted = prop._track.keyframes()   # sorted by frame
         idx = next((i for i, k in enumerate(kfs_sorted) if k.frame == local_frame), None)
         if idx is not None:
@@ -223,13 +235,13 @@ def addKeyframe(clipId: str, req: AddKeyframeRequest):
                 prev = kfs_sorted[idx - 1]
                 sf = float(kf.frame - prev.frame)
                 sv = kf.value - prev.value
-                apply_preset_to_segment(req.preset, sf, sv, out_kf=prev, in_kf=kf)
+                apply_preset_to_segment(effective_preset, sf, sv, out_kf=prev, in_kf=kf)
    
             if idx < len(kfs_sorted) - 1:
                 nxt = kfs_sorted[idx + 1]
                 sf = float(nxt.frame - kf.frame)
                 sv = nxt.value - kf.value
-                apply_preset_to_segment(req.preset, sf, sv, out_kf=kf, in_kf=nxt)
+                apply_preset_to_segment(effective_preset, sf, sv, out_kf=kf, in_kf=nxt)
 
     notify("timeline")
     return {

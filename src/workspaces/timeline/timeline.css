@@ -520,3 +520,33 @@
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ── Rubber-band box-select overlay ─────────────────────────────────────────── */
+
+.tl-box-select {
+  border: 1.5px dashed rgba(0, 210, 255, 0.85);
+  background: rgba(0, 180, 255, 0.08);
+  border-radius: 2px;
+  animation: tl-box-select-dash 0.5s linear infinite;
+}
+
+@keyframes tl-box-select-dash {
+  to { stroke-dashoffset: -8; }
+}
+
+/* ── Selected clip highlight ─────────────────────────────────────────────────── */
+
+/* Applied by TimelineClip when clip.isSelected = true */
+.tl-clip--selected {
+  outline: 2px solid rgba(0, 210, 255, 0.9) !important;
+  outline-offset: -1px;
+  box-shadow:
+    0 0 0 2px rgba(0, 210, 255, 0.35),
+    0 0 10px rgba(0, 180, 255, 0.3) !important;
+  z-index: 5 !important;
+}
+
+.tl-clip--selected .tl-clip__label {
+  text-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
+}
+

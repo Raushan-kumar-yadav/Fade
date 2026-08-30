@@ -339,13 +339,32 @@ def bulk_update_clips(updates: list[dict]) -> str:
 
 @tool
 def get_selected_clips() -> str:
-    """Return info on ALL clips currently selected in the timeline (not just one).
+    """Return a flat list of ALL clips across all tracks in the current timeline.
 
-    Each entry includes clipId, trackId, type, startFrame, duration, and param values.
-    Use this before bulk operations so you know which clips the user has highlighted.
+    NOTE: The editor's visual selection state (which clips are highlighted) is
+    managed by the frontend and is not visible to the AI. Use this tool to get
+    the full clip list so you can identify clips by their properties (type,
+    startFrame, duration, name) and then act on them with update_clip() or
+    bulk_update_clips().
+
+    Each entry contains: clipId, trackId, trackIndex, type, name, startFrame,
+    duration. Use get_timeline_state() for the full hierarchical view.
     """
-    result = _get("/clips/selected-all")
-    return json.dumps(result, indent=2)
+    tl = _get("/timeline/state")
+    clips: list[dict] = []
+    for ti, track in enumerate(tl.get("tracks", [])):
+        track_id = track.get("trackId") or track.get("id", "")
+        for clip in track.get("clips", []):
+            clips.append({
+                "clipId":     clip.get("id") or clip.get("clipId", ""),
+                "trackId":    track_id,
+                "trackIndex": ti,
+                "type":       clip.get("type", ""),
+                "name":       clip.get("name", ""),
+                "startFrame": clip.get("startFrame", 0),
+                "duration":   clip.get("duration", 0),
+            })
+    return json.dumps(clips, indent=2)
 
 
 

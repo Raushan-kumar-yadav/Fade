@@ -1,0 +1,28 @@
+{
+  "ai": {
+    "vision_model": "moondream:latest",
+    "frame_interval": 4.0,
+    "whisper_backend": "faster",
+    "whisper_model": "small"
+  },
+  "generators": {
+    "image_provider": "stability",
+    "image_local_model": "gemma3:4b",
+    "comfyui_url": "http://127.0.0.1:8188",
+    "comfyui_path": "",
+    "comfyui_model": "v1-5-pruned-emaonly.safetensors",
+    "comfyui_width": 512,
+    "comfyui_height": 512,
+    "comfyui_steps": 20,
+    "comfyui_cfg": 7.0,
+    "stability_model": "core",
+    "stability_style": "",
+    "stability_width": 1024,
+    "stability_height": 1024,
+    "tts_provider": "local",
+    "tts_google_voice": "Kore",
+    "tts_local_model": "kokoro",
+    "video_provider": "google",
+    "video_local_model": "wan2.1"
+  }
+}

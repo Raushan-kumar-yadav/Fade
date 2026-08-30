@@ -15,6 +15,7 @@ const SCOPE_TO_EVENTS: Record<string, string[]> = {
   effects:  ['fade:effects-changed'],
   masks: ['fade:masks-changed'],
   transitions: ['fade:transition-changed'],
+  render:   ['fade:render-now'],     // fired by notify("render") after text/style changes
  
   agent_resume: ['fade:agent-resume'],
   // 'project' is fired on load/new  
