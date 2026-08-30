@@ -936,14 +936,11 @@ export default function LibraryPanel({ onAddToTimeline }: {
             {filtered.map(asset => {
               const idxStatus = asset.type === 'video' ? (indexStatuses[asset.assetId] ?? 'not_started') : null;
               return (
-                <div key={asset.assetId} style={{ position: 'relative' }}>
-                  {idxStatus && idxStatus !== 'done' && idxStatus !== 'not_started' && (
+                <div key={asset.assetId} className="lib__card-wrap">
+                  {idxStatus && idxStatus !== 'not_started' && (
                     <div className="lib__index-badge" data-status={idxStatus}>
-                      {idxStatus === 'pending' || idxStatus === 'running' ? '⏳' : idxStatus === 'error' ? '⚠' : ''}
+                      {idxStatus === 'pending' || idxStatus === 'running' ? '⏳' : idxStatus === 'done' ? '✦' : idxStatus === 'error' ? '⚠' : ''}
                     </div>
-                  )}
-                  {idxStatus === 'done' && (
-                    <div className="lib__index-badge" data-status="done">✦</div>
                   )}
                   <LibCard
                     type={asset.type}

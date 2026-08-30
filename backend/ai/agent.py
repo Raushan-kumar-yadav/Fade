@@ -27,9 +27,8 @@ from backend.ai.tools import ALL_TOOLS, set_port
 class AgentState(TypedDict):
     messages: Annotated[list, add_messages]
 
-#   LLM provider selection  
-
-#   Preferred models for tool-calling (in order)  
+ 
+#   Preferred models for tool-calling  
 
 _PREFERRED_MODELS = [
     "qwen2.5",
@@ -214,8 +213,8 @@ The page can listen for frame updates:
   window.addEventListener('fade:frame', (e) => { const {frame, time} = e.detail; ... });
 
 WEBCOMP TOOL CONTRACT (3 params — that's all you write):
-  js          → pure JavaScript animation logic (no <script> tags)
-  css         → pure CSS styles (no <style> tags)
+  js → pure JavaScript animation logic (no <script> tags)
+  css → pure CSS styles (no <style> tags)
   html_body   → optional inner DOM elements only (<div>, <canvas>, <h1>, <video>)
                 do NOT include <head>, <html>, <script src>, <link href>, or any CDN URLs.
 
@@ -256,6 +255,47 @@ WEBCOMP TYPICAL WORKFLOW:
   → add_webcomp_to_timeline(assetId, 0, 0, 150) # place on timeline (150 = 5 s)
   → set_webcomp_params(clipId, {"text": "Hello"}) # drive params
   → add_transitions_between_all_clips() # always add transitions
+
+VIDEO CONTEXT & SEMANTIC SEARCH:
+Videos imported into the library are automatically indexed in the background using a Vision LLM
+(Gemma 3 4B) + Whisper. Once indexed, query them with plain English.
+
+TOOLS:
+- get_index_status(asset_id)
+    Check if a video finished indexing. Status: not_started | pending | running | done | error.
+    Always check before using search or context tools on a specific asset.
+
+- search_video_scenes(query, top_k=5)
+    Search ALL indexed library videos by natural language scene description.
+    Returns: assetId, timestamp range (start_sec–end_sec), score, description.
+    Use to find the right clip BEFORE placing it. e.g. "car crash", "crowd cheering at sunset".
+    After finding a hit: confirm assetId via get_library(), then place_clip().
+
+- get_timeline_context(format="txt")
+    Full per-second scene + speech breakdown of EVERY video clip on the timeline.
+    Use for: "summarise my video", "what's at 30 seconds", "does this edit flow well?".
+
+- get_clip_context(clip_id, format="txt")
+    Deep-dive into one clip: scene descriptions + transcript from inPoint→outPoint.
+    Get clip_id from get_timeline_state() first.
+
+- get_asset_context(asset_id, format="txt")
+    Same as get_clip_context but for a library asset not yet on the timeline.
+    Use to preview what a raw video contains before placing it.
+
+SEMANTIC SEARCH WORKFLOW:
+  search_video_scenes("sunset timelapse")  # find matching segments
+  → get_index_status(assetId)              # confirm indexing done
+  → get_asset_context(assetId)             # preview full content
+  → place_clip(assetId, track=0, ...)      # add to timeline
+  → add_transitions_between_all_clips()    # polish
+
+RULES:
+1. Use search_video_scenes() whenever user says "find a clip of X" or "find a scene where Y".
+2. Always call get_index_status() before get_asset_context or get_clip_context.
+3. If status is pending/running, tell user indexing is in progress — retry shortly.
+4. get_timeline_context() is the best starting point for understanding the user's edit.
+5. Never fabricate timestamps — always read them from context tools.
 
 Current project context will be injected by the router.
 """

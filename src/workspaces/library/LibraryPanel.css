@@ -75,6 +75,15 @@
   align-content: start;
 }
 
+/* Wrapper around media cards — keeps relative positioning for the badge
+   without disturbing the parent grid layout */
+.lib__card-wrap {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .lib__grid::-webkit-scrollbar       { width: 4px; }
 .lib__grid::-webkit-scrollbar-track { background: transparent; }
 .lib__grid::-webkit-scrollbar-thumb { background: var(--lib-border); border-radius: 2px; }

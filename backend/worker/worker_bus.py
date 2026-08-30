@@ -1,13 +1,4 @@
-"""
-worker_bus.py — Singleton that owns the sandbox worker process and queues.
 
-Usage:
-    from backend.worker.worker_bus import bus
-    bus.start()
-    bus.submit_waveform("assetId", "path/to/file.mp4")
-    bus.submit_index_video("assetId", "path/to/file.mp4")
-    bus.get_index_status("assetId")  # → {"status": "pending"|"running"|"done"|"error", ...}
-"""
 from __future__ import annotations
 import multiprocessing
 import threading
@@ -21,7 +12,7 @@ from backend.worker import index_cache
 
 class WorkerBus:
     def __init__(self) -> None:
-        self._job_queue:    multiprocessing.Queue = multiprocessing.Queue()
+        self._job_queue: multiprocessing.Queue = multiprocessing.Queue()
         self._result_queue: multiprocessing.Queue = multiprocessing.Queue()
         self._process:  Optional[multiprocessing.Process] = None
         self._drain_thread: Optional[threading.Thread] = None
@@ -31,11 +22,14 @@ class WorkerBus:
         if self._process and self._process.is_alive():
             return  # already running
 
+        import sys
+        parent_syspath = sys.path[:]    
+
         self._running = True
         ctx = multiprocessing.get_context("spawn")
         self._process = ctx.Process(
             target=sandbox_worker.worker_main,
-            args=(self._job_queue, self._result_queue),
+            args=(self._job_queue, self._result_queue, parent_syspath),
             daemon=True,
             name="FadeSandboxWorker",
         )
@@ -77,7 +71,7 @@ class WorkerBus:
         except Exception:
             return -1
 
-    # ── Waveform helpers ──────────────────────────────────────────────────────
+    #   Waveform helpers  
 
     def get_cached(self, asset_id: str) -> dict | None:
         return waveform_cache.get(asset_id)
@@ -90,13 +84,13 @@ class WorkerBus:
                 return  # already cached
         waveform_cache.set_pending(asset_id)
         self.submit({
-            "type":     "waveform",
+            "type": "waveform",
             "assetId":  asset_id,
             "filepath": filepath,
-            "bins":     bins,
+            "bins": bins,
         })
 
-    # ── VideoSemantic indexing helpers ────────────────────────────────────────
+    # VideoSemantic indexing helpers  
 
     def submit_index_video(self, asset_id: str, filepath: str, port: int = 8000) -> None:
         """Enqueue a VideoSemantic indexing job (fire-and-forget, shows in GUI progress)."""
@@ -104,18 +98,54 @@ class WorkerBus:
         if existing and existing.get("status") in ("pending", "running", "done"):
             return  # already queued or done
         index_cache.set_pending(asset_id)
+
+         
+        import shutil
+        ffmpeg_exe = shutil.which("ffmpeg") or ""
+        if not ffmpeg_exe:
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _candidates = [
+                os.path.join(_root, "tools", "ffmpeg", "ffmpeg.exe"),
+                r"D:\ffmpeg\FFmpeg\ffmpeg.exe",
+                r"C:\ffmpeg\bin\ffmpeg.exe",
+            ]
+            for c in _candidates:
+                if os.path.isfile(c):
+                    ffmpeg_exe = c
+                    break
+ 
+        from backend.config.global_config import cfg as _cfg
+        vision_model   = _cfg.get("ai.vision_model",   "moondream:latest")
+        frame_interval = _cfg.get("ai.frame_interval", 4.0)
+
+        print(f"[WorkerBus] index_video queued for {asset_id[:8]} model={vision_model} interval={frame_interval}s", flush=True)
         self.submit({
-            "type":     "index_video",
-            "assetId":  asset_id,
+            "type": "index_video",
+            "assetId": asset_id,
             "filepath": filepath,
-            "port":     port,
+            "port": port,
+            "ffmpeg_exe": ffmpeg_exe,
+            "vision_model":   vision_model,
+            "frame_interval": frame_interval,
         })
-        print(f"[WorkerBus] index_video queued for {asset_id[:8]}", flush=True)
+
+    def submit_index_image(self, asset_id: str, filepath: str) -> None:
+        """Queue a single-image description + ChromaDB save job."""
+        from backend.config.global_config import cfg as _cfg
+        vision_model = _cfg.get("ai.vision_model", "moondream:latest")
+        index_cache.set(asset_id, "pending")
+        print(f"[WorkerBus] index_image queued for {asset_id[:8]} model={vision_model}", flush=True)
+        self.submit({
+            "type": "index_image",
+            "assetId": asset_id,
+            "filepath": filepath,
+            "vision_model": vision_model,
+        })
 
     def get_index_status(self, asset_id: str) -> dict | None:
         return index_cache.get(asset_id)
 
-    # ── Result drain ──────────────────────────────────────────────────────────
+    #   Result drain  
 
     def _drain_results(self) -> None:
         """Runs in a daemon thread in the main process. Never blocks FastAPI."""
@@ -139,7 +169,7 @@ class WorkerBus:
             elif rtype == "index_video_done":
                 index_cache.set_done(asset_id, result.get("chunks", 0))
                 print(f"[WorkerBus] index_video done: {asset_id[:8]} ({result.get('chunks')} chunks)", flush=True)
-                # Notify frontend via SSE so GUI progress widget can update
+                # Notify frontend  
                 try:
                     from backend.events import notify
                     notify("library")
@@ -151,5 +181,5 @@ class WorkerBus:
                 print(f"[WorkerBus] index_video error: {asset_id[:8]}: {result.get('message')}", flush=True)
 
 
-# Global singleton — import this everywhere
+# Global singleton  
 bus = WorkerBus()

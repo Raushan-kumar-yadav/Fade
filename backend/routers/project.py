@@ -271,3 +271,56 @@ def postSettings(payload: SettingsPayload):
         import backend.media.decoder.videoDecoder as _vd
         _vd._DECODER_MODE = payload.decoderMode
     return _get_settings()
+
+
+#   AI Indexing settings
+
+from backend.config.global_config import cfg as _cfg
+
+class AiSettingsPayload(BaseModel):
+    visionModel:    str   | None = None
+    frameInterval:  float | None = None
+    whisperBackend: str   | None = None   # "faster" | "openai"
+    whisperModel:   str   | None = None   # tiny | base | small | medium | large
+
+
+def _get_ai_settings() -> dict:
+    """Return current AI indexing settings + list of installed Ollama models."""
+    available: list[str] = []
+    try:
+        import ollama
+        available = [m.model for m in ollama.list().models]
+    except Exception:
+        pass
+
+    return {
+        "visionModel":     _cfg.get("ai.vision_model",    "moondream:latest"),
+        "frameInterval":   _cfg.get("ai.frame_interval",  4.0),
+        "whisperBackend":  _cfg.get("ai.whisper_backend", "faster"),
+        "whisperModel":    _cfg.get("ai.whisper_model",   "small"),
+        "availableModels": available,
+    }
+
+
+@router.get("/settings/ai")
+def getAiSettings():
+    return _get_ai_settings()
+
+
+@router.post("/settings/ai")
+def postAiSettings(payload: AiSettingsPayload):
+    if payload.visionModel is not None:
+        _cfg.set("ai.vision_model", payload.visionModel.strip())
+    if payload.frameInterval is not None:
+        _cfg.set("ai.frame_interval", max(1.0, min(30.0, payload.frameInterval)))
+    if payload.whisperBackend is not None and payload.whisperBackend in ("faster", "openai"):
+        _cfg.set("ai.whisper_backend", payload.whisperBackend)
+        from backend.ai import whisper_tool as _wt
+        _wt._model_cache.clear()
+        print(f"[Settings] Whisper backend → {payload.whisperBackend} (cache cleared)", flush=True)
+    if payload.whisperModel is not None and payload.whisperModel in ("tiny", "base", "small", "medium", "large", "large-v2", "large-v3"):
+        _cfg.set("ai.whisper_model", payload.whisperModel)
+        from backend.ai import whisper_tool as _wt
+        _wt._model_cache.clear()
+        print(f"[Settings] Whisper model → {payload.whisperModel} (cache cleared)", flush=True)
+    return _get_ai_settings()

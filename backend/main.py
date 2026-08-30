@@ -63,6 +63,8 @@ from backend.routers import (
     audio,
     export_,
     search,
+    context,
+    scene_tools,
 )
 
 
@@ -257,6 +259,7 @@ app.include_router(transitions.router)
 app.include_router(audio.router)
 app.include_router(export_.router)
 app.include_router(search.router)
+app.include_router(context.router)
 
  
 from fastapi.responses import FileResponse as _FileResponse

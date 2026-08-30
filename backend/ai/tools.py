@@ -1127,3 +1127,122 @@ WEBCOMP_TOOLS = [
 
 # Extend ALL_TOOLS 
 ALL_TOOLS.extend(WEBCOMP_TOOLS)
+
+
+# VideoSemantic and Context tools
+
+@tool
+def get_timeline_context(format: str = "txt") -> str:
+    """Get a rich semantic breakdown of every video clip currently on the timeline.
+
+    Returns per-second scene descriptions (from Vision LLM) and Whisper speech transcript
+    for each clip, merged with timeline position info. Use this to understand WHAT IS
+    HAPPENING visually and audibly across the entire edit.
+
+    Args:
+        format: "txt" for human-readable (default, best for reasoning), "json" for structured data.
+    """
+    r = _get(f"/context/timeline?format={format}")
+    if isinstance(r, str):
+        return r
+    return json.dumps(r, indent=2)
+
+
+@tool
+def get_clip_context(clip_id: str, format: str = "txt") -> str:
+    """Get frame-by-frame semantic context for a specific clip on the timeline.
+
+    Returns scene descriptions and speech transcript from the clip's inPoint to outPoint,
+    at ~2 second intervals. Use this to understand exactly what happens inside a single clip.
+
+    Args:
+        clip_id: The clipId of the clip (get from get_timeline_state).
+        format: "txt" for human-readable (default), "json" for structured data.
+    """
+    r = _get(f"/context/clip/{clip_id}?format={format}")
+    if isinstance(r, str):
+        return r
+    return json.dumps(r, indent=2)
+
+
+@tool
+def get_asset_context(asset_id: str, format: str = "txt") -> str:
+    """Get full semantic context for a library asset — even if it's not on the timeline yet.
+
+    Returns all indexed scene descriptions and transcript for the entire video file.
+    Use this to preview what a video contains before placing it on the timeline.
+
+    Args:
+        asset_id: The assetId from the library (get from get_library).
+        format: "txt" for human-readable (default), "json" for structured data.
+    """
+    r = _get(f"/context/asset/{asset_id}?format={format}")
+    if isinstance(r, str):
+        return r
+    return json.dumps(r, indent=2)
+
+
+@tool
+def search_video_scenes(query: str, top_k: int = 5) -> str:
+    """Search all indexed library videos for scenes matching a natural language description.
+
+    Uses semantic vector search (ChromaDB + sentence embeddings) to find the most relevant
+    video segments. Returns ranked results with assetId, timestamp range, and relevance score.
+
+    Examples:
+        - "car crash on highway"
+        - "person waving at camera"
+        - "sunset over mountains"
+        - "crowd cheering"
+
+    Args:
+        query: Natural language scene description to search for.
+        top_k: Number of top results to return (default 5, max 20).
+    """
+    data = _get(f"/search/video?q={query}&top_k={top_k}")
+    results = data.get("results", [])
+    if not results:
+        return f"No matching scenes found for: '{query}'"
+    lines = [f"Scene search results for: '{query}'", ""]
+    for i, hit in enumerate(results, 1):
+        score = round(hit.get("score", 0) * 100)
+        lines.append(f"{i}. [{score}% match] assetId={hit['assetId']}")
+        lines.append(f"   Time: {hit['start_sec']:.1f}s – {hit['end_sec']:.1f}s")
+        lines.append(f"   {hit.get('text','')[:200]}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+@tool
+def get_index_status(asset_id: str) -> str:
+    """Check the VideoSemantic indexing status for a specific video asset.
+
+    Returns one of: not_started, pending, running, done, error.
+    The index must be 'done' before get_asset_context or search_video_scenes will work.
+
+    Args:
+        asset_id: The assetId to check.
+    """
+    data = _get(f"/library/index-status/{asset_id}")
+    status = data.get("status", "unknown")
+    chunks = data.get("chunks", 0)
+    msg    = data.get("message", "")
+    if status == "done":
+        return f"Asset {asset_id[:8]}: indexed ✓ ({chunks} chunks ready for search)"
+    elif status in ("pending", "running"):
+        return f"Asset {asset_id[:8]}: indexing in progress... ({status})"
+    elif status == "error":
+        return f"Asset {asset_id[:8]}: indexing failed — {msg}"
+    else:
+        return f"Asset {asset_id[:8]}: not yet indexed. Drop the video into the library to start."
+
+
+VIDEOSEMANTIC_TOOLS = [
+    get_timeline_context,
+    get_clip_context,
+    get_asset_context,
+    search_video_scenes,
+    get_index_status,
+]
+
+ALL_TOOLS.extend(VIDEOSEMANTIC_TOOLS)

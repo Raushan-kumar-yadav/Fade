@@ -53,8 +53,9 @@ def _import_file(filepath: str) -> dict:
                     _worker_bus.submit_waveform(a.assetId, a.filepath)
                 except Exception:
                     pass
+            mtype = a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType)
             return {"assetId": a.assetId, "filename": os.path.basename(a.filepath),
-                    "filepath": a.filepath, "type": a.mediaType, "hasAudio": a.hasAudio}
+                    "filepath": a.filepath, "type": mtype, "hasAudio": a.hasAudio}
     assetId = str(uuid.uuid4())
     asset = MediaAsset(filepath=filepath, assetId=assetId)
     _library[assetId] = asset
@@ -63,8 +64,10 @@ def _import_file(filepath: str) -> dict:
             _worker_bus.submit_waveform(assetId, filepath)
         except Exception:
             pass
+    mtype = asset.mediaType.value if hasattr(asset.mediaType, 'value') else str(asset.mediaType)
+    print(f"[Library] Imported {os.path.basename(filepath)} → assetId={assetId[:8]} type={mtype}", flush=True)
     return {"assetId": assetId, "filename": os.path.basename(filepath),
-            "filepath": filepath, "type": asset.mediaType, "hasAudio": asset.hasAudio}
+            "filepath": filepath, "type": mtype, "hasAudio": asset.hasAudio}
 
 
 @router.get("/library/assets")
@@ -90,13 +93,25 @@ def importAsset(req: ImportRequest):
     result = _import_file(req.filepath)
     from backend.events import notify; notify("library")
 
-     
     if result.get("type") == "video":
+        print(f"[Library] Queueing VideoSemantic index for {result['assetId'][:8]} ({os.path.basename(req.filepath)})", flush=True)
         try:
             port = int(os.environ.get("BACKEND_PORT", 8000))
             _worker_bus.submit_index_video(result["assetId"], req.filepath, port=port)
+            print(f"[Library] ✓ index_video submitted to worker bus", flush=True)
         except Exception as _e:
-            print(f"[Library] VideoSemantic submit error (non-fatal): {_e}", flush=True)
+            print(f"[Library] ✗ VideoSemantic submit error (non-fatal): {_e}", flush=True)
+
+    elif result.get("type") == "image":
+        print(f"[Library] Queueing ImageSemantic index for {result['assetId'][:8]} ({os.path.basename(req.filepath)})", flush=True)
+        try:
+            _worker_bus.submit_index_image(result["assetId"], req.filepath)
+            print(f"[Library] ✓ index_image submitted to worker bus", flush=True)
+        except Exception as _e:
+            print(f"[Library] ✗ ImageSemantic submit error (non-fatal): {_e}", flush=True)
+
+    else:
+        print(f"[Library] Skipping index — type={result.get('type')} ({os.path.basename(req.filepath)})", flush=True)
 
     return result
 
