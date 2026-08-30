@@ -3,14 +3,12 @@ from __future__ import annotations
 import os
 import pathlib
 
-# Path to bundled whisper models  
+# Path to bundled whisper models
 _HERE = pathlib.Path(__file__).parent
 WHISPER_MODELS_DIR = _HERE / "whisper_models"
 
-# Default model to use
 DEFAULT_MODEL = os.environ.get("FADE_WHISPER_MODEL", "small")
 
-#   Model cache  
 _model_cache: dict[str, object] = {}
 
 
@@ -65,21 +63,20 @@ def get_model(model_name: str | None = None):
 
 def transcribe(filepath: str, model_name: str | None = None,
                language: str | None = None) -> list[dict]:
+     
     from backend.config.global_config import cfg
     model_name = model_name or cfg.get("ai.whisper_model", DEFAULT_MODEL)
-
     model = get_model(model_name)
     backend = getattr(model, "_backend", "openai")
 
     print(f"[Whisper] Transcribing {filepath} (backend={backend})...", flush=True)
 
     if backend == "faster":
-        # faster-whisper API
         segments_iter, info = model.transcribe(
             filepath,
             language=language,
             word_timestamps=False,
-            vad_filter=True,           # skip silent parts — extra speedup
+            vad_filter=True,
             vad_parameters={"min_silence_duration_ms": 500},
         )
         print(f"[Whisper] Detected language: {info.language} ({info.language_probability:.0%})", flush=True)
@@ -87,11 +84,10 @@ def transcribe(filepath: str, model_name: str | None = None,
         for seg in segments_iter:
             segments.append({
                 "start_s": round(seg.start, 3),
-                "end_s":   round(seg.end, 3),
-                "text":    seg.text.strip(),
+                "end_s": round(seg.end, 3),
+                "text": seg.text.strip(),
             })
     else:
-        # openai-whisper API
         options = {}
         if language:
             options["language"] = language
@@ -106,6 +102,101 @@ def transcribe(filepath: str, model_name: str | None = None,
 
     print(f"[Whisper] Done — {len(segments)} segments", flush=True)
     return segments
+
+
+def transcribe_with_words(
+    filepath: str,
+    model_name: str | None = None,
+    language: str | None = None,
+    vad: bool = True,
+    min_silence_ms: int = 500,
+) -> list[dict]:
+    """
+    Transcribe audio with word-level timestamps.
+
+    Returns list of segments, each with:
+      {
+        start_s: float,        # segment start (seconds)
+        end_s:   float,        # segment end   (seconds)
+        text:    str,          # full segment text
+        words: [               # per-word timing
+          { word: str, start_s: float, end_s: float }
+        ]
+      }
+
+    Silent sections are skipped when vad=True (default).
+    """
+    from backend.config.global_config import cfg
+    model_name = model_name or cfg.get("ai.whisper_model", DEFAULT_MODEL)
+    model = get_model(model_name)
+    backend = getattr(model, "_backend", "openai")
+
+    print(f"[Whisper] Transcribing with word timestamps: {filepath} (backend={backend})", flush=True)
+
+    segments: list[dict] = []
+
+    if backend == "faster":
+        segments_iter, info = model.transcribe(
+            filepath,
+            language=language,
+            word_timestamps=True,
+            vad_filter=vad,
+            vad_parameters={"min_silence_duration_ms": min_silence_ms},
+        )
+        print(f"[Whisper] Language: {info.language} ({info.language_probability:.0%})", flush=True)
+        for seg in segments_iter:
+            words = []
+            for w in (seg.words or []):
+                words.append({
+                    "word":    w.word.strip(),
+                    "start_s": round(w.start, 3),
+                    "end_s":   round(w.end,   3),
+                })
+            segments.append({
+                "start_s": round(seg.start, 3),
+                "end_s":   round(seg.end,   3),
+                "text":    seg.text.strip(),
+                "words":   words,
+            })
+    else:
+        # openai-whisper
+        options: dict = {"word_timestamps": True}
+        if language:
+            options["language"] = language
+        result = model.transcribe(filepath, **options)
+        for seg in result.get("segments", []):
+            words = []
+            for w in seg.get("words", []):
+                words.append({
+                    "word":    w.get("word", "").strip(),
+                    "start_s": round(w.get("start", seg["start"]), 3),
+                    "end_s":   round(w.get("end",   seg["end"]),   3),
+                })
+            segments.append({
+                "start_s": round(seg["start"], 3),
+                "end_s":   round(seg["end"],   3),
+                "text":    seg["text"].strip(),
+                "words":   words,
+            })
+
+    print(f"[Whisper] Done — {len(segments)} segments, "
+          f"{sum(len(s['words']) for s in segments)} words", flush=True)
+    return segments
+
+
+def get_speech_segments(
+    filepath: str,
+    model_name: str | None = None,
+    min_silence_ms: int = 500,
+) -> list[dict]:
+    """
+    VAD-only pass: returns speech time windows without full transcription.
+    Faster — used by remove_silence where we need timing but not text.
+
+    Returns: [{ start_s, end_s }]
+    """
+    segs = transcribe(filepath, model_name=model_name)
+    return [{"start_s": s["start_s"], "end_s": s["end_s"]} for s in segs if s.get("text")]
 
 
 def segments_to_srt(segments: list[dict]) -> str:

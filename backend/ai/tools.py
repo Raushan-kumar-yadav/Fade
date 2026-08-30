@@ -1364,3 +1364,113 @@ SCENE_CLIP_TOOLS = [
 ]
 
 ALL_TOOLS.extend(SCENE_CLIP_TOOLS)
+
+
+# Audio / Whisper tools
+
+@tool
+def generate_captions(
+    clip_id: str,
+    min_words: int = 2,
+    language: str = "",
+) -> str:
+    """
+    Automatically transcribe the audio in a video clip (using Whisper) and place
+    caption TextClips on the timeline, time-synced to each speech segment.
+
+    Captions appear on a new track directly above the source clip named
+    'Captions - <filename>'. Default style: white bold text, black outline,
+    centered, positioned in the lower third.
+
+    Args:
+        clip_id:   The clipId of the video clip to caption.
+        min_words: Merge segments shorter than this word count into the previous
+                   segment (avoids too-short flashing captions). Default: 2.
+        language:  Force a language code (e.g. 'en', 'hi', 'fr').
+                   Leave empty for auto-detection (default).
+    """
+    body = {"clipId": clip_id, "minWords": min_words}
+    if language:
+        body["language"] = language
+    result = _post("/audio/generate-captions", body)
+    msg = result.get("message", "")
+    if msg:
+        return msg
+    count = result["captionCount"]
+    track = result["trackName"]
+    segs  = result.get("segments", [])
+    preview = "\n".join(
+        f"  [{s['startSec']:.1f}s] \"{s['text'][:60]}\""
+        for s in segs[:5]
+    )
+    suffix = f"\n  ...and {count - 5} more" if count > 5 else ""
+    return (
+        f"Generated {count} caption clip(s) on track '{track}':\n"
+        + preview + suffix
+    )
+
+
+@tool
+def remove_silence(
+    clip_id: str,
+    min_silence_ms: int = 500,
+    padding_ms: int = 80,
+) -> str:
+    """
+    Remove silent parts from a video clip by splitting it into speech-only
+    segments placed back-to-back on the timeline. The original clip is
+    replaced -- gaps are closed so the content is more compact.
+
+    Uses Whisper VAD (Voice Activity Detection) to detect speech regions.
+
+    Args:
+        clip_id:        The clipId of the VideoClip to process.
+        min_silence_ms: Minimum gap duration (ms) to treat as silence and remove.
+                        Smaller values = more aggressive trimming. Default: 500.
+        padding_ms:     How many ms of audio to keep before/after each speech
+                        window (prevents abrupt cut-ins). Default: 80.
+    """
+    result = _post("/audio/remove-silence", {
+        "clipId":       clip_id,
+        "minSilenceMs": min_silence_ms,
+        "paddingMs":    padding_ms,
+    })
+    msg = result.get("message", "")
+    if msg:
+        return msg
+    return (
+        f"Removed {result['removedSilenceSec']:.2f}s of silence from clip.\n"
+        f"Original: {result['originalDuration']:.2f}s -> "
+        f"New: {result['newDuration']:.2f}s "
+        f"({result['clipCount']} speech segment(s))"
+    )
+
+
+@tool
+def get_transcript(clip_id: str, word_level: bool = False) -> str:
+    """
+    Return the raw Whisper transcript for a video clip without modifying
+    the timeline. Useful for reviewing speech content before captioning.
+
+    Args:
+        clip_id:    The clipId of the video clip to transcribe.
+        word_level: If True, include per-word timestamps in each segment.
+    """
+    result = _get(f"/audio/transcribe/{clip_id}?words={'true' if word_level else 'false'}")
+    segs = result.get("segments", [])
+    if not segs:
+        return "No speech detected in clip."
+    lines = [f"Transcript - {os.path.basename(result.get('filepath', clip_id))}:"]
+    for s in segs:
+        line = f"  [{s['start_s']:.1f}s-{s['end_s']:.1f}s] {s['text']}"
+        lines.append(line)
+        if word_level and s.get("words"):
+            word_str = " | ".join(
+                f"{w['word']}({w['start_s']:.2f})" for w in s["words"][:8]
+            )
+            lines.append(f"    words: {word_str}")
+    return "\n".join(lines)
+
+
+AUDIO_TOOLS = [generate_captions, remove_silence, get_transcript]
+ALL_TOOLS.extend(AUDIO_TOOLS)

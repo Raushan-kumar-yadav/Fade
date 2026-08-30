@@ -231,10 +231,16 @@ def _get_frame_data(frame: int) -> dict:
             ctype = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
             fpath = getattr(clip, "filepath", "")
             if not fpath:
-                aid = getattr(clip, "assetId", "")
-                ast = _library.get(aid)
-                if ast:
-                    fpath = getattr(ast, "filepath", "")
+                # WebCompClip has no filepath — use the pseudo-path the C++ renderer
+                # uses to look up frames pushed via schedPushFrame / pushWebCompFrame
+                wid = getattr(clip, "webcompId", "")
+                if wid:
+                    fpath = f"webcomp://{wid}"
+                else:
+                    aid = getattr(clip, "assetId", "")
+                    ast = _library.get(aid)
+                    if ast:
+                        fpath = getattr(ast, "filepath", "")
             try: sf = clip.sourceFrame(frame)
             except Exception: sf = 0
             try: clip.evaluateAll(frame)

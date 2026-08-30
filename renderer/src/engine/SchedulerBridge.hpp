@@ -23,9 +23,9 @@ void schedPrefetchAround(const std::string &clipId, int64_t anchorFrame,
                          int radius = 8);
 
 void schedSetDeviceContext(void *deviceCtx);
-void schedSetPreviewScale(float scale); // clears cache and reopens decoders at new scale
+void schedSetPreviewScale(float scale);
 
-// Push externally-captured RGBA data (e.g. from WebComp offscreen renderer) into the frame cache
+// Push externally-captured RGBA data
 void schedPushFrame(const std::string &pseudoPath, int64_t frame,
-                    const uint8_t *rgba, size_t dataSize,
-                    uint32_t width, uint32_t height);
+                    const uint8_t *rgba, size_t dataSize, uint32_t width,
+                    uint32_t height);
