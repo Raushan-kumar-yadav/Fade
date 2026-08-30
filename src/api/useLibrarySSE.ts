@@ -16,6 +16,8 @@ const SCOPE_TO_EVENTS: Record<string, string[]> = {
   effects:  ['fade:effects-changed'],
   masks:    ['fade:masks-changed'],
   transitions: ['fade:transition-changed'],
+  // agent_resume: fired when a background job the agent scheduled completes
+  agent_resume: ['fade:agent-resume'],
   // 'project' is fired on load/new — refreshes everything
   project:  ['fade:library-changed', 'fade:webcomps-changed', 'fade:comps-changed',
              'fade:tracks-changed', 'fade:timeline-changed'],
@@ -46,12 +48,22 @@ export function useLibrarySSE(): void {
       // Listen for every named scope and fire its mapped frontend events
       const scopes = Object.keys(SCOPE_TO_EVENTS);
       for (const scope of scopes) {
+        if (scope === 'agent_resume') continue;  
         es.addEventListener(scope, () => {
           for (const eventName of SCOPE_TO_EVENTS[scope]) {
             window.dispatchEvent(new CustomEvent(eventName));
           }
         });
       }
+
+      // agent_resume carries a JSON payload  
+      es.addEventListener('agent_resume', (e: Event) => {
+        try {
+          const msg = e as MessageEvent;
+          const data = JSON.parse(msg.data);
+          window.dispatchEvent(new CustomEvent('fade:agent-resume', { detail: data }));
+        } catch {   }
+      });
 
  
       // update individual job cards  
@@ -60,7 +72,7 @@ export function useLibrarySSE(): void {
           const msg = e as MessageEvent;
           const data = JSON.parse(msg.data);
           window.dispatchEvent(new CustomEvent('fade:job-update', { detail: data }));
-        } catch { /* ignore parse errors */ }
+        } catch {  }
       });
 
       es.onerror = () => {

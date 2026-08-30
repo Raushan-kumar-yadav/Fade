@@ -80,88 +80,102 @@ function ChatPanel({ collapsed, onToggle }: ChatPanelProps) {
     })
   }, [])
 
-  async function send() {
-    const text = input.trim()
-    if (!text || busy) return
+  // Auto-resume: listen for agent_resume SSE events and trigger a new agent turn
+  const sendRef = useRef<((text: string, isResume?: boolean) => void) | null>(null)
+  sendRef.current = (text: string, isResume = false) => {
+    if (busy) return
     setInput('')
     setBusy(true)
 
-    // Add user message
-    appendMsg({ id: uid(), role: 'user', text })
-    historyRef.current = [...historyRef.current, { role: 'user', text }]
-
-    // Create placeholder AI message for streaming
+    if (!isResume) {
+      appendMsg({ id: uid(), role: 'user', text })
+      historyRef.current = [...historyRef.current, { role: 'user', text }]
+    }
     const aiId = uid()
     appendMsg({ id: aiId, role: 'ai', text: '', streaming: true })
-
     let aiText = ''
     abortRef.current = new AbortController()
 
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/ai/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, history: historyRef.current.slice(-20), port }),
-        signal: abortRef.current.signal,
-      })
-
+    fetch(`http://127.0.0.1:${port}/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history: historyRef.current.slice(-20), port }),
+      signal: abortRef.current.signal,
+    }).then(res => {
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const raw = decoder.decode(value)
-        for (const line of raw.split('\n')) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const evt = JSON.parse(line.slice(6))
-
-            if (evt.type === 'token') {
-              aiText += evt.content
-              patchLast({ text: aiText, streaming: true })
-              scrollBottom()
-
-            } else if (evt.type === 'tool_call') {
-              appendMsg({
-                id: uid(),
-                role: 'tool_call',
-                text: '',
-                toolName: evt.name,
-                toolArgs: evt.args,
-              })
-
-            } else if (evt.type === 'tool_result') {
-              appendMsg({
-                id: uid(),
-                role: 'tool_result',
-                text: evt.content,
-                toolName: evt.name,
-              })
-              // Resume streaming placeholder
-              const nextId = uid()
-              appendMsg({ id: nextId, role: 'ai', text: '', streaming: true })
-              aiText = ''
-
-            } else if (evt.type === 'done') {
-              patchLast({ streaming: false })
-              // Remove empty trailing AI messages
-              setMessages(prev => prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai'))
-
-            } else if (evt.type === 'error') {
-              patchLast({ text: `⚠ Error: ${evt.message}`, streaming: false, role: 'error' })
-            }
-          } catch { /* ignore parse errors */ }
-        }
-      }
-    } catch (err: any) {
+      const pump = (): Promise<void> =>
+        reader.read().then(({ done, value }) => {
+          if (done) return
+          const raw = decoder.decode(value)
+          for (const line of raw.split('\n')) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const evt = JSON.parse(line.slice(6))
+              if (evt.type === 'token') {
+                aiText += evt.content
+                patchLast({ text: aiText, streaming: true })
+                scrollBottom()
+              } else if (evt.type === 'tool_call') {
+                appendMsg({ id: uid(), role: 'tool_call', text: '', toolName: evt.name, toolArgs: evt.args })
+              } else if (evt.type === 'tool_result') {
+                appendMsg({ id: uid(), role: 'tool_result', text: evt.content, toolName: evt.name })
+                appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
+                aiText = ''
+              } else if (evt.type === 'done') {
+                patchLast({ streaming: false })
+                setMessages(prev => prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai'))
+              } else if (evt.type === 'error') {
+                patchLast({ text: `⚠ Error: ${evt.message}`, streaming: false, role: 'error' })
+              }
+            } catch { /* ignore parse errors */ }
+          }
+          return pump()
+        })
+      return pump()
+    }).catch((err: any) => {
       if (err.name !== 'AbortError') {
         patchLast({ text: `⚠ Connection error: ${err.message}`, streaming: false, role: 'error' })
       }
-    }
+    }).finally(() => {
+      historyRef.current = [...historyRef.current, { role: 'ai', text: aiText }]
+      setBusy(false)
+    })
+  }
 
-    historyRef.current = [...historyRef.current, { role: 'ai', text: aiText }]
-    setBusy(false)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail ?? {}
+      const intent = detail.intent ?? 'continue the task'
+      const assetId = detail.assetId ?? ''
+      const jobId   = (detail.job_id ?? '').slice(0, 8)
+      const type    = detail.type ?? 'job'
+
+      // Build the resume message the agent will see
+      const resumeText = [
+        `[BACKGROUND JOB DONE] Job ${jobId} (${type}) completed.`,
+        assetId ? `Asset ready: assetId=${assetId}.` : '',
+        `Original intent: ${intent}.`,
+        'Please continue the task automatically.',
+      ].filter(Boolean).join(' ')
+
+      // Show a system note in the chat so user knows agent is resuming
+      appendMsg({
+        id: uid(),
+        role: 'tool_result',
+        text: `⚙ Background task complete — agent resuming…\n${intent}`,
+        toolName: type,
+      })
+      sendRef.current?.(resumeText, true)
+    }
+    window.addEventListener('fade:agent-resume', handler)
+    return () => window.removeEventListener('fade:agent-resume', handler)
+  }, [port, busy, appendMsg])
+
+  function send() {
+    const text = input.trim()
+    if (!text || busy) return
+    sendRef.current?.(text)
   }
 
   function stop() {
@@ -172,6 +186,7 @@ function ChatPanel({ collapsed, onToggle }: ChatPanelProps) {
   function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
+
 
   return (
     <div className={`chat-panel${collapsed ? ' chat-panel--collapsed' : ''}`}>

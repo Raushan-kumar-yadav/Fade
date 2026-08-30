@@ -41,7 +41,7 @@ def _make_job(
     with _lock:
         _jobs[job_id] = job
         _order.append(job_id)
-        # Evict oldest beyond MAX_JOBS
+         
         while len(_order) > MAX_JOBS:
             old = _order.pop(0)
             _jobs.pop(old, None)
@@ -210,6 +210,13 @@ def _run_video_download(parent_job_id: str, query: str, num_videos: int,
                     message=f"{label_pfx}Ready: {r.get('title', '')[:40]}",
                     assetIds=[asset_id])
         _notify("library")
+        # Notify agent if it scheduled this job
+        try:
+            from backend.ai.agent_jobs import on_job_done as _aj
+            _aj(parent_job_id, {"assetId": asset_id, "type": "video_download",
+                                "title": r.get("title", "")})
+        except Exception:
+            pass
 
     except Exception as exc:
         _update_job(parent_job_id, status="error", message="Failed", error=str(exc))
@@ -246,6 +253,12 @@ def _run_image_download(parent_job_id: str, query: str,
                     message=f"{label_pfx}Ready",
                     assetIds=[asset_id])
         _notify("library")
+        # Notify agent if it scheduled this job
+        try:
+            from backend.ai.agent_jobs import on_job_done as _aj
+            _aj(parent_job_id, {"assetId": asset_id, "type": "image_download"})
+        except Exception:
+            pass
 
     except Exception as exc:
         _update_job(parent_job_id, status="error", message="Failed", error=str(exc))
@@ -276,6 +289,13 @@ def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
                     message=f"Generated {len(asset_ids)} image(s)",
                     assetIds=asset_ids)
         _notify("library")
+        # Notify agent if it scheduled this job
+        try:
+            from backend.ai.agent_jobs import on_job_done as _aj
+            for aid in asset_ids:
+                _aj(job_id, {"assetId": aid, "type": "image_generate"})
+        except Exception:
+            pass
 
     except Exception as exc:
         _update_job(job_id, status="error", message="Failed", error=str(exc))

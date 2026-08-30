@@ -336,7 +336,7 @@ def download_videos(query: str, num_videos: int = 2) -> str:
     import time as _time
     num_videos = max(1, min(num_videos, 5))
     resp = _post("/jobs/video-download", {"query": query, "numVideos": num_videos})
-    # Backend creates one job per video; jobIds lists all of them
+    # Backend creates one job per video; 
     job_ids: list[str] = resp.get("jobIds", [resp["jobId"]])
 
     pending = set(job_ids)
@@ -363,6 +363,62 @@ def download_videos(query: str, num_videos: int = 2) -> str:
     if errors:
         result["errors"] = errors
     return json.dumps(result, indent=2)
+
+@tool
+def schedule_download(query: str, num_videos: int = 2, intent: str = "") -> str:
+    """Schedule a background YouTube video download — returns IMMEDIATELY with jobIds.
+    The agent will be automatically resumed when all downloads finish.
+    Use this instead of download_videos() for non-blocking workflows.
+
+    Args:
+        query: Search query, e.g. 'cinematic sunset 4k'.
+        num_videos: Number of videos to download (default 2, max 5).
+        intent: What you plan to do with these videos once downloaded.
+                e.g. 'make a compilation', 'use as B-roll for the intro'.
+
+    Returns JSON with jobIds. Agent resumes automatically when done.
+    """
+    from backend.ai import agent_jobs as _aj
+    num_videos = max(1, min(num_videos, 5))
+    resp = _post("/jobs/video-download", {"query": query, "numVideos": num_videos})
+    job_ids: list[str] = resp.get("jobIds", [resp.get("jobId", "")])
+    job_ids = [j for j in job_ids if j]
+    intent_text = intent or f"download videos for query: {query}"
+    for jid in job_ids:
+        _aj.schedule(jid, intent_text)
+    return json.dumps({
+        "status": "scheduled",
+        "jobIds": job_ids,
+        "query": query,
+        "message": f"Downloading {num_videos} video(s) in background. I will automatically continue when ready.",
+    }, indent=2)
+
+@tool
+def schedule_image_download(query: str, num_images: int = 3, intent: str = "") -> str:
+    """Schedule a background image download — returns IMMEDIATELY with jobIds.
+    The agent will be automatically resumed when all downloads finish.
+
+    Args:
+        query: Search query, e.g. 'cyberpunk city night'.
+        num_images: Number of images to download (default 3, max 10).
+        intent: What you plan to do with these images once downloaded.
+
+    Returns JSON with jobIds. Agent resumes automatically when done.
+    """
+    from backend.ai import agent_jobs as _aj
+    num_images = max(1, min(num_images, 10))
+    resp = _post("/jobs/image-download", {"query": query, "numImages": num_images})
+    job_ids: list[str] = resp.get("jobIds", [resp.get("jobId", "")])
+    job_ids = [j for j in job_ids if j]
+    intent_text = intent or f"download images for query: {query}"
+    for jid in job_ids:
+        _aj.schedule(jid, intent_text)
+    return json.dumps({
+        "status": "scheduled",
+        "jobIds": job_ids,
+        "query": query,
+        "message": f"Downloading {num_images} image(s) in background. I will automatically continue when ready.",
+    }, indent=2)
 
 @tool
 def download_images(query: str, num_images: int = 2) -> str:
@@ -900,6 +956,8 @@ ALL_TOOLS = [
     mute_track,
     download_videos,
     download_images,
+    schedule_download,
+    schedule_image_download,
     generate_image,
     get_pending_jobs,
     search_news,

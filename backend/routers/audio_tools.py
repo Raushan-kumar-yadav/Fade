@@ -51,14 +51,7 @@ def _resolve_filepath(clip) -> str:
 
 
 def _index_transcript(asset_id: str, segments: list[dict]) -> int:
-    """
-    Save Whisper segments to the project ChromaDB video_segments collection
-    so the transcript is searchable via scene-search tools later.
-
-    Skips indexing if this asset already has entries (avoids duplicate embeddings).
-    Each segment becomes one ChromaDB chunk: { start_sec, end_sec, text }.
-    Returns the number of new chunks indexed (0 if already present).
-    """
+     
     if not asset_id or not segments:
         return 0
     try:
@@ -79,7 +72,7 @@ def _index_transcript(asset_id: str, segments: list[dict]) -> int:
         print(f"[AudioTools] ChromaDB: indexed {count} transcript chunks for {asset_id[:8]}", flush=True)
         return count
     except Exception as exc:
-        # Non-fatal — transcription still works even if ChromaDB is unavailable
+        # Non-fatal  
         print(f"[AudioTools] ChromaDB index failed (non-fatal): {exc}", flush=True)
         return 0
 
@@ -213,7 +206,7 @@ def generateCaptions(req: GenerateCaptionsRequest):
     if not segments:
         return {"captionCount": 0, "segments": [], "message": "No speech detected in clip."}
 
-    #   Save to ChromaDB for future scene-search use
+    # Save to ChromaDB  
     indexed = _index_transcript(asset_id, segments)
 
     #   Merge segments shorter than minWords 
@@ -233,10 +226,10 @@ def generateCaptions(req: GenerateCaptionsRequest):
     if buf:
         merged.append(buf)
 
-    #   Build caption style  
+    # Build caption style  
     style = _build_caption_style(req.style)
 
-    #   Find/create caption track above source  
+    # Find/create caption track above source  
     asset = _library.get(getattr(clip, "assetId", ""))
     fname = os.path.basename(filepath) if filepath else "clip"
     caption_track_name = f"Captions – {fname}"
@@ -253,7 +246,7 @@ def generateCaptions(req: GenerateCaptionsRequest):
         seg_end_in_file = seg["end_s"]
 
         # Skip segments outside 
-        clip_in_sec  = clip_offset_sec
+        clip_in_sec = clip_offset_sec
         clip_out_sec = clip_offset_sec + (clip.duration / fps)
         if seg_end_in_file <= clip_in_sec or seg_start_in_file >= clip_out_sec:
             continue
@@ -301,7 +294,7 @@ def generateCaptions(req: GenerateCaptionsRequest):
     }
 
 
-#   Route: remove silence  
+#   Route 
 
 @router.post("/audio/remove-silence")
 def removeSilence(req: RemoveSilenceRequest):
@@ -358,11 +351,11 @@ def removeSilence(req: RemoveSilenceRequest):
             "clipCount": 0,
         }
 
-    #   Remove original clip 
+    # Remove original clip 
     engine.commandStack.execute(RemoveClipCommand(source_track, clip))
     _clipTrackMap.pop(req.clipId, None)
 
-    #   Place trimmed clips back-to-back starting at clip.startFrame  
+    # Place trimmed clips  
     cursor = clip.startFrame
     new_clips = []
     asset_id = getattr(clip, "assetId", "")
@@ -378,7 +371,7 @@ def removeSilence(req: RemoveSilenceRequest):
             assetId=asset_id,
             mediaOffset=offset_frames,
         )
-        # Re-attach scheduler so decoder works immediately
+        # Re-attach scheduler  
         if engine.scheduler:
             asset = _library.get(asset_id)
             new_clip.setScheduler(engine.scheduler, fps)

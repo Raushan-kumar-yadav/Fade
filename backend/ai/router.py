@@ -141,6 +141,25 @@ async def ai_chat(req: ChatRequest):
         },
     )
 
+
+@ai_router.get("/resume-queue")
+def ai_resume_queue():
+    """
+    Return (and drain) all pending agent resume messages.
+    These are messages queued when a background job the agent scheduled has completed.
+    The frontend SSE handler calls this automatically; also available for polling.
+    """
+    from backend.ai.agent_jobs import pop_resume_messages
+    return {"messages": pop_resume_messages()}
+
+
+@ai_router.get("/pending-jobs")
+def ai_pending_jobs():
+    """Return all in-flight background jobs that the agent is waiting on."""
+    from backend.ai.agent_jobs import pending_intents
+    return {"jobs": pending_intents()}
+
+
 #   /ai/transcribe  
 
 @ai_router.post("/transcribe")

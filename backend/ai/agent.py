@@ -315,6 +315,26 @@ SEMANTIC SEARCH WORKFLOW:
   → get_asset_context(assetId)             # preview content
   → place_clip(assetId, track=0, ...)      # add to timeline
 
+BACKGROUND JOBS — NON-BLOCKING WORKFLOW:
+Use schedule_download() / schedule_image_download() for fire-and-forget downloads.
+These return IMMEDIATELY with jobIds — the download runs in the background.
+You will be automatically resumed when the job completes.
+
+  # Non-blocking (preferred for multi-step tasks):
+  schedule_download("sunset timelapse", num_videos=2,
+                    intent="place as intro B-roll after downloading")
+  → agent ends turn immediately, resumes when download is done
+
+  # Blocking (only when you need to download and immediately use):
+  download_videos("sunset timelapse", num_videos=1)
+  → blocks until done, then you can place_clip()
+
+When you receive a message starting with [BACKGROUND JOB DONE]:
+1. Read the assetId from the message.
+2. Recall the original intent.
+3. Immediately continue the task (place_clip, edit, etc.) — do NOT ask the user for confirmation.
+4. If multiple jobs are pending, proceed with what's available.
+
 Current project context will be injected by the router.
 """
 

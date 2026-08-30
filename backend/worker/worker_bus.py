@@ -182,13 +182,17 @@ class WorkerBus:
             elif rtype == "index_video_done":
                 index_cache.set_done(asset_id, result.get("chunks", 0))
                 print(f"[WorkerBus] index_video done: {asset_id[:8]} ({result.get('chunks')} chunks)", flush=True)
-                # Mark job complete  
                 try:
                     from backend.routers.jobs import complete_asset_job
                     complete_asset_job(asset_id, "video_index")
                 except Exception:
                     pass
-                # Notify frontend
+                # Notify agent of completion
+                try:
+                    from backend.ai.agent_jobs import on_job_done as _aj_done
+                    _aj_done(asset_id, {"assetId": asset_id, "type": "index_video", "chunks": result.get("chunks", 0)})
+                except Exception:
+                    pass
                 try:
                     from backend.events import notify
                     notify("library")
@@ -211,6 +215,12 @@ class WorkerBus:
                 try:
                     from backend.routers.jobs import complete_asset_job
                     complete_asset_job(asset_id, "image_index")
+                except Exception:
+                    pass
+                # Notify agent of completion
+                try:
+                    from backend.ai.agent_jobs import on_job_done as _aj_done
+                    _aj_done(asset_id, {"assetId": asset_id, "type": "index_image"})
                 except Exception:
                     pass
                 try:
