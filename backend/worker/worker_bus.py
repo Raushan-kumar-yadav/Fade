@@ -168,10 +168,27 @@ class WorkerBus:
                 waveform_cache.set_error(asset_id, result.get("message", "unknown"))
                 print(f"[WorkerBus] waveform error: {asset_id[:8]}: {result.get('message')}", flush=True)
 
+            elif rtype == "index_video_phase1":
+                # Vision indexed, transcript still running  
+                chunks = result.get("chunks", 0)
+                print(f"[WorkerBus] index_video phase1: {asset_id[:8]} ({chunks} vision chunks, transcribing…)", flush=True)
+                index_cache.set_progress(asset_id, chunks, stage="transcribing")
+                try:
+                    from backend.events import notify
+                    notify("library")
+                except Exception:
+                    pass
+
             elif rtype == "index_video_done":
                 index_cache.set_done(asset_id, result.get("chunks", 0))
                 print(f"[WorkerBus] index_video done: {asset_id[:8]} ({result.get('chunks')} chunks)", flush=True)
-                # Notify frontend  
+                # Mark job complete  
+                try:
+                    from backend.routers.jobs import complete_asset_job
+                    complete_asset_job(asset_id, "video_index")
+                except Exception:
+                    pass
+                # Notify frontend
                 try:
                     from backend.events import notify
                     notify("library")
@@ -181,7 +198,101 @@ class WorkerBus:
             elif rtype == "index_video_error":
                 index_cache.set_error(asset_id, result.get("message", "unknown"))
                 print(f"[WorkerBus] index_video error: {asset_id[:8]}: {result.get('message')}", flush=True)
+                try:
+                    from backend.routers.jobs import complete_asset_job
+                    complete_asset_job(asset_id, "video_index",
+                                       error=result.get("message", "indexing failed"))
+                except Exception:
+                    pass
+
+            elif rtype == "index_image_done":
+                index_cache.set_done(asset_id, 1)
+                print(f"[WorkerBus] index_image done: {asset_id[:8]}", flush=True)
+                try:
+                    from backend.routers.jobs import complete_asset_job
+                    complete_asset_job(asset_id, "image_index")
+                except Exception:
+                    pass
+                try:
+                    from backend.events import notify
+                    notify("library")
+                except Exception:
+                    pass
+
+            elif rtype == "index_image_error":
+                index_cache.set_error(asset_id, result.get("message", "unknown"))
+                print(f"[WorkerBus] index_image error: {asset_id[:8]}: {result.get('message')}", flush=True)
+                try:
+                    from backend.routers.jobs import complete_asset_job
+                    complete_asset_job(asset_id, "image_index",
+                                       error=result.get("message", "indexing failed"))
+                except Exception:
+                    pass
 
 
-# Global singleton  
+    def check_and_resume(self, db_path: str = "", port: int = 8000) -> None:
+         
+        import threading
+        threading.Thread(
+            target=self._check_and_resume_bg,
+            args=(db_path, port),
+            daemon=True,
+            name="FadeResumeCheck",
+        ).start()
+
+    def _check_and_resume_bg(self, db_path: str, port: int) -> None:
+        try:
+            import time, requests
+            time.sleep(2)  # let FastAPI fully start
+            base = f"http://127.0.0.1:{port}"
+            resp = requests.get(f"{base}/library/assets", timeout=5)
+            assets = resp.json()
+        except Exception as e:
+            print(f"[WorkerBus] check_and_resume: library fetch failed ({e})", flush=True)
+            return
+
+        from backend.ai.VideoSemantic.indexer import is_asset_indexed
+        from backend.worker.transcript_status import is_done as _ts_done
+
+        video_exts = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+        queued_vision = 0
+        queued_transcript = 0
+
+        for asset in assets:
+            aid   = asset.get("assetId", "")
+            fpath = asset.get("filepath", "")
+            if not aid or not fpath:
+                continue
+            import pathlib
+            if pathlib.Path(fpath).suffix.lower() not in video_exts:
+                continue  # skip images / audio
+
+            vision_done = is_asset_indexed(aid)
+            transcript_done = _ts_done(aid)
+
+            if not vision_done:
+                # Full pipeline needed
+                existing = index_cache.get(aid)
+                if not existing or existing.get("status") not in ("pending", "running", "done"):
+                    print(f"[WorkerBus] resume: queuing full index for {aid[:8]}", flush=True)
+                    self.submit_index_video(aid, fpath, port=port, db_path=db_path)
+                    queued_vision += 1
+            elif not transcript_done:
+                # Vision done but transcript failed — queue transcript-only
+                existing = index_cache.get(aid)
+                if not existing or existing.get("status") not in ("pending", "running"):
+                    print(f"[WorkerBus] resume: queuing transcript retry for {aid[:8]}", flush=True)
+                    self.submit({
+                        "type": "transcribe_only",
+                        "assetId": aid,
+                        "filepath": fpath,
+                        "db_path": db_path,
+                    })
+                    index_cache.set_pending(aid)
+                    queued_transcript += 1
+
+        print(f"[WorkerBus] check_and_resume: {queued_vision} vision + {queued_transcript} transcript jobs queued", flush=True)
+
+
+# Global singleton
 bus = WorkerBus()

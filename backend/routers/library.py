@@ -94,22 +94,39 @@ def importAsset(req: ImportRequest):
     from backend.events import notify; notify("library")
 
     if result.get("type") == "video":
-        print(f"[Library] Queueing VideoSemantic index for {result['assetId'][:8]} ({os.path.basename(req.filepath)})", flush=True)
+        fname = os.path.basename(req.filepath)
+        print(f"[Library] Queueing VideoSemantic index for {result['assetId'][:8]} ({fname})", flush=True)
         try:
             port = int(os.environ.get("BACKEND_PORT", 8000))
             from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
             _worker_bus.submit_index_video(result["assetId"], req.filepath,
                                            port=port, db_path=_get_db())
             print(f"[Library] ✓ index_video submitted to worker bus", flush=True)
+            # Register a job so the library panel shows an overlay on this card
+            try:
+                from backend.routers.jobs import register_asset_job as _rj
+                _rj("video_index", result["assetId"],
+                    f"Indexing: {fname}",
+                    message="Running Vision + Whisper…")
+            except Exception:
+                pass
         except Exception as _e:
             print(f"[Library] ✗ VideoSemantic submit error (non-fatal): {_e}", flush=True)
 
     elif result.get("type") == "image":
-        print(f"[Library] Queueing ImageSemantic index for {result['assetId'][:8]} ({os.path.basename(req.filepath)})", flush=True)
+        fname = os.path.basename(req.filepath)
+        print(f"[Library] Queueing ImageSemantic index for {result['assetId'][:8]} ({fname})", flush=True)
         try:
             from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
             _worker_bus.submit_index_image(result["assetId"], req.filepath, db_path=_get_db())
             print(f"[Library] ✓ index_image submitted to worker bus", flush=True)
+            try:
+                from backend.routers.jobs import register_asset_job as _rj
+                _rj("image_index", result["assetId"],
+                    f"Indexing: {fname}",
+                    message="Describing image…")
+            except Exception:
+                pass
         except Exception as _e:
             print(f"[Library] ✗ ImageSemantic submit error (non-fatal): {_e}", flush=True)
 

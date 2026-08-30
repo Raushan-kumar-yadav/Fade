@@ -12,15 +12,61 @@ DEFAULT_MODEL = os.environ.get("FADE_WHISPER_MODEL", "small")
 _model_cache: dict[str, object] = {}
 
 
+_device_cache: tuple[str, str] | None = None
+
+
+def _detect_device() -> tuple[str, str]:
+    """
+    Pick the fastest device+compute_type that ctranslate2 can actually use.
+    Runs a real inference probe (not just model load) to confirm cuBLAS loads.
+    Cached after first call.
+    """
+    global _device_cache
+    if _device_cache is not None:
+        return _device_cache
+    try:
+        import ctranslate2
+        import numpy as np
+        cuda_types = ctranslate2.get_supported_compute_types("cuda")
+        best = next((ct for ct in ("float16", "int8_float16", "int8") if ct in cuda_types), None)
+        if best:
+            from faster_whisper import WhisperModel as _WM
+            _probe = _WM("tiny", device="cuda", compute_type=best)
+            # Run a real forward pass — this is what triggers cublas64_12.dll
+            # faster-whisper accepts numpy float32 audio arrays directly
+            _silent = np.zeros(16000, dtype=np.float32)  # 1 second silence @ 16kHz
+            _segs, _info = _probe.transcribe(_silent, language="en")
+            list(_segs)  # consume lazy iterator → triggers cuBLAS GEMM
+            del _probe
+            print(f"[Whisper] CUDA probe OK — using {best}/cuda", flush=True)
+            _device_cache = ("cuda", best)
+            return _device_cache
+    except Exception as _e:
+        print(f"[Whisper] CUDA probe failed ({type(_e).__name__}: {_e}) — using CPU", flush=True)
+    _device_cache = ("cpu", "int8")
+    return _device_cache
+
+
+def force_cpu() -> None:
+    """Reset device cache to CPU — call when a cuBLAS/CUDA runtime error occurs at inference time."""
+    global _device_cache
+    _device_cache = ("cpu", "int8")
+    # Evict any CUDA-loaded models from cache
+    for k in list(_model_cache.keys()):
+        _model_cache.pop(k, None)
+    print("[Whisper] Forced CPU fallback — model cache cleared", flush=True)
+
+
 def _load_faster_whisper(model_name: str):
-    """Load model via faster-whisper (CTranslate2, int8, 4-8x faster on CPU)."""
+    """Load model via faster-whisper (CTranslate2). Auto-selects GPU when available."""
+    device, compute_type = _detect_device()
     from faster_whisper import WhisperModel
     local_path = WHISPER_MODELS_DIR / model_name
     if local_path.exists():
-        print(f"[Whisper] faster-whisper: loading from local {local_path}", flush=True)
-        return WhisperModel(str(local_path), device="cpu", compute_type="int8")
-    print(f"[Whisper] faster-whisper: downloading '{model_name}' (int8/cpu)", flush=True)
-    return WhisperModel(model_name, device="cpu", compute_type="int8")
+        print(f"[Whisper] faster-whisper: loading from local {local_path} ({device}/{compute_type})", flush=True)
+        return WhisperModel(str(local_path), device=device, compute_type=compute_type)
+    print(f"[Whisper] faster-whisper: loading '{model_name}' ({device}/{compute_type})", flush=True)
+    return WhisperModel(model_name, device=device, compute_type=compute_type)
 
 
 def _load_openai_whisper(model_name: str):
@@ -116,10 +162,10 @@ def transcribe_with_words(
 
     Returns list of segments, each with:
       {
-        start_s: float,        # segment start (seconds)
-        end_s:   float,        # segment end   (seconds)
-        text:    str,          # full segment text
-        words: [               # per-word timing
+        start_s: float, # segment start (seconds)
+        end_s:   float, # segment end   (seconds)
+        text:    str, # full segment text
+        words: [ # per-word timing
           { word: str, start_s: float, end_s: float }
         ]
       }
@@ -154,9 +200,9 @@ def transcribe_with_words(
                 })
             segments.append({
                 "start_s": round(seg.start, 3),
-                "end_s":   round(seg.end,   3),
-                "text":    seg.text.strip(),
-                "words":   words,
+                "end_s": round(seg.end,   3),
+                "text": seg.text.strip(),
+                "words": words,
             })
     else:
         # openai-whisper
@@ -168,15 +214,15 @@ def transcribe_with_words(
             words = []
             for w in seg.get("words", []):
                 words.append({
-                    "word":    w.get("word", "").strip(),
+                    "word": w.get("word", "").strip(),
                     "start_s": round(w.get("start", seg["start"]), 3),
-                    "end_s":   round(w.get("end",   seg["end"]),   3),
+                    "end_s": round(w.get("end",   seg["end"]),   3),
                 })
             segments.append({
                 "start_s": round(seg["start"], 3),
-                "end_s":   round(seg["end"],   3),
-                "text":    seg["text"].strip(),
-                "words":   words,
+                "end_s": round(seg["end"],   3),
+                "text": seg["text"].strip(),
+                "words": words,
             })
 
     print(f"[Whisper] Done — {len(segments)} segments, "

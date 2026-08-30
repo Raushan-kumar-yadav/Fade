@@ -65,16 +65,16 @@ def _do_waveform(filepath: str, bins: int) -> list[float]:
 def _do_index_video(asset_id: str, filepath: str, port: int,
                     ffmpeg_exe: str = "",
                     vision_model: str = "",
-                    frame_interval: float = 4.0) -> int:
+                    frame_interval: float = 4.0,
+                    result_queue=None) -> int:
     """
     Full VideoSemantic pipeline — runs inside the sandboxed worker process.
     Vision (Ollama) and Transcription (Whisper) run in parallel.
     Returns number of chunks indexed.
     """
     import tempfile
-    import json as _json
-    import urllib.request
     from concurrent.futures import ThreadPoolExecutor, Future
+
 
     from backend.ai.VideoSemantic.frameExtractor import extractFrame
     from backend.ai.VideoSemantic.descriptions import describe_all_frames
@@ -98,45 +98,138 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
             return describe_all_frames(tmp_dir, frame_interval, vision_model=vision_model or None)
 
         def _run_transcribe() -> list[dict]:
+            import traceback
+            import backend.ai.whisper_tool as _wt
+            from backend.config.global_config import cfg
+            model_name = cfg.get("ai.whisper_model", "small")
             try:
-                body = _json.dumps({
-                    "assetId": asset_id,
-                    "model": "small",
-                    "create_text_clips": False,
-                }).encode()
-                req = urllib.request.Request(
-                    f"http://127.0.0.1:{port}/ai/transcribe",
-                    data=body,
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=600) as resp:
-                    data = _json.loads(resp.read())
-                    segs = [
-                        {"text": s["text"], "start": s["start"], "end": s["end"]}
-                        for s in data.get("segments", [])
-                    ]
-                    print(f"[SandboxWorker] Transcription done: {len(segs)} segments", flush=True)
-                    return segs
+                device, compute_type = _wt._detect_device()
+                print(f"[Whisper][Worker] Device selected: {device}/{compute_type}", flush=True)
+                print(f"[Whisper][Worker] Loading model '{model_name}' on {device}…", flush=True)
+                _wt.get_model(model_name)  # warm-up / log
+                print(f"[Whisper][Worker] Model ready — transcribing {filepath}", flush=True)
+                try:
+                    raw = _wt.transcribe(filepath, model_name=model_name, language=None)
+                except RuntimeError as cuda_err:
+                    _cuda_kw = ("cublas", "cufft", "cudnn", "cusolver", ".dll", "cuda")
+                    if any(kw in str(cuda_err).lower() for kw in _cuda_kw):
+                        print(f"[Whisper][Worker] CUDA runtime error — falling back to CPU and retrying", flush=True)
+                        _wt.force_cpu()   # clears cache, resets to cpu/int8
+                        raw = _wt.transcribe(filepath, model_name=model_name, language=None)
+                    else:
+                        raise
+                segs = [
+                    {"text": s["text"], "start": s["start_s"], "end": s["end_s"]}
+                    for s in raw if s.get("text", "").strip()
+                ]
+                print(f"[Whisper][Worker] Transcription done: {len(segs)} segments", flush=True)
+                return segs
             except Exception as e:
-                print(f"[SandboxWorker] Transcription skipped (non-fatal): {e}", flush=True)
+                print(f"[Whisper][Worker] FAILED — {type(e).__name__}: {e}", flush=True)
+                traceback.print_exc()
                 return []
 
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="VideoIdx") as pool:
-            vision_future: Future = pool.submit(_run_vision)
+            vision_future:     Future = pool.submit(_run_vision)
             transcribe_future: Future = pool.submit(_run_transcribe)
 
-            # Block until both complete
+            # Phase 1: vision done → save immediately, signal frontend (job still open)
             scenes = vision_future.result()
+            vision_chunks = merge_and_chunk(scenes, [], window_sec=4.0)
+            count = index_video(asset_id, vision_chunks)
+            print(f"[SandboxWorker] Phase 1 done — {count} vision chunks saved (searchable, transcript pending…)", flush=True)
+            if result_queue is not None:
+                result_queue.put({"type": "index_video_phase1", "assetId": asset_id, "chunks": count})
+
+            # Phase 2: wait for transcript → enrich and upsert
+            print(f"[SandboxWorker] Waiting for Whisper transcript…", flush=True)
             transcript = transcribe_future.result()
-
-        print(f"[SandboxWorker] Both done — {len(scenes)} scenes, {len(transcript)} transcript segs", flush=True)
-
-        #   Merge + embed  
-        chunks = merge_and_chunk(scenes, transcript, window_sec=4.0)
-        count  = index_video(asset_id, chunks)
+            from backend.worker import transcript_status as _ts
+            if transcript:
+                enriched_chunks = merge_and_chunk(scenes, transcript, window_sec=4.0)
+                count = index_video(asset_id, enriched_chunks)
+                _ts.mark_done(asset_id)
+                print(
+                    f"[SandboxWorker] Phase 2 done — {count} enriched chunks (vision+speech) saved",
+                    flush=True,
+                )
+            else:
+                _ts.mark_failed(asset_id)
+                print(f"[SandboxWorker] Phase 2: transcript failed — vision-only kept, marked for retry", flush=True)
 
     print(f"[SandboxWorker] index_video done: {asset_id[:8]} → {count} chunks indexed", flush=True)
+    return count
+
+
+def _do_transcribe_only(asset_id: str, filepath: str) -> int:
+    """
+    Transcript-only retry: fetch existing vision chunks from ChromaDB,
+    run Whisper, re-merge and upsert enriched embeddings.
+    No frame extraction or Ollama needed.
+    """
+    import traceback
+    from backend.ai.VideoSemantic.indexer import index_video, get_db_path, _col
+    from backend.ai.VideoSemantic.merger import merge_and_chunk
+    from backend.worker import transcript_status as _ts
+
+    print(f"[SandboxWorker] transcribe_only start: {asset_id[:8]}", flush=True)
+
+    # ── Rebuild scenes list from existing ChromaDB chunks ──
+    try:
+        col = _col
+        existing = col.get(where={"assetId": asset_id}, include=["documents", "metadatas"])
+        scenes = []
+        for doc, meta in zip(existing["documents"], existing["metadatas"]):
+            # Strip "Visual: " prefix to get raw vision text
+            vis_text = doc.replace("Visual: ", "").split(" | Speech:")[0].strip()
+            scenes.append({
+                "text": vis_text,
+                "start": float(meta.get("start_sec", 0)),
+                "end":   float(meta.get("end_sec",   4)),
+            })
+        scenes.sort(key=lambda s: s["start"])
+        print(f"[SandboxWorker] transcribe_only: loaded {len(scenes)} existing vision chunks", flush=True)
+    except Exception as e:
+        print(f"[SandboxWorker] transcribe_only: failed to load scenes ({e})", flush=True)
+        return 0
+
+    # ── Run Whisper ──
+    import backend.ai.whisper_tool as _wt
+    from backend.config.global_config import cfg
+    model_name = cfg.get("ai.whisper_model", "small")
+    try:
+        device, compute_type = _wt._detect_device()
+        print(f"[Whisper][Worker] Device: {device}/{compute_type}  model: {model_name}", flush=True)
+        _wt.get_model(model_name)
+        print(f"[Whisper][Worker] Transcribing {filepath}", flush=True)
+        try:
+            raw = _wt.transcribe(filepath, model_name=model_name, language=None)
+        except RuntimeError as cuda_err:
+            if any(kw in str(cuda_err).lower() for kw in ("cublas", "cufft", "cudnn", ".dll", "cuda")):
+                print(f"[Whisper][Worker] CUDA error — CPU fallback", flush=True)
+                _wt.force_cpu()
+                raw = _wt.transcribe(filepath, model_name=model_name, language=None)
+            else:
+                raise
+        transcript = [
+            {"text": s["text"], "start": s["start_s"], "end": s["end_s"]}
+            for s in raw if s.get("text", "").strip()
+        ]
+        print(f"[Whisper][Worker] Done: {len(transcript)} segments", flush=True)
+    except Exception as e:
+        print(f"[Whisper][Worker] FAILED — {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
+        _ts.mark_failed(asset_id)
+        return 0
+
+    if not transcript:
+        _ts.mark_failed(asset_id)
+        return 0
+
+    enriched = merge_and_chunk(scenes, transcript, window_sec=4.0)
+    count = index_video(asset_id, enriched)
+    _ts.mark_done(asset_id)
+    print(f"[SandboxWorker] transcribe_only done: {asset_id[:8]} → {count} enriched chunks", flush=True)
     return count
 
 
@@ -196,31 +289,50 @@ def worker_main(job_queue: multiprocessing.Queue,
             continue
 
         if job.get("type") == "index_video":
-            asset_id     = job["assetId"]
-            filepath     = job["filepath"]
-            port         = job.get("port", 8000)
+            asset_id = job["assetId"]
+            filepath = job["filepath"]
+            port = job.get("port", 8000)
             ffmpeg_exe   = job.get("ffmpeg_exe", "")
             vision_model = job.get("vision_model", "")
             frame_interval = float(job.get("frame_interval", 4.0))
-            db_path      = job.get("db_path", "")
+            db_path = job.get("db_path", "")
             if db_path:
                 from backend.ai.VideoSemantic.indexer import switch_db as _sw
                 _sw(db_path)
+                from backend.worker import transcript_status as _ts
+                _ts.set_db_path(db_path)
             try:
                 chunks = _do_index_video(asset_id, filepath, port,
                                          ffmpeg_exe=ffmpeg_exe,
                                          vision_model=vision_model,
-                                         frame_interval=frame_interval)
+                                         frame_interval=frame_interval,
+                                         result_queue=result_queue)
+                result_queue.put({"type": "index_video_done", "assetId": asset_id, "chunks": chunks})
+            except Exception as e:
+                result_queue.put({"type": "index_video_error", "assetId": asset_id, "message": str(e)})
+            continue
+
+        if job.get("type") == "transcribe_only":
+            asset_id = job["assetId"]
+            filepath = job["filepath"]
+            db_path = job.get("db_path", "")
+            if db_path:
+                from backend.ai.VideoSemantic.indexer import switch_db as _sw
+                _sw(db_path)
+                from backend.worker import transcript_status as _ts
+                _ts.set_db_path(db_path)
+            try:
+                chunks = _do_transcribe_only(asset_id, filepath)
                 result_queue.put({"type": "index_video_done", "assetId": asset_id, "chunks": chunks})
             except Exception as e:
                 result_queue.put({"type": "index_video_error", "assetId": asset_id, "message": str(e)})
             continue
 
         if job.get("type") == "index_image":
-            asset_id     = job["assetId"]
-            filepath     = job["filepath"]
+            asset_id = job["assetId"]
+            filepath = job["filepath"]
             vision_model = job.get("vision_model", "")
-            db_path      = job.get("db_path", "")
+            db_path = job.get("db_path", "")
             if db_path:
                 from backend.ai.VideoSemantic.indexer import switch_db as _sw
                 _sw(db_path)

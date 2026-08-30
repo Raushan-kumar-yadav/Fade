@@ -53,6 +53,16 @@ export function useLibrarySSE(): void {
         });
       }
 
+ 
+      // update individual job cards  
+      es.addEventListener('job', (e: Event) => {
+        try {
+          const msg = e as MessageEvent;
+          const data = JSON.parse(msg.data);
+          window.dispatchEvent(new CustomEvent('fade:job-update', { detail: data }));
+        } catch { /* ignore parse errors */ }
+      });
+
       es.onerror = () => {
         es.close();
         esRef.current = null;

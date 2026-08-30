@@ -1,6 +1,6 @@
 /* LibraryPanel.css */
 
-/* ── Tokens ─────────────────────────────────────────────────────────────────── */
+/*   Tokens   */
 :root {
   --lib-bg: #111116;
   --lib-bg-elevated: #18181f;
@@ -12,7 +12,7 @@
   --lib-teal: #0dcfb4;
 }
 
-/* ── Root ───────────────────────────────────────────────────────────────────── */
+/*   Root   */
 .lib {
   display: flex;
   flex-direction: column;
@@ -25,7 +25,7 @@
   user-select: none;
 }
 
-/* ── Search bar ─────────────────────────────────────────────────────────────── */
+/*   Search bar     */
 .lib__search {
   display: flex;
   align-items: center;
@@ -63,7 +63,7 @@
 .lib__import-btn:hover  { background: #6ab2ff; }
 .lib__import-btn:active { transform: scale(0.92); }
 
-/* ── Card grid ──────────────────────────────────────────────────────────────── */
+/*   Card grid   */
 .lib__grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -75,8 +75,7 @@
   align-content: start;
 }
 
-/* Wrapper around media cards — keeps relative positioning for the badge
-   without disturbing the parent grid layout */
+ 
 .lib__card-wrap {
   position: relative;
   min-width: 0;
@@ -88,7 +87,7 @@
 .lib__grid::-webkit-scrollbar-track { background: transparent; }
 .lib__grid::-webkit-scrollbar-thumb { background: var(--lib-border); border-radius: 2px; }
 
-/* ── Card ───────────────────────────────────────────────────────────────────── */
+/*   Card   */
 .lib-card {
   display: flex;
   flex-direction: column;
@@ -149,14 +148,14 @@
 }
 
 /* Badge colours by type */
-.lib-card__badge--video      { background: #4d9fff22; color: #4d9fff; }
-.lib-card__badge--image      { background: #43a04722; color: #76c442; }
-.lib-card__badge--audio      { background: #9c27b022; color: #ce93d8; }
-.lib-card__badge--svg        { background: #0dcfb422; color: #0dcfb4; }
+.lib-card__badge--video { background: #4d9fff22; color: #4d9fff; }
+.lib-card__badge--image { background: #43a04722; color: #76c442; }
+.lib-card__badge--audio { background: #9c27b022; color: #ce93d8; }
+.lib-card__badge--svg { background: #0dcfb422; color: #0dcfb4; }
 .lib-card__badge--comp,
 .lib-card__badge--ROOT,
-.lib-card__badge--COMP       { background: #0dcfb422; color: #0dcfb4; }
-.lib-card__badge--ROOT       { background: #4d9fff22; color: #4d9fff; }
+.lib-card__badge--COMP { background: #0dcfb422; color: #0dcfb4; }
+.lib-card__badge--ROOT { background: #4d9fff22; color: #4d9fff; }
 
 .lib-card__title {
   font-size: 10px;
@@ -207,7 +206,7 @@
   box-sizing: border-box;
 }
 
-/* ── Empty / loading ─────────────────────────────────────────────────────────── */
+/*   Empty / loading   */
 .lib__empty {
   display: flex;
   flex-direction: column;
@@ -231,7 +230,7 @@
 }
 @keyframes lib-spin { to { transform: rotate(360deg); } }
 
-/* ── Context menu ───────────────────────────────────────────────────────────── */
+/*   Context menu   */
 .lib-ctx {
   position: fixed;
   z-index: 9999;
@@ -254,13 +253,13 @@
   cursor: pointer;
   transition: background 0.1s, color 0.1s;
 }
-.lib-ctx__item:hover             { background: #26263a; color: #e0e0f0; }
-.lib-ctx__item--danger           { color: #e57373; }
-.lib-ctx__item--danger:hover     { background: #ff5f5f18; color: #ff8080; }
-.lib-ctx__icon                   { width: 14px; text-align: center; flex-shrink: 0; opacity: 0.8; }
-.lib-ctx__sep                    { height: 1px; background: #2e2e40; margin: 3px 6px; }
+.lib-ctx__item:hover { background: #26263a; color: #e0e0f0; }
+.lib-ctx__item--danger { color: #e57373; }
+.lib-ctx__item--danger:hover { background: #ff5f5f18; color: #ff8080; }
+.lib-ctx__icon { width: 14px; text-align: center; flex-shrink: 0; opacity: 0.8; }
+.lib-ctx__sep { height: 1px; background: #2e2e40; margin: 3px 6px; }
 
-/* ── Comp config fields ─────────────────────────────────────────────────────── */
+/*   Comp config fields   */
 .lib-comp-cfg__label {
   font-size: 10px;
   color: var(--lib-muted);
@@ -290,8 +289,8 @@
   font-size: 10px; padding: 3px 8px; cursor: pointer;
   transition: all 0.12s;
 }
-.lib-comp-cfg__preset:hover         { border-color: var(--lib-teal); color: var(--lib-teal); }
-.lib-comp-cfg__preset--active       { background: #0dcfb420; border-color: var(--lib-teal); color: var(--lib-teal); }
+.lib-comp-cfg__preset:hover { border-color: var(--lib-teal); color: var(--lib-teal); }
+.lib-comp-cfg__preset--active { background: #0dcfb420; border-color: var(--lib-teal); color: var(--lib-teal); }
 
 .lib-comp-cfg__row {
   display: flex; gap: 8px;
@@ -316,7 +315,7 @@
   border-radius: 6px; color: #ff8080; font-size: 11px; cursor: pointer;
 }
 
-/* ── Modal overlay ─────────────────────────────────────────────────────────── */
+/* Modal overlay   */
 .lib-modal-overlay {
   position: fixed; inset: 0; z-index: 9999;
   background: rgba(0,0,0,0.65);
@@ -362,7 +361,7 @@
   background: #1a1a28;
 }
 
-/* ── Search clear button ────────────────────────────────────────────────────── */
+/*   Search clear button   */
 .lib__search-clear {
   background: none; border: none; color: var(--lib-muted);
   font-size: 11px; cursor: pointer; padding: 2px 5px;
@@ -371,7 +370,7 @@
 }
 .lib__search-clear:hover { color: #ff8080; background: #ff5f5f18; }
 
-/* ── Index status badge on video cards ──────────────────────────────────────── */
+/*   Index status badge on video cards   */
 .lib__index-badge {
   position: absolute; top: 4px; right: 4px; z-index: 10;
   font-size: 9px; padding: 2px 5px; border-radius: 10px;
@@ -400,7 +399,7 @@
   50%       { opacity: 0.45; }
 }
 
-/* ── Semantic search results ────────────────────────────────────────────────── */
+/*   Semantic search results   */
 .lib__semantic-searching {
   display: flex; align-items: center;
   color: var(--lib-muted); font-size: 11px;
@@ -478,4 +477,349 @@
 @keyframes lib-fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/*   Agent Tasks / Job Cards   */
+
+.lib__jobs-section {
+  padding: 6px 8px 0;
+  animation: lib-fade-in 0.2s ease;
+}
+
+.lib__jobs-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--lib-muted);
+  text-transform: uppercase;
+  padding: 2px 0 6px;
+}
+
+.lib__jobs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--lib-border);
+  margin-bottom: 4px;
+}
+
+/* Individual job card */
+.lib-job-card {
+  position: relative;
+  background: var(--lib-bg-elevated);
+  border: 1px solid var(--lib-border);
+  border-radius: 7px;
+  padding: 8px 10px 6px;
+  overflow: hidden;
+  animation: lib-fade-in 0.25s ease;
+  transition: border-color 0.2s;
+}
+
+/* Left edge accent by type */
+.lib-job-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 7px 0 0 7px;
+  background: var(--lib-accent);
+}
+.lib-job-card--pending::before { background: var(--lib-muted); }
+.lib-job-card--running::before { background: var(--lib-accent); }
+.lib-job-card--done::before { background: #43a047; }
+.lib-job-card--error::before { background: #e53935; }
+
+.lib-job-card--done   { border-color: #43a04740; }
+.lib-job-card--error  { border-color: #e5393540; }
+
+/* Header row */
+.lib-job-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lib-job-card__icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.lib-job-card__label {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lib-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lib-job-card__dismiss {
+  background: none;
+  border: none;
+  color: var(--lib-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.lib-job-card__dismiss:hover { color: var(--lib-text); }
+
+/* Status message */
+.lib-job-card__message {
+  font-size: 10px;
+  color: var(--lib-muted);
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-job-card--error .lib-job-card__message { color: #ef9a9a; }
+
+/* Progress bar */
+.lib-job-card__bar-track {
+  height: 3px;
+  background: #1e1e2e;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+.lib-job-card__bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--lib-accent), var(--lib-teal));
+  border-radius: 3px;
+  min-width: 6%;
+}
+
+/* Shimmer animation for running state */
+.lib-job-card--running .lib-job-card__bar-fill {
+  background: linear-gradient(
+    90deg,
+    var(--lib-accent) 0%,
+    var(--lib-teal) 50%,
+    var(--lib-accent) 100%
+  );
+  background-size: 200% 100%;
+  animation: lib-job-shimmer 1.5s linear infinite;
+}
+
+@keyframes lib-job-shimmer {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+/* Done state */
+.lib-job-card__done {
+  font-size: 10px;
+  font-weight: 600;
+  color: #66bb6a;
+  margin-top: 4px;
+}
+
+/* ── PlaceholderCard   */
+
+.lib-placeholder-card {
+  position: relative;
+  background: var(--lib-bg-elevated);
+  border: 1px solid var(--lib-border);
+  border-radius: 8px;
+  overflow: hidden;
+  animation: lib-fade-in 0.25s ease;
+  /* Same dimensions   */
+  aspect-ratio: 1 / 1.15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  min-height: 90px;
+}
+
+/* Full-card dimming overlay */
+.lib-placeholder-card__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(8, 8, 12, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+/* Spinner in overlay */
+.lib-placeholder-card__spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(77, 159, 255, 0.25);
+  border-top-color: var(--lib-accent);
+  border-radius: 50%;
+  animation: lib-spin 0.8s linear infinite;
+  display: block;
+}
+
+.lib-placeholder-card__err {
+  font-size: 20px;
+  opacity: 0.7;
+}
+
+/* Card body content (below overlay) */
+.lib-placeholder-card__body {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px 20px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.lib-placeholder-card__type-icon {
+  font-size: 18px;
+  opacity: 0.35;
+}
+
+.lib-placeholder-card__label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--lib-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.lib-placeholder-card__msg {
+  font-size: 9px;
+  color: #3a3a54;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90px;
+}
+
+.lib-placeholder-card__msg--err { color: #ef9a9a; }
+
+/* Progress bar at very bottom of placeholder card */
+.lib-placeholder-card__bar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 3px;
+  background: #1e1e2e;
+  z-index: 3;
+}
+
+.lib-placeholder-card__bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--lib-accent), var(--lib-teal));
+  background-size: 200% 100%;
+  animation: lib-job-shimmer 1.5s linear infinite;
+  transition: width 0.4s ease;
+}
+
+/* Dismiss button for error state */
+.lib-placeholder-card__dismiss {
+  position: absolute;
+  top: 4px; right: 4px;
+  z-index: 4;
+  background: rgba(0,0,0,0.5);
+  border: none;
+  color: var(--lib-muted);
+  cursor: pointer;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  font-size: 9px;
+  line-height: 16px;
+  text-align: center;
+  transition: color 0.15s;
+}
+.lib-placeholder-card__dismiss:hover { color: #fff; }
+
+/* Error border */
+.lib-placeholder-card--error {
+  border-color: #e5393540;
+}
+.lib-placeholder-card--error .lib-placeholder-card__overlay {
+  background: rgba(18, 6, 6, 0.7);
+}
+
+/* Shimmer on pending (0% progress) */
+.lib-placeholder-card--pending .lib-placeholder-card__overlay {
+  animation: lib-placeholder-shimmer 2s ease-in-out infinite;
+}
+@keyframes lib-placeholder-shimmer {
+  0%, 100% { background: rgba(8, 8, 12, 0.65); }
+  50%       { background: rgba(8, 8, 12, 0.45); }
+}
+
+/*   AssetTaskOverlay   */
+
+/* lib__card-wrap must be position:relative   */
+.lib__card-wrap {
+  position: relative;
+}
+
+.lib-asset-overlay {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: rgba(8, 8, 18, 0.88);
+  border-radius: 0 0 7px 7px;
+  backdrop-filter: blur(4px);
+  font-size: 9px;
+  pointer-events: none;
+  animation: lib-fade-in 0.2s ease;
+  overflow: hidden;
+}
+
+.lib-asset-overlay__icon {
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+.lib-asset-overlay__text {
+  flex: 1;
+  color: var(--lib-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Micro spinner for active state */
+.lib-asset-overlay__spin {
+  width: 8px; height: 8px;
+  border: 1.5px solid rgba(77,159,255,0.2);
+  border-top-color: var(--lib-accent);
+  border-radius: 50%;
+  animation: lib-spin 0.7s linear infinite;
+  flex-shrink: 0;
+  display: block;
+}
+
+/* Color variants */
+.lib-asset-overlay--active {
+  border-top: 1px solid var(--lib-accent);
+}
+.lib-asset-overlay--active .lib-asset-overlay__text { color: #8ac4ff; }
+
+.lib-asset-overlay--done {
+  border-top: 1px solid #43a04740;
+}
+.lib-asset-overlay--done .lib-asset-overlay__text { color: #66bb6a; }
+
+.lib-asset-overlay--error {
+  border-top: 1px solid #e5393540;
+}
+.lib-asset-overlay--error .lib-asset-overlay__text { color: #ef9a9a; }
+
+@keyframes lib-spin {
+  to { transform: rotate(360deg); }
 }

@@ -117,19 +117,40 @@ def _try_heal_collection(col_name: str) -> None:
         print(f"[ChromaDB] Heal failed for '{col_name}' (non-fatal): {_e}", flush=True)
 
 
+
+def _col_count(col) -> int:
+    """Safe count that re-inits if the collection UUID became stale."""
+    try:
+        return col.count()
+    except Exception:
+         
+        _ensure_client(get_db_path())
+        return 0   
+
+
 def search_videos(query: str, top_k: int = 5) -> list[dict]:
-    if _col is None or _col.count() == 0:
-        return []   # not indexed yet
+    global _col
+     
+    try:
+        cnt = _col.count() if _col is not None else 0
+    except Exception:
+        _ensure_client(get_db_path())
+        cnt = 0
+
+    if cnt == 0:
+        return []   # not indexed yet 
+
     q_emb = _embedder.encode([query]).tolist()
     try:
-        results = _col.query(query_embeddings=q_emb, n_results=min(top_k, _col.count()))
+        results = _col.query(query_embeddings=q_emb, n_results=min(top_k, cnt))
     except Exception:
-        # HNSW index missing/corrupt — try to heal, then retry once
+        # HNSW index missing/corrupt  
         _try_heal_collection("video_segments")
         try:
-            if _col is None or _col.count() == 0:
+            cnt2 = _col.count() if _col is not None else 0
+            if cnt2 == 0:
                 return []
-            results = _col.query(query_embeddings=q_emb, n_results=min(top_k, _col.count()))
+            results = _col.query(query_embeddings=q_emb, n_results=min(top_k, cnt2))
         except Exception:
             return []
 
@@ -179,13 +200,21 @@ def index_image(asset_id: str, description: str) -> bool:
 
 
 def search_images(query: str, top_k: int = 5) -> list[dict]:
-    if _img_col is None or _img_col.count() == 0:
-        return []   # not indexed yet
+    global _img_col
+    try:
+        cnt = _img_col.count() if _img_col is not None else 0
+    except Exception:
+        _ensure_client(get_db_path())
+        cnt = 0
+
+    if cnt == 0:
+        return []
     q_emb = _embedder.encode([query]).tolist()
     try:
-        results = _img_col.query(query_embeddings=q_emb, n_results=min(top_k, _img_col.count()))
+        results = _img_col.query(query_embeddings=q_emb, n_results=min(top_k, cnt))
     except Exception:
         return []
+
 
     hits = []
     for i, doc in enumerate(results["documents"][0]):

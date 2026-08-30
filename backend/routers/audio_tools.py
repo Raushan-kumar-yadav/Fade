@@ -185,16 +185,35 @@ def generateCaptions(req: GenerateCaptionsRequest):
     filepath = _resolve_filepath(clip)
     fps = _fps()
     tl = _active_tl()
+    fname = os.path.basename(filepath)
+
+    # Register transcription 
+    asset_id = getattr(clip, "assetId", "")
+    _job_id: str | None = None
+    try:
+        from backend.routers.jobs import register_asset_job as _rj
+        _job_id = _rj("transcription", asset_id,
+                       f"Transcribing: {fname}",
+                       message="Running Whisper…")
+    except Exception:
+        pass
 
     #   Transcribe  
-    print(f"[AudioTools] Generating captions for clip {req.clipId[:8]} → {os.path.basename(filepath)}", flush=True)
-    segments = transcribe(filepath, language=req.language)
+    print(f"[AudioTools] Generating captions for clip {req.clipId[:8]} → {fname}", flush=True)
+    try:
+        segments = transcribe(filepath, language=req.language)
+    finally:
+        # Always complete the job  
+        try:
+            from backend.routers.jobs import complete_asset_job as _cj
+            _cj(asset_id, "transcription", job_id=_job_id)
+        except Exception:
+            pass
 
     if not segments:
         return {"captionCount": 0, "segments": [], "message": "No speech detected in clip."}
 
     #   Save to ChromaDB for future scene-search use
-    asset_id = getattr(clip, "assetId", "")
     indexed = _index_transcript(asset_id, segments)
 
     #   Merge segments shorter than minWords 

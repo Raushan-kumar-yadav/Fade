@@ -325,37 +325,84 @@ def mute_track(track_id: str, muted: bool) -> str:
 @tool
 def download_videos(query: str, num_videos: int = 2) -> str:
     """Search YouTube and download videos into the project media library.
-    
+    Each video gets its own job card in the library panel with a progress bar.
+
     Args:
         query: Search query string, e.g. 'cinematic sunset 4k'.
         num_videos: Number of top results to download (default 2, max 5).
-    
-    Returns JSON with imported assetIds and duration in frames so you can
-    immediately use place_clip() to add them to the timeline.
+
+    Returns JSON with imported assetIds so you can immediately use place_clip().
     """
+    import time as _time
     num_videos = max(1, min(num_videos, 5))
-    result = _post("/media/download-search", {
-        "query": query,
-        "numVideos": num_videos
-    })
+    resp = _post("/jobs/video-download", {"query": query, "numVideos": num_videos})
+    # Backend creates one job per video; jobIds lists all of them
+    job_ids: list[str] = resp.get("jobIds", [resp["jobId"]])
+
+    pending = set(job_ids)
+    asset_ids: list[str] = []
+    errors: list[str] = []
+    for _ in range(450):   # 450 × 2s = 15 min max
+        _time.sleep(2)
+        still_pending: set[str] = set()
+        for jid in pending:
+            s = _get(f"/jobs/{jid}")
+            if s["status"] == "done":
+                asset_ids.extend(s.get("assetIds", []))
+            elif s["status"] == "error":
+                errors.append(s.get("error", "unknown"))
+            else:
+                still_pending.add(jid)
+        pending = still_pending
+        if not pending:
+            break
+
+    if not asset_ids:
+        return f"All downloads failed: {'; '.join(errors)}"
+    result: dict = {"assets": [{"assetId": a} for a in asset_ids]}
+    if errors:
+        result["errors"] = errors
     return json.dumps(result, indent=2)
 
 @tool
 def download_images(query: str, num_images: int = 2) -> str:
     """Search DuckDuckGo and download images into the project media library.
-    
+    Each image gets its own job card in the library panel.
+
     Args:
         query: Search query string, e.g. 'cyberpunk city'.
         num_images: Number of top results to download (default 2, max 10).
-    
-    Returns JSON with imported assetIds so you can immediately use place_clip()
-    to add them to the timeline.
+
+    Returns JSON with imported assetIds so you can immediately use place_clip().
     """
+    import time as _time
     num_images = max(1, min(num_images, 10))
-    result = _post("/media/download-images", {
-        "query": query,
-        "numImages": num_images
-    })
+    resp = _post("/jobs/image-download", {"query": query, "numImages": num_images})
+    job_ids: list[str] = resp.get("jobIds", [resp["jobId"]])
+
+    pending = set(job_ids)
+    asset_ids: list[str] = []
+    errors: list[str] = []
+    for _ in range(150):   # up to 5 min
+        _time.sleep(2)
+        still_pending: set[str] = set()
+        for jid in pending:
+            s = _get(f"/jobs/{jid}")
+            if s["status"] == "done":
+                asset_ids.extend(s.get("assetIds", []))
+            elif s["status"] == "error":
+                errors.append(s.get("error", "unknown"))
+            else:
+                still_pending.add(jid)
+        pending = still_pending
+        if not pending:
+            break
+
+    if not asset_ids:
+        return f"All image downloads failed: {'; '.join(errors)}"
+    result: dict = {"assets": [{"assetId": a} for a in asset_ids]}
+    if errors:
+        result["errors"] = errors
     return json.dumps(result, indent=2)
 
 @tool
@@ -392,20 +439,62 @@ def place_clip(
 @tool
 def generate_image(prompt: str, num_images: int = 1) -> str:
     """Generate AI image(s) from a text prompt using the Gemini Imagen model.
+    A job card appears immediately in the library panel with a spinner.
 
     Args:
         prompt:     Detailed description of the image to create.
                     Example: 'a cinematic sunset over mountains, photorealistic 4k'
-        num_images: Number of images to generate (1–4, default 1).
+        num_images: Number of images to generate (1-4, default 1).
 
     Returns JSON with assetIds so you can immediately place them on the timeline
     using place_clip().
     """
-    result = _post("/media/generate-image", {
-        "prompt": prompt,
-        "numImages": num_images,
-    })
-    return json.dumps(result, indent=2)
+    import time as _time
+    num_images = max(1, min(num_images, 4))
+    job = _post("/jobs/image-generate", {"prompt": prompt, "numImages": num_images})
+    job_id = job["jobId"]
+    for _ in range(150):  # up to 5 min
+        _time.sleep(2)
+        status = _get(f"/jobs/{job_id}")
+        if status["status"] == "done":
+            asset_ids = status.get("assetIds", [])
+            return json.dumps({"assets": [{"assetId": a} for a in asset_ids]}, indent=2)
+        if status["status"] == "error":
+            return f"Generation failed: {status.get('error', 'unknown error')}"
+    return f"Generation timed out for job {job_id}."
+
+@tool
+def get_pending_jobs() -> str:
+    """List all currently running or pending media/indexing jobs.
+
+    Call this to understand what background tasks are active before deciding
+    what to do next. Examples:
+    - A video is still being indexed → wait before calling search_video_scenes()
+    - Images are still downloading → don't place clips yet
+    - Transcription is running → captions will be available soon
+
+    Job types and what they mean:
+    - video_download : Agent downloading YouTube video(s)
+    - image_download : Agent downloading images
+    - image_generate : Agent generating AI images with Gemini
+    - video_index : Semantic indexing running (Vision LLM + Whisper) on a video
+    - image_index : Semantic indexing running (Ollama) on an image
+    - transcription    : Whisper transcription running for captions
+
+    Returns a readable summary, or "No pending jobs" if everything is done.
+    """
+    result = _get("/jobs/?active_only=true")
+    jobs = result.get("jobs", [])
+    if not jobs:
+        return "No pending jobs — all media tasks are complete."
+    lines = [f"{len(jobs)} active job(s):"]
+    for j in jobs:
+        pct = int(j.get("progress", 0) * 100)
+        asset = f"  assetId={j['assetId'][:8]}" if j.get("assetId") else ""
+        lines.append(
+            f"  [{j['status'].upper():8}] {j['type']:18} {pct:3}%  {j['label']}{asset}"
+        )
+    return "\n".join(lines)
 
 @tool
 def get_selected_clip() -> str:
@@ -812,6 +901,7 @@ ALL_TOOLS = [
     download_videos,
     download_images,
     generate_image,
+    get_pending_jobs,
     search_news,
     create_news_video,
     get_selected_clip,
@@ -1526,46 +1616,46 @@ def animate_property(
     Call multiple times with different frames to build an animation.
 
     Common params (use get_clip_params to see all for a clip):
-      pos_x, pos_y         -- position in pixels (0,0 = center of frame)
-      scale_x, scale_y     -- scale multiplier (1.0 = 100%)
-      rotation             -- degrees (-360 to 360)
-      opacity              -- 0.0 (invisible) to 1.0 (fully visible)
+      pos_x, pos_y -- position in pixels (0,0 = center of frame)
+      scale_x, scale_y -- scale multiplier (1.0 = 100%)
+      rotation -- degrees (-360 to 360)
+      opacity -- 0.0 (invisible) to 1.0 (fully visible)
       anchor_x, anchor_y   -- pivot/anchor point in pixels
-      font_size            -- (TextClip) font size in pixels
-      fill_r/g/b/a         -- RGBA fill colour channels 0.0 to 1.0
-      shape_w, shape_h     -- (ShapeClip) width/height in pixels
+      font_size -- (TextClip) font size in pixels
+      fill_r/g/b/a -- RGBA fill colour channels 0.0 to 1.0
+      shape_w, shape_h -- (ShapeClip) width/height in pixels
       stroke_w             -- stroke width in pixels
 
     Easing options:
       ease_both  -- slow in AND slow out (best for most motion, default)
-      ease_in    -- slow start, fast end
-      ease_out   -- fast start, slow end (good for entrances)
-      linear     -- constant speed
-      constant   -- instant jump at keyframe (no interpolation)
-      bezier     -- manual control; set handle_in/out_frames and _value
+      ease_in -- slow start, fast end
+      ease_out -- fast start, slow end (good for entrances)
+      linear -- constant speed
+      constant -- instant jump at keyframe (no interpolation)
+      bezier -- manual control; set handle_in/out_frames and _value
 
     Bezier handles (only used when easing='bezier'):
-      handle_in_frames   -- frame offset of left handle (use negative, e.g. -8)
-      handle_in_value    -- value delta of left handle (0.0 = flat)
+      handle_in_frames -- frame offset of left handle (use negative, e.g. -8)
+      handle_in_value -- value delta of left handle (0.0 = flat)
       handle_out_frames  -- frame offset of right handle (use positive, e.g. 8)
       handle_out_value   -- value delta of right handle
 
     Args:
-        clip_id:           The clipId of the target clip.
-        param:             Parameter name (e.g. 'pos_x', 'opacity', 'font_size').
-        frame:             Timeline frame number to place this keyframe.
-        value:             Value at this keyframe.
-        easing:            Interpolation type (default: 'ease_both').
+        clip_id: The clipId of the target clip.
+        param: Parameter name (e.g. 'pos_x', 'opacity', 'font_size').
+        frame: Timeline frame number to place this keyframe.
+        value: Value at this keyframe.
+        easing: Interpolation type (default: 'ease_both').
         handle_in_frames:  Left bezier handle frame offset (only for easing='bezier').
-        handle_in_value:   Left bezier handle value offset.
+        handle_in_value: Left bezier handle value offset.
         handle_out_frames: Right bezier handle frame offset.
         handle_out_value:  Right bezier handle value offset.
     """
     result = _post(f"/anim/{clip_id}/keyframe", {
-        "param":             param,
-        "frame":             frame,
-        "value":             value,
-        "easing":            easing,
+        "param": param,
+        "frame": frame,
+        "value": value,
+        "easing": easing,
         "handle_in_frames":  handle_in_frames,
         "handle_in_value":   handle_in_value,
         "handle_out_frames": handle_out_frames,
@@ -1601,7 +1691,7 @@ def clear_animation(clip_id: str, param: str) -> str:
 
     Args:
         clip_id: The clipId.
-        param:   Parameter name (e.g. 'pos_x', 'opacity').
+        param: Parameter name (e.g. 'pos_x', 'opacity').
     """
     result = _post(f"/anim/{clip_id}/clear/{param}", {})
     removed = result.get("keyframesRemoved", 0)
@@ -1641,7 +1731,7 @@ def set_text_content(clip_id: str, text: str) -> str:
 
     Args:
         clip_id: The clipId of the TextClip.
-        text:    The new text to display.
+        text: The new text to display.
     """
     _patch(f"/clips/text/{clip_id}", {"text": text})
     return f"Text clip {clip_id[:8]} content updated to: \"{text[:80]}\""

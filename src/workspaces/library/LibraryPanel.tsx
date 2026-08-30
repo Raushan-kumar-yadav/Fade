@@ -24,6 +24,18 @@ interface CtxMenu { x: number; y: number; items: CtxItem[]; }
 interface CtxItem {
   icon: string; label: string; danger?: boolean; sep?: boolean; onClick: () => void;
 }
+interface MediaJob {
+  jobId: string;
+  type: 'video_download' | 'image_download' | 'image_generate'
+       | 'video_index' | 'image_index' | 'transcription' | string;
+  label: string;
+  status: 'pending' | 'running' | 'done' | 'error';
+  progress: number;
+  message: string;
+  assetIds: string[];   // for download/generate jobs — the resulting assetIds
+  assetId?: string | null;  // for asset-bound jobs — the specific asset being processed
+  error?: string | null;
+}
 
 //   Constants  
 
@@ -133,6 +145,112 @@ function CardThumb({ type }: { type: string }) {
 }
 
 //   API helpers  
+ 
+function PlaceholderCard({ job, onDismiss }: { job: MediaJob; onDismiss: () => void }) {
+  const isError = job.status === 'error';
+  const isDone  = job.status === 'done';
+  const icon = job.type === 'video_download' ? '🎬'
+              : job.type === 'image_download' ? '🖼'
+              : '✨';
+  const pct = Math.round(job.progress * 100);
+
+  if (isDone) return null; 
+
+  return (
+    <div className={`lib-placeholder-card lib-placeholder-card--${job.status}`}>
+      {/* Full card overlay while loading */}
+      <div className="lib-placeholder-card__overlay">
+        {isError ? (
+          <span className="lib-placeholder-card__err">⚠</span>
+        ) : (
+          <span className="lib-placeholder-card__spinner" />
+        )}
+      </div>
+
+      {/* Icon + label */}
+      <div className="lib-placeholder-card__body">
+        <span className="lib-placeholder-card__type-icon">{icon}</span>
+        <span className="lib-placeholder-card__label">{job.label}</span>
+        {!isError && (
+          <span className="lib-placeholder-card__msg">{job.message}</span>
+        )}
+        {isError && (
+          <span className="lib-placeholder-card__msg lib-placeholder-card__msg--err">
+            {job.error ?? 'Failed'}
+          </span>
+        )}
+      </div>
+
+      {/* Progress bar at bottom */}
+      {!isError && (
+        <div className="lib-placeholder-card__bar">
+          <div className="lib-placeholder-card__bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+
+      {/* Dismiss on error */}
+      {isError && (
+        <button className="lib-placeholder-card__dismiss" onClick={onDismiss} title="Dismiss">✕</button>
+      )}
+    </div>
+  );
+}
+
+ 
+function AssetTaskOverlay({
+  jobs,
+  indexStatus,   
+  assetType,
+}: {
+  jobs: MediaJob[];
+  indexStatus?: string;  // 'pending' | 'running' | 'done' | 'not_found' | 'unknown'
+  assetType?: string;
+}) {
+  const active = jobs.filter(j => j.status === 'running' || j.status === 'pending');
+  const done   = jobs.filter(j => j.status === 'done');
+  const error  = jobs.filter(j => j.status === 'error');
+
+  // If no SSE job exists but the poll says indexing is active, synthesize an overlay
+  const pollActive = (indexStatus === 'pending' || indexStatus === 'running') && active.length === 0;
+
+  if (active.length === 0 && done.length === 0 && error.length === 0 && !pollActive) return null;
+
+  const getIcon = (type: string) =>
+    type === 'transcription' ? '💬'
+    : type === 'video_index' || type === 'image_index' ? '🔍'
+    : '⚙️';
+
+  if (pollActive) {
+    // Overlay driven purely by poll status  
+    const icon = assetType === 'image' ? '🔍' : '🔍';
+    const msg  = assetType === 'image' ? 'Describing image…' : 'Indexing: Vision + Whisper…';
+    return (
+      <div className="lib-asset-overlay lib-asset-overlay--active">
+        <span className="lib-asset-overlay__icon">{icon}</span>
+        <span className="lib-asset-overlay__text">{msg}</span>
+        <span className="lib-asset-overlay__spin" />
+      </div>
+    );
+  }
+
+  // Pick the most interesting job to show 
+  const show = active[0] ?? error[0] ?? done[0];
+  const isActive = active.length > 0;
+  const isErr    = !isActive && error.length > 0;
+
+  return (
+    <div className={`lib-asset-overlay lib-asset-overlay--${isActive ? 'active' : isErr ? 'error' : 'done'}`}>
+      <span className="lib-asset-overlay__icon">{getIcon(show.type)}</span>
+      <span className="lib-asset-overlay__text">
+        {isActive ? show.message || show.label
+         : isErr  ? '⚠ ' + (show.error ?? 'Failed')
+         : '✓ Indexed'}
+      </span>
+      {isActive && <span className="lib-asset-overlay__spin" />}
+    </div>
+  );
+}
+
 
 async function fetchComps(): Promise<CompMeta[]> {
   const r = await fetch(`${base()}/comps`); return (await r.json()).comps ?? [];
@@ -592,6 +710,9 @@ export default function LibraryPanel({ onAddToTimeline }: {
   const [showWcCfg, setShowWcCfg] = useState(false);
   const [wcError, setWcError] = useState<string | null>(null);
 
+  // Media job state  
+  const [jobs, setJobs] = useState<MediaJob[]>([]);
+
   const openCtx = useCallback((e: React.MouseEvent, items: CtxItem[]) => {
     e.preventDefault(); e.stopPropagation();
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
@@ -612,7 +733,30 @@ export default function LibraryPanel({ onAddToTimeline }: {
     return () => window.removeEventListener('fade:library-changed', h);
   }, [refreshAssets]);
 
-  // Poll index status for all video assets
+  // Subscribe to job SSE events  
+  useEffect(() => {
+    const handleJob = (e: Event) => {
+      const job = (e as CustomEvent<MediaJob>).detail;
+      if (!job?.jobId) return;
+      setJobs(prev => {
+        const idx = prev.findIndex(j => j.jobId === job.jobId);
+        if (idx >= 0) { const next = [...prev]; next[idx] = job; return next; }
+        return [job, ...prev];
+      });
+      if (job.status === 'done') refreshAssets();
+    };
+    window.addEventListener('fade:job-update', handleJob);
+    return () => window.removeEventListener('fade:job-update', handleJob);
+  }, [refreshAssets]);
+
+  const dismissJob = useCallback((jobId: string) => {
+    setJobs(prev => prev.filter(j => j.jobId !== jobId));
+  }, []);
+
+  // Poll index status for all video assets  
+  const indexStatusesRef = useRef<Record<string, string>>(indexStatuses);
+  useEffect(() => { indexStatusesRef.current = indexStatuses; }, [indexStatuses]);
+
   useEffect(() => {
     const videoAssets = assets.filter(a => a.type === 'video');
     if (!videoAssets.length) return;
@@ -629,9 +773,9 @@ export default function LibraryPanel({ onAddToTimeline }: {
       if (!cancelled) setIndexStatuses(statuses);
     };
     poll();
-    //   keep polling  
+    // keep polling while any video is still being indexed
     const interval = setInterval(async () => {
-      const cur = indexStatuses;
+      const cur = indexStatusesRef.current;  // always read latest, no stale closure
       const stillActive = videoAssets.some(a => cur[a.assetId] === 'pending' || cur[a.assetId] === 'running');
       if (!stillActive) { clearInterval(interval); return; }
       await poll();
@@ -851,11 +995,11 @@ export default function LibraryPanel({ onAddToTimeline }: {
                       onDragStart={e => {
                         e.dataTransfer.effectAllowed = 'copy';
                         const payload = JSON.stringify({
-                          assetId:    hit.assetId,
-                          filename:   asset?.filename ?? hit.assetId.slice(0, 8),
-                          type:       asset?.type ?? 'video',
-                          start_sec:  hit.start_sec,
-                          end_sec:    hit.end_sec,
+                          assetId: hit.assetId,
+                          filename: asset?.filename ?? hit.assetId.slice(0, 8),
+                          type: asset?.type ?? 'video',
+                          start_sec: hit.start_sec,
+                          end_sec: hit.end_sec,
                           inFrames,
                           outFrames,
                           duration:   dur,
@@ -898,6 +1042,14 @@ export default function LibraryPanel({ onAddToTimeline }: {
         {/*   Normal grid  */}
         {!isSemanticMode && (
           <>
+             
+            {jobs
+              .filter(j => !j.assetId && j.status !== 'done')
+              .map(job => (
+                <PlaceholderCard key={job.jobId} job={job} onDismiss={() => dismissJob(job.jobId)} />
+              ))
+            }
+
             {/* WebComps */}
             {webcomps.map(wc => (
               <LibCard
@@ -959,14 +1111,10 @@ export default function LibraryPanel({ onAddToTimeline }: {
             )}
 
             {filtered.map(asset => {
-              const idxStatus = asset.type === 'video' ? (indexStatuses[asset.assetId] ?? 'not_started') : null;
+              // Asset-bound jobs for this specific card  
+              const assetJobs = jobs.filter(j => j.assetId === asset.assetId);
               return (
                 <div key={asset.assetId} className="lib__card-wrap">
-                  {idxStatus && idxStatus !== 'not_started' && (
-                    <div className="lib__index-badge" data-status={idxStatus}>
-                      {idxStatus === 'pending' || idxStatus === 'running' ? '⏳' : idxStatus === 'done' ? '✦' : idxStatus === 'error' ? '⚠' : ''}
-                    </div>
-                  )}
                   <LibCard
                     type={asset.type}
                     title={asset.filename}
@@ -981,6 +1129,12 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     onDoubleClick={() => onAddToTimeline?.(asset, 0)}
                     onContextMenu={e => assetCtx(e, asset)}
                     onDelete={async () => { await removeAsset(asset.assetId); setAssets(p => p.filter(a => a.assetId !== asset.assetId)); }}
+                  />
+                  {/* Small overlay strip for active background tasks on this asset */}
+                  <AssetTaskOverlay
+                    jobs={assetJobs}
+                    indexStatus={indexStatuses[asset.assetId]}
+                    assetType={asset.type}
                   />
                 </div>
               );

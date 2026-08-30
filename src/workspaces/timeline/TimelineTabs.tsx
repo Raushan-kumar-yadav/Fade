@@ -2,18 +2,13 @@ import React from 'react';
 import { useTimeline } from './TimelineContext';
 import './TimelineTabs.css';
 
-/**
- * Master Timeline Tabs — lives at the top of the Timeline panel.
- * Shows root + all currently open compositions as tabs.
- * Clicking a tab switches the active timeline.
- * ✕ closes a comp tab (root tab cannot be closed).
- */
+ 
 export default function TimelineTabs() {
   const { state, dispatch } = useTimeline();
   const { compTabStack, activeCompId } = state;
 
   if (compTabStack.length <= 1 && activeCompId === null) {
-    // Only root — show minimal breadcrumb, no point rendering a full tab bar
+    // Only root 
     return null;
   }
 

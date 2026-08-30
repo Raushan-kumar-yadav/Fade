@@ -22,6 +22,12 @@ def set_done(asset_id: str, chunks: int) -> None:
         _cache[asset_id] = {"status": "done", "chunks": chunks, "message": ""}
 
 
+def set_progress(asset_id: str, chunks: int, stage: str = "running") -> None:
+    """Partial progress — vision saved, transcript still running."""
+    with _lock:
+        _cache[asset_id] = {"status": "running", "chunks": chunks, "stage": stage, "message": ""}
+
+
 def set_error(asset_id: str, message: str) -> None:
     with _lock:
         _cache[asset_id] = {"status": "error", "chunks": 0, "message": message}

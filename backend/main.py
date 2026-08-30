@@ -67,6 +67,7 @@ from backend.routers import (
     scene_tools,
     audio_tools,
     animation,
+    jobs,
 )
 
 
@@ -81,8 +82,12 @@ async def lifespan(app: FastAPI):
 
     try:
         _worker_bus.start()
+        # Resume any unfinished indexing from previous sessions
+        _HTTP_PORT_EARLY = int(os.environ.get("BACKEND_PORT", 8000))
+        _worker_bus.check_and_resume(port=_HTTP_PORT_EARLY)
     except Exception as _e:
         print(f"[main] sandbox worker failed to start: {_e}", flush=True)
+
 
     asyncio.create_task(engine.startPreviewLoop())
 
@@ -261,6 +266,7 @@ app.include_router(transitions.router)
 app.include_router(audio.router)
 app.include_router(audio_tools.router)
 app.include_router(animation.router)
+app.include_router(jobs.router)
 app.include_router(export_.router)
 app.include_router(search.router)
 app.include_router(context.router)
