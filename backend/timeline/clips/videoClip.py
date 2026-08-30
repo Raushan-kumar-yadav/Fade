@@ -22,16 +22,16 @@ class BlendMode:
         """Return the skia.BlendMode enum for a given index."""
         import skia
         _map = {
-            0:  skia.BlendMode.kSrcOver,   # Normal
-            1:  skia.BlendMode.kMultiply,
-            2:  skia.BlendMode.kScreen,
+            0: skia.BlendMode.kSrcOver,   # Normal
+            1: skia.BlendMode.kMultiply,
+            2: skia.BlendMode.kScreen,
             3:  skia.BlendMode.kOverlay,
-            4:  skia.BlendMode.kDarken,
-            5:  skia.BlendMode.kLighten,
-            6:  skia.BlendMode.kColorDodge,
-            7:  skia.BlendMode.kColorBurn,
-            8:  skia.BlendMode.kHardLight,
-            9:  skia.BlendMode.kSoftLight,
+            4: skia.BlendMode.kDarken,
+            5: skia.BlendMode.kLighten,
+            6: skia.BlendMode.kColorDodge,
+            7: skia.BlendMode.kColorBurn,
+            8: skia.BlendMode.kHardLight,
+            9: skia.BlendMode.kSoftLight,
             10: skia.BlendMode.kDifference,
             11: skia.BlendMode.kExclusion,
         }
@@ -130,20 +130,19 @@ class VideoClip(BaseClip):
         canvas.drawRect(skia.Rect.MakeXYWH(0, 0, 1920, 1080), paint)
 
     def _renderMedia(self, canvas, paint, frame: int) -> None:
-         
         import skia
 
         if self._scheduler is None:
             self._renderSolid(canvas, paint)
             return
 
-        #   global frame to local  
+        # global frame 
         localFrame = self.sourceFrame(frame)
 
-        #  cache lookup  
+        #  cache lookup
         decoded = self._scheduler.tryGetFrame(self.assetId, localFrame)
 
-        # On cache miss   
+        # On cache miss fall back to last valid frame  
         if not (decoded and decoded.valid):
             decoded = self._lastValidFrame
 
@@ -151,33 +150,48 @@ class VideoClip(BaseClip):
             expected = decoded.width * decoded.height * 4
             if len(decoded.dataRGBA) != expected:
                 self._renderSolid(canvas, paint)
-            else:
-                try:
-                    if getattr(decoded, 'skiaImage', None) is not None:
-                        image = decoded.skiaImage
-                        dst  = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
-                        opts = skia.SamplingOptions(skia.FilterMode.kLinear)
-                        canvas.drawImageRect(image, dst, opts, paint)
-                        self._lastValidFrame = decoded
-                    else:
-                        info = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
-                        skdata = skia.Data.MakeWithoutCopy(decoded.dataRGBA)
-                        image = skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
-                        if image is not None:
-                            dst  = skia.Rect.MakeXYWH(0, 0, 1920, 1080)
-                            opts = skia.SamplingOptions(skia.FilterMode.kLinear)
-                            canvas.drawImageRect(image, dst, opts, paint)
-                            self._lastValidFrame = decoded
-                        else:
-                            self._renderSolid(canvas, paint)
-                except Exception as e:
-                    print(f"[VideoClip] drawImage error frame={frame} local={localFrame}: {e}")
-                    self._renderSolid(canvas, paint)
+                return
+
+            try:
+                # Build skia image  
+                if getattr(decoded, 'skiaImage', None) is not None:
+                    image = decoded.skiaImage
+                else:
+                    info  = skia.ImageInfo.MakeN32Premul(decoded.width, decoded.height)
+                    skdata = skia.Data.MakeWithoutCopy(decoded.dataRGBA)
+                    image  = skia.Image.MakeRasterData(info, skdata, decoded.width * 4)
+                    if image is None:
+                        self._renderSolid(canvas, paint)
+                        return
+
+               
+                # Canvas coords are always in project space  
+                cw = float(self.transform._projectWidth  if hasattr(self.transform, '_projectWidth')  else 1920)
+                ch = float(self.transform._projectHeight if hasattr(self.transform, '_projectHeight') else 1080)
+
+                iw = float(decoded.width)
+                ih = float(decoded.height)
+
+                # Scale to fit inside canvas preserving aspect ratio
+                scale = min(cw / iw, ch / ih)
+                dw = iw * scale
+                dh = ih * scale
+                dx = (cw - dw) / 2.0   # centre horizontally
+                dy = (ch - dh) / 2.0   # centre vertically
+
+                dst  = skia.Rect.MakeXYWH(dx, dy, dw, dh)
+                opts = skia.SamplingOptions(skia.FilterMode.kLinear)
+                canvas.drawImageRect(image, dst, opts, paint)
+                self._lastValidFrame = decoded
+
+            except Exception as e:
+                print(f"[VideoClip] drawImage error frame={frame} local={localFrame}: {e}")
+                self._renderSolid(canvas, paint)
         else:
-            # No frame available at all  
+            # No frame available yet
             self._renderSolid(canvas, paint)
 
- 
+
 
     def setScheduler(self, scheduler: "DecodeScheduler", fps: float = 30.0) -> None:
          

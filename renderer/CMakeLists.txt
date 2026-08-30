@@ -4,22 +4,21 @@ project(render_engine VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# skia.lib from out/Release (is_debug=false) uses /MD (Release DLL CRT).
-# The addon MUST match to avoid CRT mismatch link errors.
+ 
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 
-# ── Paths ──────────────────────────────────────────────────────────────────────
+#   Paths  
 set(DEPS "${CMAKE_CURRENT_SOURCE_DIR}/deps")
 set(SRC  "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(VK_SRC "D:/Qteee-Vulkan/src")
 
 find_package(Vulkan REQUIRED)
 
-# cmake-js provides CMAKE_JS_INC (Node.js headers) and CMAKE_JS_LIB
+# cmake-js provides CMAKE_JS_INC  
 message(STATUS "cmake-js INC: ${CMAKE_JS_INC}")
 message(STATUS "cmake-js LIB: ${CMAKE_JS_LIB}")
 
-# node-addon-api (provides napi.h)
+# node-addon-api  
 execute_process(
     COMMAND node -e "process.stdout.write(require('node-addon-api').include_dir)"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -28,23 +27,20 @@ execute_process(
 )
 message(STATUS "node-addon-api: ${NAPI_INCLUDE_DIR}")
 
-# ── Source files ───────────────────────────────────────────────────────────────
-# Minimal set: no Qteee-Vulkan ecosystem (no Lottie, no imageDecorder,
-# no ExpressionEngine, no DecodeScheduler). Python decodes video;
-# HeadlessCompositor composites raw RGBA frames on the GPU.
-
+# Source files  
+ 
 set(SOURCES
-    # ── NAPI bridge + compositor ────────────────────────────────────────────────
+    #   NAPI bridge + compositor 
     src/napi/RenderEngineAddon.cpp
     src/HeadlessCompositor.cpp
 
-    # ── Drawing modules (text, shape, pen, svg) ───────────────────────────────────────
+    #   Drawing modules  
     src/rendering/DrawText.cpp
     src/rendering/DrawShape.cpp
     src/rendering/DrawPen.cpp
     src/rendering/DrawSvg.cpp
 
-    # ── Vulkan GPU (Qt-free) ───────────────────────────────────────────────────
+    #   Vulkan GPU  
     src/gpu/vulkan/device/DeviceContext.cpp
     src/gpu/vulkan/memory/Buffer.cpp
     src/gpu/vulkan/memory/Texture.cpp
@@ -52,16 +48,17 @@ set(SOURCES
     src/gpu/vulkan/command/CommandPool.cpp
     src/gpu/vulkan/skia/SkiaContext.cpp
 
-    # ── Video decode (D3D11VA HW + SW FFmpeg fallback) ────────────────────────
+    # Video decode  
     src/video/HwVideoDecoder.cpp
     src/video/videoDecoder.cpp
     src/video/ClipDecoder.cpp
+    src/core/video/decoder/imageDecorder.cpp
 
-    # ── Async decode bridge (self-contained scheduler for HeadlessCompositor) ─
+    # Async decode bridge 
     src/engine/SchedulerBridge.cpp
 )
 
-# ── NAPI addon target ──────────────────────────────────────────────────────────
+#   NAPI addon target  
 add_library(render_engine SHARED ${SOURCES} ${CMAKE_JS_SRC})
 set_target_properties(render_engine PROPERTIES
     PREFIX ""
@@ -69,7 +66,7 @@ set_target_properties(render_engine PROPERTIES
     OUTPUT_NAME "render_engine"
 )
 
-# ── Include directories ────────────────────────────────────────────────────────
+#   Include directories  
 target_include_directories(render_engine PRIVATE
     ${SRC}                              # native/src — our modified headers first
     ${DEPS}/include                     # GLM, stb, nlohmann/json
@@ -94,30 +91,29 @@ target_compile_definitions(render_engine PRIVATE
     NOMINMAX
     VK_USE_PLATFORM_WIN32_KHR
     SK_VULKAN
-    # Match skia.lib build (is_debug=false). These prevent SkLoadUserConfig.h
-    # from defining SK_DEBUG, which activates NVRefCnt destructor asserts.
+     
     SK_RELEASE
     NDEBUG
 )
 
 if(MSVC)
     target_compile_options(render_engine PRIVATE
-        /W1        # Minimal warnings for copied third-party code
-        /wd4819    # Code page warnings
-        /wd4244    # Conversion warnings
-        /wd4267    # size_t conversion warnings
-        /wd4005    # Macro redefinition warnings
+        /W1        
+        /wd4819     
+        /wd4244    
+        /wd4267    
+        /wd4005     
     )
 endif()
 
-# ── Link libraries ─────────────────────────────────────────────────────────────
+#   Link libraries  
 set(FFMPEG_LIB_DIR "${DEPS}/ffmpeg/lib")
 
 target_link_libraries(render_engine PRIVATE
     ${CMAKE_JS_LIB}
     ${Vulkan_LIBRARIES}
     "${DEPS}/skia/lib/skia.lib"
-    # ── Skia SVG module (SkSVGDOM + SkSVGBuilder symbols) ──────────────────
+    #   Skia SVG module 
     "${DEPS}/skia/lib/svg.lib"
     "${DEPS}/skia/lib/skresources.lib"
     "${DEPS}/skia/lib/skshaper.lib"
@@ -136,7 +132,7 @@ target_link_libraries(render_engine PRIVATE
     dxguid.lib
 )
 
-# Copy FFmpeg DLLs next to the .node file on every build
+ 
 set(FFMPEG_BIN_DIR "D:/Qteee-Vulkan/dependencies/ffmpeg/bin")
 if(EXISTS "${FFMPEG_BIN_DIR}")
     add_custom_command(TARGET render_engine POST_BUILD

@@ -98,14 +98,26 @@ void DecodeScheduler::startPump(const ClipID &pumpId) {
       int64_t nextFrame = current + 1;
       bool success = false;
 
-      // Check shared content cache first
       if (m_frameCache.get({contentId, nextFrame}) != nullptr) {
         success = true;
       } else {
         auto f = dec->decodeFrame(nextFrame);
         if (f) {
-          // Store under contentId
+          // Store under the requested frame key
           m_frameCache.put({contentId, nextFrame}, f);
+
+          // Static image (fps==0, isStatic): also pin under frame 0 and
+          // stop pumping — there is only one frame, ever.
+          if (f->isStatic || dec->getFps() <= 0.0) {
+            m_frameCache.put({contentId, 0}, f);
+            std::lock_guard<std::mutex> l(m_pumpMutex);
+            m_lastDecoded[pumpId] = nextFrame;
+            m_targetFrames[pumpId] = nextFrame;  // stop the pump
+            m_activePumps.erase(pumpId);
+            m_decoderPool.checkin(pumpId);
+            return;  // done — no more frames needed
+          }
+
           success = true;
         }
       }

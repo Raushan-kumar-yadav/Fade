@@ -58,6 +58,23 @@ def _resolve_download_dir(subdir: str = "") -> str:
     return path
 
 
+def _queue_semantic_index(asset_id: str, filepath: str, mtype: str) -> None:
+    """Queue semantic indexing for image or video assets. Non-fatal."""
+    try:
+        from backend.ai.VideoSemantic.indexer import get_db_path as _get_db, is_asset_indexed
+        if is_asset_indexed(asset_id):
+            return  # already in ChromaDB  
+        if mtype == "image":
+            _worker_bus.submit_index_image(asset_id, filepath, db_path=_get_db())
+            print(f"[Library] ✓ index_image queued for {asset_id[:8]}", flush=True)
+        elif mtype == "video":
+            port = int(os.environ.get("BACKEND_PORT", 8000))
+            _worker_bus.submit_index_video(asset_id, filepath, port=port, db_path=_get_db())
+            print(f"[Library] ✓ index_video queued for {asset_id[:8]}", flush=True)
+    except Exception as _e:
+        print(f"[Library] ✗ Semantic index queue error (non-fatal): {_e}", flush=True)
+
+
 def _import_file(filepath: str) -> dict:
     """Register a file into _library, deduplicating by path. Returns asset dict."""
     for a in _library.values():
@@ -80,6 +97,8 @@ def _import_file(filepath: str) -> dict:
             pass
     mtype = asset.mediaType.value if hasattr(asset.mediaType, 'value') else str(asset.mediaType)
     print(f"[Library] Imported {os.path.basename(filepath)} → assetId={assetId[:8]} type={mtype}", flush=True)
+     
+    _queue_semantic_index(assetId, filepath, mtype)
     return {"assetId": assetId, "filename": os.path.basename(filepath),
             "filepath": filepath, "type": mtype, "hasAudio": asset.hasAudio}
 
@@ -107,45 +126,23 @@ def importAsset(req: ImportRequest):
     result = _import_file(req.filepath)
     from backend.events import notify; notify("library")
 
-    if result.get("type") == "video":
-        fname = os.path.basename(req.filepath)
-        print(f"[Library] Queueing VideoSemantic index for {result['assetId'][:8]} ({fname})", flush=True)
+    
+    fname = os.path.basename(req.filepath)
+    mtype = result.get("type", "")
+    if mtype == "video":
         try:
-            port = int(os.environ.get("BACKEND_PORT", 8000))
-            from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
-            _worker_bus.submit_index_video(result["assetId"], req.filepath,
-                                           port=port, db_path=_get_db())
-            print(f"[Library] ✓ index_video submitted to worker bus", flush=True)
-            
-            try:
-                from backend.routers.jobs import register_asset_job as _rj
-                _rj("video_index", result["assetId"],
-                    f"Indexing: {fname}",
-                    message="Running Vision + Whisper…")
-            except Exception:
-                pass
-        except Exception as _e:
-            print(f"[Library] ✗ VideoSemantic submit error (non-fatal): {_e}", flush=True)
-
-    elif result.get("type") == "image":
-        fname = os.path.basename(req.filepath)
-        print(f"[Library] Queueing ImageSemantic index for {result['assetId'][:8]} ({fname})", flush=True)
+            from backend.routers.jobs import register_asset_job as _rj
+            _rj("video_index", result["assetId"], f"Indexing: {fname}",
+                message="Running Vision + Whisper…")
+        except Exception:
+            pass
+    elif mtype == "image":
         try:
-            from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
-            _worker_bus.submit_index_image(result["assetId"], req.filepath, db_path=_get_db())
-            print(f"[Library] ✓ index_image submitted to worker bus", flush=True)
-            try:
-                from backend.routers.jobs import register_asset_job as _rj
-                _rj("image_index", result["assetId"],
-                    f"Indexing: {fname}",
-                    message="Describing image…")
-            except Exception:
-                pass
-        except Exception as _e:
-            print(f"[Library] ✗ ImageSemantic submit error (non-fatal): {_e}", flush=True)
-
-    else:
-        print(f"[Library] Skipping index — type={result.get('type')} ({os.path.basename(req.filepath)})", flush=True)
+            from backend.routers.jobs import register_asset_job as _rj
+            _rj("image_index", result["assetId"], f"Indexing: {fname}",
+                message="Describing image…")
+        except Exception:
+            pass
 
     return result
 

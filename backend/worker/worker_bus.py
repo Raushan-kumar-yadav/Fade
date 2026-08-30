@@ -134,7 +134,7 @@ class WorkerBus:
         """Queue a single-image description + ChromaDB save job."""
         from backend.config.global_config import cfg as _cfg
         vision_model = _cfg.get("ai.vision_model", "moondream:latest")
-        index_cache.set(asset_id, "pending")
+        index_cache.set_pending(asset_id)
         print(f"[WorkerBus] index_image queued for {asset_id[:8]} model={vision_model}", flush=True)
         self.submit({
             "type": "index_image",
@@ -288,7 +288,7 @@ class WorkerBus:
                     self.submit_index_video(aid, fpath, port=port, db_path=db_path)
                     queued_vision += 1
             elif not transcript_done:
-                # Vision done but transcript failed — queue transcript-only
+               
                 existing = index_cache.get(aid)
                 if not existing or existing.get("status") not in ("pending", "running"):
                     print(f"[WorkerBus] resume: queuing transcript retry for {aid[:8]}", flush=True)

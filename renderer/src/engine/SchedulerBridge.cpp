@@ -4,6 +4,8 @@
 #include "gpu/vulkan/device/DeviceContext.hpp"
 #include "video/ClipDecoder.hpp"
 
+#include "stb/stb_image.h"
+
 #include <atomic>
 #include <condition_variable>
 #include <functional>
@@ -146,6 +148,7 @@ struct ClipState {
   std::unique_ptr<ClipDecoder> decoder;
   std::mutex decoderMutex; // one decode at a time per clip
   int64_t lastDecoded = -1;
+  bool isImage = false; // static image: skip pump, always return frame 0
 };
 
 class MiniScheduler {
@@ -170,20 +173,59 @@ public:
   }
 
   void registerImage(const std::string &clipId, const std::string &filepath) {
-    registerVideo(clipId, filepath); // same decoder handles images
+    // Decode once with stb_image — never use FFmpeg for static images.
+    std::lock_guard<std::mutex> lock(m_clipsMutex);
+    if (m_clips.count(clipId))
+      return;
+
+    int w = 0, h = 0, ch = 0;
+
+    unsigned char *px = stbi_load(filepath.c_str(), &w, &h, &ch, 4);
+    if (!px) {
+      std::cerr << "[MiniScheduler] stbi_load failed for: " << filepath << "\n";
+      // Fallback to FFmpeg path
+      auto state = std::make_unique<ClipState>();
+      state->decoder =
+          std::make_unique<ClipDecoder>(filepath, m_deviceCtx, m_scale);
+      state->isImage = false;
+      m_clips[clipId] = std::move(state);
+      return;
+    }
+
+    auto entry = std::make_shared<CachedEntry>();
+    entry->rgba.assign(px, px + static_cast<size_t>(w) * h * 4);
+    entry->width = static_cast<uint32_t>(w);
+    entry->height = static_cast<uint32_t>(h);
+    stbi_image_free(px);
+
+    // Store under frame 0
+    m_cache.put({clipId, 0}, entry);
+
+    // Register a dummy
+    auto state = std::make_unique<ClipState>();
+    state->isImage = true;
+    m_clips[clipId] = std::move(state);
+
+    std::cout << "[MiniScheduler] Image cached (stb): " << filepath << " (" << w
+              << "x" << h << ")\n";
   }
 
   void prefetchAround(const std::string &clipId, int64_t anchor, int radius) {
+
+    {
+      std::lock_guard<std::mutex> lock(m_clipsMutex);
+      auto it = m_clips.find(clipId);
+      if (it != m_clips.end() && it->second->isImage)
+        return;
+    }
 
     for (int offset = 1; offset <= radius; ++offset) {
       int64_t frame = anchor + offset;
       CacheKey key{clipId, frame};
 
-      // Already cached?
       if (m_cache.get(key))
         continue;
 
-      // Already being decoded?
       {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
         if (m_pending.count(key))
@@ -195,7 +237,6 @@ public:
                 << clipId.substr(clipId.rfind('/') + 1) << " frame=" << frame
                 << "\n";
 
-      // Submit decode job to thread pool
       m_pool.enqueue([this, clipId, frame, key]() {
         ClipState *state = nullptr;
         {
@@ -209,9 +250,7 @@ public:
           state = it->second.get();
         }
 
-        // Lock this clip's decoder
         std::lock_guard<std::mutex> dlock(state->decoderMutex);
-
         auto result = state->decoder->decodeFrame(frame);
         if (!result.rgba.empty()) {
           auto entry = std::make_shared<CachedEntry>();
@@ -230,12 +269,19 @@ public:
   }
 
   CachedFrameData tryGetCachedFrame(const std::string &clipId, int64_t frame) {
+    // For static images,
+    {
+      std::lock_guard<std::mutex> lock(m_clipsMutex);
+      auto it = m_clips.find(clipId);
+      if (it != m_clips.end() && it->second->isImage)
+        frame = 0;
+    }
+
     CacheKey key{clipId, frame};
     auto entry = m_cache.get(key);
     if (!entry || entry->rgba.empty())
       return {};
 
-    // Move the shared_ptr
     auto *handle = new std::shared_ptr<CachedEntry>(std::move(entry));
 
     CachedFrameData result;

@@ -1,4 +1,7 @@
 #include "HeadlessCompositor.hpp"
+
+#include "stb/stb_image.h"
+
 #include "core/api/Logger.hpp"
 #include "engine/SchedulerBridge.hpp"
 #include "napi/FrameDescriptor.hpp"
@@ -235,7 +238,6 @@ void HeadlessCompositor::renderFrame(const FrameDescriptor &fd) {
 }
 
 void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
-  // ULTRA-FAST PATH
 
   if (fd.clips.size() == 1) {
     const auto &clip = fd.clips[0];
@@ -250,11 +252,9 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           (t.x == 0 && t.y == 0 && t.rotation == 0 && t.scaleX == 1.0f &&
            t.scaleY == 1.0f && clip.opacity >= 0.99f && clip.blendMode == 0);
       if (isIdentity) {
-
         CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
         if (cfd.valid && cfd.dataSize > 0) {
           if ((int)cfd.width == m_width && (int)cfd.height == m_height) {
-            // Full-resolution cache hit
             std::cout << "[CACHE HIT ] frame=" << fd.frame
                       << " srcFrame=" << clip.sourceFrame
                       << " full-res (blit)\n";
@@ -265,32 +265,37 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
               m_onFrameReady(fd.frame);
             return;
           }
-
           std::cout << "[CACHE HIT ] frame=" << fd.frame
                     << " srcFrame=" << clip.sourceFrame << " " << cfd.width
                     << "x" << cfd.height << " (cpu-upscale)\n";
           {
-            const int srcW = (int)cfd.width;
-            const int srcH = (int)cfd.height;
-            const int dstW = m_width;
-            const int dstH = m_height;
+            const int srcW = (int)cfd.width, srcH = (int)cfd.height;
+            const int dstW = m_width, dstH = m_height;
             const uint8_t *src = cfd.data;
             uint8_t *dst = m_buffer.get();
-
-            const int xRatio = ((srcW) << 16) / dstW;
-            const int yRatio = ((srcH) << 16) / dstH;
-            for (int dy = 0; dy < dstH; ++dy) {
+            // upscale
+            const float scaleF =
+                std::min((float)dstW / srcW, (float)dstH / srcH);
+            const int fitW = (int)(srcW * scaleF);
+            const int fitH = (int)(srcH * scaleF);
+            const int offX = (dstW - fitW) / 2;
+            const int offY = (dstH - fitH) / 2;
+            const int xRatio = ((srcW) << 16) / fitW;
+            const int yRatio = ((srcH) << 16) / fitH;
+            // Clear destination to black first
+            std::memset(dst, 0, (size_t)dstW * dstH * 4);
+            for (int dy = 0; dy < fitH; ++dy) {
               int sy = (dy * yRatio) >> 16;
               if (sy >= srcH)
                 sy = srcH - 1;
               const uint8_t *srcRow = src + sy * srcW * 4;
-              uint8_t *dstRow = dst + dy * dstW * 4;
-              for (int dx = 0; dx < dstW; ++dx) {
+              uint8_t *dstRow = dst + (dy + offY) * dstW * 4;
+              for (int dx = 0; dx < fitW; ++dx) {
                 int sx = (dx * xRatio) >> 16;
                 if (sx >= srcW)
                   sx = srcW - 1;
                 const uint8_t *p = srcRow + sx * 4;
-                uint8_t *q = dstRow + dx * 4;
+                uint8_t *q = dstRow + (dx + offX) * 4;
                 q[0] = p[0];
                 q[1] = p[1];
                 q[2] = p[2];
@@ -308,12 +313,44 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         std::cout << "[CACHE MISS] frame=" << fd.frame
                   << " srcFrame=" << clip.sourceFrame
                   << " -> decoder (fast-path)\n";
+
+        if (clip.type == ClipDesc::Type::Image) {
+          int w = 0, h = 0, ch = 0;
+          uint8_t *px = stbi_load(clip.file.c_str(), &w, &h, &ch, 4);
+          if (px) {
+            schedPushFrame(clip.file, 0, px, (size_t)w * h * 4, w, h);
+            const int dstW = m_width, dstH = m_height;
+            // Letterbox: uniform scale, center, black bars
+            const float scaleF = std::min((float)dstW / w, (float)dstH / h);
+            const int fitW = (int)(w * scaleF);
+            const int fitH = (int)(h * scaleF);
+            const int offX = (dstW - fitW) / 2;
+            const int offY = (dstH - fitH) / 2;
+            const int xR = (w << 16) / fitW;
+            const int yR = (h << 16) / fitH;
+            uint8_t *dst = m_buffer.get();
+            std::memset(dst, 0, (size_t)dstW * dstH * 4);
+            for (int dy = 0; dy < fitH; ++dy) {
+              int sy = std::min((dy * yR) >> 16, h - 1);
+              const uint8_t *srcRow = px + sy * w * 4;
+              uint8_t *dstRow = dst + (dy + offY) * dstW * 4;
+              for (int dx = 0; dx < fitW; ++dx) {
+                int sx = std::min((dx * xR) >> 16, w - 1);
+                std::memcpy(dstRow + (dx + offX) * 4, srcRow + sx * 4, 4);
+              }
+            }
+            stbi_image_free(px);
+            if (m_onFrameReady)
+              m_onFrameReady(fd.frame);
+            return;
+          }
+        }
+
+        // Video (or stb_image fallback)
         auto &decoder = m_decoders[clip.file];
         if (!decoder)
           decoder = std::make_unique<ClipDecoder>(clip.file, m_device.get(),
                                                   m_previewScale);
-
-        // Direct decode
         if (decoder->decodeFrameDirect(clip.sourceFrame, m_renderBuffer.get(),
                                        m_width, m_height)) {
           std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
@@ -325,7 +362,9 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     }
   }
 
-  //   Standard path
+  // ============================================================
+  // STANDARD PATH
+  // ============================================================
   bool needsGpu = false;
   struct ClipPixels {
     const ClipDesc *clip;
@@ -336,7 +375,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   std::vector<ClipPixels> decoded;
 
   for (const auto &clip : fd.clips) {
-    // Skip video/image
+    // Generative types — no pixel data
     if (clip.type == ClipDesc::Type::Solid ||
         clip.type == ClipDesc::Type::Text ||
         clip.type == ClipDesc::Type::Shape ||
@@ -358,7 +397,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       }
       continue;
     }
-    // Safety
     if (clip.file.empty()) {
       decoded.push_back({&clip, {}, 0, 0});
       continue;
@@ -371,7 +409,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
                 << " srcFrame=" << clip.sourceFrame << " (std-path)\n";
       if (!clip.effects.empty())
         needsGpu = true;
-      //  cached RGBA data into a local vector
       std::vector<uint8_t> rgbaCopy(cfd.data, cfd.data + cfd.dataSize);
       decoded.push_back(
           {&clip, std::move(rgbaCopy), (int)cfd.width, (int)cfd.height});
@@ -379,14 +416,29 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       continue;
     }
 
-    //   Cache miss
     std::cout << "[CACHE MISS] frame=" << fd.frame
-              << " srcFrame=" << clip.sourceFrame << " → decoder (std-path)\n";
+              << " srcFrame=" << clip.sourceFrame << " -> decoder (std-path)\n";
+
+    // Image: stb_image
+    if (clip.type == ClipDesc::Type::Image) {
+      int w = 0, h = 0, ch = 0;
+      uint8_t *px = stbi_load(clip.file.c_str(), &w, &h, &ch, 4);
+      if (px) {
+        schedPushFrame(clip.file, 0, px, (size_t)w * h * 4, w, h);
+        std::vector<uint8_t> rgba(px, px + (size_t)w * h * 4);
+        stbi_image_free(px);
+        if (!clip.effects.empty())
+          needsGpu = true;
+        decoded.push_back({&clip, std::move(rgba), w, h});
+        continue;
+      }
+    }
+
+    // Video
     auto &decoder = m_decoders[clip.file];
     if (!decoder)
       decoder = std::make_unique<ClipDecoder>(clip.file, m_device.get(),
                                               m_previewScale);
-
     auto result = decoder->decodeFrame(clip.sourceFrame);
     if (!clip.effects.empty())
       needsGpu = true;
@@ -394,20 +446,15 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         {&clip, std::move(result.rgba), result.width, result.height});
   }
 
-  // Any generative clip
+  // Determine GPU need
   for (const auto &cp : decoded) {
     if (!cp.clip->effects.empty()) {
       needsGpu = true;
       break;
     }
   }
-
   if (decoded.size() > 1)
     needsGpu = true;
-
-  // Force GPU path whenever any clip carries pixel data (WebComp, video, image).
-  // Uploading 1920×1080 RGBA as a GPU texture and compositing in a shader is
-  // ~3× faster than the CPU memcpy path (~88ms vs ~240ms per frame).
   if (!needsGpu) {
     for (const auto &cp : decoded) {
       if (!cp.rgba.empty()) {
@@ -416,14 +463,13 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       }
     }
   }
+
   if (!needsGpu) {
     SkImageInfo cpuInfo = SkImageInfo::MakeN32Premul(m_width, m_height);
     auto cpuSurface = SkSurfaces::Raster(cpuInfo);
-
     if (cpuSurface) {
       SkCanvas *canvas = cpuSurface->getCanvas();
       canvas->clear(SK_ColorBLACK);
-
       for (const auto &cp : decoded) {
         if (cp.clip->type == ClipDesc::Type::Solid) {
           SkPaint p;
@@ -449,26 +495,21 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
           fade::drawing::drawSvg(canvas, *cp.clip, m_width, m_height);
           continue;
         }
-        // WebComp: draw captured pixels
         if (cp.clip->type == ClipDesc::Type::WebComp) {
-          if (!cp.rgba.empty()) {
+          if (!cp.rgba.empty())
             drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
-                             /*useGpu=*/false, cp.rgba.size());
-          }
+                             false, cp.rgba.size());
           continue;
         }
         if (cp.rgba.empty())
           continue;
         drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
-                         /*useGpu=*/false, cp.rgba.size());
+                         false, cp.rgba.size());
       }
-
-      // Read composed frame from Raster surface
       SkImageInfo readInfo = SkImageInfo::Make(
           m_width, m_height, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
       cpuSurface->readPixels(readInfo, m_renderBuffer.get(),
                              static_cast<size_t>(m_width) * 4, 0, 0);
-      // cpuSurface destructs here
     }
     std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
     if (m_onFrameReady)
@@ -476,9 +517,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     return;
   }
 
-  //   GPU path
-  // Do NOT clear keepalive vectors here — the previous frame's GPU objects
-  // must stay alive until after the final flushAndSubmit below.
   SkCanvas *canvas = m_surface->getCanvas();
   canvas->clear(SK_ColorBLACK);
 
@@ -589,7 +627,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
                      /*useGpu=*/true, cp.rgba.size(), fd.frame);
   }
 
-  //   Transition blend
+  // Transition blend
   if (fd.transition.valid) {
     const ClipPixels *dpA = nullptr;
     const ClipPixels *dpB = nullptr;
@@ -601,33 +639,30 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     }
     if (dpA && dpB) {
       sk_sp<SkImage> imgA = clipToImage(*dpA);
-
       sk_sp<SkImage> imgB = clipToImage(*dpB);
-      // Apply per-clip effects before blending
-      if (imgA && !dpA->clip->effects.empty()) {
+      if (imgA && !dpA->clip->effects.empty())
         imgA = applyEffects(imgA, *dpA->clip, fd.frame);
-      }
-      if (imgB && !dpB->clip->effects.empty()) {
+      if (imgB && !dpB->clip->effects.empty())
         imgB = applyEffects(imgB, *dpB->clip, fd.frame);
-      }
       sk_sp<SkImage> blended = applyTransition(imgA, imgB, fd.transition);
       if (blended) {
         SkPaint p;
-        m_gpuKeepAliveImages.push_back(blended); // keep alive until final flush
-        const float cw = static_cast<float>(m_width);
-        const float ch = static_cast<float>(m_height);
-        canvas->drawImageRect(blended, SkRect::MakeWH(cw, ch),
+        m_gpuKeepAliveImages.push_back(blended);
+        canvas->drawImageRect(blended,
+                              SkRect::MakeWH(static_cast<float>(m_width),
+                                             static_cast<float>(m_height)),
                               SkSamplingOptions(SkFilterMode::kLinear), &p);
       }
     }
   }
 
   // GPU sync
-  m_skia->getDirectContext()->flushAndSubmit(GrSyncCpu::kYes); // SYNC
+  m_skia->getDirectContext()->flushAndSubmit(GrSyncCpu::kYes);
 
-  // NOW safe
+  // Now safe to release previous keepalives
   m_gpuKeepAliveSurfaces.clear();
   m_gpuKeepAliveImages.clear();
+
   SkImageInfo readInfo = SkImageInfo::Make(
       m_width, m_height, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
   bool ok = m_surface->readPixels(readInfo, m_renderBuffer.get(),
@@ -636,7 +671,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     LOG_ERROR("readPixels failed for frame " << fd.frame);
     return;
   }
-  // Flip: JS reads m_buffer
   std::memcpy(m_buffer.get(), m_renderBuffer.get(), m_bufferSize);
   if (m_onFrameReady)
     m_onFrameReady(fd.frame);
@@ -700,11 +734,15 @@ void HeadlessCompositor::drawClipOnCanvas(
   canvas->scale(t.scaleX, t.scaleY);
   canvas->translate(-cx, -cy);
 
-  // Scale decoded image to fill canvas
+  // Scale decoded image to fit canvas
   if (imgW != m_width || imgH != m_height) {
-    float sx = static_cast<float>(m_width) / imgW;
-    float sy = static_cast<float>(m_height) / imgH;
-    canvas->scale(sx, sy);
+    float scale =
+        std::min(static_cast<float>(m_width) / static_cast<float>(imgW),
+                 static_cast<float>(m_height) / static_cast<float>(imgH));
+    float padX = (static_cast<float>(m_width) - imgW * scale) * 0.5f;
+    float padY = (static_cast<float>(m_height) - imgH * scale) * 0.5f;
+    canvas->translate(padX, padY);
+    canvas->scale(scale, scale);
   }
 
   // videoClip.py

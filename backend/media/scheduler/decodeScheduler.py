@@ -76,14 +76,31 @@ class DecodeScheduler:
 
     def sourceFrame(self, clipId: str, timelineFrame: int, timelineFps: float) -> int:
         sourceFps = self._decoderPool.fps(clipId, timelineFps)
+        # fps == 0 → static image (ImageDecoder sentinel): always frame 0
+        if sourceFps <= 0:
+            return 0
         if timelineFps <= 0:
             return timelineFrame
         return max(0, round(timelineFrame * sourceFps / timelineFps))
 
     def prefetchAround(self, clipId: str, anchorFrame: int, radius: int = 15) -> None:
-        
         import backend.media.scheduler.decodeScheduler as _self_mod
         if _self_mod.cpp_renderer_active:
+            return
+
+        # Static image: only one frame ever exists — don't spin the pump
+        src_fps = self._decoderPool.fps(clipId, 30.0)
+        if src_fps <= 0:
+            # Ensure frame 0 is in cache; one pump is enough
+            with self._lock:
+                already_done = self._lastDecoded.get(clipId, -1) >= 0
+            if not already_done:
+                with self._lock:
+                    self._targetFrames[clipId] = 0
+                    if clipId not in self._activePumps and len(self._activePumps) < self.MAX_ACTIVE_PUMPS:
+                        self._activePumps.add(clipId)
+                        self._cancelFlags[clipId] = False
+                self._jobQueue.put_nowait(clipId)
             return
 
         needs_pump = False
@@ -220,12 +237,26 @@ class DecodeScheduler:
                 # Decode the frame
                 frame = decoder.decodeFrame(nextFrame)
                 if frame and frame.valid:
+                    # Store under the requested frame key
                     self._frameCache.put((contentId, nextFrame), frame)
+
+                    # Single-frame asset (image): also store under frame 0
+                    # and cap the pump target so we don't keep pumping forever
+                    is_image = getattr(decoder, 'getDurationFrames', lambda: None)() == 1
+                    if is_image:
+                        self._frameCache.put((contentId, 0), frame)
+                        with self._lock:
+                            self._lastDecoded[clipId] = nextFrame
+                            # Stop pumping — images don't have more frames
+                            self._targetFrames[clipId] = nextFrame
+                        break
+
                     with self._lock:
                         self._lastDecoded[clipId] = nextFrame
                     decoded += 1
-                     # This prevents Windows TDR 
+                    # This prevents Windows TDR
                     time.sleep(self.DECODE_SLEEP_S)
+
                 else:
                     # EOF or decode error 
                     with self._lock:
