@@ -141,9 +141,9 @@ def _kf_to_dict(kf) -> dict:
 # Request models  
 
 class AddKeyframeRequest(BaseModel):
-    param:  str
-    frame:  int
-    value:  float
+    param: str
+    frame: int
+    value: float
     easing: str = "ease_both"   # constant | linear | bezier | ease_in | ease_out | ease_both
      
     handle_in_frames:  float = -8.0   # negative = left side
@@ -323,3 +323,159 @@ def getClipParams(clipId: str):
         result.append({**p, "animated": is_animated})
 
     return {"clipId": clipId, "params": result}
+
+
+# Curve preset catalogue  
+
+@router.get("/anim/presets")
+def getPresets():
+    """Return all available curve presets with descriptions."""
+    from backend.animation.curve_presets import list_presets
+    return {"presets": list_presets()}
+
+
+# Apply preset to keyframe range  
+
+class ApplyPresetRequest(BaseModel):
+    param: str
+    preset: str
+    frame_from: int | None = None   # None  
+    frame_to: int | None = None   # None  
+
+
+@router.post("/anim/{clipId}/apply-preset")
+def applyPreset(clipId: str, req: ApplyPresetRequest):
+     
+    from backend.animation.curve_presets import apply_preset_to_segment, CURVE_PRESETS
+
+    if req.preset not in CURVE_PRESETS:
+        raise HTTPException(400, f"Unknown preset '{req.preset}'. "
+                                 f"Use GET /anim/presets to list available presets.")
+
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, req.param)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    if not getattr(prop, "_isAnimated", False) or prop._track.empty():
+        raise HTTPException(400, f"Property '{req.param}' has no keyframes.")
+
+    # Collect keyframes in range 
+    offset = clip.startFrame
+    f_from = (req.frame_from - offset) if req.frame_from is not None else None
+    f_to = (req.frame_to   - offset) if req.frame_to   is not None else None
+
+    kfs = [
+        kf for kf in prop._track.keyframes()
+        if (f_from is None or kf.frame >= f_from)
+        and (f_to   is None or kf.frame <= f_to)
+    ]
+    if len(kfs) < 2:
+        raise HTTPException(400, "Need at least 2 keyframes in range to apply a curve preset.")
+
+    # Apply to consecutive pairs
+    pairs_applied = 0
+    for i in range(len(kfs) - 1):
+        out_kf = kfs[i]
+        in_kf = kfs[i + 1]
+        seg_frames = float(in_kf.frame - out_kf.frame)
+        seg_value  = in_kf.value - out_kf.value
+        apply_preset_to_segment(req.preset, seg_frames, seg_value,
+                                 out_kf=out_kf, in_kf=in_kf)
+        pairs_applied += 1
+
+    notify("timeline")
+    return {
+        "clipId": clipId,
+        "param": req.param,
+        "preset": req.preset,
+        "pairsApplied":  pairs_applied,
+        "keyframesInRange": len(kfs),
+        "keyframes": [_kf_to_dict(kf) for kf in kfs],
+    }
+
+
+# Move keyframe  
+
+class MoveKeyframeRequest(BaseModel):
+    param: str
+    from_frame: int
+    to_frame: int
+    recompute_handles: bool = True  # recalculate neighbour handles after move
+    preset: str | None = None  # optionally apply a curve preset after move
+
+
+@router.post("/anim/{clipId}/move-keyframe")
+def moveKeyframe(clipId: str, req: MoveKeyframeRequest):
+     
+    from backend.animation.curve_presets import apply_preset_to_segment, CURVE_PRESETS
+    from backend.animation.keyframe import Keyframe
+
+    if req.preset and req.preset not in CURVE_PRESETS:
+        raise HTTPException(400, f"Unknown preset '{req.preset}'.")
+
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, req.param)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    offset = clip.startFrame
+    local_from = req.from_frame - offset
+    local_to = req.to_frame - offset
+
+    track = prop._track
+    if not track.hasKeyframe(local_from):
+        raise HTTPException(404, f"No keyframe at frame {req.from_frame} for '{req.param}'.")
+    if track.hasKeyframe(local_to) and local_to != local_from:
+        raise HTTPException(400, f"A keyframe already exists at frame {req.to_frame}.")
+
+    # Find and remove the keyframe 
+    old_kf = next(kf for kf in track.keyframes() if kf.frame == local_from)
+    track.removeKeyframe(local_from)
+
+    new_kf = Keyframe(
+        frame = local_to,
+        value = old_kf.value,
+        interp = old_kf.interp,
+        handleInFrame  = old_kf.handleInFrame,
+        handleInValue  = old_kf.handleInValue,
+        handleOutFrame = old_kf.handleOutFrame,
+        handleOutValue = old_kf.handleOutValue,
+    )
+    track.insertKeyframe(new_kf)
+
+    if req.recompute_handles:
+         
+        pass
+
+    # Optionally apply preset  
+    applied_preset = None
+    if req.preset:
+        kfs_all = track.keyframes()
+        idx = next((i for i, kf in enumerate(kfs_all) if kf.frame == local_to), None)
+        if idx is not None:
+            # Apply to segment BEFORE the moved kf
+            if idx > 0:
+                prev = kfs_all[idx - 1]
+                sf = float(new_kf.frame - prev.frame)
+                sv = new_kf.value - prev.value
+                apply_preset_to_segment(req.preset, sf, sv, out_kf=prev, in_kf=new_kf)
+            # Apply to segment AFTER the moved kf
+            if idx < len(kfs_all) - 1:
+                nxt = kfs_all[idx + 1]
+                sf = float(nxt.frame - new_kf.frame)
+                sv = nxt.value - new_kf.value
+                apply_preset_to_segment(req.preset, sf, sv, out_kf=new_kf, in_kf=nxt)
+            applied_preset = req.preset
+
+    notify("timeline")
+    return {
+        "clipId": clipId,
+        "param": req.param,
+        "movedFrom": req.from_frame,
+        "movedTo": req.to_frame,
+        "appliedPreset": applied_preset,
+        "keyframe": _kf_to_dict(new_kf),
+    }

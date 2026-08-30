@@ -167,13 +167,12 @@ TEXT CLIPS:
   strokeColor, strokeWidth, shadowEnabled, shadowColor, bgEnabled, bgColor, etc.
 
 ANIMATION & KEYFRAMES:
-Every native clip (text, shape, pen, video, image) supports keyframe animation.
+Every native clip (text, shape, pen, video, image) supports keyframe animation on ALL params.
 
-WORKFLOW:
-1. get_clip_params(clip_id)         → discover all animatable params with current values
-2. animate_property(clip_id, param, frame, value, easing)  → add a keyframe
-3. Repeat step 2 for each keyframe you need
-4. get_keyframes(clip_id)           → verify the full animation graph
+RECOMMENDED WORKFLOW (3 steps):
+1. get_clip_params(clip_id)           → discover animatable params + current values
+2. animate_property(clip_id, param, frame, value)  → add keyframes (repeat as needed)
+3. apply_curve_preset(clip_id, param, preset)       → shape the motion curve (ALWAYS do this)
 
 ANIMATABLE PARAMS (common):
   pos_x, pos_y       — position in pixels (0,0 = center of frame)
@@ -186,33 +185,77 @@ ANIMATABLE PARAMS (common):
   shape_w, shape_h   — (ShapeClip) width / height in pixels
   stroke_w           — stroke width in pixels
 
-EASING TYPES for animate_property():
-  ease_both  — slow in AND slow out (best for most motion, DEFAULT)
-  ease_in    — slow start, fast end
-  ease_out   — fast start, slow end (great for entrances)
-  linear     — constant speed
-  constant   — instant jump (no interpolation)
-  bezier     — full manual control via handle_in/out_frames and _value
+CURVE PRESETS (use instead of raw easing names):
+  list_curve_presets()   # see all 18 with descriptions
+
+  Most useful:
+    ease_both    — smooth S-curve (default, works everywhere)
+    ease_out     — fast start → slow end (entrances, slides)
+    ease_in      — slow start → fast end (exits)
+    bounce_out   — bounces at landing (position drop, scale pop-in)
+    elastic_out  — spring overshoot (UI pop-in elements)
+    anticipate   — pulls back first (cartoon/character feel)
+    snap         — very fast ease_out (crisp UI transitions)
+    cinematic    — film-like timing (camera moves, dolly)
+    slow_mo      — extended handles (dreamy slow motion)
+    overshoot    — small overshoot + settle
+    fade_in      — holds near start, rises late (opacity)
+    fade_out     — drops fast, flattens to end (opacity)
+    spring       — oscillate + settle (bouncy spring)
+
+APPLY PRESET RULES (smart pairing):
+  apply_curve_preset applies to consecutive PAIRS: (kf0→kf1), (kf1→kf2) ...
+  - Even count (2, 4, 6…) → all pairs get the preset
+  - Odd count  (3, 5, 7…) → all pairs except the last lone keyframe
+  - Pass frame_from/frame_to to apply only to a sub-range
+
+EDIT EXISTING KEYFRAMES:
+  # Move a keyframe (auto-recomputes neighbours):
+  move_keyframe(clip_id, "pos_x", from_frame=30, to_frame=45)
+
+  # Move AND re-apply a preset to the affected segments:
+  move_keyframe(clip_id, "pos_x", from_frame=30, to_frame=45, preset="ease_out")
+
+  # Re-apply curve to just frames 0–60:
+  apply_curve_preset(clip_id, "opacity", "fade_in", frame_from=0, frame_to=60)
+
+  # Read full keyframe graph:
+  get_keyframes(clip_id)
 
 ANIMATION EXAMPLES:
-  # Slide text in from the left
-  animate_property(id, "pos_x", frame=0,  value=-960, easing="ease_out")
-  animate_property(id, "pos_x", frame=30, value=0,    easing="ease_out")
+  # Slide text in from left with snap feel:
+  animate_property(id, "pos_x", frame=0,  value=-960)
+  animate_property(id, "pos_x", frame=25, value=0)
+  apply_curve_preset(id, "pos_x", "snap")
 
-  # Fade in
-  animate_property(id, "opacity", frame=0,  value=0.0, easing="ease_in")
-  animate_property(id, "opacity", frame=20, value=1.0, easing="ease_in")
+  # Fade in opacity:
+  animate_property(id, "opacity", frame=0,  value=0.0)
+  animate_property(id, "opacity", frame=20, value=1.0)
+  apply_curve_preset(id, "opacity", "fade_in")
 
-  # Scale bounce
-  animate_property(id, "scale_x", frame=0,  value=0.0, easing="ease_both")
-  animate_property(id, "scale_x", frame=15, value=1.1, easing="ease_both")
-  animate_property(id, "scale_x", frame=25, value=1.0, easing="ease_both")
-  animate_property(id, "scale_y", ...)  # always animate both axes together
+  # Scale bounce pop-in (always animate scale_x AND scale_y together):
+  animate_property(id, "scale_x", frame=0,  value=0.0)
+  animate_property(id, "scale_x", frame=15, value=1.1)
+  animate_property(id, "scale_x", frame=25, value=1.0)
+  animate_property(id, "scale_y", frame=0,  value=0.0)
+  animate_property(id, "scale_y", frame=15, value=1.1)
+  animate_property(id, "scale_y", frame=25, value=1.0)
+  apply_curve_preset(id, "scale_x", "bounce_out")
+  apply_curve_preset(id, "scale_y", "bounce_out")
+
+  # Anticipate + spring (cartoon):
+  animate_property(id, "pos_y", frame=0,  value=200)
+  animate_property(id, "pos_y", frame=20, value=0)
+  apply_curve_preset(id, "pos_y", "spring")
+
+  # Cinematic camera pan (position + slow curve):
+  animate_property(id, "pos_x", frame=0,   value=-200)
+  animate_property(id, "pos_x", frame=120, value=200)
+  apply_curve_preset(id, "pos_x", "cinematic")
 
 OTHER ANIMATION TOOLS:
   remove_keyframe(clip_id, param, frame)  → delete one keyframe
   clear_animation(clip_id, param)         → remove all keyframes, make static
-  get_keyframes(clip_id)                  → read full keyframe graph
 
 AUDIO & CAPTIONS:
 - generate_captions(clip_id)

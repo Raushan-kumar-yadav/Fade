@@ -1664,6 +1664,7 @@ def animate_property(
     frame: int,
     value: float,
     easing: str = "ease_both",
+    preset: str = "",
     handle_in_frames: float = -8.0,
     handle_in_value: float = 0.0,
     handle_out_frames: float = 8.0,
@@ -1672,58 +1673,74 @@ def animate_property(
     """
     Add or update a keyframe on any animatable property of a clip.
     Call multiple times with different frames to build an animation.
+    After adding 2+ keyframes, call apply_curve_preset() to shape the motion.
 
     Common params (use get_clip_params to see all for a clip):
       pos_x, pos_y -- position in pixels (0,0 = center of frame)
       scale_x, scale_y -- scale multiplier (1.0 = 100%)
       rotation -- degrees (-360 to 360)
       opacity -- 0.0 (invisible) to 1.0 (fully visible)
-      anchor_x, anchor_y   -- pivot/anchor point in pixels
+      anchor_x, anchor_y -- pivot/anchor point in pixels
       font_size -- (TextClip) font size in pixels
       fill_r/g/b/a -- RGBA fill colour channels 0.0 to 1.0
       shape_w, shape_h -- (ShapeClip) width/height in pixels
-      stroke_w             -- stroke width in pixels
+      stroke_w -- stroke width in pixels
 
-    Easing options:
+    Easing options (ignored if preset is set):
       ease_both  -- slow in AND slow out (best for most motion, default)
-      ease_in -- slow start, fast end
-      ease_out -- fast start, slow end (good for entrances)
-      linear -- constant speed
-      constant -- instant jump at keyframe (no interpolation)
-      bezier -- manual control; set handle_in/out_frames and _value
+      ease_in    -- slow start, fast end
+      ease_out   -- fast start, slow end (good for entrances)
+      linear     -- constant speed
+      constant   -- instant jump at keyframe
+      bezier     -- manual control via handle_* args
 
-    Bezier handles (only used when easing='bezier'):
-      handle_in_frames -- frame offset of left handle (use negative, e.g. -8)
-      handle_in_value -- value delta of left handle (0.0 = flat)
-      handle_out_frames  -- frame offset of right handle (use positive, e.g. 8)
-      handle_out_value   -- value delta of right handle
+    PREFERRED: Use preset= instead of easing= for expressive motion:
+      preset="bounce_out"   preset="elastic_out"   preset="cinematic"
+      preset="snap"         preset="anticipate"     preset="fade_in"
+      Call list_curve_presets() to see all 18 options.
 
     Args:
         clip_id: The clipId of the target clip.
         param: Parameter name (e.g. 'pos_x', 'opacity', 'font_size').
         frame: Timeline frame number to place this keyframe.
         value: Value at this keyframe.
-        easing: Interpolation type (default: 'ease_both').
-        handle_in_frames:  Left bezier handle frame offset (only for easing='bezier').
+        preset: Named curve preset — overrides easing and handle args when set.
+        easing: Fallback interpolation type (used when preset is not set).
+        handle_in_frames: Left bezier handle frame offset (bezier mode only).
         handle_in_value: Left bezier handle value offset.
         handle_out_frames: Right bezier handle frame offset.
-        handle_out_value:  Right bezier handle value offset.
+        handle_out_value: Right bezier handle value offset.
     """
+    # Resolve preset → easing + handles before sending to backend
+    _hin_f, _hin_v, _hout_f, _hout_v = handle_in_frames, handle_in_value, handle_out_frames, handle_out_value
+    _easing = easing
+    if preset:
+        from backend.animation.curve_presets import CURVE_PRESETS
+        p = CURVE_PRESETS.get(preset)
+        if p:
+            _easing = p["interp"] if p["interp"] != "bezier" else "bezier"
+             
+            _hout_f = p["out_frame_frac"] * 10.0
+            _hout_v = p["out_value_frac"]
+            _hin_f  = p["in_frame_frac"] * 10.0
+            _hin_v  = p["in_value_frac"]
+
     result = _post(f"/anim/{clip_id}/keyframe", {
         "param": param,
         "frame": frame,
         "value": value,
-        "easing": easing,
-        "handle_in_frames":  handle_in_frames,
-        "handle_in_value":   handle_in_value,
-        "handle_out_frames": handle_out_frames,
-        "handle_out_value":  handle_out_value,
+        "easing": _easing,
+        "handle_in_frames": _hin_f,
+        "handle_in_value": _hin_v,
+        "handle_out_frames": _hout_f,
+        "handle_out_value":  _hout_v,
     })
     total = result.get("totalKeyframes", "?")
     kf    = result.get("keyframe", {})
+    note  = f" [preset={preset}]" if preset else ""
     return (
         f"Keyframe added: {param} = {value} @ frame {frame} "
-        f"(easing={kf.get('easing', easing)}, total keyframes={total})"
+        f"(easing={kf.get('easing', _easing)}, total keyframes={total}){note}"
     )
 
 
@@ -1734,8 +1751,8 @@ def remove_keyframe(clip_id: str, param: str, frame: int) -> str:
 
     Args:
         clip_id: The clipId.
-        param:   Parameter name (e.g. 'pos_x', 'opacity').
-        frame:   Timeline frame number of the keyframe to remove.
+        param: Parameter name (e.g. 'pos_x', 'opacity').
+        frame: Timeline frame number of the keyframe to remove.
     """
     _delete(f"/anim/{clip_id}/keyframe/{param}/{frame}")
     return f"Removed keyframe at frame {frame} for param '{param}' on clip {clip_id[:8]}."
@@ -1795,6 +1812,105 @@ def set_text_content(clip_id: str, text: str) -> str:
     return f"Text clip {clip_id[:8]} content updated to: \"{text[:80]}\""
 
 
+@tool
+def list_curve_presets() -> str:
+    """List all 18 named animation curve presets with descriptions.
+
+    Call this when the user asks for animation style options or before using
+    apply_curve_preset(). Presets work on ANY animatable parameter: position,
+    scale, opacity, rotation, text, shapes — everything.
+
+    Examples of most useful presets:
+      ease_both -- smooth S-curve (default, works everywhere)
+      ease_out -- snappy entrance (great for sliding in)
+      bounce_out  -- bounces at end (position, scale pop-ins)
+      elastic_out -- spring arrival (UI elements)
+      anticipate  -- pulls back before moving (cartoon feel)
+      cinematic -- film timing (camera moves)
+      snap -- quick UI snap
+      fade_in -- holds then rises (opacity)
+    """
+    from backend.animation.curve_presets import list_presets
+    rows = [f"  {p['name']:<14} ({p['interp']:<9}) — {p['description']}" for p in list_presets()]
+    return "Available curve presets:\n" + "\n".join(rows)
+
+
+@tool
+def apply_curve_preset(
+    clip_id: str,
+    param: str,
+    preset: str,
+    frame_from: int = -1,
+    frame_to: int = -1,
+) -> str:
+    """Apply a named curve preset to keyframes on a clip property.
+
+    Works on ALL consecutive keyframe pairs in the given range:
+      (kf0→kf1), (kf1→kf2), (kf2→kf3) ...
+    Odd count of keyframes: last keyframe gets no change (no right neighbour).
+
+    Use this AFTER animate_property() to shape the motion without touching
+    raw bezier handles. Works identically for position, opacity, text, shapes.
+
+    Args:
+        clip_id: The clipId.
+        param: Parameter name (e.g. 'pos_x', 'opacity', 'scale_x').
+        preset: Curve preset name. Call list_curve_presets() to see all 18.
+        frame_from: First timeline frame of the range (-1 = from first keyframe).
+        frame_to: Last timeline frame of the range  (-1 = to last keyframe).
+
+    Examples:
+        apply_curve_preset(id, 'pos_x', 'bounce_out') # all keyframes
+        apply_curve_preset(id, 'opacity', 'fade_in', 0, 30) # frames 0-30
+        apply_curve_preset(id, 'scale_x', 'elastic_out', 0, 60)  # frames 0-60
+    """
+    body: dict = {"param": param, "preset": preset}
+    if frame_from >= 0:
+        body["frame_from"] = frame_from
+    if frame_to >= 0:
+        body["frame_to"] = frame_to
+    result = _post(f"/anim/{clip_id}/apply-preset", body)
+    pairs = result.get("pairsApplied", 0)
+    kfs   = result.get("keyframesInRange", 0)
+    return (
+        f"Applied preset '{preset}' to {pairs} segment(s) on '{param}' "
+        f"({kfs} keyframes in range) — clip {clip_id[:8]}."
+    )
+
+
+@tool
+def move_keyframe(
+    clip_id: str,
+    param: str,
+    from_frame: int,
+    to_frame: int,
+    preset: str = "",
+) -> str:
+    """Move an existing keyframe to a new frame position.
+
+    Auto-recalculates handles on the moved keyframe and its neighbours.
+    Optionally re-applies a curve preset to the segments touching the moved keyframe.
+
+    Args:
+        clip_id: The clipId.
+        param: Parameter name (e.g. 'pos_x', 'opacity').
+        from_frame: Current timeline frame of the keyframe.
+        to_frame: New timeline frame to move it to.
+        preset: Optional curve preset to re-apply after moving.
+    """
+    body: dict = {"param": param, "from_frame": from_frame, "to_frame": to_frame,
+                  "recompute_handles": True}
+    if preset:
+        body["preset"] = preset
+    result = _post(f"/anim/{clip_id}/move-keyframe", body)
+    applied = result.get("appliedPreset")
+    note = f" + reapplied preset '{applied}'" if applied else ""
+    return (
+        f"Moved keyframe '{param}' from frame {from_frame} → {to_frame}{note} "
+        f"on clip {clip_id[:8]}."
+    )
+
+
 ANIMATION_TOOLS = [
     get_clip_params,
     animate_property,
@@ -1802,5 +1918,8 @@ ANIMATION_TOOLS = [
     clear_animation,
     get_keyframes,
     set_text_content,
+    list_curve_presets,
+    apply_curve_preset,
+    move_keyframe,
 ]
 ALL_TOOLS.extend(ANIMATION_TOOLS)
