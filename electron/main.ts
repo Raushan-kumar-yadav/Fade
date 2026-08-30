@@ -164,7 +164,11 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
- 
+  mainWindow.on('close', () => {
+     
+    try { renderEngine?.pause() } catch (_) {}
+  })
+
   mainWindow.webContents.on('did-finish-load', () => {
     if (detectedPort !== null) {
       mainWindow?.webContents.send('backend:port', detectedPort)
@@ -248,13 +252,13 @@ ipcMain.handle('webcomp:create', async (_, opts: {
   webcompId: string; htmlUrl: string;
   width: number; height: number; fps: number;
 }) => {
-  // Await page load — the frontend loop starts AFTER the page is ready
+  // Await page load  
   await createWebComp(opts.webcompId, opts.htmlUrl, opts.width, opts.height, opts.fps)
-  // Warm-cache frame 0 so the first renderer request is always a HIT
+  // Warm-cache frame 0  
   const frame0 = await captureFrame(opts.webcompId, 0)
   if (frame0 && renderEngine) {
     try { (renderEngine as any).pushWebCompFrame(opts.webcompId, 0, frame0, opts.width, opts.height) }
-    catch { /* non-fatal */ }
+    catch {  }
   }
   return true
 })

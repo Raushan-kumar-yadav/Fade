@@ -235,9 +235,6 @@ void HeadlessCompositor::renderFrame(const FrameDescriptor &fd) {
 }
 
 void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
-  std::cerr << "[DBG] doRender frame=" << fd.frame
-            << " clips=" << fd.clips.size() << std::endl;
-
   // ULTRA-FAST PATH
 
   if (fd.clips.size() == 1) {
@@ -350,25 +347,15 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
     }
     // WebComp
     if (clip.type == ClipDesc::Type::WebComp) {
-      std::cerr << "[DBG] WebComp clip file=" << clip.file
-                << " src=" << clip.sourceFrame << std::endl;
       CachedFrameData cfd = tryGetCachedFrame(clip.file, clip.sourceFrame);
-      std::cerr << "[DBG] WebComp cache lookup done valid=" << cfd.valid
-                << std::endl;
       if (cfd.valid) {
-        std::cout << "[WEBCOMP HIT] frame=" << fd.frame
-                  << " src=" << clip.sourceFrame << "\n";
         std::vector<uint8_t> rgbaCopy(cfd.data, cfd.data + cfd.dataSize);
         decoded.push_back(
             {&clip, std::move(rgbaCopy), (int)cfd.width, (int)cfd.height});
         releaseCachedFrame(cfd);
       } else {
-        std::cout << "[WEBCOMP MISS] frame=" << fd.frame
-                  << " src=" << clip.sourceFrame
-                  << " — awaiting Electron capture\n";
         decoded.push_back({&clip, {}, 0, 0});
       }
-      std::cerr << "[DBG] WebComp decoded OK" << std::endl;
       continue;
     }
     // Safety
@@ -429,11 +416,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       }
     }
   }
-
-  std::cerr << "[DBG] needsGpu=" << needsGpu << " decoded=" << decoded.size()
-            << std::endl;
   if (!needsGpu) {
-    std::cerr << "[DBG] CPU path" << std::endl;
     SkImageInfo cpuInfo = SkImageInfo::MakeN32Premul(m_width, m_height);
     auto cpuSurface = SkSurfaces::Raster(cpuInfo);
 
@@ -469,12 +452,8 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
         // WebComp: draw captured pixels
         if (cp.clip->type == ClipDesc::Type::WebComp) {
           if (!cp.rgba.empty()) {
-            std::cerr << "[DBG] WebComp draw imgW=" << cp.imgW
-                      << " imgH=" << cp.imgH << " rgba.size=" << cp.rgba.size()
-                      << std::endl;
             drawClipOnCanvas(canvas, *cp.clip, cp.rgba.data(), cp.imgW, cp.imgH,
                              /*useGpu=*/false, cp.rgba.size());
-            std::cerr << "[DBG] WebComp draw done" << std::endl;
           }
           continue;
         }
@@ -498,7 +477,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   }
 
   //   GPU path
-  std::cerr << "[DBG] GPU path" << std::endl;
   // Do NOT clear keepalive vectors here — the previous frame's GPU objects
   // must stay alive until after the final flushAndSubmit below.
   SkCanvas *canvas = m_surface->getCanvas();
@@ -613,9 +591,6 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
 
   //   Transition blend
   if (fd.transition.valid) {
-    std::cerr << "[TRANS] BEGIN transition clipA=" << transClipA
-              << " clipB=" << transClipB
-              << " progress=" << fd.transition.progress << "\n";
     const ClipPixels *dpA = nullptr;
     const ClipPixels *dpB = nullptr;
     for (const auto &dp : decoded) {
@@ -624,68 +599,39 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
       if (dp.clip->clipId == transClipB)
         dpB = &dp;
     }
-    std::cerr << "[TRANS] dpA=" << (dpA ? "found" : "NULL")
-              << " dpB=" << (dpB ? "found" : "NULL") << "\n";
     if (dpA && dpB) {
-      std::cerr << "[TRANS] clipToImage(A)...\n";
       sk_sp<SkImage> imgA = clipToImage(*dpA);
-      std::cerr << "[TRANS] clipToImage(A) done: " << (imgA ? "OK" : "NULL")
-                << (imgA ? (" " + std::to_string(imgA->width()) + "x" +
-                            std::to_string(imgA->height()))
-                         : "")
-                << "\n";
-      std::cerr << "[TRANS] clipToImage(B)...\n";
-      sk_sp<SkImage> imgB = clipToImage(*dpB);
-      std::cerr << "[TRANS] clipToImage(B) done: " << (imgB ? "OK" : "NULL")
-                << (imgB ? (" " + std::to_string(imgB->width()) + "x" +
-                            std::to_string(imgB->height()))
-                         : "")
-                << "\n";
 
+      sk_sp<SkImage> imgB = clipToImage(*dpB);
       // Apply per-clip effects before blending
       if (imgA && !dpA->clip->effects.empty()) {
-        std::cerr << "[TRANS] applyEffects(A)...\n";
         imgA = applyEffects(imgA, *dpA->clip, fd.frame);
-        std::cerr << "[TRANS] applyEffects(A) done\n";
       }
       if (imgB && !dpB->clip->effects.empty()) {
-        std::cerr << "[TRANS] applyEffects(B)...\n";
         imgB = applyEffects(imgB, *dpB->clip, fd.frame);
-        std::cerr << "[TRANS] applyEffects(B) done\n";
       }
-
-      std::cerr << "[TRANS] applyTransition()...\n";
       sk_sp<SkImage> blended = applyTransition(imgA, imgB, fd.transition);
-      std::cerr << "[TRANS] applyTransition done: " << (blended ? "OK" : "NULL")
-                << "\n";
       if (blended) {
         SkPaint p;
-        std::cerr << "[TRANS] drawImage blended...\n";
         m_gpuKeepAliveImages.push_back(blended); // keep alive until final flush
         const float cw = static_cast<float>(m_width);
         const float ch = static_cast<float>(m_height);
         canvas->drawImageRect(blended, SkRect::MakeWH(cw, ch),
                               SkSamplingOptions(SkFilterMode::kLinear), &p);
-        std::cerr << "[TRANS] drawImage blended done\n";
       }
     }
-    std::cerr << "[TRANS] END transition block\n";
   }
 
   // GPU sync
-  std::cerr << "[RENDER] final flushAndSubmit (sync)...\n";
   m_skia->getDirectContext()->flushAndSubmit(GrSyncCpu::kYes); // SYNC
 
   // NOW safe
   m_gpuKeepAliveSurfaces.clear();
   m_gpuKeepAliveImages.clear();
-
-  std::cerr << "[RENDER] readPixels...\n";
   SkImageInfo readInfo = SkImageInfo::Make(
       m_width, m_height, kRGBA_8888_SkColorType, kOpaque_SkAlphaType);
   bool ok = m_surface->readPixels(readInfo, m_renderBuffer.get(),
                                   static_cast<size_t>(m_width) * 4, 0, 0);
-  std::cerr << "[RENDER] readPixels: " << (ok ? "OK" : "FAILED") << "\n";
   if (!ok) {
     LOG_ERROR("readPixels failed for frame " << fd.frame);
     return;
@@ -701,7 +647,6 @@ void HeadlessCompositor::drawClipOnCanvas(
     int imgH, bool useGpu, size_t actualDataSize, int64_t frame) {
 
   if (!rgba) {
-    std::cerr << "[drawClipOnCanvas] null rgba, skipping" << std::endl;
     return;
   }
 
@@ -865,10 +810,6 @@ sk_sp<SkImage> HeadlessCompositor::applyOneEffect(sk_sp<SkImage> src,
   std::string tid = ep.typeId;
   if (tid.rfind("sksl:", 0) == 0)
     tid = tid.substr(5);
-
-  std::cerr << "[FX] applyOneEffect: " << tid << " frame=" << frame
-            << " src=" << src->width() << "x" << src->height() << "\n";
-
   sk_sp<SkRuntimeEffect> effect = getOrCompileEffect(tid);
   if (!effect)
     return src;
@@ -957,7 +898,6 @@ sk_sp<SkImage> HeadlessCompositor::applyOneEffect(sk_sp<SkImage> src,
     m_skia->getDirectContext()->flushAndSubmit();
 
   auto result = offscreen->makeImageSnapshot();
-  std::cerr << "[FX] DONE: " << (result ? "OK" : "NULL") << "\n";
   return result;
 }
 
@@ -1077,7 +1017,6 @@ sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
   }
 
   // GPU shader path
-  std::cerr << "[TRANS-FN] GPU shader path begin\n";
   SkRuntimeShaderBuilder builder(effect);
 
   // Convert both sources to clean raster images
@@ -1093,10 +1032,8 @@ sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
     sk_sp<SkData> px = SkData::MakeUninitialized(rb * sh);
     bool ok = img->readPixels(ri, px->writable_data(), rb, 0, 0);
     if (ok) {
-      std::cerr << "[TRANS-FN] toRaster(" << label << ") OK\n";
       return SkImages::RasterFromData(ri, px, rb);
     }
-    std::cerr << "[TRANS-FN] toRaster(" << label << ") FAILED, using as-is\n";
     return img;
   };
   srcA = toRaster(srcA, "A");
@@ -1126,22 +1063,12 @@ sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
   };
   srcA = scaleToProject(srcA);
   srcB = scaleToProject(srcB);
-
-  std::cerr << "[TRANS-FN] makeShader(A)...\n";
   auto shaderA = srcA->makeShader(SkSamplingOptions(SkFilterMode::kLinear));
-  std::cerr << "[TRANS-FN] makeShader(A): " << (shaderA ? "OK" : "NULL")
-            << "\n";
-  std::cerr << "[TRANS-FN] makeShader(B)...\n";
-  auto shaderB = srcB->makeShader(SkSamplingOptions(SkFilterMode::kLinear));
-  std::cerr << "[TRANS-FN] makeShader(B): " << (shaderB ? "OK" : "NULL")
-            << "\n";
 
+  auto shaderB = srcB->makeShader(SkSamplingOptions(SkFilterMode::kLinear));
   // Bind named children
-  std::cerr << "[TRANS-FN] binding children (" << effect->children().size()
-            << ")...\n";
   for (const auto &ch : effect->children()) {
     std::string name(ch.name);
-    std::cerr << "[TRANS-FN]   child: " << name << "\n";
     try {
       if (name == "srcA" || name == "source")
         builder.child(name) = shaderA;
@@ -1150,17 +1077,14 @@ sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
       else
         builder.child(name) = shaderA;
     } catch (...) {
-      std::cerr << "[TRANS-FN]   child bind EXCEPTION\n";
     }
   }
 
   // Push uniforms from TransitionDesc
-  std::cerr << "[TRANS-FN] pushing " << td.uniforms.size() << " uniforms...\n";
   for (const auto &uv : td.uniforms) {
     if (!effect->findUniform(uv.id.c_str()))
       continue;
     const size_t n = uv.values.size();
-    std::cerr << "[TRANS-FN]   uniform " << uv.id << " n=" << n << "\n";
     if (n == 1)
       builder.uniform(uv.id.c_str()) = uv.values[0];
     else if (n == 2)
@@ -1172,10 +1096,7 @@ sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
       builder.uniform(uv.id.c_str()) =
           SkV4{uv.values[0], uv.values[1], uv.values[2], uv.values[3]};
   }
-
-  std::cerr << "[TRANS-FN] builder.makeShader()...\n";
   auto shader = builder.makeShader();
-  std::cerr << "[TRANS-FN] shader: " << (shader ? "OK" : "NULL") << "\n";
   if (!shader)
     return srcA;
 
@@ -1193,16 +1114,11 @@ sk_sp<SkImage> HeadlessCompositor::applyTransition(sk_sp<SkImage> srcA,
 
   SkPaint paint;
   paint.setShader(shader);
-  std::cerr << "[TRANS-FN] drawing to offscreen...\n";
   offscreen->getCanvas()->clear(SK_ColorTRANSPARENT);
   offscreen->getCanvas()->drawRect(SkRect::MakeWH(m_width, m_height), paint);
-
-  std::cerr << "[TRANS-FN] flushing (sync)...\n";
   if (grCtx)
     grCtx->flushAndSubmit(GrSyncCpu::kYes); // SYNC flush
-  std::cerr << "[TRANS-FN] snapshot...\n";
   auto result = offscreen->makeImageSnapshot();
-  std::cerr << "[TRANS-FN] DONE: " << (result ? "OK" : "NULL") << "\n";
   return result;
 }
 

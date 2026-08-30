@@ -219,8 +219,6 @@ public:
           entry->width = result.width;
           entry->height = result.height;
           m_cache.put(key, entry);
-          std::cout << "[SCHED] Cached frame=" << frame << " " << entry->width
-                    << "x" << entry->height << "\n";
         }
 
         {
@@ -278,8 +276,6 @@ public:
     entry->width = width;
     entry->height = height;
     m_cache.put(key, entry);
-    std::cout << "[SCHED] Pushed WebComp frame " << pseudoPath << " f=" << frame
-              << " " << width << "x" << height << "\n";
   }
 
 private:
