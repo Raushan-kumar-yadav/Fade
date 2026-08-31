@@ -2362,11 +2362,13 @@ def generate_tts(
 ) -> str:
     """Generate speech audio from text using Kokoro local TTS (or Gemini if configured).
 
-    The generated WAV file is automatically imported into the library so you can
-    immediately use place_clip() to add it to the timeline.
+    The generated WAV file is automatically imported into the library.
+    For SHORT text (<60 words) this usually completes in <20 s and returns the
+    assetId directly.  For LONG scripts it returns a job_id so you can keep
+    monitoring with check_job_status() or cancel with cancel_job().
 
     Args:
-        text:  The text to speak. Can be multiple sentences.
+        text:  The text to speak. Can be multiple sentences / paragraphs.
         voice: Voice ID (default 'af_heart' — warm American female).
                Kokoro voices: af_heart, af_bella, af_nicole, am_echo, am_michael,
                               bf_emma, bf_alice, bm_george, bm_daniel + 40 more.
@@ -2376,50 +2378,155 @@ def generate_tts(
                0.8 = slightly slower, 1.2 = slightly faster.
 
     Returns:
-        A summary string with assetId, duration — ready for place_clip().
+        Fast path  — assetId + duration hint, ready for place_clip().
+        Slow path  — job_id + progress % so you can call check_job_status()
+                     or cancel_job() instead of waiting forever.
 
-    Example workflow:
-        result = generate_tts("Welcome to the video!", voice="af_heart", speed=1.0)
-        # parse assetId from result, then:
-        place_clip(assetId, track=1, start_frame=0, duration_frames=int(duration_s*30))
+    Example (short text):
+        result = generate_tts("Hello!", voice="af_heart")
+        # → assetId returned directly
+
+    Example (long script):
+        result = generate_tts(long_text, voice="af_heart")
+        # → "⏳ job_id=abc… progress=20%"
+        result = check_job_status("abc…")   # repeat until done
+        # OR: cancel_job("abc…")            # if user no longer wants it
     """
-    import json, time as _time
+    import time as _time
 
-    # Fire async job  
     body = {"text": text, "voice": voice, "speed": speed}
     job_resp = _post_long("/jobs/tts-generate", body, timeout=15)
     job_id = job_resp.get("jobId", "")
     if not job_id:
         return "Error: TTS job did not start — check backend logs."
 
-    # Poll until done (max 5 min)
-    for _ in range(150):
+    # ── Short initial poll: 20 s (10 × 2 s) ──────────────────────────────────
+    # Fast machines / short scripts finish here.  Long ones get job_id back.
+    for _ in range(10):
         _time.sleep(2)
         status = _get(f"/jobs/{job_id}")
         st = status.get("status", "")
         if st == "done":
-            asset_ids = status.get("assetIds", [])
-            asset_id  = asset_ids[0] if asset_ids else ""
-            msg       = status.get("message", "")
-            # Parse duration from message "Ready — X.Xs | voice"
-            dur = 0.0
-            try:
-                dur = float(msg.split("—")[1].split("s")[0].strip())
-            except Exception:
-                pass
-            return (
-                f"✓ TTS generated: voice={voice}, duration={dur:.1f}s\n"
-                f"  assetId={asset_id}\n"
-                f"  → Use place_clip(assetId='{asset_id}', track=1, start_frame=0, "
-                f"duration_frames={int(dur * 30)}) to add to timeline."
-            )
-        if st == "error":
+            return _fmt_tts_done(status, voice)
+        if st in ("error", "cancelled"):
             err = status.get("error", "unknown error")
-            return f"TTS generation failed: {err}"
-    return f"TTS generation timed out (job {job_id})."
+            label = "cancelled" if st == "cancelled" else "failed"
+            return f"TTS {label}: {err}"
+
+    # ── Still running after 20 s → hand control back to the agent ────────────
+    status = _get(f"/jobs/{job_id}")
+    pct = int(status.get("progress", 0) * 100)
+    msg = status.get("message", "working…")
+    return (
+        f"⏳ TTS is still generating — this is normal for long scripts.\n"
+        f"  job_id   = {job_id}\n"
+        f"  progress = {pct}% — {msg}\n\n"
+        f"  → Call check_job_status('{job_id}') to check again.\n"
+        f"  → Call cancel_job('{job_id}') to abort."
+    )
 
 
-TTS_TOOLS = [list_kokoro_voices, generate_tts]
+def _fmt_tts_done(status: dict, voice: str) -> str:
+    """Format a completed TTS job result string for the agent."""
+    asset_ids = status.get("assetIds", [])
+    asset_id  = asset_ids[0] if asset_ids else ""
+    msg = status.get("message", "")
+    dur = 0.0
+    try:
+        dur = float(msg.split("\u2014")[1].split("s")[0].strip())
+    except Exception:
+        pass
+    return (
+        f"\u2713 TTS generated: voice={voice}, duration={dur:.1f}s\n"
+        f"  assetId={asset_id}\n"
+        f"  \u2192 Use place_clip(assetId='{asset_id}', track=1, start_frame=0, "
+        f"duration_frames={int(dur * 30)}) to add to timeline."
+    )
+
+
+@tool
+def check_job_status(job_id: str) -> str:
+    """Check the current status and progress of any background job.
+
+    Use this after generate_tts(), download_videos(), or generate_images()
+    returns a job_id instead of a finished result.
+    Call repeatedly until status is 'done', 'error', or 'cancelled'.
+
+    Args:
+        job_id: The job ID returned by generate_tts() or visible in the ⏳ message.
+
+    Returns:
+        Progress % + current step when running.
+        assetId + usage hint when done.
+        Error/cancel reason when failed.
+
+    Example:
+        check_job_status("abc123")   # → "⏳ 65% — Synthesising…"
+        check_job_status("abc123")   # → "✓ Done! assetId=xyz, duration=45s"
+    """
+    import time as _time
+
+    status = _get(f"/jobs/{job_id}")
+    if not status or "jobId" not in status:
+        return f"Job '{job_id}' not found — it may have expired from the store."
+
+    st    = status.get("status", "unknown")
+    pct   = int(status.get("progress", 0) * 100)
+    msg   = status.get("message", "")
+    jtype = status.get("type", "")
+
+    if st == "done":
+        if jtype == "tts_generate":
+            label = status.get("label", "")
+            v = label.split("[")[1].split("]")[0] if "[" in label else ""
+            return _fmt_tts_done(status, v)
+        asset_ids = status.get("assetIds", [])
+        aid_str = f"  assetIds: {', '.join(asset_ids)}\n" if asset_ids else ""
+        return f"\u2713 Job done!\n{aid_str}  message: {msg}"
+
+    if st in ("error", "cancelled"):
+        err = status.get("error", msg)
+        return f"Job {st}: {err}"
+
+    elapsed = int(_time.time() - status.get("createdAt", _time.time()))
+    return (
+        f"\u23f3 Job in progress ({pct}%) — {msg}\n"
+        f"  job_id  = {job_id}\n"
+        f"  elapsed = {elapsed}s\n"
+        f"  \u2192 Call check_job_status('{job_id}') again to re-check.\n"
+        f"  \u2192 Call cancel_job('{job_id}') to abort."
+    )
+
+
+@tool
+def cancel_job(job_id: str) -> str:
+    """Cancel a running or pending background job.
+
+    Works for any job type: TTS generation, video download, image generation.
+    The job stops at its next safe checkpoint (usually within a few seconds).
+    Already-finished jobs are unaffected.
+
+    Args:
+        job_id: The job ID to cancel. Obtain from generate_tts(), download_videos(),
+                or the ⏳ message shown by check_job_status().
+
+    Returns:
+        Confirmation string.
+
+    When to use:
+        - generate_tts() is taking too long and the user wants to abort
+        - A video download is no longer needed
+        - The system is overloaded and you want to free up resources
+    """
+    result = _post(f"/jobs/{job_id}/cancel", {})
+    st  = result.get("status", "unknown")
+    msg = result.get("message", "")
+    if st == "cancelled":
+        return f"\u2713 Job {job_id[:8]}\u2026 cancelled successfully."
+    return f"Job {job_id[:8]}\u2026 status={st}. {msg}"
+
+
+TTS_TOOLS = [list_kokoro_voices, generate_tts, check_job_status, cancel_job]
 ALL_TOOLS.extend(TTS_TOOLS)
 
 

@@ -17,6 +17,7 @@ MAX_JOBS = 30
 _lock: threading.Lock = threading.Lock()
 _jobs: dict[str, dict] = {}          
 _order: list[str] = []            
+_cancelled_jobs: set[str] = set()  # job_ids cancelled by user mid-run
 
 
 def _make_job(
@@ -382,6 +383,10 @@ def _run_tts_generate(job_id: str, text: str, voice: str, speed: float) -> None:
 
         _update_job(job_id, progress=0.20, message=f"Synthesising: \"{short_text}\"…")
 
+        # ── Cancellation check before the long synthesis step ─────────────────
+        if is_job_cancelled(job_id):
+            return  # already marked cancelled by the endpoint
+
         kokoro_voice = voice or _cfg.get("generators.tts_kokoro_voice", "af_heart")
         result = generator.generate(
             text=text,
@@ -389,6 +394,10 @@ def _run_tts_generate(job_id: str, text: str, voice: str, speed: float) -> None:
             voice=kokoro_voice,
             speed=speed,
         )
+
+        # ── Cancellation check after synthesis, before import ─────────────────
+        if is_job_cancelled(job_id):
+            return  # skip import/notify — job already marked cancelled
 
         _update_job(job_id, progress=0.80, message="Importing audio…")
         info = _import_file(result["filepath"])
@@ -416,8 +425,9 @@ def _run_tts_generate(job_id: str, text: str, voice: str, speed: float) -> None:
             pass
 
     except Exception as exc:
-        _update_job(job_id, status="error", progress=1.0,
-                    message="TTS failed", error=str(exc))
+        if not is_job_cancelled(job_id):  # don't overwrite cancelled status
+            _update_job(job_id, status="error", progress=1.0,
+                        message="TTS failed", error=str(exc))
 
 
 def _start(fn, *args) -> None:
@@ -539,6 +549,31 @@ def get_job(jobId: str):
     if job is None:
         raise HTTPException(404, f"Job '{jobId}' not found")
     return job
+
+
+@router.post("/jobs/{jobId}/cancel")
+def cancel_job_by_id(jobId: str):
+    """Request cancellation of a running or pending job.
+
+    Marks the job status as 'cancelled' in the store and emits an SSE event
+    so the UI updates immediately. Background threads that check
+    is_job_cancelled() will stop gracefully on their next iteration.
+    """
+    job = _get_job(jobId)
+    if job is None:
+        raise HTTPException(404, f"Job '{jobId}' not found")
+    status = job.get("status", "")
+    if status in ("done", "error", "cancelled"):
+        return {"jobId": jobId, "status": status, "message": "Job already finished."}
+    _cancelled_jobs.add(jobId)
+    _update_job(jobId, status="cancelled", progress=job.get("progress", 0.0),
+                message="Cancelled by user", error="Cancelled by user")
+    return {"jobId": jobId, "status": "cancelled", "message": "Cancellation requested."}
+
+
+def is_job_cancelled(job_id: str) -> bool:
+    """Check if a job has been user-cancelled. Call from background worker threads."""
+    return job_id in _cancelled_jobs
 
 
 @router.delete("/jobs/clear-stuck")
