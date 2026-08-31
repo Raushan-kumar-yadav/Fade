@@ -12,6 +12,7 @@ import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContex
 import { SelectionContext, type SelectedItem } from './context/selectionContext'
 import ToolboxWidget from './workspaces/tools/ToolboxWidget'
 import FloatingAIChat from './workspaces/FloatingAIChat'
+import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
@@ -274,6 +275,10 @@ export default function App() {
               }}
             />
           )}
+
+           
+          {/* AI-triggered export progress — visible on any tab */}
+          <ExportProgressOverlay />
 
            
           {loadingMsg && <LoadingOverlay message={loadingMsg} />}

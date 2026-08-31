@@ -2598,3 +2598,125 @@ def stop_indexing(asset_id: str) -> str:
 
 INDEXING_TOOLS = [stop_indexing]
 ALL_TOOLS.extend(INDEXING_TOOLS)
+
+
+# ── Export tool ────────────────────────────────────────────────────────────────
+
+_FORMAT_MAP = {
+    # friendly aliases → ExportWorkspace formatId
+    "mp4":        "mp4-1080",
+    "mp4-1080":   "mp4-1080",
+    "1080p":      "mp4-1080",
+    "mp4-4k":     "mp4-4k",
+    "4k":         "mp4-4k",
+    "2160p":      "mp4-4k",
+    "mp4-720":    "mp4-720",
+    "720p":       "mp4-720",
+    "shorts":     "shorts",
+    "yt shorts":  "shorts",
+    "youtube shorts": "shorts",
+    "reels":      "reels",
+    "ig reels":   "reels",
+    "instagram reels": "reels",
+    "webm":       "webm",
+    "gif":        "gif",
+}
+
+_FORMAT_DIMS = {
+    "mp4-1080": (1920, 1080),
+    "mp4-4k":   (3840, 2160),
+    "mp4-720":  (1280,  720),
+    "shorts":   (1080, 1920),
+    "reels":    (1080, 1920),
+    "webm":     (1920, 1080),
+    "gif":      ( 854,  480),
+}
+
+_FORMAT_EXT = {
+    "mp4-1080": "mp4", "mp4-4k": "mp4", "mp4-720": "mp4",
+    "shorts": "mp4", "reels": "mp4", "webm": "webm", "gif": "gif",
+}
+
+
+@tool
+def export_video(
+    format: str = "mp4-1080",
+    fps: float = 30.0,
+    output_path: str = "",
+    preset: str = "medium",
+    crf: int = 22,
+) -> str:
+    """Start a video export of the current timeline and return the job ID.
+
+    Use this when the user says anything like:
+    "export", "export the video", "export as 4K", "export as YouTube Shorts",
+    "export as reels", "save the video", "render the video", "export to mp4".
+
+    Args:
+        format: Output format. Supported values (case-insensitive):
+            "mp4-1080" (default 1920×1080), "mp4-4k" (3840×2160),
+            "mp4-720" (1280×720), "shorts" (1080×1920 vertical),
+            "reels" (1080×1920 vertical), "webm", "gif".
+            Common aliases also work: "4k", "1080p", "720p", "yt shorts", "ig reels".
+        fps: Frames per second. Default 30. Common: 24, 25, 30, 50, 60.
+        output_path: Full file path for the output. If empty, the backend
+            chooses a sensible default in the user's Videos folder.
+        preset: Encoding speed/quality tradeoff for libx264.
+            "ultrafast" → "veryslow". Default "medium".
+        crf: Constant Rate Factor for quality. 18 (near-lossless) to 51 (worst).
+            Default 22 (high quality).
+
+    Returns:
+        A message confirming the export started, including the job ID
+        that the UI uses to display a live progress bar.
+
+    Examples:
+        export_video()                         # default MP4 1080p
+        export_video(format="4k")              # 4K export
+        export_video(format="shorts", fps=60)  # Vertical, 60fps
+        export_video(format="reels")           # Instagram Reels
+    """
+    # Normalise format alias
+    fmt_id = _FORMAT_MAP.get(format.lower().strip(), "mp4-1080")
+    w, h   = _FORMAT_DIMS.get(fmt_id, (1920, 1080))
+    ext    = _FORMAT_EXT.get(fmt_id, "mp4")
+
+    # Build default output path if not provided
+    if not output_path:
+        output_path = f"fade_export.{ext}"
+
+    body = {
+        "outputPath":    output_path,
+        "width":         w,
+        "height":        h,
+        "fps":           fps,
+        "codec":         "auto",
+        "videoBitrate":  "8M",
+        "crf":           crf,
+        "preset":        preset,
+        "audioBitrate":  "192k",
+        "audioSampleRate": 48000,
+        "audioChannels": 2,
+        "formatId":      fmt_id,
+    }
+
+    try:
+        result = _post("/export/start", body)
+    except Exception as exc:
+        return f"❌ Export failed to start: {exc}"
+
+    job_id = result.get("jobId", "")
+    total  = result.get("total", 0)
+
+    return (
+        f"✅ Export started!\n"
+        f"  Format:  {fmt_id} ({w}×{h} @ {fps}fps)\n"
+        f"  Frames:  {total}\n"
+        f"  Job ID:  {job_id}\n"
+        f"  Output:  {output_path}\n\n"
+        f"EXPORT_JOB_ID:{job_id}"   # sentinel picked up by FloatingAIChat
+    )
+
+
+EXPORT_TOOLS = [export_video]
+ALL_TOOLS.extend(EXPORT_TOOLS)

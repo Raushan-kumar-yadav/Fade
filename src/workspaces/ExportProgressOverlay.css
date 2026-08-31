@@ -1,0 +1,176 @@
+/* ExportProgressOverlay — floating card, bottom-right corner */
+
+@keyframes exp-slide-in {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+@keyframes exp-slide-out {
+  from { opacity: 1; transform: translateY(0)    scale(1);    }
+  to { opacity: 0; transform: translateY(16px) scale(0.96); }
+}
+@keyframes exp-bar-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.exp-ov {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 9000;
+  width: 320px;
+  border-radius: 16px;
+  padding: 18px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: 'Inter', system-ui, sans-serif;
+
+  /* Glassmorphism */
+  background: rgba(18, 16, 30, 0.88);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(108, 99, 255, 0.3);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255,255,255,0.04) inset,
+    0 2px 0 rgba(108,99,255,0.15) inset;
+}
+
+.exp-ov--in  { animation: exp-slide-in  0.32s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+.exp-ov--out { animation: exp-slide-out 0.42s cubic-bezier(0.4, 0, 1, 1)      forwards; }
+
+/* ── Header ── */
+.exp-ov__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.exp-ov__icon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.exp-ov__title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0eeff;
+  letter-spacing: -0.01em;
+}
+
+.exp-ov__close {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.4);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+.exp-ov__close:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.08);
+}
+
+/* ── Progress bar ── */
+.exp-ov__track {
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.exp-ov__fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(
+    90deg,
+    #6c63ff 0%,
+    #a78bfa 40%,
+    #6c63ff 60%,
+    #a78bfa 100%
+  );
+  background-size: 200% 100%;
+  animation: exp-bar-shimmer 1.6s linear infinite;
+  transition: width 0.4s ease;
+  min-width: 6px;
+}
+
+/* ── Status area ── */
+.exp-ov__status {
+  font-size: 12px;
+  color: rgba(255,255,255,0.6);
+  line-height: 1.5;
+}
+
+.exp-ov__running {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.exp-ov__pct {
+  font-size: 22px;
+  font-weight: 800;
+  color: #a78bfa;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.exp-ov__frames {
+  font-size: 11px;
+  color: rgba(255,255,255,0.4);
+}
+
+.exp-ov__phase {
+  font-size: 11px;
+  color: rgba(108,99,255,0.9);
+  background: rgba(108,99,255,0.12);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.exp-ov__done-msg {
+  color: #86efac;
+  font-size: 12px;
+}
+
+.exp-ov__path {
+  display: block;
+  margin-top: 4px;
+  font-family: 'Consolas', 'Fira Code', monospace;
+  font-size: 10px;
+  color: rgba(255,255,255,0.4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exp-ov__error-msg {
+  color: #fca5a5;
+  font-size: 12px;
+}
+
+/* ── Cancel button ── */
+.exp-ov__cancel {
+  align-self: flex-end;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.55);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.exp-ov__cancel:hover {
+  border-color: rgba(252, 165, 165, 0.5);
+  color: #fca5a5;
+  background: rgba(252, 165, 165, 0.07);
+}

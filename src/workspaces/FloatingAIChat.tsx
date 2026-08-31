@@ -74,6 +74,8 @@ const TOOL_ICONS: Record<string, string> = {
   generate_captions: '💬',
   undo: '↩️',
   redo: '↪️',
+  export_video: '📤',
+  stop_indexing: '⏹️',
 }
 
 const TIMELINE_TOOLS = new Set([
@@ -311,6 +313,13 @@ export default function FloatingAIChat({ onClose }: Props) {
               appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
               aiText = ''
               dispatchToolEvents(evt.name)
+              // Export tool — dispatch overlay event
+              if (evt.name === 'export_video' && typeof evt.content === 'string') {
+                const m = evt.content.match(/EXPORT_JOB_ID:([\w-]+)/)
+                if (m) {
+                  window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: m[1] } }))
+                }
+              }
 
             } else if (evt.type === 'done') {
               patchLast({ streaming: false })
