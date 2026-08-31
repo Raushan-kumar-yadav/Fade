@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import os
 import json
@@ -350,12 +350,40 @@ EFFECTS ON SELECTED CLIPS:
 - Effect types: "sksl:gaussian_blur", "sksl:deep_glow", "hsl", "vignette", "chroma_key".
 
 DOWNLOADING MEDIA:
-- download_videos(query) â€” YouTube b-roll via yt-dlp
-- download_images(query) â€” DuckDuckGo image search
-- generate_image(prompt) â€” Gemini Imagen AI generation
-- After downloading, use get_library() then place_clip() to add to timeline.
+- download_videos(query) — YouTube b-roll via yt-dlp
+- download_images(query) — DuckDuckGo image search
+- generate_image(prompt) — Gemini Imagen AI generation
+- After downloading, use get_library_assets() then place_clip() to add to timeline.
 
-WEBCOMP â€” HTML/CSS/JS ANIMATED SCENES:
+LIBRARY INSPECTION:
+Use get_library_assets() instead of get_library() whenever you need rich asset metadata.
+It returns ALL assets enriched with:
+  - durationSec / durationFrames / fps / width / height / hasAudio
+  - indexStatus: 'done' | 'running' | 'not_started'
+      → 'done' means scene search and get_asset_context() will work for this asset
+  - transcriptStatus: 'done' | 'running' | 'not_started'
+      → 'done' means transcript[] is populated with Whisper speech segments
+  - sceneChunks: [{start_s, end_s, text}] — vision+speech scene descriptions for video
+  - imageDescription: str — AI vision caption for image assets
+  - transcript: [{start, end, text}] — Whisper word-level segments for audio/video
+  - type='comp' entries for all nested compositions (with trackCount, clipCount)
+
+WHEN TO CALL get_library_assets():
+  * Before placing any clip — to know its exact duration in frames
+  * Before calling search_video_scenes() — to confirm indexStatus='done'
+  * Before calling place_clip() on audio — to check hasAudio and transcript
+  * To pick the best asset for a scene (read sceneChunks to understand content)
+  * To see all comps and their clip counts without activating them
+  * When user asks "what's in my library", "what videos do I have", "show me assets"
+
+ASSET PLACEMENT PATTERN (preferred):
+  1. get_library_assets()              → read durations, index status, scene content
+  2. (if needed) search_video_scenes() → find exact timestamp within an asset
+  3. place_clip(assetId, track, start_frame, duration_frames)
+
+
+
+WEBCOMP — HTML/CSS/JS ANIMATED SCENES:
 WebComps are HTML pages rendered frame-by-frame by an Electron offscreen BrowserWindow.
 Each frame, Electron injects: window.FADE_FRAME, FADE_TIME, FADE_FPS, FADE_WIDTH, FADE_HEIGHT, FADE_PARAMS.
 

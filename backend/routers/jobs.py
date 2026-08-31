@@ -144,7 +144,7 @@ def _import_and_index(filepath: str) -> dict:
             register_asset_job("image_index", asset_id,
                                f"Indexing: {_os.path.basename(filepath)}",
                                message="Describing image…")
-        # audio job card is registered inside _queue_audio_transcript already
+         
     except Exception as _e:
         print(f"[Jobs] register overlay job error (non-fatal): {_e}", flush=True)
 
@@ -258,18 +258,18 @@ def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
     from backend.events import notify as _notify
 
     provider = _cfg.get("generators.image_provider", "google")
-    gen_dir   = _resolve_download_dir(subdir="generations")
+    gen_dir = _resolve_download_dir(subdir="generations")
 
-    # ── Dispatch to the right generator ───────────────────────────────────────
+    # Dispatch to the right generator  
     if provider == "comfyui":
         from backend.tools.generators.comfyui_generator import ComfyUIImageGenerator
-        base_url    = _cfg.get("generators.comfyui_url",   "http://127.0.0.1:8188")
+        base_url = _cfg.get("generators.comfyui_url",   "http://127.0.0.1:8188")
         model_name  = _cfg.get("generators.comfyui_model", "v1-5-pruned-emaonly.safetensors")
         comfyui_path = _cfg.get("generators.comfyui_path", "")
-        width       = int(_cfg.get("generators.comfyui_width",  512))
-        height      = int(_cfg.get("generators.comfyui_height", 512))
-        steps       = int(_cfg.get("generators.comfyui_steps",  20))
-        cfg_scale   = float(_cfg.get("generators.comfyui_cfg",  7.0))
+        width = int(_cfg.get("generators.comfyui_width",  512))
+        height = int(_cfg.get("generators.comfyui_height", 512))
+        steps = int(_cfg.get("generators.comfyui_steps",  20))
+        cfg_scale = float(_cfg.get("generators.comfyui_cfg",  7.0))
 
         _update_job(job_id, status="running", progress=0.05,
                     message=f"{'Starting' if comfyui_path else 'Connecting to'} ComfyUI — {model_name}…")
@@ -293,9 +293,9 @@ def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
 
     elif provider == "stability":
         from backend.tools.generators.stability_generator import StabilityImageGenerator
-        stab_model  = _cfg.get("generators.stability_model",  "core")
-        stab_style  = _cfg.get("generators.stability_style",  "")
-        stab_width  = int(_cfg.get("generators.stability_width",  1024))
+        stab_model = _cfg.get("generators.stability_model",  "core")
+        stab_style = _cfg.get("generators.stability_style",  "")
+        stab_width = int(_cfg.get("generators.stability_width",  1024))
         stab_height = int(_cfg.get("generators.stability_height", 1024))
         _update_job(job_id, status="running", progress=0.1,
                     message=f"Generating with Stability AI ({stab_model})…")
@@ -318,7 +318,7 @@ def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
 
     elif provider == "local":
 
-        # Ollama / local SDXL — not yet implemented, fall through to Gemini with a warning
+        # Ollama 
         _update_job(job_id, status="running", progress=0.05,
                     message="Local image gen not implemented yet — falling back to Gemini…")
         from backend.tools import GeminiImageGenerator
@@ -383,9 +383,9 @@ def _run_tts_generate(job_id: str, text: str, voice: str, speed: float) -> None:
 
         _update_job(job_id, progress=0.20, message=f"Synthesising: \"{short_text}\"…")
 
-        # ── Cancellation check before the long synthesis step ─────────────────
+         
         if is_job_cancelled(job_id):
-            return  # already marked cancelled by the endpoint
+            return   
 
         kokoro_voice = voice or _cfg.get("generators.tts_kokoro_voice", "af_heart")
         result = generator.generate(
@@ -395,9 +395,9 @@ def _run_tts_generate(job_id: str, text: str, voice: str, speed: float) -> None:
             speed=speed,
         )
 
-        # ── Cancellation check after synthesis, before import ─────────────────
+         
         if is_job_cancelled(job_id):
-            return  # skip import/notify — job already marked cancelled
+            return   
 
         _update_job(job_id, progress=0.80, message="Importing audio…")
         info = _import_file(result["filepath"])
@@ -476,8 +476,7 @@ class TTSGenerateRequest(BaseModel):
 
 @router.post("/jobs/video-download")
 def start_video_download(req: VideoDownloadRequest):
-    """Start async YouTube video download jobs — ONE job card per video.
-    Returns list of jobIds immediately so the UI shows N placeholder cards."""
+     
     num = max(1, min(req.numVideos, 5))
     job_ids = []
     for i in range(num):
@@ -486,7 +485,7 @@ def start_video_download(req: VideoDownloadRequest):
         notify("job", job)   # push placeholder card to UI
         _start(_run_video_download, job["jobId"], req.query, 1, i, num)
         job_ids.append(job["jobId"])
-    # Return first jobId for backward-compat 
+    # Return first jobId  
     return {"jobId": job_ids[0], "jobIds": job_ids,
             "label": f"Downloading {num} video(s): {req.query}",
             "status": "pending"}
@@ -553,12 +552,7 @@ def get_job(jobId: str):
 
 @router.post("/jobs/{jobId}/cancel")
 def cancel_job_by_id(jobId: str):
-    """Request cancellation of a running or pending job.
-
-    Marks the job status as 'cancelled' in the store and emits an SSE event
-    so the UI updates immediately. Background threads that check
-    is_job_cancelled() will stop gracefully on their next iteration.
-    """
+     
     job = _get_job(jobId)
     if job is None:
         raise HTTPException(404, f"Job '{jobId}' not found")

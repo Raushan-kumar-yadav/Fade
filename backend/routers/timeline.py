@@ -65,6 +65,7 @@ def addTrack(req: AddTrackRequest):
 
 
 
+@router.post("/timeline/add-clip")
 def addClip(req: AddClipRequest):
      
     if req.compId:

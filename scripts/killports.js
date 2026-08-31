@@ -35,6 +35,16 @@ try {
   console.log('[predev] killed python.exe')
 } catch { /* none running */ }
 
+// Wait for OS to release ports before new backend starts
+try {
+  execSync('ping 127.0.0.1 -n 3 > nul', { stdio: 'ignore' }) // ~1.5s cross-platform sleep
+} catch { /* ignore */ }
+
+// Kill ports one more time in case python.exe was still dying
+for (let p = 8000; p <= 8005; p++) {
+  freePort(p)
+}
+
 // ── Ensure AI Python deps are installed ───────────────────────────────────────
 const venvPip = path.join(__dirname, '..', '.venv', 'Scripts', 'pip.exe')
 const reqFile = path.join(__dirname, '..', 'requirements.txt')

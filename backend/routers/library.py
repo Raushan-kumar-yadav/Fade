@@ -127,7 +127,7 @@ def _import_file(filepath: str) -> dict:
     mtype = asset.mediaType.value if hasattr(asset.mediaType, 'value') else str(asset.mediaType)
     print(f"[Library] Imported {os.path.basename(filepath)} → assetId={assetId[:8]} type={mtype}", flush=True)
 
-    # Queue semantic indexing for video/image; transcript for audio
+    # Queue semantic indexing for video/image 
     if mtype == "audio" or os.path.splitext(filepath)[1].lower() in _AUDIO_EXTS:
         _queue_audio_transcript(assetId, filepath)
     else:
@@ -150,6 +150,169 @@ def listAssets():
          
         if getattr(a, 'mediaType', None) != MediaType.webcomp
     ]
+
+
+@router.get("/library/assets/rich")
+def listAssetsRich():
+    """Rich library dump for the AI agent.
+
+    Returns every asset (video, image, audio, webcomp) enriched with:
+      - durationFrames / durationSec / fps / width / height / hasAudio
+      - indexStatus  (done | running | not_started | error)
+      - transcriptStatus (done | running | not_started)
+      - sceneChunks  [{start_s, end_s, text}]  — if indexed (video/image)
+      - imageDescription str                    — if indexed (image)
+      - transcript   [{start, end, text}]       — if Whisper done (audio/video)
+
+    Also appends all compositions (nested timelines) as entries with type='comp'.
+    """
+    from backend.media.asset.baseAsset import MediaType
+    from backend.worker import transcript_status as _ts
+    from backend.routers.jobs import _ASSET_JOB_KEY, _jobs, _lock as _job_lock
+
+    # ── helpers ──────────────────────────────────────────────────────────────
+    def _index_status(asset_id: str) -> str:
+        status = _worker_bus.get_index_status(asset_id)
+        if not status:
+            # Check ChromaDB directly
+            try:
+                from backend.ai.VideoSemantic.indexer import is_asset_indexed
+                return "done" if is_asset_indexed(asset_id) else "not_started"
+            except Exception:
+                return "not_started"
+        return status.get("status", "not_started")
+
+    def _transcript_status(asset_id: str) -> str:
+        if _ts.is_done(asset_id):
+            return "done"
+        job_id = _ASSET_JOB_KEY.get((asset_id, "audio_transcript"))
+        if job_id:
+            with _job_lock:
+                job = _jobs.get(job_id)
+            if job and job.get("status") in ("running", "pending"):
+                return "running"
+        return "not_started"
+
+    def _scene_chunks(asset_id: str, mtype: str) -> list:
+        if mtype not in ("video", "image"):
+            return []
+        try:
+            from backend.ai.VideoSemantic.indexer import _col, _img_col
+            if mtype == "video" and _col:
+                res = _col.get(
+                    where={"assetId": asset_id},
+                    include=["documents", "metadatas"],
+                    limit=500,
+                )
+                chunks = []
+                for doc, meta in zip(res["documents"], res["metadatas"]):
+                    if doc and doc.strip():
+                        chunks.append({
+                            "start_s": round(float(meta.get("start_sec", 0)), 2),
+                            "end_s":   round(float(meta.get("end_sec",   0)), 2),
+                            "text":    doc.strip(),
+                        })
+                chunks.sort(key=lambda c: c["start_s"])
+                return chunks
+        except Exception:
+            pass
+        return []
+
+    def _image_description(asset_id: str) -> str:
+        try:
+            from backend.ai.VideoSemantic.indexer import _img_col
+            if _img_col:
+                res = _img_col.get(where={"assetId": asset_id}, include=["documents"])
+                if res["documents"]:
+                    return res["documents"][0]
+        except Exception:
+            pass
+        return ""
+
+    def _transcript_segments(asset_id: str, filepath: str, mtype: str) -> list:
+        """Return cached Whisper transcript from ChromaDB if already indexed."""
+        if mtype not in ("video", "audio"):
+            return []
+        if not _ts.is_done(asset_id):
+            return []
+        try:
+            from backend.ai.VideoSemantic.indexer import get_segments_for_asset
+            segs = get_segments_for_asset(asset_id)
+             
+            return [{"start": s["start_s"], "end": s["end_s"], "text": s["text"]} for s in segs]
+        except Exception:
+            return []
+
+    # Build asset list  
+    results = []
+    fps_proj = float(engine.project.fps) if engine.project else 30.0
+
+    for a in _library.values():
+        mtype_raw = getattr(a, 'mediaType', None)
+        mtype = mtype_raw.value if hasattr(mtype_raw, 'value') else str(mtype_raw)
+
+        # Duration
+        dur_frames = getattr(a, 'durationFrames', 0) or 0
+        asset_fps = getattr(a, 'fps', 0.0) or fps_proj
+        dur_sec = round(dur_frames / asset_fps, 3) if asset_fps and dur_frames else 0.0
+
+        idx_status = _index_status(a.assetId)
+        tx_status  = _transcript_status(a.assetId)
+
+        entry = {
+            "assetId": a.assetId,
+            "filename": os.path.basename(a.filepath),
+            "filepath": a.filepath,
+            "type": mtype,
+            "durationFrames":  dur_frames,
+            "durationSec": dur_sec,
+            "fps": round(asset_fps, 3),
+            "width": getattr(a, 'width',    0),
+            "height": getattr(a, 'height',   0),
+            "hasAudio": bool(getattr(a, 'hasAudio', False)),
+            "indexStatus": idx_status,
+            "transcriptStatus": tx_status,
+        }
+
+        # Enrich with indexed content
+        if mtype == "video":
+            entry["sceneChunks"] = _scene_chunks(a.assetId, "video")
+            entry["transcript"]  = _transcript_segments(a.assetId, a.filepath, "video")
+        elif mtype == "image":
+            entry["imageDescription"] = _image_description(a.assetId)
+        elif mtype == "audio":
+            entry["transcript"] = _transcript_segments(a.assetId, a.filepath, "audio")
+
+        results.append(entry)
+
+    # Append compositions  
+    if engine.project:
+        root_id = engine.project.timelines[0].timelineId if engine.project.timelines else ""
+        proj_w = engine.project.width
+        proj_h = engine.project.height
+        for tl in engine.project.timelines:
+            if tl.timelineId == root_id:
+                continue   
+            results.append({
+                "assetId": tl.timelineId,
+                "filename": tl.name,
+                "filepath": "",
+                "type": "comp",
+                "durationFrames": getattr(tl, "totalFrames", 0),
+                "durationSec": round(getattr(tl, "totalFrames", 0) / fps_proj, 3),
+                "fps": float(getattr(tl, "fps", fps_proj)),
+                "width": getattr(tl, "width",  proj_w),
+                "height": getattr(tl, "height", proj_h),
+                "hasAudio": False,
+                "indexStatus": "not_started",
+                "transcriptStatus": "not_started",
+                "trackCount": len(tl.tracks),
+                "clipCount": sum(len(t.clips) for t in tl.tracks),
+            })
+
+    return results
+
+
 
 
 @router.post("/library/import")
@@ -321,7 +484,7 @@ def generate_image_endpoint(req: GenerateImageRequest):
             )
 
         elif provider == "local":
-            # Ollama image gen (experimental)
+            # Ollama image gen  
             from backend.tools.generators.tts_generator import LocalTTSGenerator
             raise RuntimeError(
                 "Ollama image generation is not yet stable.\n"

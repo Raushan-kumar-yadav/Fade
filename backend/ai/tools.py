@@ -62,6 +62,32 @@ def get_library() -> str:
     data = _get("/library/assets")
     return json.dumps(data, indent=2)
 
+
+@tool
+def get_library_assets() -> str:
+    """Return ALL library assets with FULL metadata in one call.
+
+    For each asset returns:
+      - assetId, filename, filepath, type (video/image/audio/webcomp/comp)
+      - durationFrames, durationSec, fps, width, height, hasAudio
+      - indexStatus: 'done' | 'running' | 'not_started' | 'error'
+      - transcriptStatus: 'done' | 'running' | 'not_started'
+      - sceneChunks: [{start_s, end_s, text}] — vision+speech descriptions (if indexed)
+      - imageDescription: str — AI description for image assets (if indexed)
+      - transcript: [{start, end, text}] — Whisper segments (if transcribed, audio/video)
+
+    Also includes all compositions (nested timelines) as separate entries with type='comp'.
+
+    Use this instead of get_library() when you need to:
+    - Know if footage is already indexed before searching
+    - Read what a video contains before placing it
+    - Check transcript availability
+    - Get exact duration before placing clips
+    - Explore what comps exist
+    """
+    data = _get("/library/assets/rich")
+    return json.dumps(data, indent=2)
+
 @tool
 def get_playback_state() -> str:
     """Return current playback state: frame, fps, totalFrames, playing."""
@@ -1267,6 +1293,7 @@ def delete_composition(comp_id: str) -> str:
 ALL_TOOLS = [
     get_timeline_state,
     get_library,
+    get_library_assets,
     get_playback_state,
     seek_to,
     split_clip,
@@ -1633,7 +1660,7 @@ def get_timeline_context(format: str = "txt") -> str:
     Args:
         format: "txt" for human-readable (default, best for reasoning), "json" for structured data.
     """
-    r = _get(f"/context/timeline?format={format}")
+    r = _get(f"/timeline?format={format}")
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
@@ -1650,7 +1677,7 @@ def get_clip_context(clip_id: str, format: str = "txt") -> str:
         clip_id: The clipId of the clip (get from get_timeline_state).
         format: "txt" for human-readable (default), "json" for structured data.
     """
-    r = _get(f"/context/clip/{clip_id}?format={format}")
+    r = _get(f"/clip/{clip_id}?format={format}")
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
@@ -1667,7 +1694,7 @@ def get_asset_context(asset_id: str, format: str = "txt") -> str:
         asset_id: The assetId from the library (get from get_library).
         format: "txt" for human-readable (default), "json" for structured data.
     """
-    r = _get(f"/context/asset/{asset_id}?format={format}")
+    r = _get(f"/asset/{asset_id}?format={format}")
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
@@ -1690,7 +1717,7 @@ def search_video_scenes(query: str, top_k: int = 5) -> str:
         query: Natural language scene description to search for.
         top_k: Number of top results to return (default 5, max 20).
     """
-    data = _get(f"/search/video?q={query}&top_k={top_k}")
+    data = _get(f"/video?q={query}&top_k={top_k}")
     results = data.get("results", [])
     if not results:
         return f"No matching scenes found for: '{query}'"
@@ -1766,7 +1793,7 @@ def describe_clip(clip_id: str) -> str:
         clip_id: The clipId of the clip (get from get_timeline_state).
     """
     try:
-        return json.dumps(_get(f"/context/clip/{clip_id}/describe"), indent=2)
+        return json.dumps(_get(f"/clip/{clip_id}/describe"), indent=2)
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
             return f"Clip '{clip_id}' not found on any timeline. Call get_timeline_state() to get valid clip IDs."
@@ -1785,7 +1812,7 @@ def describe_selected_clip() -> str:
     depending on the clip type.
     """
     try:
-        r = _get("/context/selected/describe")
+        r = _get("/selected/describe")
         return json.dumps(r, indent=2)
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
