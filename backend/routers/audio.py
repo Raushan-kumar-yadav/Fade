@@ -114,7 +114,7 @@ def audioStream(assetId: str):
 
 @router.get("/timeline/audio-clips")
 def listAudioClips():
-    # Always scan rootTimeline — addClip writes there, not activeTimeline
+    # Always scan rootTimeline  
     tl = engine.rootTimeline or engine.activeTimeline
     if tl is None:
         return {"clips": []}
@@ -137,22 +137,24 @@ def listAudioClips():
                 asset = _library.get(asset_id)
                 if asset is None:
                     continue
-                # Include pure audio clips (AudioClip) OR video clips that have audio
+                # Include pure audio clips  
                 clip_is_audio = clip_type == "audio"
                 if not clip_is_audio and not asset.hasAudio:
                     continue
                 result.append({
-                    "clipId":      clip.clipId,
-                    "assetId":     asset_id,
+                    "clipId": clip.clipId,
+                    "assetId": asset_id,
+                    "filePath": asset.filepath,
                     "startFrame":  frame_offset + clip.startFrame,
-                    "duration":    clip.duration,
+                    "duration": clip.duration,
                     "mediaOffset": getattr(clip, "mediaOffset", 0),
-                    "volume":      getattr(clip, "volume", 1.0),
+                    "volume": getattr(clip, "volume", 1.0),
                     "streamUrl":   f"/assets/{asset_id}/audio-stream",
                 })
 
     _collect_audio(tl)
-    return {"clips": result}
+    fps = getattr(tl, 'fps', 30.0)
+    return {"clips": result, "fps": fps}
 
 
 @router.get("/fonts")

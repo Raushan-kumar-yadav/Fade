@@ -3,13 +3,16 @@ import os
 import subprocess
 import threading
 import uuid
-import time
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.compositor.compositor import Compositor
     from backend.timeline.timeline import Timeline
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Encoder auto-detection
+# ──────────────────────────────────────────────────────────────────────────────
 
 def detect_encoder() -> str:
     candidates = ["h264_nvenc", "h264_qsv", "libx264"]
@@ -36,6 +39,10 @@ def _cached_encoder() -> str:
         _ENCODER_CACHE = detect_encoder()
     return _ENCODER_CACHE
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ExportJob — tracks state of one export run
+# ──────────────────────────────────────────────────────────────────────────────
 
 class ExportJob:
     def __init__(self, settings: dict) -> None:
@@ -70,19 +77,28 @@ class ExportJob:
         }
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Main export runner — called from background thread
+# ──────────────────────────────────────────────────────────────────────────────
+
 def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -> None:
-    s       = job.settings
-    width   = s.get("width",  1920)
-    height  = s.get("height", 1080)
-    fps     = s.get("fps",    30.0)
-    codec   = s.get("codec",  "auto")
-    vbr     = s.get("videoBitrate", "8M")
-    abr     = s.get("audioBitrate", "192k")
-    out     = s.get("outputPath", "output.mp4")
+    s               = job.settings
+    width           = s.get("width",           1920)
+    height          = s.get("height",          1080)
+    fps             = s.get("fps",             30.0)
+    codec           = s.get("codec",           "auto")
+    vbr             = s.get("videoBitrate",    "8M")
+    crf             = s.get("crf",             -1)
+    preset          = s.get("preset",          "medium")
+    abr             = s.get("audioBitrate",    "192k")
+    audio_sr        = s.get("audioSampleRate", 48000)
+    audio_ch        = s.get("audioChannels",   2)
+    out             = s.get("outputPath",      "output.mp4")
 
     if codec == "auto":
         codec = _cached_encoder()
 
+    # Compute total frames
     total_frames = 0
     if timeline:
         for track in timeline.tracks:
@@ -95,26 +111,43 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
         job.done  = True
         return
 
-    tmp_video = out + ".tmp_video.mp4"
+    # Ensure the output directory exists — FFmpeg cannot create parent directories
+    out_dir = os.path.dirname(os.path.abspath(out))
+    os.makedirs(out_dir, exist_ok=True)
 
+    tmp_video = os.path.join(out_dir, f".fade_tmp_{uuid.uuid4().hex[:8]}.mp4")
+
+    # Build FFmpeg video encode command
     ffmpeg_cmd = [
         "ffmpeg", "-y",
-        "-f",      "rawvideo",
-        "-vcodec", "rawvideo",
-        "-pix_fmt","rgba",
-        "-s",      f"{width}x{height}",
-        "-r",      str(fps),
-        "-i",      "pipe:0",
-        "-c:v",    codec,
-        "-pix_fmt","yuv420p",
-        "-b:v",    vbr,
-        "-movflags","+faststart",
-        tmp_video,
+        "-f", "rawvideo",
+        "-vcodec",  "rawvideo",
+        "-pix_fmt", "rgba",
+        "-s", f"{width}x{height}",
+        "-r", str(fps),
+        "-i", "pipe:0",
+        "-c:v", codec,
+        "-pix_fmt", "yuv420p",
     ]
 
+    # Quality mode: CRF preferred over bitrate for CPU encoders
+    cpu_encoders = ("libx264", "libx265")
+    if crf >= 0 and codec in cpu_encoders:
+        ffmpeg_cmd += ["-crf", str(crf), "-preset", preset]
+    else:
+        ffmpeg_cmd += ["-b:v", vbr]
+        if codec in cpu_encoders:
+            ffmpeg_cmd += ["-preset", preset]
+
+    ffmpeg_cmd += ["-movflags", "+faststart", tmp_video]
+
     try:
-        proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE,
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(
+            ffmpeg_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         job._proc = proc
 
         for f in range(total_frames):
@@ -138,7 +171,7 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
             job.done  = True
             return
 
-        _mux_audio(tmp_video, out, timeline, fps, abr)
+        _mux_audio_v2(tmp_video, out, timeline, fps, abr, audio_sr, audio_ch)
         job.path = out
         job.done = True
 
@@ -152,24 +185,120 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
             pass
 
 
-def _mux_audio(video_path: str, out_path: str, timeline: "Timeline", fps: float, abr: str) -> None:
-    from backend.media.asset.mediaAsset import MediaAsset
+ 
+def _mux_audio_v2(
+    video_path: str,
+    out_path: str,
+    timeline: "Timeline",
+    fps: float,
+    abr: str,
+    sample_rate: int = 48000,
+    channels: int = 2,
+) -> None:
+     
+    from backend.state import _library
+    from backend.timeline.clips.audioClip import AudioClip
 
-    audio_inputs: list[str] = []
+    audio_clips: list[dict] = []
+
     for track in timeline.tracks:
+        # Skip muted tracks
+        if getattr(track, "muted", False):
+            continue
+        # Only process audio tracks  
         for clip in track.clips:
-            asset_path = getattr(getattr(clip, "_asset", None), "filePath", None)
-            if asset_path and os.path.exists(asset_path):
-                audio_inputs.append(asset_path)
-                break
+            if not isinstance(clip, AudioClip):
+                continue
+            if getattr(clip, "mute", False):
+                continue
 
-    if not audio_inputs:
+            # Resolve asset file path  
+            asset = _library.get(getattr(clip, "assetId", ""))
+            filepath: str | None = None
+            if asset:
+                filepath = getattr(asset, "filepath", None) or getattr(asset, "filePath", None)
+            if not filepath:
+                # fromDict() stores a .filepath attr directly on the clip
+                filepath = getattr(clip, "filepath", None)
+            if not filepath or not os.path.exists(filepath):
+                continue
+
+            start_sec  = clip.startFrame / fps
+            offset_sec = getattr(clip, "mediaOffset", 0) / fps
+            dur_sec = clip.duration / fps
+            volume = float(getattr(clip, "volume", 1.0))
+
+            audio_clips.append({
+                "path": filepath,
+                "start_sec":  start_sec,
+                "offset_sec": offset_sec,
+                "dur_sec": dur_sec,
+                "volume": volume,
+            })
+
+    # No audio  
+    if not audio_clips:
         os.rename(video_path, out_path)
         return
 
-    cmd = ["ffmpeg", "-y", "-i", video_path]
-    for a in audio_inputs:
-        cmd += ["-i", a]
-    cmd += ["-c:v", "copy", "-c:a", "aac", "-b:a", abr,
-            "-shortest", out_path]
-    subprocess.run(cmd, capture_output=True)
+    # Build FFmpeg command with complex filter graph
+    inputs = ["-i", video_path]
+    for c in audio_clips:
+        inputs += ["-i", c["path"]]
+
+    filter_parts: list[str] = []
+    mix_labels:   list[str] = []
+
+    for i, c in enumerate(audio_clips):
+        src = f"[{i + 1}:a]"
+        label = f"[ac{i}]"
+        delay_ms = int(c["start_sec"] * 1000)
+        offset_sec = c["offset_sec"]
+        dur_sec = c["dur_sec"]
+        vol = c["volume"]
+
+        chain = (
+            f"{src}"
+            # Trim to the portion of the source we actually want
+            f"atrim=start={offset_sec:.6f}:duration={dur_sec:.6f},"
+            # Reset timestamps so the trimmed clip starts at t=0
+            f"asetpts=PTS-STARTPTS,"
+            # Delay it to its timeline position 
+            f"adelay={delay_ms}|{delay_ms},"
+            # Apply per-clip volume
+            f"volume={vol:.6f}"
+            f"{label}"
+        )
+        filter_parts.append(chain)
+        mix_labels.append(label)
+
+    # Mix all streams; normalize=0 keeps absolute volumes
+    n = len(audio_clips)
+    mix_inputs = "".join(mix_labels)
+    filter_parts.append(
+        f"{mix_inputs}amix=inputs={n}:duration=longest:normalize=0[aout]"
+    )
+    filter_graph = ";".join(filter_parts)
+
+    cmd = ["ffmpeg", "-y"] + inputs + [
+        "-filter_complex", filter_graph,
+        "-map",  "0:v",
+        "-map", "[aout]",
+        "-c:v", "copy",
+        "-c:a",  "aac",
+        "-b:a", abr,
+        "-ar", str(sample_rate),
+        "-ac",   str(channels),
+        out_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
+        # Fallback: just copy video without audio rather than leaving nothing
+        print(f"[encoder] _mux_audio_v2 failed: {result.stderr.decode(errors='replace')[-400:]}")
+        try:
+            os.rename(video_path, out_path)
+        except Exception:
+            pass
+
+
+

@@ -204,14 +204,19 @@ export const effectsApi = {
 //   Export
 
 export interface ExportSettings {
-  outputPath:   string;
+  outputPath: string;
   width?: number;
   height?: number;
   fps?: number;
   codec?: string;
   videoBitrate?: string;
+  crf?: number;      // -1 = bitrate mode; 18-51 = CRF mode
+  preset?: string;     // ultrafast → veryslow
   audioBitrate?: string;
-  formatId?:    string;
+  audioSampleRate?: number;
+  audioChannels?:   number;
+  formatId?: string;
+  transparentBg?:   boolean;
 }
 
 export interface ExportProgress {
@@ -222,6 +227,7 @@ export interface ExportProgress {
   done: boolean;
   error: string | null;
   path: string | null;
+  status?: string;  // 'video' | 'audio' | undefined — used to show mux phase label
 }
 
 export const exportApi = {

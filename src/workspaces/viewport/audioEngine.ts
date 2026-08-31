@@ -46,13 +46,14 @@ export class AudioEngine {
     }
   }
 
-  /** Replace the full set of audio clips from the backend. */
+ 
   update(clips: AudioClipInfo[]) {
     const incoming = new Set(clips.map(c => c.clipId))
 
-    // Remove stale nodes
+    // Remove stale nodes  
     for (const [id, node] of this.nodes) {
       if (!incoming.has(id)) {
+        ;(node.el as any)._fade_dead = true
         node.el.pause()
         node.el.src = ''
         this.nodes.delete(id)
@@ -61,6 +62,9 @@ export class AudioEngine {
 
     // Add / update
     for (const clip of clips) {
+       
+      if (!this.port) continue
+
       const expectedSrc = `http://127.0.0.1:${this.port}${clip.streamUrl}`
       if (!this.nodes.has(clip.clipId)) {
         const el = new Audio()
@@ -69,6 +73,8 @@ export class AudioEngine {
         el.volume  = Math.max(0, Math.min(1, clip.volume))
          
         el.addEventListener('error', () => {
+           
+          if ((el as any)._fade_dead) return
           console.error('[AudioEngine] load error', clip.clipId, clip.streamUrl, el.error)
         })
         el.addEventListener('canplaythrough', () => {
@@ -154,6 +160,7 @@ export class AudioEngine {
 
   destroy() {
     for (const { el } of this.nodes.values()) {
+      ;(el as any)._fade_dead = true
       el.pause()
       el.src = ''
     }

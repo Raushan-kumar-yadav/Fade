@@ -148,11 +148,14 @@ export default function ViewportWidget() {
    
   // Audio engine  
   useEffect(() => {
-    const port = (window as any).__FADE_PORT__ ?? 8000
-    const engine = new AudioEngine(fps, port)
+     
+    const engine = new AudioEngine(fps, 0)
     audioRef.current = engine
 
-    async function loadClips() {
+    let currentPort = 0
+
+    async function loadClips(port: number) {
+      if (!port) return
       try {
         const r = await fetch(`http://127.0.0.1:${port}/timeline/audio-clips`)
         if (r.ok) {
@@ -163,14 +166,25 @@ export default function ViewportWidget() {
       } catch { /* backend not ready */ }
     }
 
-    loadClips()
-    const pollId = setInterval(loadClips, 3000)
-    const onTracksChanged = () => loadClips()
+    // Poll for valid port
+    const portPollId = setInterval(() => {
+      const p: number = (window as any).__FADE_PORT__ ?? 0
+      if (p && p !== currentPort) {
+        currentPort = p
+        engine.updatePort(p)
+        loadClips(p)
+      } else if (currentPort) {
+        loadClips(currentPort)
+      }
+    }, 1000)
+
+    // Also react to track changes
+    const onTracksChanged = () => loadClips(currentPort)
     window.addEventListener('fade:tracks-changed', onTracksChanged)
-    window.addEventListener('fade:render-now', onTracksChanged)   // audio clip just added
+    window.addEventListener('fade:render-now', onTracksChanged)
 
     return () => {
-      clearInterval(pollId)
+      clearInterval(portPollId)
       window.removeEventListener('fade:tracks-changed', onTracksChanged)
       window.removeEventListener('fade:render-now', onTracksChanged)
       engine.destroy()
@@ -263,7 +277,10 @@ export default function ViewportWidget() {
   const handleResChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const scale = parseFloat(e.target.value);
     setResScale(scale);
+     
     try { await setPreviewScale(scale); } catch { /* backend */ }
+    
+    (window as any).electronAPI?.renderSetPreviewScale?.(scale)
   }, []);
 
   const handleSpeedChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {

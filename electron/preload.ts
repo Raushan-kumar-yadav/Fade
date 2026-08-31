@@ -12,6 +12,7 @@ export interface ElectronAPI {
   renderSeek: (frame: number) => void
   renderPlay: () => void
   renderPause: () => void
+  renderSetPreviewScale: (scale: number) => void
   getRenderBuffer: () => Promise<ArrayBuffer | null>
   onFrameReady: (cb: (frameNum: number) => void) => () => void
   getRenderStats: () => Promise<{ width: number; height: number; fps: number; bufferSize: number } | null>
@@ -31,6 +32,11 @@ export interface ElectronAPI {
     done: boolean
     error: string
   }) => void) => () => void   // returns cleanup fn
+  onExportWebcompPhase: (cb: (p: {
+    active: boolean
+    done: number
+    total: number
+  }) => void) => () => void   // WebComp pre-render progress
   cancelExport: () => void
 
   //     File dialogs  
@@ -38,6 +44,7 @@ export interface ElectronAPI {
     filters?: { name: string; extensions: string[] }[]
     defaultPath?: string
   }) => Promise<string | undefined>
+  getAppPath: (name: string) => Promise<string | null>
 
   showOpenDialog: (opts?: {
     filters?: { name: string; extensions: string[] }[]
@@ -54,7 +61,7 @@ export interface ElectronAPI {
   webcompUpdateParams: (webcompId: string, params: Record<string, any>) => void
   webcompReload: (webcompId: string) => void
   webcompDestroy: (webcompId: string) => void
-  webcompPushToNative: (webcompId: string, frame: number, width: number, height: number) => Promise<boolean>
+  webcompPushToNative: (webcompId: string, localFrame: number, width: number, height: number, timelineFrame?: number) => Promise<boolean>
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -74,6 +81,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renderSeek: (frame: number): void => ipcRenderer.send('render:seek', frame),
   renderPlay:  (): void => ipcRenderer.send('render:play'),
   renderPause: (): void => ipcRenderer.send('render:pause'),
+  renderSetPreviewScale: (scale: number): void => ipcRenderer.send('render:set-preview-scale', scale),
 
   getRenderBuffer: (): Promise<ArrayBuffer | null> => ipcRenderer.invoke('render:get-buffer'),
   getRenderStats:  (): Promise<{ width: number; height: number; fps: number; bufferSize: number } | null> =>
@@ -94,6 +102,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('export:progress', handler)
   },
 
+  onExportWebcompPhase: (cb: (p: any) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, p: any) => cb(p)
+    ipcRenderer.on('export:webcomp-phase', handler)
+    return () => ipcRenderer.removeListener('export:webcomp-phase', handler)
+  },
+
   cancelExport: (): void => ipcRenderer.send('export:cancel'),
 
   // File dialogs  
@@ -102,6 +116,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   showOpenDialog: (opts?: any): Promise<string | undefined> =>
     ipcRenderer.invoke('dialog:open', opts),
+
+  getAppPath: (name: string): Promise<string | null> =>
+    ipcRenderer.invoke('app:get-path', name),
 
   //   WebComp  
   webcompCreate: (opts: any): Promise<boolean> =>
@@ -122,7 +139,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   webcompDestroy: (id: string): void =>
     ipcRenderer.send('webcomp:destroy', id),
 
-  webcompPushToNative: (id: string, frame: number, w: number, h: number): Promise<boolean> =>
-    ipcRenderer.invoke('webcomp:push-to-native', id, frame, w, h),
+  webcompPushToNative: (id: string, localFrame: number, w: number, h: number, timelineFrame?: number): Promise<boolean> =>
+    ipcRenderer.invoke('webcomp:push-to-native', id, localFrame, w, h, timelineFrame),
 
 } satisfies ElectronAPI)

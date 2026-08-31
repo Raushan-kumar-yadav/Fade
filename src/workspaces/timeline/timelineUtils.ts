@@ -1,6 +1,6 @@
 import type { TimelineState } from './types';
 
-/** Format a frame number as MM:SS:FF timecode */
+ 
 export function frameToTimecode(frame: number, fps: number): string {
   const totalSec = Math.floor(frame / fps);
   const ff = Math.floor(frame % fps);

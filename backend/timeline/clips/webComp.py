@@ -33,8 +33,39 @@ class WebCompClip(BaseClip):
 
     # BaseClip abstract implementations
     def render(self, canvas, frame: int) -> None:
-        
-        pass
+         
+        try:
+            from backend.state import _webcompExportCache
+            entry = _webcompExportCache.get((self.webcompId, frame))
+            if not entry:
+                return
+            import skia
+            raw = entry["rgba"]
+            w = entry["width"]
+            h = entry["height"]
+            info = skia.ImageInfo.MakeN32Premul(w, h)
+            data = skia.Data.MakeWithoutCopy(raw)
+            img = skia.Image.MakeRasterData(info, data, w * 4)
+            if img is None:
+                return
+            canvas.save()
+            try:
+                self.transform.applyToCanvas(canvas)
+                paint = skia.Paint()
+                alpha = getattr(self, "opacity", 1.0)
+                if alpha < 1.0:
+                    paint.setAlphaf(alpha)
+                sampling = skia.SamplingOptions(skia.FilterMode.kLinear)
+                canvas.drawImageRect(
+                    img,
+                    skia.Rect.MakeXYWH(0.0, 0.0, float(w), float(h)),
+                    sampling,
+                    paint,
+                )
+            finally:
+                canvas.restore()
+        except Exception as exc:
+            print(f"[WebCompClip] render error frame={frame}: {exc}")
 
     def getThumbnail(self, frame: int, width: int = 160, height: int = 90) -> bytes:
          

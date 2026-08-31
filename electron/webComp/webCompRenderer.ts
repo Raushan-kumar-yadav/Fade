@@ -24,9 +24,9 @@ export async function createWebComp(
     width,
     height,
     show: false,
-    frame: false,                      // No title bar 
-    transparent: true,                 // Transparent background
-    backgroundColor: '#00000000', // ARGB transparent
+    frame: false,                       
+    transparent: true,                  
+    backgroundColor: '#00000000', 
     paintWhenInitiallyHidden: true,
     webPreferences: {
       offscreen: true,
@@ -178,4 +178,19 @@ export function destroyWebComp(webcompId: string): void {
 
 export function destroyAll(): void {
   for (const id of instances.keys()) destroyWebComp(id)
+}
+
+/**
+ * Returns the IDs and dimensions of every WebComp instance that is still alive.
+ * Used by the export cleanup path to re-seed frame 0 into the C++ compositor
+ * after setPreviewScale re-initializes and wipes the WebComp frame buffer.
+ */
+export function getActiveInstances(): Array<{ webcompId: string; width: number; height: number }> {
+  const result: Array<{ webcompId: string; width: number; height: number }> = []
+  for (const [id, inst] of instances.entries()) {
+    if (!inst.win.isDestroyed()) {
+      result.push({ webcompId: id, width: inst.width, height: inst.height })
+    }
+  }
+  return result
 }
