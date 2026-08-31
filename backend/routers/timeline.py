@@ -5,7 +5,6 @@ from pydantic import BaseModel
 from backend.state import engine, _library, _clipTrackMap
 from backend.worker.worker_bus import bus as _worker_bus
 from backend.timeline.tracks.videoTrack import VideoTrack
-from backend.timeline.tracks.audioTrack import AudioTrack
 from backend.timeline.clips.videoClip import VideoClip
 from backend.timeline.clips.audioClip import AudioClip
 from backend.history.commandStack import (
@@ -79,16 +78,27 @@ def addClip(req: AddClipRequest):
         clip_type = "webcomp"
 
     elif asset.mediaType == MediaType.audio:
-        # Audio-only assets (TTS WAV, MP3, etc.) → AudioClip
-        # Validate that the target track is an AudioTrack; if not, find or auto-assign one.
-        if not isinstance(track, AudioTrack):
-            # Look for the first AudioTrack in the timeline
-            audio_track = next((t for t in tl.tracks if isinstance(t, AudioTrack)), None)
-            if audio_track is None:
-                raise HTTPException(400, "No AudioTrack available. Add an audio track first.")
-            track = audio_track
-            print(f"[addClip] Redirected audio asset to AudioTrack '{track.name}'", flush=True)
-        clip = AudioClip(startFrame=req.startFrame, duration=req.duration,
+         
+        fps = float(engine.project.fps) if engine.project else 30.0
+        actual_dur = req.duration
+        try:
+            import av as _av
+            _c = _av.open(asset.filepath)
+            dur_us = _c.duration  # microseconds, or None
+            _audio_st = next((s for s in _c.streams if s.type == 'audio'), None)
+            if _audio_st and _audio_st.duration is not None and _audio_st.time_base:
+                dur_secs = float(_audio_st.duration * _audio_st.time_base)
+            elif dur_us:
+                dur_secs = dur_us / 1_000_000.0
+            else:
+                dur_secs = 0.0
+            _c.close()
+            if dur_secs > 0:
+                actual_dur = max(1, int(round(dur_secs * fps)))
+                print(f"[addClip] audio duration: {dur_secs:.2f}s → {actual_dur} frames @{fps}fps", flush=True)
+        except Exception as _e:
+            print(f"[addClip] could not probe audio duration: {_e}", flush=True)
+        clip = AudioClip(startFrame=req.startFrame, duration=actual_dur,
                          assetId=req.assetId, mediaOffset=req.mediaOffset)
         clip_type = "audio"
 
@@ -105,7 +115,7 @@ def addClip(req: AddClipRequest):
     engine.commandStack.execute(AddClipCommand(track, clip))
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
 
-    # Submit waveform for any clip that has audio (video-with-audio OR pure AudioClip)
+    # Submit waveform for any clip  
     has_audio = clip_type == 'audio' or (getattr(asset, 'hasAudio', False) and clip_type not in ('webcomp',))
     if has_audio:
         try:
@@ -114,9 +124,9 @@ def addClip(req: AddClipRequest):
             print(f"[addClip] waveform submit error: {_e}", flush=True)
 
     from backend.events import notify
-    notify("timeline")   # → fade:timeline-changed + fade:tracks-changed → loadClips() in AudioEngine
+    notify("timeline")   
     if clip_type == "audio":
-        # Extra signal so the viewport audio engine reloads its clip list right away
+        # Extra signal so the viewport audio engine 
         notify("render")
     return {
         "clipId": clip.clipId, "trackId": track.trackId,
@@ -173,7 +183,7 @@ def moveClip(req: MoveClipRequest):
             break
     if clip is None:
         raise HTTPException(404, f"Clip {req.clipId!r} not found")
-    dstIdx   = max(0, min(len(tl.tracks) - 1, req.trackIndex))
+    dstIdx = max(0, min(len(tl.tracks) - 1, req.trackIndex))
     oldStart = clip.startFrame
     newStart = max(0, req.startFrame)
     engine.commandStack.execute(
@@ -323,24 +333,13 @@ def timelineState():
     return data
 
 def _runtime_script_tag() -> str:
-    """Return an HTTP <script> tag for fade-react.js served by this server.
-    Uses http://127.0.0.1:PORT/runtime/fade-react.js which Electron can always
-    load without sandbox or webSecurity restrictions.
-    """
+     
     port = int(os.environ.get("BACKEND_PORT", 8000))
     return f'<script src="http://127.0.0.1:{port}/runtime/fade-react.js"></script>'
 
 
 def _build_index_html(name: str, css_file: bool = True, html_body: str = "") -> str:
-    """Generate a self-contained index.html boilerplate.
-
-    File location strategy (already handled by caller):
-      - Project saved  → <project-dir>/webcomps/<name>/index.html
-      - No project     → ~/.fade/webcomps/<name>/index.html
-
-    The runtime <script> always uses an absolute file:// URL — no relative
-    path guessing, works from any folder on any machine.
-    """
+     
     runtime_tag = _runtime_script_tag()
     css_link = '<link rel="stylesheet" href="style.css">' if css_file else ''
     inner = html_body.strip() if html_body.strip() else '<!-- DOM built by script.js -->'
@@ -372,7 +371,7 @@ def _patch_runtime_in_html(content: str) -> str:
     port = int(os.environ.get("BACKEND_PORT", 8000))
     correct_url = f"http://127.0.0.1:{port}/runtime/fade-react.js"
 
-    # Replace ANY src pointing to fade-react.js (relative, file://, or old http://)
+    # Replace ANY src pointing to fade-react.js  
     content = re.sub(
         r'src=["\'][^"\']*/fade-react\.js["\']',
         f'src="{correct_url}"',
@@ -425,12 +424,7 @@ window.addEventListener('fade:params', (e) => {
 
 @router.post("/timeline/webcomp/create")
 async def createWebcomp(body: dict):
-    """Create a new WebComp asset (folder on disk with HTML/CSS/JS).
-    
-    Accepts optional 'js' and 'css' strings — the backend writes them into
-    script.js and style.css and auto-generates a correct index.html.
-    The caller never needs to know about file paths or runtime URLs.
-    """
+     
     from pathlib import Path
     from backend.media.asset.webCompAsset import WebCompAsset
     import shutil
@@ -438,7 +432,7 @@ async def createWebcomp(body: dict):
     name = body.get("name", "Untitled WebComp")
     template  = body.get("template", "blank")
     js_code = body.get("js", "")       # agent animation logic   
-    css_code  = body.get("css", "")      # agent styles           
+    css_code = body.get("css", "")      # agent styles           
     html_body = body.get("html_body", "") # inner DOM snippet only   
     project_dir  = engine.project.filePath or ""
     project_root = os.path.dirname(project_dir) if project_dir else str(Path.home() / ".fade")
@@ -474,11 +468,11 @@ async def createWebcomp(body: dict):
         with open(index_path, "w", encoding="utf-8") as f:
             f.write(_patch_runtime_in_html(existing))
     else:
-        # Blank comp or agent supplied html_body — generate clean boilerplate
+        # Blank comp or agent supplied html_body  
         with open(index_path, "w", encoding="utf-8") as f:
             f.write(_build_index_html(name, html_body=html_body))
 
-    # Write agent-supplied JS / CSS if provided
+    # Write agent-supplied  
     if js_code:
         with open(os.path.join(folder, "script.js"), "w", encoding="utf-8") as f:
             f.write(js_code)
@@ -547,7 +541,7 @@ async def listWebcompTemplates():
 
 @router.post("/timeline/webcomp/read-file")
 async def readWebcompFile(body: dict):
-    """Read a file from a WebComp folder."""
+     
     webcomp_id = body.get("webcompId", "")
     filename   = body.get("filename", "")
     asset = _library.get(webcomp_id)
@@ -563,23 +557,14 @@ async def readWebcompFile(body: dict):
 
 @router.post("/timeline/webcomp/write-file")
 async def writeWebcompFile(body: dict):
-    """Write a file to a WebComp folder.
     
-    When writing index.html the backend automatically:
-    - Patches any ../../_runtime/fade-react.js to the correct absolute file:// URL
-    - Strips blocked external CDN <script> tags (unpkg, jsdelivr, cdnjs)
-    - Strips Google Fonts / external link tags
-    
-    The agent should write only script.js and style.css — never index.html.
-    If index.html must be written, the backend sanitises it silently.
-    """
     webcomp_id = body.get("webcompId", "")
-    filename   = body.get("filename", "")
-    content    = body.get("content", "")
+    filename = body.get("filename", "")
+    content = body.get("content", "")
     asset = _library.get(webcomp_id)
     if not asset or not hasattr(asset, "folderPath"):
         raise HTTPException(404, "WebComp not found")
-    # Auto-patch index.html to fix runtime path and strip CDN URLs
+    # Auto-patch index.html  
     if filename == "index.html":
         content = _patch_runtime_in_html(content)
     filepath = os.path.join(asset.folderPath, filename)
@@ -592,7 +577,7 @@ async def writeWebcompFile(body: dict):
 
 @router.get("/timeline/webcomp/list")
 async def listWebcomps():
-    """List all WebComp assets in the library."""
+     
     from backend.media.asset.baseAsset import MediaType
     result = []
     for asset_id, asset in _library.items():

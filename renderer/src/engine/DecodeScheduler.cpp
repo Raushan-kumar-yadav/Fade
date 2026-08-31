@@ -19,10 +19,9 @@ void DecodeScheduler::prefetchAround(const ClipID &clipId, int64_t anchorFrame,
     std::lock_guard<std::mutex> lock(m_pumpMutex);
 
     int64_t lastAnchor = m_lastAnchorFrame[clipId];
-    int64_t last = m_lastDecoded[clipId];
 
     bool seekedForward = (anchorFrame > lastAnchor + 30);
-    bool seekedBackward = (anchorFrame < lastAnchor - 5);
+    bool seekedBackward = (anchorFrame < lastAnchor - 30);
 
     if (seekedForward || seekedBackward) {
       m_lastDecoded[clipId] = anchorFrame - 1;
@@ -36,6 +35,12 @@ void DecodeScheduler::prefetchAround(const ClipID &clipId, int64_t anchorFrame,
     // Keep the target runway moving
     if (anchorFrame + radius > m_targetFrames[clipId]) {
       m_targetFrames[clipId] = anchorFrame + radius;
+    }
+
+    constexpr int64_t STALE_SKIP_THRESH = 60;
+    int64_t ld = m_lastDecoded[clipId];
+    if (ld >= 0 && ld < anchorFrame - STALE_SKIP_THRESH) {
+      m_lastDecoded[clipId] = anchorFrame - 1;
     }
 
     if (m_lastDecoded[clipId] < m_targetFrames[clipId]) {
@@ -77,7 +82,7 @@ void DecodeScheduler::startPump(const ClipID &pumpId) {
       return;
     }
 
-    const int BATCH_SIZE = 5;
+    const int BATCH_SIZE = 20; // larger batch
     int framesDecodedThisRun = 0;
     bool needsMoreWork = false;
 
@@ -95,6 +100,15 @@ void DecodeScheduler::startPump(const ClipID &pumpId) {
         break;
       }
 
+      {
+        std::lock_guard<std::mutex> l(m_pumpMutex);
+        int64_t anchor = m_lastAnchorFrame[pumpId];
+        if (current >= 0 && current < anchor - 60) {
+          m_lastDecoded[pumpId] = anchor - 1;
+          current = anchor - 1;
+        }
+      }
+
       int64_t nextFrame = current + 1;
       bool success = false;
 
@@ -103,19 +117,17 @@ void DecodeScheduler::startPump(const ClipID &pumpId) {
       } else {
         auto f = dec->decodeFrame(nextFrame);
         if (f) {
-          // Store under the requested frame key
+          //   requested frame key
           m_frameCache.put({contentId, nextFrame}, f);
 
-          // Static image (fps==0, isStatic): also pin under frame 0 and
-          // stop pumping — there is only one frame, ever.
           if (f->isStatic || dec->getFps() <= 0.0) {
             m_frameCache.put({contentId, 0}, f);
             std::lock_guard<std::mutex> l(m_pumpMutex);
             m_lastDecoded[pumpId] = nextFrame;
-            m_targetFrames[pumpId] = nextFrame;  // stop the pump
+            m_targetFrames[pumpId] = nextFrame; // stop the pump
             m_activePumps.erase(pumpId);
             m_decoderPool.checkin(pumpId);
-            return;  // done — no more frames needed
+            return; // done
           }
 
           success = true;

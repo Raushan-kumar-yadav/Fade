@@ -9,8 +9,8 @@ import { textApi, shapeApi, penApi, transitionApi, type TransitionInfo } from '.
 import TransitionWidget from './TransitionWidget';
 
 interface Props {
-  track:       Track;
-  trackIndex:  number;
+  track: Track;
+  trackIndex: number;
   scrollLeft?: number;
 }
 
@@ -41,8 +41,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
   const [cursorPct, setCursorPct] = useState(50); // for guide line
   const [transitions, setTransitions] = useState<TransitionInfo[]>([]);
  
-  // Use a ref so fetchTransitions always sees the latest clip IDs
-  // without making it a stale closure over track.clips
+ 
   const clipIdsRef = useRef<Set<string>>(new Set(track.clips.map(c => c.id)));
   useEffect(() => {
     clipIdsRef.current = new Set(track.clips.map(c => c.id));
@@ -160,8 +159,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     resizingRef.current = true;
-    startYRef.current   = e.clientY;
-    startHRef.current   = track.height;
+    startYRef.current = e.clientY;
+    startHRef.current = track.height;
 
     const onMove = (ev: MouseEvent) => {
       if (!resizingRef.current) return;
@@ -193,7 +192,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
   }, []);
 
   const onDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    // Only clear dropOver if we've truly left the row, not just moved onto a child
+    // Only clear dropOver  
     if (rowRef.current && rowRef.current.contains(e.relatedTarget as Node)) return;
     setDropOver(false);
   }, []);
@@ -270,11 +269,11 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
 
       const duration = 90;
       const optimisticClip: Clip = {
-        id:         `tmp-${Date.now()}`,
-        name:       compMeta.name,
+        id: `tmp-${Date.now()}`,
+        name: compMeta.name,
         startFrame: frame,
         duration,
-        type:       'comp',
+        type: 'comp',
         isSelected: false,
       };
       dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: optimisticClip });
@@ -310,11 +309,11 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
 
       const duration = wcMeta.durationFrames || 150;
       const optimisticClip: Clip = {
-        id:         `tmp-${Date.now()}`,
-        name:       wcMeta.name,
+        id: `tmp-${Date.now()}`,
+        name: wcMeta.name,
         startFrame: frame,
         duration,
-        type:       'webcomp',
+        type: 'webcomp',
         isSelected: false,
       };
       dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: optimisticClip });
@@ -323,16 +322,16 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         const result = await addWebCompClipToTimeline(wcMeta.assetId, trackIndex, frame, duration);
         if (result) {
           const realClip: Clip = {
-            id:         result.clipId,
-            name:       wcMeta.name,
+            id: result.clipId,
+            name: wcMeta.name,
             startFrame: result.startFrame,
-            duration:   result.duration,
-            type:       'webcomp',
+            duration: result.duration,
+            type: 'webcomp',
             isSelected: false,
           };
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
           dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
-          // Signal useWebCompSync to create the offscreen BrowserWindow
+          // Signal useWebCompSync to create  
           window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } else {
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
@@ -345,7 +344,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     }
 
      
-    // ── Handle Scene-Hit Drop (semantic search result with in/out points) ──
+    //   Handle Scene-Hit Drop  
     const rawSceneHit =
       e.dataTransfer.getData('application/fade-scene-hit') ||
       e.dataTransfer.getData('text/fade-scene-hit');  // Electron fallback
@@ -372,11 +371,11 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
           // Replace optimistic with real clip
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
           dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: {
-            id:         result.clipId,
-            name:       hit.filename,
+            id: result.clipId,
+            name: hit.filename,
             startFrame: result.startFrame,
-            duration:   result.duration,
-            type:       optimisticClip.type,
+            duration: result.duration,
+            type: optimisticClip.type,
             isSelected: false,
           }});
           window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
@@ -400,7 +399,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     try { asset = JSON.parse(rawAsset); }
     catch { return; }
 
-    const duration = 150;
+    const duration = 150;  
     const optimisticClip: Clip = {
       id: `tmp-${Date.now()}`,
       name: asset.filename,
@@ -414,22 +413,31 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     };
     dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: optimisticClip });
 
-    let result: { clipId: string; startFrame: number; duration: number } | null = null;
-    if (asset.type === 'svg') {
-      result = await addSvgClipToTimeline(asset.filepath, trackIndex, frame, duration);
-    } else {
-      result = await addClipToTimeline(asset.assetId, trackIndex, frame, duration);
-    }
-    if (result) {
-      const realClip: Clip = {
-        id: result.clipId,
-        name: asset.filename,
-        startFrame: result.startFrame,
-        duration: result.duration,
-        type: optimisticClip.type,
-        isSelected: false,
-      };
-      dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
+    try {
+      let result: { clipId: string; startFrame: number; duration: number } | null = null;
+      if (asset.type === 'svg') {
+        result = await addSvgClipToTimeline(asset.filepath, trackIndex, frame, duration);
+      } else {
+        result = await addClipToTimeline(asset.assetId, trackIndex, frame, duration);
+      }
+      // Remove optimistic placeholde 
+      dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
+      if (result) {
+        const realClip: Clip = {
+          id: result.clipId,
+          name: asset.filename,
+          startFrame: result.startFrame,
+          duration: result.duration,    
+          type: optimisticClip.type,
+          isSelected: false,
+        };
+        dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
+      }
+      // Always notify so AudioEngine reloads its clip list 
+      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+    } catch (err) {
+      console.error('[TrackRow] addClipToTimeline failed:', err);
+      dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
     }
   }, [track.id, track.clips, trackIndex, scrollLeft, state.zoomX, dispatch]);
 

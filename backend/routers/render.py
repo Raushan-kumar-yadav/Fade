@@ -22,21 +22,24 @@ def _build_comp_frame_descriptor(
     if inner_tl is None:
         return None
 
-    c_width  = getattr(inner_tl, "width",  width)
+    c_width = getattr(inner_tl, "width",  width)
     c_height = getattr(inner_tl, "height", height)
-    c_fps    = getattr(inner_tl, "fps",    fps)
+    c_fps = getattr(inner_tl, "fps",    fps)
 
     inner_clips: list[dict] = []
     for inner_track in reversed(inner_tl.tracks):
         if getattr(inner_track, "isMuted", False):
             continue
-        # Skip audio tracks — WAV/MP3 files must never reach the C++ ClipDecoder
+        # Skip audio tracks 
         if getattr(inner_track, 'isAudio', lambda: False)():
             continue
         for inner_clip in inner_track.clips:
             if not inner_clip.overlaps(inner_frame):
                 continue
             ic_type = getattr(inner_clip, "CLIP_TYPE", getattr(inner_clip, "clipType", "video"))
+            # Skip pure-audio clips  
+            if ic_type == "audio":
+                continue
             ic_file = getattr(inner_clip, "filepath", "")
             if not ic_file:
                 ic_aid = getattr(inner_clip, "assetId", "")
@@ -111,7 +114,7 @@ def _build_comp_frame_descriptor(
         "fps": float(c_fps),
         "width": int(c_width),
         "height": int(c_height),
-        "clips":  inner_clips,
+        "clips": inner_clips,
         "compId": comp_id,
     }
 
@@ -140,7 +143,7 @@ def _get_frame_data(frame: int) -> dict:
     for track in reversed(tl.tracks):
         if getattr(track, "isMuted", False):
             continue
-        # Skip audio tracks — WAV/MP3 files must never reach the C++ ClipDecoder
+        # Skip audio tracks  
         if getattr(track, 'isAudio', lambda: False)():
             continue
         for clip in track.clips:
@@ -148,6 +151,9 @@ def _get_frame_data(frame: int) -> dict:
                 continue
             clip_id   = getattr(clip, "clipId", "")
             clip_type = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
+            # Skip pure-audio clips 
+            if clip_type == "audio":
+                continue
             filepath  = getattr(clip, "filepath", "")
             if not filepath:
                 asset_id = getattr(clip, "assetId", "")
@@ -237,8 +243,7 @@ def _get_frame_data(frame: int) -> dict:
             ctype = getattr(clip, "CLIP_TYPE", getattr(clip, "clipType", "video"))
             fpath = getattr(clip, "filepath", "")
             if not fpath:
-                # WebCompClip has no filepath — use the pseudo-path the C++ renderer
-                # uses to look up frames pushed via schedPushFrame / pushWebCompFrame
+                 
                 wid = getattr(clip, "webcompId", "")
                 if wid:
                     fpath = f"webcomp://{wid}"

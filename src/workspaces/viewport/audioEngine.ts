@@ -1,16 +1,13 @@
-/**
- * AudioEngine — manages HTMLAudioElement instances for all audio clips on the
- * timeline, keeping them in sync with the video playback frame clock.
- */
+ 
 
 export interface AudioClipInfo {
-  clipId:      string
-  assetId:     string
+  clipId: string
+  assetId: string
   startFrame:  number
-  duration:    number
+  duration: number
   mediaOffset: number   // frames into the media where clip starts
-  volume:      number
-  streamUrl:   string
+  volume: number
+  streamUrl: string
 }
 
 interface AudioNode {
@@ -32,7 +29,16 @@ export class AudioEngine {
 
   setFps(fps: number) { this.fps = fps }
 
-  /** Set playback speed (0.25, 0.5, 1.0, 2.0). Applied to all active audio elements. */
+  /** Update the backend port   */
+  updatePort(port: number) {
+    if (this.port === port) return
+    this.port = port
+    for (const [, node] of this.nodes) {
+      node.el.src = `http://127.0.0.1:${port}${node.clip.streamUrl}`
+    }
+  }
+
+  /** Set playback speed   */
   setRate(rate: number) {
     this._rate = rate
     for (const { el } of this.nodes.values()) {
@@ -55,12 +61,13 @@ export class AudioEngine {
 
     // Add / update
     for (const clip of clips) {
+      const expectedSrc = `http://127.0.0.1:${this.port}${clip.streamUrl}`
       if (!this.nodes.has(clip.clipId)) {
         const el = new Audio()
-        el.src           = `http://127.0.0.1:${this.port}${clip.streamUrl}`
-        el.preload       = 'auto'
-        el.volume        = Math.max(0, Math.min(1, clip.volume))
-        el.crossOrigin   = 'anonymous'
+        el.src     = expectedSrc
+        el.preload = 'auto'
+        el.volume  = Math.max(0, Math.min(1, clip.volume))
+         
         el.addEventListener('error', () => {
           console.error('[AudioEngine] load error', clip.clipId, clip.streamUrl, el.error)
         })
@@ -70,21 +77,25 @@ export class AudioEngine {
         this.nodes.set(clip.clipId, { el, clip })
         console.log('[AudioEngine] added clip', clip.clipId, 'src=', el.src)
       } else {
-        // Update volume if changed
+      
         const node = this.nodes.get(clip.clipId)!
         node.clip  = clip
         node.el.volume = Math.max(0, Math.min(1, clip.volume))
+        if (node.el.src !== expectedSrc) {
+          node.el.src = expectedSrc
+          console.log('[AudioEngine] updated src for', clip.clipId, '->', expectedSrc)
+        }
       }
     }
   }
 
-  /** Seek all audio elements to match the given timeline frame. */
+ 
   seek(frame: number) {
     for (const { el, clip } of this.nodes.values()) {
       const clipRelFrame = frame - clip.startFrame
       if (clipRelFrame < 0 || clipRelFrame >= clip.duration) {
         if (!el.paused) el.pause()
-        continue  // was 'return' — must continue to seek remaining clips
+        continue   
       }
       const targetSec = (clipRelFrame + clip.mediaOffset) / this.fps
       if (Math.abs(el.currentTime - targetSec) > 0.1) {
@@ -93,7 +104,7 @@ export class AudioEngine {
     }
   }
 
-  /** Start playback for clips that overlap the current frame. */
+ 
   play(frame: number) {
     this._playing = true
     for (const { el, clip } of this.nodes.values()) {
@@ -117,7 +128,7 @@ export class AudioEngine {
     }
   }
 
-  /** Called on every frame tick — start/stop clips that enter/exit range. */
+ 
   tick(frame: number) {
     if (!this._playing) return
     for (const { el, clip } of this.nodes.values()) {

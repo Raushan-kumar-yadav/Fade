@@ -17,7 +17,7 @@ from backend.ai.video_pipeline.timeline_builder import build_timeline
 class PipelineState(TypedDict, total=False):
     # inputs
     query: str
-    scene_duration: int          # frames per scene
+    scene_duration: int          
     fps: float
     port: int
 
@@ -140,18 +140,18 @@ def node_gather_assets_sync(state: PipelineState) -> PipelineState:
 def build_pipeline():
     g = StateGraph(PipelineState)
 
-    g.add_node("search_news",    node_search_news)
-    g.add_node("plan_scenes",    node_plan_scenes)
-    g.add_node("gather_assets",  node_gather_assets_sync)
+    g.add_node("search_news", node_search_news)
+    g.add_node("plan_scenes", node_plan_scenes)
+    g.add_node("gather_assets", node_gather_assets_sync)
     g.add_node("build_timeline", node_build_timeline)
-    g.add_node("summarize",      node_summarize)
+    g.add_node("summarize", node_summarize)
 
     g.set_entry_point("search_news")
-    g.add_edge("search_news",    "plan_scenes")
-    g.add_edge("plan_scenes",    "gather_assets")
-    g.add_edge("gather_assets",  "build_timeline")
+    g.add_edge("search_news", "plan_scenes")
+    g.add_edge("plan_scenes", "gather_assets")
+    g.add_edge("gather_assets", "build_timeline")
     g.add_edge("build_timeline", "summarize")
-    g.add_edge("summarize",      END)
+    g.add_edge("summarize", END)
 
     return g.compile()
 
