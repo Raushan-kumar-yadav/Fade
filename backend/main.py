@@ -69,6 +69,7 @@ from backend.routers import (
     animation,
     jobs,
     debug,
+    virality,
 )
 
 
@@ -285,6 +286,7 @@ app.include_router(export_.router)
 app.include_router(search.router)
 app.include_router(context.router)
 app.include_router(debug.router)    # animation diagnostics: /debug/anim-*
+app.include_router(virality.router)  # virality predictor + social connections
 
  
 from fastapi.responses import FileResponse as _FileResponse

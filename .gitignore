@@ -12,7 +12,7 @@ __pycache__
 renderer/build
 native/build
 
-# C++ precompiled dependencies (binary / generated — not for git)
+# C++ precompiled dependencies  
 renderer/deps/skia/lib/
 renderer/deps/ffmpeg/lib/
 renderer/deps/ffmpeg/bin/
@@ -38,3 +38,6 @@ Fade_Architecture_Blueprint.pdf
 tools/ffmpeg/
 
 Fade_Architecture_PPT_Notes.md
+
+# AI Models  
+AIModels/
