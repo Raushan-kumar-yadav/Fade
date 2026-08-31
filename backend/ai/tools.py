@@ -139,7 +139,7 @@ def move_clip(clip_id: str, new_start_frame: int, track_index: int) -> str:
     """
     result = _post("/timeline/move-clip", {
         "clipId": clip_id,
-        "newStartFrame": new_start_frame,
+        "startFrame": new_start_frame,
         "trackIndex": track_index
     })
     return f"Moved clip {clip_id} to frame {new_start_frame} on track {track_index}."
@@ -191,7 +191,7 @@ def set_effect_param(clip_id: str, effect_id: str, params: str) -> str:
         params: JSON string like '{"intensity": 0.5, "radius": 10}'.
     """
     p = json.loads(params)
-    _post(f"/clips/{clip_id}/effects/{effect_id}", p)
+    _patch(f"/clips/{clip_id}/effects/{effect_id}", {"params": p})
     return f"Updated effect {effect_id} on clip {clip_id} with {params}."
 
 # clip params  
@@ -584,15 +584,17 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
     ABOVE all opaque clips in the given frame range.
 
     ALWAYS call this before placing any text, title, shape, or overlay clip.
-    Placing overlays on track 0 will bury them under video clips. This tool
-    returns the correct track index so your clip is always visible.
 
-    HOW IT WORKS:
-    • Track 0 = bottom of the composite stack (drawn first = background).
-    • Higher index = drawn later = visually on top.
-    • The tool scans every video/image/comp clip that overlaps [start_frame, end_frame]
-      and finds the highest track index that has one. It then returns that index + 1
-      (one track above). If that track does not exist yet, it creates it automatically.
+    HOW THE COMPOSITOR WORKS (CRITICAL):
+    • Tracks are painted in REVERSE order: the LAST track in the list is drawn FIRST.
+    • Track index 0 = drawn LAST = visually ON TOP (highest Z-order).
+    • Track index N (highest) = drawn FIRST = visually at the BOTTOM (background).
+    • So to place something ABOVE a clip, put it on a LOWER track index.
+
+    EXAMPLE:
+      Track 0 (index 0) → renders on top  ← overlays / text go here
+      Track 1 (index 1) → renders below track 0
+      Track 2 (index 2) → renders at the bottom (background video)
 
     Args:
         start_frame: First frame of the clip you are about to place.
@@ -601,58 +603,73 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
     Returns:
         JSON with:
           track_index  – the safe track index to pass to add_text_clip / place_clip
-          track_id – the trackId of that track
-          created – true if a new track was auto-created
-          reason – human-readable explanation of the decision
+          track_id     – the trackId of that track
+          created      – true if a new track was auto-created at index 0
+          reason       – human-readable explanation of the decision
     """
     data = _get("/timeline/state")
     tracks = data.get("tracks", [])
 
-     
-    opaque_track_indices: list[int] = []
+    # Find which track indices have opaque clips overlapping [start_frame, end_frame]
+    occupied_indices: list[int] = []
     for i, track in enumerate(tracks):
         track_type = track.get("type", "video")
         if track_type == "audio":
             continue
         for clip in track.get("clips", []):
             clip_end = clip["startFrame"] + clip["duration"] - 1
-             
             if clip["startFrame"] <= end_frame and start_frame <= clip_end:
                 clip_type = clip.get("type", "video")
-                 
                 if clip_type not in ("adjustment",):
-                    opaque_track_indices.append(i)
-                    break  
+                    occupied_indices.append(i)
+                    break   
 
-    if not opaque_track_indices:
-        # No opaque clips at all  
-        reason = "No opaque clips found in this range; track 0 is safe."
+    if not occupied_indices:
+        # No conflicting clips 
+        reason = "No opaque clips found in this range; track 0 is safe (it renders on top)."
         track_id = tracks[0]["id"] if tracks else None
         return json.dumps({"track_index": 0, "track_id": track_id,
                            "created": False, "reason": reason}, indent=2)
 
-    highest_opaque = max(opaque_track_indices)
-    overlay_index  = highest_opaque + 1
-
-    created = False
-    if overlay_index < len(tracks):
+    
+    lowest_occupied = min(occupied_indices)
+    if lowest_occupied > 0:
+         
+        overlay_index = lowest_occupied - 1
+         
+        for candidate in range(lowest_occupied - 1, -1, -1):
+            if candidate not in occupied_indices:
+                overlay_index = candidate
+            else:
+                break
         track_id = tracks[overlay_index]["id"]
-        reason = (f"Track {highest_opaque} has opaque clips in range; "
-                  f"using existing track {overlay_index} above it.")
+        reason = (
+            f"Track {lowest_occupied} has opaque clips in this range. "
+            f"Using track {overlay_index} (lower index = renders on top)."
+        )
+        return json.dumps({
+            "track_index": overlay_index,
+            "track_id": track_id,
+            "created": False,
+            "reason": reason,
+        }, indent=2)
     else:
-        # Need a new track on top
+        # All occupied indices include 0 — must insert a new track at index 0
+        # by adding a track and moving it to the front.
         new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay"})
-        track_id  = new_track.get("trackId")
-        created   = True
-        reason    = (f"Track {highest_opaque} has opaque clips; "
-                     f"auto-created new track {overlay_index} on top.")
-
-    return json.dumps({
-        "track_index": overlay_index,
-        "track_id": track_id,
-        "created": created,
-        "reason": reason,
-    }, indent=2)
+        new_track_id = new_track.get("trackId")
+        # Move the new track to index 0 so it renders on top
+        _post("/timeline/move-track", {"trackId": new_track_id, "newIndex": 0})
+        reason = (
+            "All existing tracks have conflicting opaque clips at index 0 or above. "
+            "Created a new Overlay track and moved it to index 0 (top of composite stack)."
+        )
+        return json.dumps({
+            "track_index": 0,
+            "track_id": new_track_id,
+            "created": True,
+            "reason": reason,
+        }, indent=2)
 
 
 @tool
@@ -960,7 +977,7 @@ def apply_effect_to_clip(clip_id: str, effect_type: str, params: dict | None = N
     effect_id = result.get("effectId")
     # Apply params immediately if provided
     if params and effect_id:
-        _post(f"/clips/{clip_id}/effects/{effect_id}", {"params": params})
+        _patch(f"/clips/{clip_id}/effects/{effect_id}", {"params": params})
         result["params_applied"] = params
     return json.dumps(result, indent=2)
 
@@ -2427,8 +2444,7 @@ def generate_tts(
     if not job_id:
         return "Error: TTS job did not start — check backend logs."
 
-    # ── Short initial poll: 20 s (10 × 2 s) ──────────────────────────────────
-    # Fast machines / short scripts finish here.  Long ones get job_id back.
+   
     for _ in range(10):
         _time.sleep(2)
         status = _get(f"/jobs/{job_id}")
@@ -2440,7 +2456,7 @@ def generate_tts(
             label = "cancelled" if st == "cancelled" else "failed"
             return f"TTS {label}: {err}"
 
-    # ── Still running after 20 s → hand control back to the agent ────────────
+    # Still running after 20 s 
     status = _get(f"/jobs/{job_id}")
     pct = int(status.get("progress", 0) * 100)
     msg = status.get("message", "working…")
@@ -2497,9 +2513,9 @@ def check_job_status(job_id: str) -> str:
     if not status or "jobId" not in status:
         return f"Job '{job_id}' not found — it may have expired from the store."
 
-    st    = status.get("status", "unknown")
-    pct   = int(status.get("progress", 0) * 100)
-    msg   = status.get("message", "")
+    st = status.get("status", "unknown")
+    pct = int(status.get("progress", 0) * 100)
+    msg = status.get("message", "")
     jtype = status.get("type", "")
 
     if st == "done":
@@ -2600,36 +2616,36 @@ INDEXING_TOOLS = [stop_indexing]
 ALL_TOOLS.extend(INDEXING_TOOLS)
 
 
-# ── Export tool ────────────────────────────────────────────────────────────────
+#   Export tool  
 
 _FORMAT_MAP = {
-    # friendly aliases → ExportWorkspace formatId
-    "mp4":        "mp4-1080",
-    "mp4-1080":   "mp4-1080",
-    "1080p":      "mp4-1080",
-    "mp4-4k":     "mp4-4k",
-    "4k":         "mp4-4k",
-    "2160p":      "mp4-4k",
-    "mp4-720":    "mp4-720",
-    "720p":       "mp4-720",
-    "shorts":     "shorts",
+    # friendly aliases  
+    "mp4": "mp4-1080",
+    "mp4-1080": "mp4-1080",
+    "1080p": "mp4-1080",
+    "mp4-4k": "mp4-4k",
+    "4k": "mp4-4k",
+    "2160p": "mp4-4k",
+    "mp4-720": "mp4-720",
+    "720p": "mp4-720",
+    "shorts": "shorts",
     "yt shorts":  "shorts",
     "youtube shorts": "shorts",
-    "reels":      "reels",
-    "ig reels":   "reels",
+    "reels": "reels",
+    "ig reels": "reels",
     "instagram reels": "reels",
-    "webm":       "webm",
-    "gif":        "gif",
+    "webm": "webm",
+    "gif": "gif",
 }
 
 _FORMAT_DIMS = {
     "mp4-1080": (1920, 1080),
-    "mp4-4k":   (3840, 2160),
+    "mp4-4k": (3840, 2160),
     "mp4-720":  (1280,  720),
-    "shorts":   (1080, 1920),
-    "reels":    (1080, 1920),
-    "webm":     (1920, 1080),
-    "gif":      ( 854,  480),
+    "shorts": (1080, 1920),
+    "reels": (1080, 1920),
+    "webm": (1920, 1080),
+    "gif": ( 854,  480),
 }
 
 _FORMAT_EXT = {
@@ -2646,40 +2662,11 @@ def export_video(
     preset: str = "medium",
     crf: int = 22,
 ) -> str:
-    """Start a video export of the current timeline and return the job ID.
-
-    Use this when the user says anything like:
-    "export", "export the video", "export as 4K", "export as YouTube Shorts",
-    "export as reels", "save the video", "render the video", "export to mp4".
-
-    Args:
-        format: Output format. Supported values (case-insensitive):
-            "mp4-1080" (default 1920×1080), "mp4-4k" (3840×2160),
-            "mp4-720" (1280×720), "shorts" (1080×1920 vertical),
-            "reels" (1080×1920 vertical), "webm", "gif".
-            Common aliases also work: "4k", "1080p", "720p", "yt shorts", "ig reels".
-        fps: Frames per second. Default 30. Common: 24, 25, 30, 50, 60.
-        output_path: Full file path for the output. If empty, the backend
-            chooses a sensible default in the user's Videos folder.
-        preset: Encoding speed/quality tradeoff for libx264.
-            "ultrafast" → "veryslow". Default "medium".
-        crf: Constant Rate Factor for quality. 18 (near-lossless) to 51 (worst).
-            Default 22 (high quality).
-
-    Returns:
-        A message confirming the export started, including the job ID
-        that the UI uses to display a live progress bar.
-
-    Examples:
-        export_video()                         # default MP4 1080p
-        export_video(format="4k")              # 4K export
-        export_video(format="shorts", fps=60)  # Vertical, 60fps
-        export_video(format="reels")           # Instagram Reels
-    """
+     
     # Normalise format alias
     fmt_id = _FORMAT_MAP.get(format.lower().strip(), "mp4-1080")
-    w, h   = _FORMAT_DIMS.get(fmt_id, (1920, 1080))
-    ext    = _FORMAT_EXT.get(fmt_id, "mp4")
+    w, h = _FORMAT_DIMS.get(fmt_id, (1920, 1080))
+    ext = _FORMAT_EXT.get(fmt_id, "mp4")
 
     # Build default output path if not provided
     if not output_path:
@@ -2693,18 +2680,18 @@ def export_video(
             output_path = base_name
 
     body = {
-        "outputPath":    output_path,
-        "width":         w,
-        "height":        h,
-        "fps":           fps,
-        "codec":         "auto",
+        "outputPath": output_path,
+        "width": w,
+        "height": h,
+        "fps": fps,
+        "codec": "auto",
         "videoBitrate":  "8M",
-        "crf":           crf,
-        "preset":        preset,
+        "crf": crf,
+        "preset": preset,
         "audioBitrate":  "192k",
         "audioSampleRate": 48000,
         "audioChannels": 2,
-        "formatId":      fmt_id,
+        "formatId": fmt_id,
     }
 
     try:
@@ -2717,11 +2704,11 @@ def export_video(
 
     return (
         f"✅ Export started!\n"
-        f"  Format:  {fmt_id} ({w}×{h} @ {fps}fps)\n"
-        f"  Frames:  {total}\n"
-        f"  Job ID:  {job_id}\n"
-        f"  Output:  {output_path}\n\n"
-        f"EXPORT_JOB_ID:{job_id}"   # sentinel picked up by FloatingAIChat
+        f"  Format: {fmt_id} ({w}×{h} @ {fps}fps)\n"
+        f"  Frames: {total}\n"
+        f"  Job ID: {job_id}\n"
+        f"  Output: {output_path}\n\n"
+        f"EXPORT_JOB_ID:{job_id}"   
     )
 
 
@@ -2729,7 +2716,7 @@ EXPORT_TOOLS = [export_video]
 ALL_TOOLS.extend(EXPORT_TOOLS)
 
 
-# ── Audio volume / mute tools ─────────────────────────────────────────────────
+# Audio volume / mute tools  
 
 @tool
 def set_clip_volume(clip_id: str, volume: float) -> str:

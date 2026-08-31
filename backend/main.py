@@ -286,6 +286,7 @@ app.include_router(export_.router)
 app.include_router(search.router)
 app.include_router(context.router)
 app.include_router(debug.router)    # animation diagnostics: /debug/anim-*
+app.include_router(scene_tools.router)  # scene search / clip description tools
 app.include_router(virality.router)  # virality predictor + social connections
 
  

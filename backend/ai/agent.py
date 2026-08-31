@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import os
 import json
@@ -162,7 +162,8 @@ CORE RULES:
    effects, splits, trims, and any other per-clip operation.
 7. **BEFORE PLACING ANY TEXT, TITLE, SHAPE, OR OVERLAY CLIP** â€” ALWAYS call
    find_free_overlay_track(start_frame, end_frame) first. NEVER hardcode track=0.
-   Lower track indices render BELOW video clips and will hide your overlay.
+   Track 0 renders ON TOP (drawn last = visually in front). Higher index tracks render
+   BELOW, and will hide your overlay if a video exists there.
 
 BEFORE EDITING ANY CLIP â€” MANDATORY WORKFLOW:
   Step 1: get_timeline_state()            â†’ get the clip_id
@@ -181,8 +182,10 @@ BEFORE EDITING ANY CLIP â€” MANDATORY WORKFLOW:
   â€” it automatically reads the clip currently highlighted in the UI.
 
 TEXT CLIPS:
-CAUTION: Track 0 = bottom of composite stack. A text clip placed on track 0 when a video
-exists on track 0 will be COMPLETELY HIDDEN. Always find the correct overlay track first.
+CAUTION: Track 0 = TOP of composite stack (drawn last = visually in front).
+Higher-index tracks are drawn earlier = rendered BELOW lower-index tracks.
+A text clip placed on a HIGH-NUMBERED track when a video exists on a LOWER-NUMBERED track
+will be COMPLETELY HIDDEN behind that video. Always find the correct overlay track first.
 
 MANDATORY TEXT/OVERLAY PLACEMENT WORKFLOW:
   1. get_timeline_state()                          -> read frame ranges of existing clips
@@ -191,9 +194,9 @@ MANDATORY TEXT/OVERLAY PLACEMENT WORKFLOW:
         -> auto-creates a new Overlay track on top if needed
   3. add_text_clip(track=<track_index>, start_frame=..., duration=..., text=...)
 
-  EXAMPLE (video on track 0, frames 0-299):
-    find_free_overlay_track(0, 299)  -> {"track_index": 1, "created": true, ...}
-    add_text_clip(track=1, start_frame=0, duration=90, text="Scene 1")
+  EXAMPLE (video on track 1, frames 0-299):
+    find_free_overlay_track(0, 299)  -> {"track_index": 0, "created": false, ...}
+    add_text_clip(track=0, start_frame=0, duration=90, text="Scene 1")
 
 - add_text_clip(track, start_frame, duration, text, font) â†’ creates a TextClip.
   The `text` param IS the displayed text â€” pass it directly. Do not use style overrides for text content.

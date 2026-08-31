@@ -278,7 +278,7 @@ def _mux_audio_v2(
         filter_parts.append(chain)
         mix_labels.append(label)
 
-    # Mix all streams; normalize=0 keeps absolute volumes
+    # Mix all streams 
     n = len(audio_clips)
     mix_inputs = "".join(mix_labels)
     filter_parts.append(

@@ -166,6 +166,7 @@
   align-items: flex-start;
   gap: 9px;
   animation: fchat-fadein 0.18s ease;
+  flex-shrink: 0;
 }
 .fchat__msg--user { flex-direction: row-reverse; }
 
@@ -242,6 +243,7 @@
   animation: fchat-fadein 0.18s ease;
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 /* shimmer sweep on running cards */

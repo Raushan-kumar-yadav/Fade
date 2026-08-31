@@ -315,7 +315,33 @@ def splitClip(req: SplitClipRequest):
     raise HTTPException(404, f"Clip {req.clipId!r} not found")
 
 
+
+
+class MoveTrackRequest(BaseModel):
+    trackId: str
+    newIndex: int
+
+
+@router.post("/timeline/move-track")
+def moveTrack(req: MoveTrackRequest):
+    """Move a track to a new position in the track list.
+    Index 0 = rendered on top (compositor draws tracks in reverse order).
+    """
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    track = tl.getTrack(req.trackId)
+    if track is None:
+        raise HTTPException(404, f"Track {req.trackId!r} not found")
+    n = len(tl.tracks)
+    new_idx = max(0, min(n - 1, req.newIndex))
+    tl.moveTrack(req.trackId, new_idx)
+    from backend.events import notify; notify("timeline")
+    return {"trackId": req.trackId, "newIndex": new_idx}
+
+
 @router.post("/history/undo")
+
 def undoAction():
     desc = engine.commandStack.undo()
     from backend.events import notify; notify("timeline")
