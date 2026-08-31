@@ -1,22 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
-import TitleBar           from './components/TitleBar'
-import SettingsPanel      from './components/SettingsPanel'
+import TitleBar from './components/TitleBar'
+import SettingsPanel from './components/SettingsPanel'
 import CreateProjectModal from './components/createProjectModal.'
-import HomeWorkspace      from './workspaces/HomeWorkspace'
-import AIWorkspace        from './workspaces/AIWorkspace'
-import VideoWorkspace     from './workspaces/VideoWorkspace'
-import AudioWorkspace     from './workspaces/AudioWorkspace'
-import ExportWorkspace    from './workspaces/ExportWorkspace'
+import HomeWorkspace from './workspaces/HomeWorkspace'
+import AIWorkspace from './workspaces/AIWorkspace'
+import VideoWorkspace from './workspaces/VideoWorkspace'
+import AudioWorkspace from './workspaces/AudioWorkspace'
+import ExportWorkspace from './workspaces/ExportWorkspace'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
 import { SelectionContext, type SelectedItem } from './context/selectionContext'
-import ToolboxWidget      from './workspaces/tools/ToolboxWidget'
+import ToolboxWidget from './workspaces/tools/ToolboxWidget'
+import FloatingAIChat from './workspaces/FloatingAIChat'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
 type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export'
 
-// ── Loading overlay ──────────────────────────────────────────────────────────
+//   Loading overlay  
 
 function LoadingOverlay({ message }: { message: string }) {
   return (
@@ -42,7 +43,7 @@ function LoadingOverlay({ message }: { message: string }) {
   )
 }
 
-// ── Media Offline Banner ──────────────────────────────────────────────────────
+// Media Offline Banner  
 
 interface MissingAsset { assetId: string; clipId: string; filename_hint: string }
 
@@ -110,21 +111,36 @@ function MediaOfflineBanner({
   );
 }
 
-// ── App ──────────────────────────────────────────────────────────────────────
+// App  
 
 export default function App() {
-  // Live push notifications from backend — one SSE connection for the whole app
+  // Live push notifications from backend 
   useLibrarySSE()
 
-  const [activeTab,      setActiveTab]      = useState<TabId>('home')
-  const [showSettings,   setShowSettings]   = useState(false)
+  const [activeTab, setActiveTab] = useState<TabId>('home')
+  const [showSettings, setShowSettings] = useState(false)
   const [showNewProject, setShowNewProject] = useState(false)
-  const [activeTool,     setActiveTool]     = useState<ActiveTool>('pointer')
-  const [lastShapeTool,  setLastShapeTool]  = useState<ActiveTool>('shape:rect')
-  const [showToolbox,    setShowToolbox]    = useState(true)
-  const [selected,       setSelectedRaw]    = useState<SelectedItem | null>(null)
-  const [penSubMode,     setPenSubMode]     = useState<PenSubMode>('pen:add')
+  const [activeTool, setActiveTool] = useState<ActiveTool>('pointer')
+  const [lastShapeTool,  setLastShapeTool] = useState<ActiveTool>('shape:rect')
+  const [showToolbox, setShowToolbox] = useState(true)
+  const [selected, setSelectedRaw]    = useState<SelectedItem | null>(null)
+  const [penSubMode, setPenSubMode] = useState<PenSubMode>('pen:add')
   const [penOutputMode,  setPenOutputMode]  = useState<PenOutputMode>('clip')
+
+  // Global AI chat widget  
+  const [aiOpen, setAiOpen] = useState(false)
+
+  // Any workspace can dispatch ' 
+  useEffect(() => {
+    const h = () => setAiOpen(v => !v)
+    window.addEventListener('fade:ai-toggle', h)
+    return () => window.removeEventListener('fade:ai-toggle', h)
+  }, [])
+
+  // Auto-show on AI tab 
+  useEffect(() => {
+    if (activeTab === 'ai') setAiOpen(true)
+  }, [activeTab])
 
   // When a clip is selected, push to backend so AI tools can read it
   const setSelected = useCallback((item: SelectedItem | null) => {
@@ -146,7 +162,7 @@ export default function App() {
   }, [])
 
   // Loading overlay state
-  const [loadingMsg,    setLoadingMsg]    = useState<string | null>(null)
+  const [loadingMsg, setLoadingMsg] = useState<string | null>(null)
   // Offline assets after project load
   const [offlineAssets, setOfflineAssets] = useState<MissingAsset[]>([])
 
@@ -185,7 +201,7 @@ export default function App() {
     window.dispatchEvent(new CustomEvent('fade:project-loaded', { detail: result }))
   }, [])
 
-  // Expose a way for TitleBar to show the loading overlay before the fetch
+  // Expose a way for TitleBar  
   const handleProjectLoadStart = useCallback((msg: string) => {
     setLoadingMsg(msg)
   }, [])
@@ -196,10 +212,10 @@ export default function App() {
   }, [])
 
   const workspaces: Record<TabId, React.FC> = {
-    home:   HomeWorkspace,
-    ai:     AIWorkspace,
-    video:  VideoWorkspace,
-    audio:  AudioWorkspace,
+    home: HomeWorkspace,
+    ai: AIWorkspace,
+    video: VideoWorkspace,
+    audio: AudioWorkspace,
     export: ExportWorkspace,
   }
   const Workspace = workspaces[activeTab]
@@ -234,10 +250,15 @@ export default function App() {
             <Workspace />
           </main>
 
-          {/* Floating toolbox — visible on Video tab */}
+           
           {activeTab === 'video' && showToolbox && (
             <ToolboxWidget onClose={() => setShowToolbox(false)} />
           )}
+
+           
+          <div style={{ display: (activeTab === 'video' || activeTab === 'ai') && aiOpen ? 'contents' : 'none' }}>
+            <FloatingAIChat onClose={() => setAiOpen(false)} />
+          </div>
 
           {showSettings && (
             <SettingsPanel onClose={() => setShowSettings(false)} />
@@ -254,10 +275,10 @@ export default function App() {
             />
           )}
 
-          {/* Full-screen loading overlay */}
+           
           {loadingMsg && <LoadingOverlay message={loadingMsg} />}
 
-          {/* Media Offline Banner — shown when a project has unresolved assets */}
+           
           {offlineAssets.length > 0 && (
             <MediaOfflineBanner
               assets={offlineAssets}

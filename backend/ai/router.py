@@ -70,6 +70,47 @@ async def ai_chat(req: ChatRequest):
      
     from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
+    # Map tool names  
+    _TOOL_LABELS: dict[str, str] = {
+        "get_timeline_state": "Reading timeline…",
+        "get_library": "Scanning library…",
+        "get_library_assets": "Scanning library…",
+        "place_clip": "Placing clip…",
+        "add_text_clip": "Adding text…",
+        "add_shape_clip": "Drawing shape…",
+        "split_clip": "Splitting clip…",
+        "trim_clip": "Trimming clip…",
+        "move_clip": "Moving clip…",
+        "delete_clip": "Deleting clip…",
+        "add_transition": "Adding transition…",
+        "add_transitions_between_all_clips": "Adding transitions…",
+        "apply_effect_to_clip": "Applying effect…",
+        "download_videos": "Downloading footage…",
+        "download_images": "Downloading images…",
+        "schedule_download": "Scheduling download…",
+        "generate_image": "Generating image…",
+        "search_video_scenes": "Searching scenes…",
+        "get_asset_context": "Reading asset…",
+        "get_clip_context": "Reading clip…",
+        "describe_clip": "Inspecting clip…",
+        "describe_selected_clip": "Inspecting clip…",
+        "get_timeline_context": "Reading context…",
+        "create_news_video": "Building news video…",
+        "create_webcomp": "Building WebComp…",
+        "generate_tts": "Generating voice…",
+        "check_job_status": "Checking job…",
+        "animate_property": "Animating…",
+        "apply_curve_preset": "Applying curve…",
+        "search_news": "Searching news…",
+        "find_free_overlay_track": "Finding overlay track…",
+        "add_track": "Adding track…",
+        "remove_silence": "Removing silence…",
+        "generate_captions": "Generating captions…",
+    }
+
+    def _tool_label(name: str) -> str:
+        return _TOOL_LABELS.get(name, f"Running {name}…")
+
     async def event_stream():
         try:
             from backend.ai.agent import get_agent
@@ -84,6 +125,11 @@ async def ai_chat(req: ChatRequest):
                     messages.append(AIMessage(content=h["text"]))
             messages.append(HumanMessage(content=req.message))
 
+            # Emit initial thinking status
+            yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking…'})}\n\n"
+
+            last_phase = "thinking"
+
             # Stream events from LangGraph
             async for event in agent.astream_events(
                 {"messages": messages},
@@ -97,12 +143,18 @@ async def ai_chat(req: ChatRequest):
                     chunk = event["data"]["chunk"]
                     text = chunk.content if hasattr(chunk, "content") else ""
                     if text:
+                        if last_phase != "responding":
+                            last_phase = "responding"
+                            yield f"data: {json.dumps({'type': 'status', 'phase': 'responding', 'label': 'Responding…'})}\n\n"
                         yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
 
                 # Tool call start
                 elif kind == "on_tool_start":
                     name = event.get("name", "")
                     args = event["data"].get("input", {})
+                    label = _tool_label(name)
+                    last_phase = "tool"
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'tool', 'label': label, 'tool': name})}\n\n"
                     yield f"data: {json.dumps({'type': 'tool_call', 'name': name, 'args': args})}\n\n"
 
                 # Tool call end
@@ -110,13 +162,17 @@ async def ai_chat(req: ChatRequest):
                     name = event.get("name", "")
                     output = event["data"].get("output", "")
                     content = str(output) if not isinstance(output, str) else output
+                    last_phase = "thinking"
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking…'})}\n\n"
                     yield f"data: {json.dumps({'type': 'tool_result', 'name': name, 'content': content})}\n\n"
 
+            yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
         except Exception as e:
             import traceback
             traceback.print_exc()
+            yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(

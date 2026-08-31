@@ -1,24 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { Allotment } from 'allotment'
 import 'allotment/dist/style.css'
 import ViewportWidget from './viewport/ViewportWidget'
 import './AIWorkspace.css'
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-
-type MsgRole = 'ai' | 'user' | 'tool_call' | 'tool_result' | 'error'
-interface Message {
-  id: string
-  role: MsgRole
-  text: string
-  toolName?: string
-  toolArgs?: Record<string, unknown>
-  streaming?: boolean
-}
-
-const uid = () => Math.random().toString(36).slice(2, 9)
-
-// ── Hook: backend port ─────────────────────────────────────────────────────────
+// Port hook  
 
 function usePort(): number {
   const [port, setPort] = useState<number>((window as any).__FADE_PORT__ ?? 8000)
@@ -30,31 +16,16 @@ function usePort(): number {
   return port
 }
 
-// ── Chat Panel ─────────────────────────────────────────────────────────────────
+// AI Status sidebar  
 
-interface ChatPanelProps {
-  collapsed: boolean
-  onToggle: () => void
-}
-
-function ChatPanel({ collapsed, onToggle }: ChatPanelProps) {
+function AISidebar() {
   const port = usePort()
-  const [messages, setMessages] = useState<Message[]>([
-    { id: uid(), role: 'ai', text: 'Hello! I\'m your AI Director. I can split clips, add effects, transcribe audio, and more. What would you like to do?' },
-  ])
-  const [input, setInput]       = useState('')
-  const [busy, setBusy]         = useState(false)
   const [aiStatus, setAiStatus] = useState<{
-    provider: string;
-    model: string;
-    ollama_running?: boolean;
-    available_models?: string[];
+    provider: string
+    model: string
+    ollama_running?: boolean
   } | null>(null)
-  const bottomRef  = useRef<HTMLDivElement>(null)
-  const abortRef   = useRef<AbortController | null>(null)
-  const historyRef = useRef<{role: string; text: string}[]>([])
 
-  // Fetch AI status on mount
   useEffect(() => {
     fetch(`http://127.0.0.1:${port}/ai/status`)
       .then(r => r.json())
@@ -62,301 +33,77 @@ function ChatPanel({ collapsed, onToggle }: ChatPanelProps) {
       .catch(() => {})
   }, [port])
 
-  const scrollBottom = useCallback(() => {
-    setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-  }, [])
-
-  const appendMsg = useCallback((msg: Message) => {
-    setMessages(prev => [...prev, msg])
-    scrollBottom()
-  }, [scrollBottom])
-
-  const patchLast = useCallback((patch: Partial<Message>) => {
-    setMessages(prev => {
-      const copy = [...prev]
-      const last = { ...copy[copy.length - 1], ...patch }
-      copy[copy.length - 1] = last
-      return copy
-    })
-  }, [])
-
-  // Auto-resume: listen for agent_resume SSE events and trigger a new agent turn
-  const sendRef = useRef<((text: string, isResume?: boolean) => void) | null>(null)
-  sendRef.current = (text: string, isResume = false) => {
-    if (busy) return
-    setInput('')
-    setBusy(true)
-
-    if (!isResume) {
-      appendMsg({ id: uid(), role: 'user', text })
-      historyRef.current = [...historyRef.current, { role: 'user', text }]
-    }
-    const aiId = uid()
-    appendMsg({ id: aiId, role: 'ai', text: '', streaming: true })
-    let aiText = ''
-    abortRef.current = new AbortController()
-
-    fetch(`http://127.0.0.1:${port}/ai/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, history: historyRef.current.slice(-20), port }),
-      signal: abortRef.current.signal,
-    }).then(res => {
-      const reader = res.body!.getReader()
-      const decoder = new TextDecoder()
-      const pump = (): Promise<void> =>
-        reader.read().then(({ done, value }) => {
-          if (done) return
-          const raw = decoder.decode(value)
-          for (const line of raw.split('\n')) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const evt = JSON.parse(line.slice(6))
-              if (evt.type === 'token') {
-                aiText += evt.content
-                patchLast({ text: aiText, streaming: true })
-                scrollBottom()
-              } else if (evt.type === 'tool_call') {
-                appendMsg({ id: uid(), role: 'tool_call', text: '', toolName: evt.name, toolArgs: evt.args })
-              } else if (evt.type === 'tool_result') {
-                appendMsg({ id: uid(), role: 'tool_result', text: evt.content, toolName: evt.name })
-                appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
-                aiText = ''
-              } else if (evt.type === 'done') {
-                patchLast({ streaming: false })
-                setMessages(prev => prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai'))
-              } else if (evt.type === 'error') {
-                patchLast({ text: `⚠ Error: ${evt.message}`, streaming: false, role: 'error' })
-              }
-            } catch { /* ignore parse errors */ }
-          }
-          return pump()
-        })
-      return pump()
-    }).catch((err: any) => {
-      if (err.name !== 'AbortError') {
-        patchLast({ text: `⚠ Connection error: ${err.message}`, streaming: false, role: 'error' })
-      }
-    }).finally(() => {
-      historyRef.current = [...historyRef.current, { role: 'ai', text: aiText }]
-      setBusy(false)
-    })
-  }
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail ?? {}
-      const intent = detail.intent ?? 'continue the task'
-      const assetId = detail.assetId ?? ''
-      const jobId   = (detail.job_id ?? '').slice(0, 8)
-      const type    = detail.type ?? 'job'
-
-      // Build the resume message the agent will see
-      const resumeText = [
-        `[BACKGROUND JOB DONE] Job ${jobId} (${type}) completed.`,
-        assetId ? `Asset ready: assetId=${assetId}.` : '',
-        `Original intent: ${intent}.`,
-        'Please continue the task automatically.',
-      ].filter(Boolean).join(' ')
-
-      // Show a system note in the chat so user knows agent is resuming
-      appendMsg({
-        id: uid(),
-        role: 'tool_result',
-        text: `⚙ Background task complete — agent resuming…\n${intent}`,
-        toolName: type,
-      })
-      sendRef.current?.(resumeText, true)
-    }
-    window.addEventListener('fade:agent-resume', handler)
-    return () => window.removeEventListener('fade:agent-resume', handler)
-  }, [port, busy, appendMsg])
-
-  function send() {
-    const text = input.trim()
-    if (!text || busy) return
-    sendRef.current?.(text)
-  }
-
-  function stop() {
-    abortRef.current?.abort()
-    setBusy(false)
-  }
-
-  function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
-  }
-
-
   return (
-    <div className={`chat-panel${collapsed ? ' chat-panel--collapsed' : ''}`}>
-      <div className="chat-panel__header">
-        {!collapsed && (
-          <span className="chat-header-title">
-            AI Director
-            {aiStatus && (
-              <span className="ai-badge">
-                <span className={`ai-dot ${aiStatus.ollama_running === false ? 'ai-dot--off' : 'ai-dot--on'}`} />
-                {aiStatus.provider} · {aiStatus.model}
-              </span>
-            )}
-          </span>
-        )}
-        <button className="chat-panel__toggle" onClick={onToggle} title={collapsed ? 'Expand' : 'Collapse'}>
-          {collapsed ? '›' : '‹'}
-        </button>
+    <div className="ai-sidebar">
+      {/* Header */}
+      <div className="ai-sidebar__header">
+        <div className="ai-sidebar__logo">
+          <span className="ai-sidebar__logo-icon">✦</span>
+          AI Director
+        </div>
+        <div className="ai-sidebar__tagline">Powered by your local model</div>
       </div>
 
-      {!collapsed && (
-        <>
-          <div className="chat-panel__messages">
-            {messages.map(m => (
-              <MessageBubble key={m.id} msg={m} />
-            ))}
-            {busy && <div className="ai-thinking"><span/><span/><span/></div>}
-            <div ref={bottomRef} />
+      {/* Model badge */}
+      {aiStatus && (
+        <div className="ai-sidebar__model-card">
+          <div className="ai-sidebar__model-row">
+            <span className={`ai-sidebar__dot ${aiStatus.ollama_running === false ? 'ai-sidebar__dot--off' : 'ai-sidebar__dot--on'}`} />
+            <span className="ai-sidebar__model-provider">{aiStatus.provider}</span>
           </div>
-
-          <TranscribeBar port={port} appendMsg={appendMsg} />
-
-          <div className="chat-panel__input-row">
-            <div className="chat-input-wrap">
-              <textarea
-                className="chat-input"
-                placeholder="Ask AI to edit your timeline..."
-                value={input}
-                rows={2}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKey}
-                disabled={busy}
-              />
-            </div>
-            {busy
-              ? <button className="chat-send chat-send--stop" onClick={stop} title="Stop">■</button>
-              : <button className="chat-send" onClick={send} title="Send (Enter)">↑</button>
-            }
-          </div>
-        </>
+          <div className="ai-sidebar__model-name">{aiStatus.model || 'auto-detect'}</div>
+        </div>
       )}
-    </div>
-  )
-}
 
-// ── Message bubble ─────────────────────────────────────────────────────────────
-
-function MessageBubble({ msg }: { msg: Message }) {
-  if (msg.role === 'tool_call') {
-    return (
-      <div className="tool-card tool-card--call">
-        <span className="tool-card__icon">⚙</span>
-        <div>
-          <div className="tool-card__name">{msg.toolName}</div>
-          {msg.toolArgs && Object.keys(msg.toolArgs).length > 0 && (
-            <pre className="tool-card__args">{JSON.stringify(msg.toolArgs, null, 2)}</pre>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (msg.role === 'tool_result') {
-    const preview = msg.text.length > 200 ? msg.text.slice(0, 200) + '…' : msg.text
-    return (
-      <div className="tool-card tool-card--result">
-        <span className="tool-card__icon">✓</span>
-        <div>
-          <div className="tool-card__name">{msg.toolName} done</div>
-          <div className="tool-card__summary">{preview}</div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`chat-msg chat-msg--${msg.role === 'error' ? 'error' : msg.role}`}>
-      {msg.role === 'ai' && <div className="chat-msg__avatar">AI</div>}
-      <div className="chat-msg__bubble">
-        {msg.text || (msg.streaming ? <span className="cursor-blink">▋</span> : null)}
-      </div>
-    </div>
-  )
-}
-
-// ── Transcribe bar ─────────────────────────────────────────────────────────────
-
-function TranscribeBar({ port, appendMsg }: {
-  port: number
-  appendMsg: (m: Message) => void
-}) {
-  const [assetId, setAssetId]   = useState('')
-  const [assets, setAssets]     = useState<{assetId: string; filename: string}[]>([])
-  const [running, setRunning]   = useState(false)
-  const [addSubs, setAddSubs]   = useState(true)
-
-  useEffect(() => {
-    fetch(`http://127.0.0.1:${port}/library/assets`)
-      .then(r => r.json())
-      .then((list: any[]) => {
-        setAssets(list.filter(a => a.type === 'video' || a.type === 'audio'))
-        if (list.length > 0) setAssetId(list[0].assetId)
-      })
-      .catch(() => {})
-  }, [port])
-
-  async function transcribe() {
-    if (!assetId || running) return
-    setRunning(true)
-    appendMsg({ id: uid(), role: 'ai', text: '🎙 Transcribing audio with Whisper…' })
-    try {
-      const res = await fetch(`http://127.0.0.1:${port}/ai/transcribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assetId, model: 'small', create_text_clips: addSubs }),
-      })
-      const data = await res.json()
-      const segs = data.segments ?? []
-      appendMsg({
-        id: uid(), role: 'ai',
-        text: `✅ Transcription done — ${segs.length} segments${addSubs ? ', subtitle clips added to track.' : '.'}`,
-      })
-      if (addSubs) window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
-    } catch (e: any) {
-      appendMsg({ id: uid(), role: 'error', text: `⚠ Transcribe failed: ${e.message}` })
-    }
-    setRunning(false)
-  }
-
-  if (assets.length === 0) return null
-
-  return (
-    <div className="transcribe-bar">
-      <select className="transcribe-select" value={assetId} onChange={e => setAssetId(e.target.value)}>
-        {assets.map(a => <option key={a.assetId} value={a.assetId}>{a.filename}</option>)}
-      </select>
-      <label className="transcribe-check">
-        <input type="checkbox" checked={addSubs} onChange={e => setAddSubs(e.target.checked)} />
-        Add subtitles
-      </label>
-      <button className="transcribe-btn" onClick={transcribe} disabled={running}>
-        {running ? '…' : '🎙 Transcribe'}
+      {/* Open chat button */}
+      <button
+        className="ai-sidebar__open-btn"
+        onClick={() => window.dispatchEvent(new CustomEvent('fade:ai-toggle'))}
+      >
+        <span className="ai-sidebar__open-icon">💬</span>
+        Open AI Chat
       </button>
+
+      {/* Tips */}
+      <div className="ai-sidebar__tips">
+        <div className="ai-sidebar__tips-title">What can I do?</div>
+        {[
+          { icon: '✂️', text: 'Split, trim & rearrange clips' },
+          { icon: '✨', text: 'Apply & animate effects' },
+          { icon: '⬇️', text: 'Download footage & images' },
+          { icon: '📰', text: 'Generate news videos automatically' },
+          { icon: '🎙️', text: 'Transcribe audio to captions' },
+          { icon: '🎨', text: 'Generate AI images for your project' },
+          { icon: '🌊', text: 'Add transitions between all clips' },
+        ].map(tip => (
+          <div key={tip.icon} className="ai-sidebar__tip">
+            <span className="ai-sidebar__tip-icon">{tip.icon}</span>
+            <span>{tip.text}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Keyboard shortcut hint */}
+      <div className="ai-sidebar__shortcut">
+        <span className="ai-sidebar__shortcut-key">🤖</span> button on Video tab also opens the chat
+      </div>
     </div>
   )
 }
 
-// ── AI Workspace root ──────────────────────────────────────────────────────────
+// AI Workspace root  
 
 export default function AIWorkspace() {
-  const [collapsed, setCollapsed] = useState(false)
-
   return (
     <div className="ai-ws">
       <Allotment>
-        <Allotment.Pane minSize={collapsed ? 40 : 280} maxSize={collapsed ? 40 : 440} preferredSize={collapsed ? 40 : 340}>
-          <ChatPanel collapsed={collapsed} onToggle={() => setCollapsed(c => !c)} />
+         
+        <Allotment.Pane minSize={240} maxSize={360} preferredSize={300}>
+          <AISidebar />
         </Allotment.Pane>
-        <Allotment.Pane minSize={240}>
-          {/* Live video preview — same as Video tab */}
+
+         
+        <Allotment.Pane minSize={320}>
           <div className="ai-viewport-pane">
             <ViewportWidget />
           </div>
@@ -365,5 +112,3 @@ export default function AIWorkspace() {
     </div>
   )
 }
-
-
