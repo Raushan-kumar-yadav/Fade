@@ -2720,3 +2720,105 @@ def export_video(
 
 EXPORT_TOOLS = [export_video]
 ALL_TOOLS.extend(EXPORT_TOOLS)
+
+
+# ── Audio volume / mute tools ─────────────────────────────────────────────────
+
+@tool
+def set_clip_volume(clip_id: str, volume: float) -> str:
+    """Set the audio volume of a clip (AudioClip or VideoClip with embedded audio).
+
+    Use this when the user says:
+    "lower the volume of that clip", "set clip X to 50% volume",
+    "decrease the B-roll audio", "make that clip quieter",
+    "set audio level of clip to 0.3", "duck the background audio".
+
+    Args:
+        clip_id: The clipId of the target clip.
+                 Get clipIds from get_timeline_state().
+        volume: Volume level.
+                0.0  = completely silent (same as mute but keeps mute=False)
+                0.1  = 10% — very quiet background
+                0.3  = 30% — quiet B-roll under voiceover
+                0.5  = 50% — half volume
+                1.0  = original/unchanged (default)
+                1.5  = 150% boost
+                2.0  = maximum (200% boost)
+
+    Returns:
+        Confirmation with the new volume level applied.
+
+    Examples:
+        set_clip_volume("abc123", 0.0)   # silence a clip
+        set_clip_volume("abc123", 0.3)   # duck B-roll under VO
+        set_clip_volume("abc123", 1.0)   # restore full volume
+    """
+    v = max(0.0, min(2.0, volume))
+    result = _patch(f"/clips/{clip_id}/volume", {"volume": v})
+    if not result.get("ok"):
+        return f"❌ Failed to set volume on clip {clip_id[:8]}…"
+    vol_pct = int(result["volume"] * 100)
+    state   = "muted" if result["mute"] else f"{vol_pct}%"
+    return (
+        f"✅ Volume set on clip {clip_id[:8]}…\n"
+        f"  New volume: {result['volume']:.2f} ({state})"
+    )
+
+
+@tool
+def mute_clip(clip_id: str, mute: bool = True) -> str:
+    """Mute or unmute the audio of a clip (AudioClip or VideoClip).
+
+    Use this when the user says:
+    "mute that clip", "mute the B-roll audio", "silence that video clip",
+    "unmute clip X", "turn off audio on that clip", "remove audio from clip".
+
+    This is non-destructive — the volume level is preserved and can be
+    restored by calling mute_clip(clip_id, mute=False).
+
+    Args:
+        clip_id: The clipId of the target clip. Get from get_timeline_state().
+        mute: True to mute (default), False to unmute/restore audio.
+
+    Returns:
+        Confirmation of the mute state change.
+
+    Examples:
+        mute_clip("abc123")             # mute
+        mute_clip("abc123", mute=True)  # mute
+        mute_clip("abc123", mute=False) # unmute
+    """
+    result = _patch(f"/clips/{clip_id}/volume", {"mute": mute})
+    if not result.get("ok"):
+        return f"❌ Failed to set mute on clip {clip_id[:8]}…"
+    action = "🔇 Muted" if result["mute"] else "🔊 Unmuted"
+    return (
+        f"{action} clip {clip_id[:8]}…\n"
+        f"  Volume preserved at {int(result['volume']*100)}%"
+    )
+
+
+@tool
+def get_clip_volume(clip_id: str) -> str:
+    """Get the current volume and mute state of a clip.
+
+    Use this to check audio levels before adjusting them.
+
+    Args:
+        clip_id: The clipId of the clip. Get from get_timeline_state().
+
+    Returns:
+        Current volume (0.0–2.0) and mute state.
+    """
+    result = _get(f"/clips/{clip_id}/volume")
+    muted  = result.get("mute", False)
+    vol    = result.get("volume", 1.0)
+    return (
+        f"Clip {clip_id[:8]}… ({result.get('clipType', '?')})\n"
+        f"  Volume: {vol:.2f} ({int(vol*100)}%)\n"
+        f"  Muted:  {'yes 🔇' if muted else 'no 🔊'}"
+    )
+
+
+VOLUME_TOOLS = [set_clip_volume, mute_clip, get_clip_volume]
+ALL_TOOLS.extend(VOLUME_TOOLS)

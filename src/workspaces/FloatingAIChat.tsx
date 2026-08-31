@@ -76,6 +76,9 @@ const TOOL_ICONS: Record<string, string> = {
   redo: '↪️',
   export_video: '📤',
   stop_indexing: '⏹️',
+  set_clip_volume: '🔉',
+  mute_clip: '🔇',
+  get_clip_volume: '🔊',
 }
 
 const TIMELINE_TOOLS = new Set([

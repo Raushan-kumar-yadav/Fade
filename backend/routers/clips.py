@@ -756,3 +756,61 @@ def _apply_single_param(clip, param: str, value: float) -> None:
             shape_map[param]()
             return
     raise HTTPException(400, f"Unknown param '{param}' for this clip type")
+
+
+# ── Audio volume / mute ────────────────────────────────────────────────────────
+
+class ClipVolumeRequest(BaseModel):
+    volume: float | None = None   # 0.0 = silence, 1.0 = original, >1 = boost
+    mute:   bool  | None = None   # True = silence regardless of volume
+
+
+@router.patch("/clips/{clipId}/volume")
+def setClipVolume(clipId: str, req: ClipVolumeRequest):
+    """Set the volume (0.0–2.0) and/or mute state of any clip that carries audio.
+
+    Works on:
+    - AudioClip (native volume & mute fields)
+    - VideoClip (dynamic volume/mute attrs used by the encoder and frontend
+                 audio engine for the embedded audio stream)
+    """
+    clip, _track = _find_clip(clipId)
+    from backend.timeline.clips.audioClip import AudioClip
+    from backend.timeline.clips.videoClip  import VideoClip
+
+    if not isinstance(clip, (AudioClip, VideoClip)):
+        raise HTTPException(400, "Only AudioClip and VideoClip support volume/mute")
+
+    if req.volume is not None:
+        v = max(0.0, min(2.0, req.volume))
+        if isinstance(clip, AudioClip):
+            clip.volume = v
+        else:
+            clip.volume = v          # dynamic attr — encoder reads this
+
+    if req.mute is not None:
+        if isinstance(clip, AudioClip):
+            clip.mute = req.mute
+        else:
+            clip.mute = req.mute     # dynamic attr
+
+    notify("tracks-changed")
+    return {
+        "ok":     True,
+        "clipId": clipId,
+        "volume": getattr(clip, "volume", 1.0),
+        "mute":   getattr(clip, "mute",   False),
+    }
+
+
+@router.get("/clips/{clipId}/volume")
+def getClipVolume(clipId: str):
+    """Return the current volume and mute state of a clip."""
+    clip, _track = _find_clip(clipId)
+    return {
+        "clipId": clipId,
+        "clipType": getattr(clip, "CLIP_TYPE", "unknown"),
+        "volume": getattr(clip, "volume", 1.0),
+        "mute":   getattr(clip, "mute",   False),
+    }
+
