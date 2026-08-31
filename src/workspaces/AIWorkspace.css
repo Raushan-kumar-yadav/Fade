@@ -1,7 +1,7 @@
 .ai-ws { height: 100%; overflow: hidden; }
 .ai-ws .split-view-view { overflow: hidden; }
 
-/* ── AI viewport pane ──────────────────────────────────────────────────────── */
+/*   AI viewport pane   */
 .ai-viewport-pane {
   width: 100%;
   height: 100%;
@@ -11,7 +11,7 @@
   overflow: hidden;
 }
 
-/* ── AI Director sidebar ───────────────────────────────────────────────────── */
+/* AI Director sidebar   */
 
 .ai-sidebar {
   height: 100%;
