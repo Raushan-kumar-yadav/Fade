@@ -753,8 +753,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
   const dismissJob = useCallback((jobId: string) => {
     setJobs(prev => prev.filter(j => j.jobId !== jobId));
   }, []);
-
-  // Poll index status for all video assets  
+ 
   const indexStatusesRef = useRef<Record<string, string>>(indexStatuses);
   useEffect(() => { indexStatusesRef.current = indexStatuses; }, [indexStatuses]);
 

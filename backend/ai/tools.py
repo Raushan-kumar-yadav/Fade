@@ -478,21 +478,27 @@ def add_transitions_between_all_clips(
         for i in range(len(clips) - 1):
             a = clips[i]
             b = clips[i + 1]
-            # Only add if clips actually touch or overlap
+             
+            a_id = a.get("clipId") or a.get("id", "")
+            b_id = b.get("clipId") or b.get("id", "")
+            if not a_id or not b_id:
+                errors.append(f"track{ti}/clip{i}: missing clipId in timeline state")
+                continue
+             
             gap = b["startFrame"] - (a["startFrame"] + a["duration"])
-            if gap > 90:          # more than 3s gap — skip
+            if gap > 90:          
                 skipped += 1
                 continue
             try:
                 _post("/transitions", {
                     "typeId":   type_id,
                     "duration": duration_frames,
-                    "clipA_id": a["id"],
-                    "clipB_id": b["id"],
+                    "clipA_id": a_id,
+                    "clipB_id": b_id,
                 })
                 added += 1
             except Exception as exc:
-                errors.append(f"track{ti}/{a['id'][:8]}: {exc}")
+                errors.append(f"track{ti}/{a_id[:8]}: {exc}")
 
     result = f"✅ Added {added} '{type_id}' transitions ({duration_frames}f each)"
     if skipped:
