@@ -2683,7 +2683,14 @@ def export_video(
 
     # Build default output path if not provided
     if not output_path:
-        output_path = f"fade_export.{ext}"
+        from backend.state import engine
+        import os
+        base_name = f"fade_export.{ext}"
+        if engine.project and engine.project.filePath:
+            proj_dir = os.path.dirname(engine.project.filePath)
+            output_path = os.path.join(proj_dir, base_name)
+        else:
+            output_path = base_name
 
     body = {
         "outputPath":    output_path,

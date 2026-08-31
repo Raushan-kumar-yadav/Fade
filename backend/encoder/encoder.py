@@ -205,20 +205,26 @@ def _mux_audio_v2(
         # Skip muted tracks
         if getattr(track, "muted", False):
             continue
-        # Only process audio tracks  
         for clip in track.clips:
-            if not isinstance(clip, AudioClip):
+            from backend.timeline.clips.audioClip import AudioClip
+            from backend.timeline.clips.videoClip import VideoClip
+            if not isinstance(clip, (AudioClip, VideoClip)):
                 continue
             if getattr(clip, "mute", False):
                 continue
 
             # Resolve asset file path  
             asset = _library.get(getattr(clip, "assetId", ""))
+            
+            if isinstance(clip, VideoClip):
+                if not asset or not getattr(asset, "hasAudio", False):
+                    continue
+
             filepath: str | None = None
             if asset:
                 filepath = getattr(asset, "filepath", None) or getattr(asset, "filePath", None)
             if not filepath:
-                # fromDict() stores a .filepath attr directly on the clip
+                # fromDict() stores  
                 filepath = getattr(clip, "filepath", None)
             if not filepath or not os.path.exists(filepath):
                 continue
@@ -259,11 +265,11 @@ def _mux_audio_v2(
 
         chain = (
             f"{src}"
-            # Trim to the portion of the source we actually want
+             
             f"atrim=start={offset_sec:.6f}:duration={dur_sec:.6f},"
-            # Reset timestamps so the trimmed clip starts at t=0
+             
             f"asetpts=PTS-STARTPTS,"
-            # Delay it to its timeline position 
+             
             f"adelay={delay_ms}|{delay_ms},"
             # Apply per-clip volume
             f"volume={vol:.6f}"
@@ -293,7 +299,7 @@ def _mux_audio_v2(
     ]
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        # Fallback: just copy video without audio rather than leaving nothing
+        # Fallback 
         print(f"[encoder] _mux_audio_v2 failed: {result.stderr.decode(errors='replace')[-400:]}")
         try:
             os.rename(video_path, out_path)
