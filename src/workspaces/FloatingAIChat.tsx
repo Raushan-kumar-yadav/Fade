@@ -1,8 +1,7 @@
-
 import { useState, useRef, useEffect, useCallback } from 'react'
 import './FloatingAIChat.css'
 
-//   Types  
+// Types
 
 type MsgRole = 'ai' | 'user' | 'tool_call' | 'tool_result' | 'error'
 type Phase   = 'idle' | 'thinking' | 'responding' | 'tool'
@@ -32,11 +31,11 @@ const _WELCOME: Message = {
   text: "Hi! I'm your AI Director. Ask me to apply effects, download media, create news videos, animate clips, or anything else.",
 }
 
-let _persistedMessages: Message[]                   = [_WELCOME]
+let _persistedMessages: Message[]                       = [_WELCOME]
 let _persistedHistory: { role: string; text: string }[] = []
-let _persistedInput: string                         = ''
+let _persistedInput: string                             = ''
 
-//   Tool icon map  
+// Tool icon map  
 
 const TOOL_ICONS: Record<string, string> = {
   get_timeline_state: '🎬',
@@ -50,7 +49,7 @@ const TOOL_ICONS: Record<string, string> = {
   move_clip: '↔️',
   delete_clip: '🗑️',
   add_transition: '🌊',
-  add_transitions_between_all_clips:'🌊',
+  add_transitions_between_all_clips: '🌊',
   apply_effect_to_clip: '✨',
   download_videos: '⬇️',
   download_images: '🖼️',
@@ -73,7 +72,7 @@ const TOOL_ICONS: Record<string, string> = {
   add_track: '➕',
   remove_silence: '🔇',
   generate_captions: '💬',
-  undo: '↩️', 
+  undo: '↩️',
   redo: '↪️',
 }
 
@@ -88,7 +87,7 @@ const LIBRARY_TOOLS = new Set([
   'download_videos','download_images','generate_image','create_news_video',
 ])
 
-//   Port hook  
+// Port hook
 
 function usePort(): number {
   const [port, setPort] = useState<number>((window as any).__FADE_PORT__ ?? 8000)
@@ -100,7 +99,7 @@ function usePort(): number {
   return port
 }
 
-//   Selected clip badge  
+// Selected clip badge
 
 function SelectedClipBadge() {
   const [clip, setClip] = useState<{ clipId: string; trackIndex: number } | null>(null)
@@ -121,7 +120,7 @@ function SelectedClipBadge() {
   )
 }
 
-//   Live status bar  
+// Single status bar — the ONLY status indicator in the whole widget
 
 function StatusBar({ status }: { status: AgentStatus }) {
   if (status.phase === 'idle') return null
@@ -133,7 +132,7 @@ function StatusBar({ status }: { status: AgentStatus }) {
   )
 }
 
-//   Message Bubble  
+// Message Bubble
 
 function Bubble({ msg }: { msg: Message }) {
   const [expanded, setExpanded] = useState(false)
@@ -200,18 +199,7 @@ function Bubble({ msg }: { msg: Message }) {
   )
 }
 
-//   Thinking dots  
-
-function ThinkingDots() {
-  return (
-    <div className="fchat__thinking">
-      <span /><span /><span />
-      <span className="fchat__thinking-label">thinking</span>
-    </div>
-  )
-}
-
-//   Main FloatingAIChat  
+// Main FloatingAIChat
 
 interface Props { onClose: () => void }
 
@@ -223,14 +211,16 @@ export default function FloatingAIChat({ onClose }: Props) {
   const [busy,     setBusy]     = useState(false)
   const [status,   setStatus]   = useState<AgentStatus>({ phase: 'idle', label: '' })
 
+  // Widget position & size
+  const [pos,  setPos]  = useState({ x: window.innerWidth - 440, y: 72 })
+  const [size, setSize] = useState({ w: 420, h: 520 })
+
   const bottomRef  = useRef<HTMLDivElement>(null)
   const abortRef   = useRef<AbortController | null>(null)
   const historyRef = useRef(_persistedHistory)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
-
-  // Drag state
-  const [pos, setPos] = useState({ x: window.innerWidth - 420, y: 72 })
-  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+  const dragRef    = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+  const resizeRef  = useRef<{ sx: number; sy: number; ow: number; oh: number } | null>(null)
 
   // Sync persistent store
   useEffect(() => { _persistedMessages = messages }, [messages])
@@ -298,6 +288,7 @@ export default function FloatingAIChat({ onClose }: Props) {
             const evt = JSON.parse(line.slice(6))
 
             if (evt.type === 'status') {
+              // Label comes directly from backend — never hardcoded here
               setStatus({ phase: evt.phase as Phase, label: evt.label, tool: evt.tool })
 
             } else if (evt.type === 'token') {
@@ -306,7 +297,6 @@ export default function FloatingAIChat({ onClose }: Props) {
               scrollBottom()
 
             } else if (evt.type === 'tool_call') {
-              // Close out current AI bubble first (if empty, remove it)
               setMessages(prev => {
                 const last = prev[prev.length - 1]
                 if (last?.role === 'ai' && !last.text) {
@@ -318,14 +308,12 @@ export default function FloatingAIChat({ onClose }: Props) {
 
             } else if (evt.type === 'tool_result') {
               appendMsg({ id: uid(), role: 'tool_result', text: evt.content, toolName: evt.name })
-              // Start fresh AI bubble for the next response segment
               appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
               aiText = ''
               dispatchToolEvents(evt.name)
 
             } else if (evt.type === 'done') {
               patchLast({ streaming: false })
-              // Remove empty trailing AI bubbles
               setMessages(prev => {
                 const f = prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai')
                 _persistedMessages = f; return f
@@ -354,15 +342,17 @@ export default function FloatingAIChat({ onClose }: Props) {
     setBusy(false)
   }
 
-  // Drag
+  // ── Drag to move ────────────────────────────────────────────────────────────
+
   function onHeaderMouseDown(e: React.MouseEvent) {
+    if ((e.target as HTMLElement).closest('.fchat__close')) return
     e.preventDefault()
     dragRef.current = { sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y }
     const onMove = (ev: MouseEvent) => {
       if (!dragRef.current) return
       setPos({
-        x: Math.max(0, Math.min(window.innerWidth  - 420, dragRef.current.ox + ev.clientX - dragRef.current.sx)),
-        y: Math.max(0, Math.min(window.innerHeight - 60,  dragRef.current.oy + ev.clientY - dragRef.current.sy)),
+        x: Math.max(0, Math.min(window.innerWidth  - size.w, dragRef.current.ox + ev.clientX - dragRef.current.sx)),
+        y: Math.max(0, Math.min(window.innerHeight - 60,     dragRef.current.oy + ev.clientY - dragRef.current.sy)),
       })
     }
     const onUp = () => {
@@ -374,36 +364,57 @@ export default function FloatingAIChat({ onClose }: Props) {
     window.addEventListener('mouseup', onUp)
   }
 
-  // Compute glow class for the input wrapper
+  // ── Drag to resize (bottom-right handle) ────────────────────────────────────
+
+  function onResizeMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    resizeRef.current = { sx: e.clientX, sy: e.clientY, ow: size.w, oh: size.h }
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return
+      setSize({
+        w: Math.max(320, Math.min(800, resizeRef.current.ow + ev.clientX - resizeRef.current.sx)),
+        h: Math.max(300, Math.min(900, resizeRef.current.oh + ev.clientY - resizeRef.current.sy)),
+      })
+    }
+    const onUp = () => {
+      resizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  // Input glow state
   const glowClass =
     status.phase === 'thinking'   ? 'fchat__input-wrap--thinking'  :
     status.phase === 'responding' ? 'fchat__input-wrap--responding' :
     status.phase === 'tool'       ? 'fchat__input-wrap--tool'       : ''
 
   return (
-    <div className={`fchat ${busy ? 'fchat--busy' : ''}`} style={{ left: pos.x, top: pos.y }}>
-
-      {/* Header */}
+    <div
+      className={`fchat ${busy ? 'fchat--busy' : ''}`}
+      style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
+    >
+      {/* Header — drag to move */}
       <div className="fchat__header" onMouseDown={onHeaderMouseDown}>
         <span className="fchat__title">
-          <span className={`fchat__status-dot fchat__status-dot--${status.phase}`} />
+          {/* Single static green online dot — no animation, no phase colour */}
+          <span className="fchat__online-dot" />
           AI Director
-          {status.phase !== 'idle' && (
-            <span className="fchat__header-phase">{status.label}</span>
-          )}
         </span>
         <button className="fchat__close" onClick={onClose} title="Close">✕</button>
       </div>
 
-      <SelectedClipBadge />
-
-      {/* Live status bar */}
+      {/* ONE status indicator — shown only while busy, labels from backend */}
       <StatusBar status={status} />
+
+      <SelectedClipBadge />
 
       {/* Messages */}
       <div className="fchat__messages">
         {messages.map(m => <Bubble key={m.id} msg={m} />)}
-        {busy && status.phase === 'thinking' && <ThinkingDots />}
         <div ref={bottomRef} />
       </div>
 
@@ -413,7 +424,7 @@ export default function FloatingAIChat({ onClose }: Props) {
           <textarea
             ref={inputRef}
             className="fchat__input"
-            placeholder={busy ? 'AI is working…' : 'Ask AI to apply effects, create videos, download media…'}
+            placeholder={busy ? 'AI is working…' : 'Ask AI to edit, download media, create videos…'}
             value={input}
             rows={2}
             onChange={e => setInput(e.target.value)}
@@ -426,6 +437,9 @@ export default function FloatingAIChat({ onClose }: Props) {
           : <button className="fchat__send" onClick={send} title="Send (Enter)">↑</button>
         }
       </div>
+
+      {/* Resize handle — bottom-right corner */}
+      <div className="fchat__resize-handle" onMouseDown={onResizeMouseDown} />
     </div>
   )
 }

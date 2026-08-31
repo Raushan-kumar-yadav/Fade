@@ -10,6 +10,49 @@ from pydantic import BaseModel
 
 ai_router = APIRouter(tags=["ai"])
 
+# Module-level tool label map 
+_TOOL_LABELS: dict[str, str] = {
+    "get_timeline_state": "Reading timeline…",
+    "get_library": "Scanning library…",
+    "get_library_assets": "Scanning library…",
+    "place_clip": "Placing clip…",
+    "add_text_clip": "Adding text…",
+    "add_shape_clip": "Drawing shape…",
+    "split_clip": "Splitting clip…",
+    "trim_clip": "Trimming clip…",
+    "move_clip": "Moving clip…",
+    "delete_clip": "Deleting clip…",
+    "add_transition": "Adding transition…",
+    "add_transitions_between_all_clips": "Adding transitions…",
+    "apply_effect_to_clip": "Applying effect…",
+    "download_videos": "Downloading footage…",
+    "download_images": "Downloading images…",
+    "schedule_download": "Scheduling download…",
+    "generate_image": "Generating image…",
+    "search_video_scenes": "Searching scenes…",
+    "get_asset_context": "Reading asset…",
+    "get_clip_context": "Reading clip…",
+    "describe_clip": "Inspecting clip…",
+    "describe_selected_clip": "Inspecting clip…",
+    "get_timeline_context": "Reading context…",
+    "create_news_video": "Building news video…",
+    "create_webcomp": "Building WebComp…",
+    "generate_tts": "Generating voice…",
+    "check_job_status": "Checking job…",
+    "animate_property": "Animating…",
+    "apply_curve_preset": "Applying curve…",
+    "search_news": "Searching news…",
+    "find_free_overlay_track": "Finding overlay track…",
+    "add_track": "Adding track…",
+    "remove_silence": "Removing silence…",
+    "generate_captions": "Generating captions…",
+    "undo": "Undoing…",
+    "redo": "Redoing…",
+}
+
+def _tool_label(name: str) -> str:
+    return _TOOL_LABELS.get(name, f"Running {name}…")
+
 # Request models  
 
 class ChatRequest(BaseModel):
@@ -67,49 +110,7 @@ def ai_status():
 
 @ai_router.post("/chat")
 async def ai_chat(req: ChatRequest):
-     
     from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-
-    # Map tool names  
-    _TOOL_LABELS: dict[str, str] = {
-        "get_timeline_state": "Reading timeline…",
-        "get_library": "Scanning library…",
-        "get_library_assets": "Scanning library…",
-        "place_clip": "Placing clip…",
-        "add_text_clip": "Adding text…",
-        "add_shape_clip": "Drawing shape…",
-        "split_clip": "Splitting clip…",
-        "trim_clip": "Trimming clip…",
-        "move_clip": "Moving clip…",
-        "delete_clip": "Deleting clip…",
-        "add_transition": "Adding transition…",
-        "add_transitions_between_all_clips": "Adding transitions…",
-        "apply_effect_to_clip": "Applying effect…",
-        "download_videos": "Downloading footage…",
-        "download_images": "Downloading images…",
-        "schedule_download": "Scheduling download…",
-        "generate_image": "Generating image…",
-        "search_video_scenes": "Searching scenes…",
-        "get_asset_context": "Reading asset…",
-        "get_clip_context": "Reading clip…",
-        "describe_clip": "Inspecting clip…",
-        "describe_selected_clip": "Inspecting clip…",
-        "get_timeline_context": "Reading context…",
-        "create_news_video": "Building news video…",
-        "create_webcomp": "Building WebComp…",
-        "generate_tts": "Generating voice…",
-        "check_job_status": "Checking job…",
-        "animate_property": "Animating…",
-        "apply_curve_preset": "Applying curve…",
-        "search_news": "Searching news…",
-        "find_free_overlay_track": "Finding overlay track…",
-        "add_track": "Adding track…",
-        "remove_silence": "Removing silence…",
-        "generate_captions": "Generating captions…",
-    }
-
-    def _tool_label(name: str) -> str:
-        return _TOOL_LABELS.get(name, f"Running {name}…")
 
     async def event_stream():
         try:
