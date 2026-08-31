@@ -300,28 +300,43 @@ def generate_image_endpoint(req: GenerateImageRequest):
 def generate_tts_endpoint(req: GenerateTTSRequest):
     """
     Generate speech audio from text.
-    Provider (google/local) is read from settings/generators.
+    Provider (google / kokoro / local) is read from settings/generators.
     Returns the imported audio asset.
     """
     provider = _cfg.get("generators.tts_provider", "google")
     ollama_url = _cfg.get("generators.ollama_url", "http://localhost:11434")
     local_model = _cfg.get("generators.tts_local_model", "kokoro")
-    voice = req.voice or _cfg.get("generators.tts_google_voice", "Kore")
+    speed = float(_cfg.get("generators.tts_kokoro_speed", 1.0))
 
-    gen_dir = _resolve_download_dir(subdir="tts")
+    gen_dir   = _resolve_download_dir(subdir="tts")
     generator = get_tts_generator(provider=provider, ollama_url=ollama_url)
 
     try:
-        if provider == "local":
+        if provider == "kokoro":
+            # voice default 
+            kokoro_voice = req.voice or _cfg.get("generators.tts_kokoro_voice", "af_heart")
+            result = generator.generate(
+                text=req.text, output_dir=gen_dir,
+                voice=kokoro_voice, speed=speed,
+            )
+        elif provider == "local":
             result = generator.generate(text=req.text, output_dir=gen_dir, model=local_model)
         else:
-            result = generator.generate(text=req.text, output_dir=gen_dir, voice=voice)
+            # Google Gemini
+            google_voice = req.voice or _cfg.get("generators.tts_google_voice", "Kore")
+            result = generator.generate(text=req.text, output_dir=gen_dir, voice=google_voice)
 
     except PermissionError as e:
         raise HTTPException(status_code=402, detail={
             "error": "quota_exceeded",
             "message": str(e),
             "action": "Enable billing at https://aistudio.google.com",
+        })
+    except ImportError as e:
+        raise HTTPException(status_code=503, detail={
+            "error": "kokoro_not_installed",
+            "message": str(e),
+            "action": "Run: pip install kokoro soundfile (Windows: also install espeak-ng)",
         })
     except ConnectionError as e:
         raise HTTPException(status_code=503, detail={
@@ -336,18 +351,20 @@ def generate_tts_endpoint(req: GenerateTTSRequest):
 
     info = _import_file(result["filepath"])
     from backend.events import notify; notify("library")
-    return {"assetId": info["assetId"], "filename": info["filename"], "title": result["title"]}
+    return {
+        "assetId": info["assetId"],
+        "filename": info["filename"],
+        "title": result["title"],
+        "voice": result.get("voice", ""),
+        "duration_s": result.get("duration_s", 0),
+    }
 
 
 #   Video Generation  
 
 @router.post("/media/generate-video")
 def generate_video_endpoint(req: GenerateVideoRequest):
-    """
-    Generate a video from a text prompt.
-    Provider (google/local) is read from settings/generators.
-    Returns the imported video asset.
-    """
+     
     provider = _cfg.get("generators.video_provider", "google")
     ollama_url = _cfg.get("generators.ollama_url", "http://localhost:11434")
     local_model = _cfg.get("generators.video_local_model", "wan2.1")
@@ -395,7 +412,17 @@ def generate_video_endpoint(req: GenerateVideoRequest):
 
  
 
+
+
 @router.get("/media/tts-voices")
 def get_tts_voices():
-    """Return available Gemini TTS voices."""
-    return {"voices": GEMINI_VOICES}
+    """Return available TTS voices for both Gemini and Kokoro providers."""
+    from backend.tools.generators.tts_generator import KOKORO_VOICES
+    provider = _cfg.get("generators.tts_provider", "google")
+    return {
+        "provider": provider,
+        "voices": GEMINI_VOICES,       # Gemini voices  
+        "gemini_voices": GEMINI_VOICES,
+        "kokoro_voices": KOKORO_VOICES,
+        "default_voice": "af_heart" if provider == "kokoro" else "Kore",
+    }

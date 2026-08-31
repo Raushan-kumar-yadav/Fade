@@ -164,13 +164,15 @@ export default function ViewportWidget() {
     }
 
     loadClips()
-    const pollId = setInterval(loadClips, 3000)  
+    const pollId = setInterval(loadClips, 3000)
     const onTracksChanged = () => loadClips()
     window.addEventListener('fade:tracks-changed', onTracksChanged)
+    window.addEventListener('fade:render-now', onTracksChanged)   // audio clip just added
 
     return () => {
       clearInterval(pollId)
       window.removeEventListener('fade:tracks-changed', onTracksChanged)
+      window.removeEventListener('fade:render-now', onTracksChanged)
       engine.destroy()
       audioRef.current = null
     }

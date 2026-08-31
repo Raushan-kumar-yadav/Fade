@@ -569,30 +569,31 @@ def postAiSettings(payload: AiSettingsPayload):
 
 class GeneratorSettingsPayload(BaseModel):
     # Image
-    imageProvider:    str | None = None  # "google" | "comfyui" | "local" | "stability"
+    imageProvider: str | None = None  # "google" | "comfyui" | "local" | "stability"
     imageLocalModel:  str | None = None
     # ComfyUI
-    comfyuiUrl:       str | None = None
-    comfyuiPath:      str | None = None
-    comfyuiModel:     str | None = None
-    comfyuiWidth:     int | None = None
-    comfyuiHeight:    int | None = None
-    comfyuiSteps:     int | None = None
-    comfyuiCfg:       float | None = None
+    comfyuiUrl: str | None = None
+    comfyuiPath: str | None = None
+    comfyuiModel: str | None = None
+    comfyuiWidth: int | None = None
+    comfyuiHeight: int | None = None
+    comfyuiSteps: int | None = None
+    comfyuiCfg: float | None = None
     # Stability AI
-    stabilityModel:   str | None = None  # "core" | "ultra" | "sd3"
-    stabilityStyle:   str | None = None  # "" | "photographic" | "anime" | ...
-    stabilityWidth:   int | None = None
-    stabilityHeight:  int | None = None
+    stabilityModel: str | None = None  # "core" | "ultra" | "sd3"
+    stabilityStyle: str | None = None  # "" | "photographic" | "anime" | ...
+    stabilityWidth: int | None = None
+    stabilityHeight: int | None = None
     # TTS
-    ttsProvider:      str | None = None
-    ttsGoogleVoice:   str | None = None
-    ttsLocalModel:    str | None = None
+    ttsProvider: str | None = None
+    ttsGoogleVoice: str | None = None
+    ttsLocalModel: str | None = None
+    ttsKokoroVoice: str | None = None
     # Video
-    videoProvider:    str | None = None
+    videoProvider: str | None = None
     videoLocalModel:  str | None = None
     # Ollama
-    ollamaUrl:        str | None = None
+    ollamaUrl: str | None = None
 
 
 def _get_ollama_models() -> list[str]:
@@ -636,33 +637,34 @@ def _get_comfyui_status(base_url: str) -> bool:
 def _get_generator_settings() -> dict:
     comfyui_url = _cfg.get("generators.comfyui_url", "http://127.0.0.1:8188")
     return {
-        "imageProvider":    _cfg.get("generators.image_provider", "google"),
-        "imageLocalModel":  _cfg.get("generators.image_local_model", "gemma3:4b"),
+        "imageProvider": _cfg.get("generators.image_provider", "google"),
+        "imageLocalModel": _cfg.get("generators.image_local_model", "gemma3:4b"),
         # ComfyUI
-        "comfyuiUrl":       comfyui_url,
-        "comfyuiPath":      _cfg.get("generators.comfyui_path", ""),
-        "comfyuiModel":     _cfg.get("generators.comfyui_model", "v1-5-pruned-emaonly.safetensors"),
-        "comfyuiWidth":     _cfg.get("generators.comfyui_width", 512),
-        "comfyuiHeight":    _cfg.get("generators.comfyui_height", 512),
-        "comfyuiSteps":     _cfg.get("generators.comfyui_steps", 20),
-        "comfyuiCfg":       _cfg.get("generators.comfyui_cfg", 7.0),
-        "comfyuiRunning":   _get_comfyui_status(comfyui_url),
-        "comfyuiModels":    _get_comfyui_models(comfyui_url),
+        "comfyuiUrl": comfyui_url,
+        "comfyuiPath": _cfg.get("generators.comfyui_path", ""),
+        "comfyuiModel": _cfg.get("generators.comfyui_model", "v1-5-pruned-emaonly.safetensors"),
+        "comfyuiWidth": _cfg.get("generators.comfyui_width", 512),
+        "comfyuiHeight": _cfg.get("generators.comfyui_height", 512),
+        "comfyuiSteps": _cfg.get("generators.comfyui_steps", 20),
+        "comfyuiCfg": _cfg.get("generators.comfyui_cfg", 7.0),
+        "comfyuiRunning": _get_comfyui_status(comfyui_url),
+        "comfyuiModels": _get_comfyui_models(comfyui_url),
         # Stability AI
-        "stabilityModel":   _cfg.get("generators.stability_model", "core"),
-        "stabilityStyle":   _cfg.get("generators.stability_style", ""),
-        "stabilityWidth":   _cfg.get("generators.stability_width", 1024),
-        "stabilityHeight":  _cfg.get("generators.stability_height", 1024),
+        "stabilityModel": _cfg.get("generators.stability_model", "core"),
+        "stabilityStyle": _cfg.get("generators.stability_style", ""),
+        "stabilityWidth": _cfg.get("generators.stability_width", 1024),
+        "stabilityHeight": _cfg.get("generators.stability_height", 1024),
         # TTS
-        "ttsProvider":      _cfg.get("generators.tts_provider", "google"),
-        "ttsGoogleVoice":   _cfg.get("generators.tts_google_voice", "Kore"),
-        "ttsLocalModel":    _cfg.get("generators.tts_local_model", "kokoro"),
+        "ttsProvider": _cfg.get("generators.tts_provider", "google"),
+        "ttsGoogleVoice": _cfg.get("generators.tts_google_voice", "Kore"),
+        "ttsLocalModel": _cfg.get("generators.tts_local_model", "kokoro"),
+        "ttsKokoroVoice": _cfg.get("generators.tts_kokoro_voice", "af_heart"),
         # Video
-        "videoProvider":    _cfg.get("generators.video_provider", "google"),
+        "videoProvider": _cfg.get("generators.video_provider", "google"),
         "videoLocalModel":  _cfg.get("generators.video_local_model", "wan2.1"),
         # Ollama
-        "ollamaUrl":        _cfg.get("generators.ollama_url", "http://localhost:11434"),
-        "ollamaModels":     _get_ollama_models(),
+        "ollamaUrl": _cfg.get("generators.ollama_url", "http://localhost:11434"),
+        "ollamaModels": _get_ollama_models(),
     }
 
 
@@ -702,12 +704,14 @@ def postGeneratorSettings(payload: GeneratorSettingsPayload):
     if payload.stabilityHeight is not None:
         _cfg.set("generators.stability_height", max(256, min(2048, payload.stabilityHeight)))
     # TTS
-    if payload.ttsProvider in ("google", "local"):
+    if payload.ttsProvider in ("google", "local", "kokoro"):
         _cfg.set("generators.tts_provider", payload.ttsProvider)
     if payload.ttsGoogleVoice is not None:
         _cfg.set("generators.tts_google_voice", payload.ttsGoogleVoice.strip())
     if payload.ttsLocalModel is not None:
         _cfg.set("generators.tts_local_model", payload.ttsLocalModel.strip())
+    if payload.ttsKokoroVoice is not None:
+        _cfg.set("generators.tts_kokoro_voice", payload.ttsKokoroVoice.strip())
     # Video
     if payload.videoProvider in ("google", "local"):
         _cfg.set("generators.video_provider", payload.videoProvider)

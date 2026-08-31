@@ -22,8 +22,16 @@ class WorkerBus:
         if self._process and self._process.is_alive():
             return  # already running
 
-        import sys
+        import sys, os
         parent_syspath = sys.path[:]    
+
+        # Fix Windows PermissionError [WinError 5] with multiprocessing.spawn
+        # If running via uvicorn.exe shim, multiprocessing fails to spawn.
+        # Force it to use the actual python executable.
+        if sys.platform == "win32" and getattr(sys, "executable", "").lower().endswith(".exe"):
+            python_exe = os.path.join(sys.exec_prefix, "python.exe")
+            if os.path.exists(python_exe) and sys.executable.lower() != python_exe.lower():
+                multiprocessing.set_executable(python_exe)
 
         self._running = True
         ctx = multiprocessing.get_context("spawn")

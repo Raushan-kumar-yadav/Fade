@@ -229,6 +229,19 @@ async def lifespan(app: FastAPI):
     threading.Thread(target=_run_tcp_server, daemon=True, name="tcp-frame-server").start()
 
 
+    # Pre-warm Kokoro TTS model in background (first load downloads ~170MB + ONNX init).
+    # This prevents the agent's 30-second HTTP timeout from firing on the first TTS call.
+    def _prewarm_kokoro():
+        try:
+            from backend.config.global_config import cfg as _cfg
+            if _cfg.get("generators.tts_provider", "google") == "kokoro":
+                from backend.tools.generators.tts_generator import KokoroTTSGenerator
+                KokoroTTSGenerator()._get_kokoro()
+                print("[main] Kokoro TTS model pre-warmed.", flush=True)
+        except Exception as _e:
+            print(f"[main] Kokoro pre-warm skipped: {_e}", flush=True)
+    threading.Thread(target=_prewarm_kokoro, daemon=True, name="kokoro-prewarm").start()
+
     yield
 
     try:

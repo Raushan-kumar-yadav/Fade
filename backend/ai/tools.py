@@ -21,6 +21,12 @@ def _post(path: str, body: dict | None = None) -> dict:
     r.raise_for_status()
     return r.json()
 
+def _post_long(path: str, body: dict | None = None, timeout: int = 300) -> dict:
+    """Like _post but with a long timeout for heavy AI generation calls (TTS, video)."""
+    r = httpx.post(f"{_base()}{path}", json=body or {}, timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
 def _delete(path: str) -> dict:
     r = httpx.delete(f"{_base()}{path}", timeout=10)
     r.raise_for_status()
@@ -2107,3 +2113,102 @@ ANIMATION_TOOLS = [
     move_keyframe,
 ]
 ALL_TOOLS.extend(ANIMATION_TOOLS)
+
+
+#   TTS Tools  
+
+@tool
+def list_kokoro_voices(lang: str = "") -> str:
+    """List all available Kokoro local TTS voices, optionally filtered by language.
+
+    Args:
+        lang: Optional language filter. One of: 'en-us', 'en-gb', 'ja', 'ko',
+              'zh', 'es', 'fr', 'hi', 'it', 'pt'. Leave empty to list all.
+
+    Returns a JSON map of language → [voice_ids].
+    Popular voices: af_heart (warm female), bf_emma (British), am_echo (male).
+    """
+    import json
+    params = {}
+    if lang:
+        params["lang"] = lang
+    # Call the voices endpoint
+    data = _get("/media/tts-voices")
+     
+    try:
+        from backend.tools.generators.tts_generator import KOKORO_VOICES
+        if lang:
+            filtered = {lang: KOKORO_VOICES.get(lang, [])}
+            return json.dumps({"kokoro_voices": filtered, "gemini_voices": data.get("voices", [])}, indent=2)
+        return json.dumps({"kokoro_voices": KOKORO_VOICES, "gemini_voices": data.get("voices", [])}, indent=2)
+    except Exception:
+        return json.dumps(data, indent=2)
+
+
+@tool
+def generate_tts(
+    text: str,
+    voice: str = "af_heart",
+    speed: float = 1.0,
+) -> str:
+    """Generate speech audio from text using Kokoro local TTS (or Gemini if configured).
+
+    The generated WAV file is automatically imported into the library so you can
+    immediately use place_clip() to add it to the timeline.
+
+    Args:
+        text:  The text to speak. Can be multiple sentences.
+        voice: Voice ID (default 'af_heart' — warm American female).
+               Kokoro voices: af_heart, af_bella, af_nicole, am_echo, am_michael,
+                              bf_emma, bf_alice, bm_george, bm_daniel + 40 more.
+               Gemini voices: Kore, Zephyr, Puck, Charon, Fenrir, Aoede, etc.
+               Call list_kokoro_voices() to browse all options.
+        speed: Speech speed multiplier (Kokoro only). Range: 0.5–2.0, default 1.0.
+               0.8 = slightly slower, 1.2 = slightly faster.
+
+    Returns:
+        A summary string with assetId, duration — ready for place_clip().
+
+    Example workflow:
+        result = generate_tts("Welcome to the video!", voice="af_heart", speed=1.0)
+        # parse assetId from result, then:
+        place_clip(assetId, track=1, start_frame=0, duration_frames=int(duration_s*30))
+    """
+    import json, time as _time
+
+    # Fire async job  
+    body = {"text": text, "voice": voice, "speed": speed}
+    job_resp = _post_long("/jobs/tts-generate", body, timeout=15)
+    job_id = job_resp.get("jobId", "")
+    if not job_id:
+        return "Error: TTS job did not start — check backend logs."
+
+    # Poll until done (max 5 min)
+    for _ in range(150):
+        _time.sleep(2)
+        status = _get(f"/jobs/{job_id}")
+        st = status.get("status", "")
+        if st == "done":
+            asset_ids = status.get("assetIds", [])
+            asset_id  = asset_ids[0] if asset_ids else ""
+            msg       = status.get("message", "")
+            # Parse duration from message "Ready — X.Xs | voice"
+            dur = 0.0
+            try:
+                dur = float(msg.split("—")[1].split("s")[0].strip())
+            except Exception:
+                pass
+            return (
+                f"✓ TTS generated: voice={voice}, duration={dur:.1f}s\n"
+                f"  assetId={asset_id}\n"
+                f"  → Use place_clip(assetId='{asset_id}', track=1, start_frame=0, "
+                f"duration_frames={int(dur * 30)}) to add to timeline."
+            )
+        if st == "error":
+            err = status.get("error", "unknown error")
+            return f"TTS generation failed: {err}"
+    return f"TTS generation timed out (job {job_id})."
+
+
+TTS_TOOLS = [list_kokoro_voices, generate_tts]
+ALL_TOOLS.extend(TTS_TOOLS)

@@ -49,6 +49,7 @@ interface GeneratorSettings {
   ttsProvider: string;
   ttsGoogleVoice: string;
   ttsLocalModel: string;
+  ttsKokoroVoice: string;
   // Video
   videoProvider: string;
   videoLocalModel: string;
@@ -159,6 +160,14 @@ const VOICE_DESCRIPTIONS: Record<string, string> = {
   Vindemiatrix: 'Gentle', Sadachbia: 'Lively', Sadaltager: 'Knowledgeable',
   Sulafat: 'Warm',
 };
+
+const KOKORO_VOICES = [
+  'af_heart', 'af_alloy', 'af_aoede', 'af_bella', 'af_jessica', 'af_kore', 
+  'af_nicole', 'af_nova', 'af_river', 'af_sarah', 'af_sky', 
+  'am_adam', 'am_echo', 'am_eric', 'am_fenrir', 'am_liam', 'am_michael', 
+  'am_onyx', 'am_puck', 'am_santa', 'bf_alice', 'bf_emma', 'bf_isabella', 
+  'bf_lily', 'bm_daniel', 'bm_fable', 'bm_george', 'bm_lewis'
+];
 
 //   Sub-components  
 
@@ -753,9 +762,14 @@ export default function SettingsPanel({ onClose }: Props) {
 
                     <div className="sp-row sp-row--column">
                       <label className="sp-label">Provider</label>
-                      <ProviderToggle
+                      <ProviderToggle3
                         id="tts-provider"
                         value={gen.ttsProvider}
+                        options={[
+                          { value: 'google', icon: '☁', label: 'Google API' },
+                          { value: 'kokoro', icon: '⚡', label: 'Kokoro (Local)' },
+                          { value: 'local',  icon: '🖥', label: 'Ollama (Local)' },
+                        ]}
                         onChange={v => applyGen({ ttsProvider: v })}
                       />
                     </div>
@@ -778,6 +792,24 @@ export default function SettingsPanel({ onClose }: Props) {
                       </div>
                     )}
 
+                    {gen.ttsProvider === 'kokoro' && (
+                      <div className="sp-row">
+                        <label className="sp-label" htmlFor="tts-kokoro-voice">Voice</label>
+                        <select
+                          id="tts-kokoro-voice"
+                          className="sp-select"
+                          value={gen.ttsKokoroVoice}
+                          onChange={e => applyGen({ ttsKokoroVoice: e.target.value })}
+                        >
+                          {KOKORO_VOICES.map(v => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
                     {gen.ttsProvider === 'local' && (
                       <div className="sp-row">
                         <label className="sp-label" htmlFor="tts-local-model">Ollama Model</label>
@@ -785,7 +817,7 @@ export default function SettingsPanel({ onClose }: Props) {
                           id="tts-local-model"
                           value={gen.ttsLocalModel}
                           models={gen.ollamaModels}
-                          fallbackLabel="kokoro"
+                          fallbackLabel="llama3.1"
                           onChange={v => applyGen({ ttsLocalModel: v })}
                         />
                       </div>

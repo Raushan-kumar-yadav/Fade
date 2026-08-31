@@ -376,6 +376,63 @@ def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
         _update_job(job_id, status="error", message="Import failed", error=str(exc))
 
 
+def _run_tts_generate(job_id: str, text: str, voice: str, speed: float) -> None:
+    """Background worker: synthesise TTS with Kokoro and import into library."""
+    from backend.config.global_config import cfg as _cfg
+    from backend.routers.library import _resolve_download_dir, _import_file
+    from backend.worker.worker_bus import bus as _worker_bus
+    from backend.events import notify as _notify
+
+    provider = _cfg.get("generators.tts_provider", "kokoro")
+    short_text = text[:60] + ("…" if len(text) > 60 else "")
+
+    _update_job(job_id, status="running", progress=0.05,
+                message=f"Loading Kokoro model…")
+    try:
+        from backend.tools.generators.tts_generator import get_tts_generator
+        gen_dir  = _resolve_download_dir(subdir="tts")
+        generator = get_tts_generator(provider=provider)
+
+        _update_job(job_id, progress=0.20, message=f"Synthesising: \"{short_text}\"…")
+
+        kokoro_voice = voice or _cfg.get("generators.tts_kokoro_voice", "af_heart")
+        result = generator.generate(
+            text=text,
+            output_dir=gen_dir,
+            voice=kokoro_voice,
+            speed=speed,
+        )
+
+        _update_job(job_id, progress=0.80, message="Importing audio…")
+        info = _import_file(result["filepath"])
+        asset_id = info["assetId"]
+
+        # Submit waveform generation so the timeline shows the audio bar
+        try:
+            _worker_bus.submit_waveform(asset_id, result["filepath"])
+        except Exception:
+            pass
+
+        dur = result.get("duration_s", 0)
+        _update_job(job_id, status="done", progress=1.0,
+                    message=f"Ready — {dur:.1f}s | {kokoro_voice}",
+                    assetIds=[asset_id])
+        _notify("library")
+
+        # Wake up waiting agent
+        try:
+            from backend.ai.agent_jobs import on_job_done as _aj
+            _aj(job_id, {"assetId": asset_id, "type": "tts_generate",
+                         "voice": kokoro_voice, "duration_s": dur,
+                         "filename": info["filename"]})
+        except Exception:
+            pass
+
+    except Exception as exc:
+        _update_job(job_id, status="error", progress=1.0,
+                    message="TTS failed", error=str(exc))
+
+
 def _start(fn, *args) -> None:
     t = threading.Thread(target=fn, args=args, daemon=True)
     t.start()
@@ -394,6 +451,11 @@ class ImageDownloadRequest(BaseModel):
 class ImageGenerateRequest(BaseModel):
     prompt: str
     numImages: int = 1
+
+class TTSGenerateRequest(BaseModel):
+    text: str
+    voice: str = "af_heart"
+    speed: float = 1.0
 
 
 #   Routes  
@@ -441,6 +503,18 @@ def start_image_generate(req: ImageGenerateRequest):
     job = _make_job("image_generate", label)
     notify("job", job)
     _start(_run_image_generate, job["jobId"], req.prompt, num)
+    return {"jobId": job["jobId"], "label": label, "status": "pending"}
+
+
+@router.post("/jobs/tts-generate")
+def start_tts_generate(req: TTSGenerateRequest):
+    """Start an async Kokoro TTS job. Returns jobId immediately; synthesises in background.
+    Poll GET /jobs/{jobId} or watch SSE job events for status + assetId."""
+    short_text = req.text[:60] + ("…" if len(req.text) > 60 else "")
+    label = f"TTS [{req.voice}]: {short_text}"
+    job = _make_job("tts_generate", label)
+    notify("job", job)   # push placeholder card to UI right away
+    _start(_run_tts_generate, job["jobId"], req.text, req.voice, req.speed)
     return {"jobId": job["jobId"], "label": label, "status": "pending"}
 
 

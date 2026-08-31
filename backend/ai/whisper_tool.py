@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import pathlib
 
-# Path to bundled whisper models
+# Path to bundled whisper models — centralized in AIModels/
 _HERE = pathlib.Path(__file__).parent
-WHISPER_MODELS_DIR = _HERE / "whisper_models"
+_PROJECT_ROOT = _HERE.parent.parent  # backend/ai/ -> backend/ -> Fade/
+WHISPER_MODELS_DIR = _PROJECT_ROOT / "AIModels" / "whisper"
 
 DEFAULT_MODEL = os.environ.get("FADE_WHISPER_MODEL", "small")
 
@@ -32,8 +33,8 @@ def _detect_device() -> tuple[str, str]:
         if best:
             from faster_whisper import WhisperModel as _WM
             _probe = _WM("tiny", device="cuda", compute_type=best)
-            # Run a real forward pass — this is what triggers cublas64_12.dll
-            # faster-whisper accepts numpy float32 audio arrays directly
+            
+             
             _silent = np.zeros(16000, dtype=np.float32)  # 1 second silence @ 16kHz
             _segs, _info = _probe.transcribe(_silent, language="en")
             list(_segs)  # consume lazy iterator → triggers cuBLAS GEMM
@@ -157,21 +158,7 @@ def transcribe_with_words(
     vad: bool = True,
     min_silence_ms: int = 500,
 ) -> list[dict]:
-    """
-    Transcribe audio with word-level timestamps.
-
-    Returns list of segments, each with:
-      {
-        start_s: float, # segment start (seconds)
-        end_s:   float, # segment end   (seconds)
-        text:    str, # full segment text
-        words: [ # per-word timing
-          { word: str, start_s: float, end_s: float }
-        ]
-      }
-
-    Silent sections are skipped when vad=True (default).
-    """
+     
     from backend.config.global_config import cfg
     model_name = model_name or cfg.get("ai.whisper_model", DEFAULT_MODEL)
     model = get_model(model_name)
@@ -235,12 +222,7 @@ def get_speech_segments(
     model_name: str | None = None,
     min_silence_ms: int = 500,
 ) -> list[dict]:
-    """
-    VAD-only pass: returns speech time windows without full transcription.
-    Faster — used by remove_silence where we need timing but not text.
-
-    Returns: [{ start_s, end_s }]
-    """
+     
     segs = transcribe(filepath, model_name=model_name)
     return [{"start_s": s["start_s"], "end_s": s["end_s"]} for s in segs if s.get("text")]
 

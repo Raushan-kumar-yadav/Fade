@@ -30,6 +30,41 @@ class AudioClip(BaseClip):
     def render(self, canvas, frame: int) -> None:
         pass  # audio-only: no visual render
 
+    def getThumbnail(self, frame: int, width: int = 160, height: int = 90) -> bytes:
+        """Return a minimal JPEG for the timeline thumbnail strip.
+        Audio clips show a dark teal bar — no Skia or heavy deps needed."""
+        try:
+            import skia
+            surface = skia.Surface(width, height)
+            with surface as canvas:
+                # Dark background
+                canvas.clear(skia.Color4f(0.05, 0.10, 0.12, 1.0))
+                # Teal waveform bar in the vertical center
+                bar_h = max(4, height // 4)
+                y = (height - bar_h) // 2
+                paint = skia.Paint(Color=skia.Color(0x00, 0xE5, 0xCC, 0xFF))  # #00E5CC
+                canvas.drawRect(skia.Rect.MakeXYWH(0, y, width, bar_h), paint)
+            image = surface.makeImageSnapshot()
+            data = image.encodeToData(skia.EncodedImageFormat.kJPEG, 85)
+            return bytes(data)
+        except Exception:
+            # Fallback: return a tiny valid 1x1 JPEG
+            return (
+                b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00'
+                b'\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t'
+                b'\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a'
+                b'\x1f\x1e\x1d\x1a\x1c\x1c $.\' ",#\x1c\x1c(7),01444\x1f\'9=82<.342\x1e\xc0'
+                b'\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f'
+                b'\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00'
+                b'\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xc4'
+                b'\x00\xb5\x10\x00\x02\x01\x03\x03\x02\x04\x03\x05\x05\x04\x04'
+                b'\x00\x00\x01}\x01\x02\x03\x00\x04\x11\x05\x12!1A\x06\x13Qa'
+                b'\x07"q\x142\x81\x91\xa1\x08#B\xb1\xc1\x15R\xd1\xf0$3br'
+                b'\x82\t\n\x16\x17\x18\x19\x1a%&\'()*456789:CDEFGHIJ'
+                b'STUVWXYZ\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xf5(\xa2\x8a'
+                b'\xff\xd9'
+            )
+
     def toDict(self) -> dict:
         filepath = ""
         try:

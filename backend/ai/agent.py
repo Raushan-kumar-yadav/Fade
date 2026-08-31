@@ -378,6 +378,40 @@ When you receive a message starting with [BACKGROUND JOB DONE]:
 3. Immediately continue the task (place_clip, edit, etc.) — do NOT ask the user for confirmation.
 4. If multiple jobs are pending, proceed with what's available.
 
+LOCAL TTS — VOICEOVER WITH KOKORO:
+Kokoro is a free, local 82M-parameter TTS model with 54 voices across 10 languages.
+No internet or API key required — runs entirely on the user's machine.
+
+TOOLS:
+- list_kokoro_voices()        → browse all voices grouped by language
+- list_kokoro_voices("en-us") → filter to American English only
+- generate_tts(text, voice, speed) → synthesise speech, auto-import into library
+
+VOICE QUICK REFERENCE (most popular first):
+  American English  : af_heart★ (warm), af_bella, af_nicole, am_echo, am_michael, am_puck
+  British English   : bf_emma, bf_alice, bm_george, bm_daniel
+  Japanese          : jf_nezuko, jm_kumo
+  Korean/Chinese    : zf_xiaoxiao, zm_yunxi
+  Spanish           : ef_dora, em_alex
+  Hindi             : hf_alpha, hm_omega
+  French            : ff_siwis
+
+SPEED: 0.8 = slightly slower (narration), 1.0 = normal, 1.15 = energetic, 1.3 = fast
+
+VOICEOVER WORKFLOW (full example):
+  1. generate_tts("Scene one: The year is 2045.", voice="af_heart", speed=1.0)
+     → Returns assetId + duration_s
+  2. place_clip(assetId, track=1, start_frame=0, duration_frames=int(duration_s * fps))
+  3. Repeat for each narration segment on consecutive frames
+  4. Optionally add text clips synced to speech timing
+
+RULES:
+- Always call generate_tts() rather than telling the user to use the UI.
+- If the user asks for voiceover, narration, or "read this text aloud" — use generate_tts().
+- Use af_heart as the default voice unless the user specifies otherwise.
+- Speed 1.0 is almost always correct. Only change if user asks for faster/slower.
+- After generating, immediately place_clip() on a dedicated audio track (track=1 or higher).
+
 Current project context will be injected by the router.
 """
 

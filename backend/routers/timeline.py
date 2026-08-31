@@ -78,6 +78,20 @@ def addClip(req: AddClipRequest):
         )
         clip_type = "webcomp"
 
+    elif asset.mediaType == MediaType.audio:
+        # Audio-only assets (TTS WAV, MP3, etc.) → AudioClip
+        # Validate that the target track is an AudioTrack; if not, find or auto-assign one.
+        if not isinstance(track, AudioTrack):
+            # Look for the first AudioTrack in the timeline
+            audio_track = next((t for t in tl.tracks if isinstance(t, AudioTrack)), None)
+            if audio_track is None:
+                raise HTTPException(400, "No AudioTrack available. Add an audio track first.")
+            track = audio_track
+            print(f"[addClip] Redirected audio asset to AudioTrack '{track.name}'", flush=True)
+        clip = AudioClip(startFrame=req.startFrame, duration=req.duration,
+                         assetId=req.assetId, mediaOffset=req.mediaOffset)
+        clip_type = "audio"
+
     else:
         clip = VideoClip(startFrame=req.startFrame, duration=req.duration,
                          assetId=req.assetId, mediaOffset=req.mediaOffset)
@@ -86,25 +100,30 @@ def addClip(req: AddClipRequest):
             engine.scheduler.registerClip(clip.clipId, asset)
         clip_type = "video"
 
-    
 
     from backend.history.commandStack import AddClipCommand
     engine.commandStack.execute(AddClipCommand(track, clip))
-    _clipTrackMap[clip.clipId] = req.trackIndex
+    _clipTrackMap[clip.clipId] = tl.tracks.index(track)
 
-    has_audio = getattr(asset, 'hasAudio', False) and clip_type != 'webcomp'
+    # Submit waveform for any clip that has audio (video-with-audio OR pure AudioClip)
+    has_audio = clip_type == 'audio' or (getattr(asset, 'hasAudio', False) and clip_type not in ('webcomp',))
     if has_audio:
         try:
             _worker_bus.submit_waveform(req.assetId, asset.filepath)
         except Exception as _e:
             print(f"[addClip] waveform submit error: {_e}", flush=True)
 
-    from backend.events import notify; notify("timeline")
+    from backend.events import notify
+    notify("timeline")   # → fade:timeline-changed + fade:tracks-changed → loadClips() in AudioEngine
+    if clip_type == "audio":
+        # Extra signal so the viewport audio engine reloads its clip list right away
+        notify("render")
     return {
         "clipId": clip.clipId, "trackId": track.trackId,
         "startFrame": clip.startFrame, "duration": clip.duration,
         "assetId": req.assetId, "type": clip_type, "hasAudio": has_audio,
     }
+
 
 
 class AddSvgClipRequest(BaseModel):

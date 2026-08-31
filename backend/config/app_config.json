@@ -19,7 +19,7 @@
     "stability_style": "",
     "stability_width": 1024,
     "stability_height": 1024,
-    "tts_provider": "local",
+    "tts_provider": "kokoro",
     "tts_google_voice": "Kore",
     "tts_local_model": "kokoro",
     "video_provider": "google",

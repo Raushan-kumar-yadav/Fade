@@ -1,4 +1,4 @@
-﻿/* WorkerProgress: tb-tool-btn style inline button + dropdown panel */
+/* WorkerProgress: tb-tool-btn style inline button + dropdown panel */
 
 .wp-root {
   position: relative;
@@ -214,6 +214,7 @@
 .wp-job {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 7px 6px;
   border-radius: 7px;
@@ -288,4 +289,35 @@
 .wp-panel__clear:hover {
   background: rgba(99,102,241,0.12);
   color: #818cf8;
+}
+
+/* Inline job progress bar (shown while running/pending) */
+
+.wp-job__prog-wrap {
+  width: 100%;
+  margin-left: 28px; /* align with label (icon 18px + gap 10px) */
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.07);
+  overflow: hidden;
+  margin-top: 3px;
+  margin-bottom: 1px;
+}
+
+.wp-job__prog {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6);
+  transition: width 0.4s ease;
+}
+
+/* Error detail text */
+.wp-job__error {
+  font-size: 9px;
+  color: #f87171;
+  opacity: 0.75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
 }

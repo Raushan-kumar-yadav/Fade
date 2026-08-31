@@ -1,0 +1,24 @@
+# AI Model files are large binary files — excluded from git
+# Download/restore them by running the backend once (auto-download on first use)
+
+# Whisper (faster-whisper CTranslate2 format or openai-whisper .pt)
+whisper/*.pt
+whisper/tiny/
+whisper/base/
+whisper/small/
+whisper/medium/
+whisper/large*/
+whisper/distil*/
+
+# Kokoro TTS (ONNX)
+kokoro/*.onnx
+kokoro/*.bin
+
+# CLIP / Sentence-Transformers (if added in future)
+clip/
+sentence_transformers/
+
+# Keep the folder structure and README
+!.gitignore
+!README.md
+!*/

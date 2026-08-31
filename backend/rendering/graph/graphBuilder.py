@@ -31,8 +31,12 @@ class GraphBuilder:
             )
             graph.addNode(mergeNode)
 
-            # All active clips on this track
-            activeClips = [c for c in track.clips if c.overlaps(frame)]
+            # All active clips on this track  
+            activeClips = [
+                c for c in track.clips
+                if c.overlaps(frame)
+                and getattr(c, 'CLIP_TYPE', getattr(c, 'clipType', 'video')) != 'audio'
+            ]
 
             for clip in activeClips:
                 clipNode = ClipNode(clip)

@@ -16,7 +16,7 @@ Fade is a next-generation, AI-first video editing platform built with Electron, 
   - 🎥 **Video:** A highly flexible, dockable non-linear editing (NLE) interface built with `react-resizable-panels`.
   - 🎵 **Audio:** Specialized audio editing and mixing (coming soon).
   - 📤 **Export:** Smart rendering presets for Shorts, Reels, 4K, and more.
-- **Modern Architecture:** 
+- **Modern Architecture:**
   - **Frontend:** React + TypeScript + Vite for lightning-fast UI rendering.
   - **Backend:** Python + FastAPI to handle heavy video processing, frame analysis, and Skia/ffmpeg rendering.
   - **Container:** Electron for deep OS integration and native window controls.
@@ -28,23 +28,26 @@ Fade is a next-generation, AI-first video editing platform built with Electron, 
 - **UI Framework:** React 18, TypeScript, Vite
 - **Desktop Runtime:** Electron
 - **Styling:** Vanilla CSS, custom CSS Variables, `react-resizable-panels`
-- **Backend Services:** Python (FastAPI) *[Processing pipeline WIP]*
+- **Backend Services:** Python (FastAPI) _[Processing pipeline WIP]_
 
 ## 📦 Installation & Setup
 
 1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/Raushan-kumar-yadav/Fade.git
    cd Fade
    ```
 
 2. **Install dependencies:**
+
    ```bash
    npm install
    ```
 
 3. **Set up the Python Environment:**
    Ensure you have Python installed (3.10+ recommended).
+
    ```bash
    python -m venv .venv
    .venv\Scripts\activate  # Windows
@@ -74,6 +77,13 @@ Fade/
 ├── index.html             # Electron window template
 └── vite.config.js         # Vite bundler config
 ```
+
+## Kokoro audio genration
+
+"kokoro-onnx is not installed.\n"
+"Run: pip install kokoro-onnx soundfile\n"
+"Windows also needs espeak-ng for multilingual support:\n"
+" https://github.com/espeak-ng/espeak-ng/releases/download/1.52.0/espeak-ng.msi"
 
 ## 🗺️ Roadmap
 

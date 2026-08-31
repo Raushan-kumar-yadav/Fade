@@ -30,6 +30,9 @@ def _build_comp_frame_descriptor(
     for inner_track in reversed(inner_tl.tracks):
         if getattr(inner_track, "isMuted", False):
             continue
+        # Skip audio tracks — WAV/MP3 files must never reach the C++ ClipDecoder
+        if getattr(inner_track, 'isAudio', lambda: False)():
+            continue
         for inner_clip in inner_track.clips:
             if not inner_clip.overlaps(inner_frame):
                 continue
@@ -136,6 +139,9 @@ def _get_frame_data(frame: int) -> dict:
     clips_out = []
     for track in reversed(tl.tracks):
         if getattr(track, "isMuted", False):
+            continue
+        # Skip audio tracks — WAV/MP3 files must never reach the C++ ClipDecoder
+        if getattr(track, 'isAudio', lambda: False)():
             continue
         for clip in track.clips:
             if not clip.overlaps(frame):
