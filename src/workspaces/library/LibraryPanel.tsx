@@ -201,10 +201,14 @@ function AssetTaskOverlay({
   jobs,
   indexStatus,   
   assetType,
+  assetId,
+  onCancelIndex,
 }: {
   jobs: MediaJob[];
   indexStatus?: string;  // 'pending' | 'running' | 'done' | 'not_found' | 'unknown'
   assetType?: string;
+  assetId?: string;
+  onCancelIndex?: () => void;
 }) {
   const active = jobs.filter(j => j.status === 'running' || j.status === 'pending');
   const done   = jobs.filter(j => j.status === 'done');
@@ -220,6 +224,19 @@ function AssetTaskOverlay({
     : type === 'video_index' || type === 'image_index' ? '🔍'
     : '⚙️';
 
+  /** Fire the cancel request and let the parent dismiss the overlay */
+  const handleStop = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!assetId) return;
+    try {
+      await fetch(`${base()}/library/cancel-index/${assetId}`, { method: 'POST' });
+    } catch { /* non-fatal */ }
+    onCancelIndex?.();
+  };
+
+  const isIndexJob = (type: string) =>
+    type === 'video_index' || type === 'image_index';
+
   if (pollActive) {
     // Overlay driven purely by poll status  
     const icon = assetType === 'image' ? '🔍' : '🔍';
@@ -229,6 +246,16 @@ function AssetTaskOverlay({
         <span className="lib-asset-overlay__icon">{icon}</span>
         <span className="lib-asset-overlay__text">{msg}</span>
         <span className="lib-asset-overlay__spin" />
+        {assetId && (
+          <button
+            className="lib-asset-overlay__stop"
+            onClick={handleStop}
+            title="Stop indexing"
+            aria-label="Stop indexing"
+          >
+            ✕
+          </button>
+        )}
       </div>
     );
   }
@@ -237,6 +264,8 @@ function AssetTaskOverlay({
   const show = active[0] ?? error[0] ?? done[0];
   const isActive = active.length > 0;
   const isErr    = !isActive && error.length > 0;
+  // Only show stop button for index-type active jobs (not transcription)
+  const canStop = isActive && assetId && isIndexJob(show.type);
 
   return (
     <div className={`lib-asset-overlay lib-asset-overlay--${isActive ? 'active' : isErr ? 'error' : 'done'}`}>
@@ -247,6 +276,16 @@ function AssetTaskOverlay({
          : '✓ Indexed'}
       </span>
       {isActive && <span className="lib-asset-overlay__spin" />}
+      {canStop && (
+        <button
+          className="lib-asset-overlay__stop"
+          onClick={handleStop}
+          title="Stop indexing"
+          aria-label="Stop indexing"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }
@@ -1168,6 +1207,15 @@ export default function LibraryPanel({ onAddToTimeline }: {
                         : indexStatuses[asset.assetId]
                     }
                     assetType={asset.type}
+                    assetId={asset.assetId}
+                    onCancelIndex={() => {
+                      // Optimistically hide the overlay by bumping indexStatuses
+                      setIndexStatuses(prev => ({ ...prev, [asset.assetId]: 'cancelled' }));
+                      setJobs(prev => prev.filter(
+                        j => !(j.assetId === asset.assetId &&
+                               (j.type === 'video_index' || j.type === 'image_index'))
+                      ));
+                    }}
                   />
                 </div>
               );

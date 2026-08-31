@@ -471,6 +471,22 @@ WORKFLOW EXAMPLE - add a music track:
   3. download_videos('calm lo-fi music') or generate_tts(...)
   4. place_clip(assetId, track=<index>, ...)
 
+INDEXING CONTROL:
+Fade auto-starts Vision+Whisper indexing whenever a video/image is downloaded.
+On slow machines, or for footage that doesn't need semantic search (B-roll, stock loops, intros),
+you can stop this with:
+
+- stop_indexing(asset_id) -> cancels active or queued indexing for that asset.
+
+WHEN TO USE stop_indexing():
+  * User says "don't index that", "stop indexing", "I don't need search on this clip"
+  * User complains the system is lagging after a big download
+  * You download pure B-roll / background footage that the user will never search for
+
+WORKFLOW:
+  1. download_videos('mountain time-lapse b-roll')   -> get assetId from result
+  2. stop_indexing(assetId)                          -> cancel indexing immediately
+
 Current project context will be injected by the router.
 """
 

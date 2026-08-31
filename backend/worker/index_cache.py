@@ -33,6 +33,19 @@ def set_error(asset_id: str, message: str) -> None:
         _cache[asset_id] = {"status": "error", "chunks": 0, "message": message}
 
 
+def set_cancelled(asset_id: str) -> None:
+    """Mark an indexing job as user-cancelled."""
+    with _lock:
+        _cache[asset_id] = {"status": "cancelled", "chunks": 0, "message": "Cancelled by user"}
+
+
+def is_cancelled(asset_id: str) -> bool:
+    """Return True if the user requested cancellation of this asset's indexing."""
+    with _lock:
+        entry = _cache.get(asset_id)
+        return bool(entry and entry.get("status") == "cancelled")
+
+
 def get(asset_id: str) -> dict | None:
     with _lock:
         return _cache.get(asset_id)

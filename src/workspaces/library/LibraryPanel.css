@@ -775,7 +775,7 @@
   border-radius: 0 0 7px 7px;
   backdrop-filter: blur(4px);
   font-size: 9px;
-  pointer-events: none;
+  pointer-events: auto;   /* allow stop-button clicks */
   animation: lib-fade-in 0.2s ease;
   overflow: hidden;
 }
@@ -822,4 +822,37 @@
 
 @keyframes lib-spin {
   to { transform: rotate(360deg); }
+}
+
+/* Stop-indexing button inside the overlay */
+.lib-asset-overlay__stop {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;          /* push to the far right */
+  padding: 0;
+  background: rgba(229, 57, 53, 0.18);
+  border: 1px solid rgba(229, 57, 53, 0.45);
+  border-radius: 3px;
+  color: #ef9a9a;
+  font-size: 8px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  user-select: none;
+  opacity: 0.75;
+}
+.lib-asset-overlay__stop:hover {
+  background: rgba(229, 57, 53, 0.40);
+  border-color: rgba(229, 57, 53, 0.80);
+  color: #ff8a80;
+  opacity: 1;
+}
+.lib-asset-overlay__stop:active {
+  background: rgba(229, 57, 53, 0.60);
+  transform: scale(0.92);
 }

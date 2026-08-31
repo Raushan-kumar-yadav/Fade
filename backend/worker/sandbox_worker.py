@@ -7,6 +7,10 @@ import sys
 _AI_FRAME_INTERVAL: float = 4.0    
 
 
+class _IndexCancelled(Exception):
+    """Raised inside the sandbox when the user cancels an indexing job."""
+
+
 #   Waveform  
 
 def _do_waveform(filepath: str, bins: int) -> list[float]:
@@ -94,7 +98,8 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
                     ffmpeg_exe: str = "",
                     vision_model: str = "",
                     frame_interval: float = 4.0,
-                    result_queue=None) -> int:
+                    result_queue=None,
+                    cancel_queue=None) -> int:
      
     import tempfile
     from concurrent.futures import ThreadPoolExecutor, Future
@@ -114,12 +119,57 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
         if not frames:
             raise RuntimeError("ffmpeg extracted 0 frames")
 
-        
+        # ── Cancel check: before heavy vision work ──────────────────────────────
+        def _is_cancelled() -> bool:
+            """Drain cancel_queue and check if our asset_id was cancelled."""
+            if cancel_queue is None:
+                return False
+            cancelled_ids: set[str] = set()
+            while True:
+                try:
+                    cancelled_ids.add(cancel_queue.get_nowait())
+                except Exception:
+                    break
+            # Put others back (only ours matters right now)
+            for cid in cancelled_ids:
+                if cid != asset_id:
+                    try:
+                        cancel_queue.put_nowait(cid)
+                    except Exception:
+                        pass
+            return asset_id in cancelled_ids
+
+        if _is_cancelled():
+            raise _IndexCancelled(f"Indexing cancelled before vision phase: {asset_id[:8]}")
+
       
         print(f"[SandboxWorker] Starting vision + transcription in parallel…", flush=True)
 
         def _run_vision() -> list[dict]:
-            return describe_all_frames(tmp_dir, frame_interval, vision_model=vision_model or None)
+            """Describe frames one-by-one, checking for cancellation between each."""
+            import os as _os
+            from backend.ai.VideoSemantic.descriptions import describe_frame, _get_model
+            model = vision_model or _get_model()
+            results: list[dict] = []
+            frame_files = sorted(
+                f for f in _os.listdir(tmp_dir)
+                if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+            )
+            for i, fname in enumerate(frame_files):
+                # Cancel check between every frame
+                if _is_cancelled():
+                    print(f"[SandboxWorker] Vision cancelled at frame {i}/{len(frame_files)} for {asset_id[:8]}", flush=True)
+                    raise _IndexCancelled("Vision cancelled mid-frame")
+                fpath = _os.path.join(tmp_dir, fname)
+                # Compute approximate timestamp from filename or index
+                try:
+                    ts = float(fname.replace(".jpg","").replace(".jpeg","").replace(".png","").replace(".webp","").split("_")[-1])
+                except Exception:
+                    ts = i * frame_interval
+                desc = describe_frame(fpath, model)
+                if desc:
+                    results.append({"text": desc, "start": ts, "end": ts + frame_interval})
+            return results
 
         def _run_transcribe() -> list[dict]:
             import traceback
@@ -337,6 +387,7 @@ def _do_index_image(asset_id: str, filepath: str, vision_model: str = "") -> boo
 
 def worker_main(job_queue: multiprocessing.Queue,
                 result_queue: multiprocessing.Queue,
+                cancel_queue: multiprocessing.Queue,
                 parent_syspath: list | None = None) -> None:
     """Entry point for the sandboxed worker process."""
      
@@ -379,13 +430,23 @@ def worker_main(job_queue: multiprocessing.Queue,
                 _sw(db_path)
                 from backend.worker import transcript_status as _ts
                 _ts.set_db_path(db_path)
+            # Skip jobs that were cancelled before they got to run
+            from backend.worker import index_cache as _ic
+            if _ic.is_cancelled(asset_id):
+                print(f"[SandboxWorker] Skipping cancelled index_video job: {asset_id[:8]}", flush=True)
+                result_queue.put({"type": "index_video_cancelled", "assetId": asset_id})
+                continue
             try:
                 chunks = _do_index_video(asset_id, filepath, port,
                                          ffmpeg_exe=ffmpeg_exe,
                                          vision_model=vision_model,
                                          frame_interval=frame_interval,
-                                         result_queue=result_queue)
+                                         result_queue=result_queue,
+                                         cancel_queue=cancel_queue)
                 result_queue.put({"type": "index_video_done", "assetId": asset_id, "chunks": chunks})
+            except _IndexCancelled as ce:
+                print(f"[SandboxWorker] index_video cancelled: {asset_id[:8]} — {ce}", flush=True)
+                result_queue.put({"type": "index_video_cancelled", "assetId": asset_id})
             except Exception as e:
                 result_queue.put({"type": "index_video_error", "assetId": asset_id, "message": str(e)})
             continue

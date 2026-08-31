@@ -188,7 +188,10 @@ def _run_video_download(parent_job_id: str, query: str, num_videos: int,
         asset_id = info["assetId"]
 
         _update_job(parent_job_id, status="done", progress=1.0,
-                    message=f"{label_pfx}Ready: {r.get('title', '')[:40]}",
+                    message=(
+                        f"{label_pfx}Ready ✓ — Auto-indexing started "
+                        "(Vision+Whisper). Tap ✕ on the card to stop it."
+                    ),
                     assetIds=[asset_id])
         _notify("library")
         # Notify agent if it scheduled this job
@@ -231,7 +234,10 @@ def _run_image_download(parent_job_id: str, query: str,
         asset_id = info["assetId"]
 
         _update_job(parent_job_id, status="done", progress=1.0,
-                    message=f"{label_pfx}Ready",
+                    message=(
+                        f"{label_pfx}Ready ✓ — Auto-indexing started. "
+                        "Tap ✕ on the card to stop it."
+                    ),
                     assetIds=[asset_id])
         _notify("library")
         # Notify agent if it scheduled this job
@@ -537,9 +543,7 @@ def get_job(jobId: str):
 
 @router.delete("/jobs/clear-stuck")
 def clear_stuck_jobs(older_than_s: int = 30):
-    """Mark all pending/running jobs older than `older_than_s` seconds as error.
-    Useful for clearing jobs whose worker thread crashed before updating status.
-    Returns count of jobs cleared."""
+     
     import time
     now = time.time()
     cleared = 0

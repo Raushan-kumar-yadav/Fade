@@ -15,6 +15,7 @@ class WorkerBus:
     def __init__(self) -> None:
         self._job_queue: multiprocessing.Queue = multiprocessing.Queue()
         self._result_queue: multiprocessing.Queue = multiprocessing.Queue()
+        self._cancel_queue: multiprocessing.Queue = multiprocessing.Queue()  # carries asset_ids to cancel
         self._process:  Optional[multiprocessing.Process] = None
         self._drain_thread: Optional[threading.Thread] = None
         self._running = False
@@ -41,7 +42,7 @@ class WorkerBus:
         ctx = multiprocessing.get_context("spawn")
         self._process = ctx.Process(
             target=sandbox_worker.worker_main,
-            args=(self._job_queue, self._result_queue, parent_syspath),
+            args=(self._job_queue, self._result_queue, self._cancel_queue, parent_syspath),
             daemon=True,
             name="FadeSandboxWorker",
         )
@@ -200,6 +201,33 @@ class WorkerBus:
             "filepath": filepath,
             "db_path": db_path,
         })
+
+    def cancel_index(self, asset_id: str) -> None:
+        """Signal the sandbox worker to stop indexing a specific asset.
+
+        Works for both queued (not started yet) and actively running jobs:
+        - Marks index_cache as 'cancelled' so the pending-check at job start fires.
+        - Sends asset_id through the cancel queue so the running frame loop exits early.
+        """
+        from backend.worker import index_cache
+        index_cache.set_cancelled(asset_id)
+        try:
+            self._cancel_queue.put_nowait(asset_id)
+        except Exception:
+            pass
+        # Complete any SSE job card for this asset so the UI updates
+        try:
+            from backend.routers.jobs import complete_asset_job
+            complete_asset_job(asset_id, "video_index", error=None)
+            complete_asset_job(asset_id, "image_index", error=None)
+        except Exception:
+            pass
+        try:
+            from backend.events import notify
+            notify("library")
+        except Exception:
+            pass
+        print(f"[WorkerBus] cancel_index: {asset_id[:8]}", flush=True)
 
     def get_index_status(self, asset_id: str) -> dict | None:
         return index_cache.get(asset_id)

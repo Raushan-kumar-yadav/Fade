@@ -215,6 +215,15 @@ def getIndexStatus(assetId: str):
     return {"assetId": assetId, **status}
 
 
+@router.post("/library/cancel-index/{assetId}")
+def cancelIndex(assetId: str):
+    """Stop/cancel an active or queued indexing job for a specific asset.
+    Safe to call even if no job is running — it is idempotent.
+    The sandbox worker will stop at the next frame-extraction checkpoint."""
+    _worker_bus.cancel_index(assetId)
+    return {"assetId": assetId, "status": "cancelled", "message": "Indexing cancelled"}
+
+
 @router.get("/library/transcript-status/{assetId}")
 def getTranscriptStatus(assetId: str):
      

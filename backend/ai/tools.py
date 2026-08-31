@@ -816,11 +816,11 @@ def place_clip(
     """Place a media asset (video/image) onto a timeline as a clip.
 
     Args:
-        asset_id:    The assetId of the media (from download_videos or get_library).
+        asset_id: The assetId of the media (from download_videos or get_library).
         track_index: Track index to place it on (0-based).
         start_frame: Timeline frame where the clip starts.
-        duration:    Duration of the clip in frames.
-        comp_id:     Optional compId to place inside a specific nested composition.
+        duration: Duration of the clip in frames.
+        comp_id: Optional compId to place inside a specific nested composition.
                      Leave None (default) to place on the main/root timeline.
                      The UI's currently-open comp tab does NOT affect placement.
     """
@@ -2421,3 +2421,46 @@ def generate_tts(
 
 TTS_TOOLS = [list_kokoro_voices, generate_tts]
 ALL_TOOLS.extend(TTS_TOOLS)
+
+
+#   Indexing control  
+
+@tool
+def stop_indexing(asset_id: str) -> str:
+    """Stop / cancel semantic indexing for a specific media asset.
+
+    Fade automatically starts AI indexing (Vision + Whisper) when a video or image
+    is downloaded or imported. On low-end systems, or for B-roll footage that doesn't
+    need semantic search, you can stop the job using this tool.
+
+    This is safe to call at any time:
+    - If the job is RUNNING  → the worker stops at the next frame-extraction checkpoint
+      (within a few seconds).
+    - If the job is QUEUED   → it is discarded before it starts.
+    - If no job exists → this is a no-op (idempotent).
+
+    Args:
+        asset_id: The assetId of the media whose indexing should be stopped.
+                  Get this from list_library_assets() or the result of a download tool.
+
+    Returns:
+        Confirmation string.
+
+    Example:
+        # User says "stop indexing that B-roll clip"
+        assets = list_library_assets()
+        # find the right assetId, then:
+        stop_indexing("abc123...")
+    """
+    result = _post(f"/library/cancel-index/{asset_id}", {})
+    status = result.get("status", "unknown")
+    return (
+        f"✓ Indexing cancelled for asset {asset_id[:8]}…\n"
+        f"  Status: {status}\n"
+        f"  The worker will stop at the next frame checkpoint. "
+        f"No semantic search data will be saved for this asset."
+    )
+
+
+INDEXING_TOOLS = [stop_indexing]
+ALL_TOOLS.extend(INDEXING_TOOLS)
