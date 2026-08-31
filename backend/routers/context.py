@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -25,11 +25,24 @@ def _get_chroma_chunks(asset_id: str) -> list[dict]:
                 "start_sec": meta.get("start_sec", 0),
                 "end_sec":   meta.get("end_sec",   0),
                 "text":      doc,
+                "asset_type": meta.get("asset_type", "video"),
             })
         chunks.sort(key=lambda c: c["start_sec"])
         return chunks
     except Exception:
         return []
+
+
+def _get_image_description(asset_id: str) -> str:
+    """Fetch the stored image description from the image_assets ChromaDB collection."""
+    try:
+        from backend.ai.VideoSemantic.indexer import _img_col
+        result = _img_col.get(where={"assetId": asset_id}, include=["documents"])
+        if result["documents"]:
+            return result["documents"][0]
+    except Exception:
+        pass
+    return ""
 
 
 def _get_transcript(asset_id: str, filepath: str) -> list[dict]:
@@ -126,6 +139,239 @@ def _iter_video_clips(tl) -> list[dict]:
     return clips_info
 
 
+def _read_file_safe(path: str, max_bytes: int = 8192) -> str:
+    """Read a text file, truncating to max_bytes. Returns '' on error."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read(max_bytes)
+            if len(content) == max_bytes:
+                content += "\nâ€¦ [truncated]"
+            return content
+    except Exception:
+        return ""
+
+
+def _build_clip_description(clip_obj, fps: float = 30.0) -> dict:
+     
+    from backend.state import _library as _lib
+
+    clip_type = (
+        getattr(clip_obj, "CLIP_TYPE", None)
+        or getattr(clip_obj, "clipType", None)
+        or getattr(clip_obj, "type", "unknown")
+    )
+    clip_id = getattr(clip_obj, "clipId", "")
+    start_f = int(getattr(clip_obj, "startFrame", 0))
+    duration_f = int(getattr(clip_obj, "duration", 0))
+    start_sec = round(start_f / fps, 3)
+    end_sec = round((start_f + duration_f) / fps, 3)
+
+    base = {
+        "clipType": clip_type,
+        "clipId": clip_id,
+        "startFrame": start_f,
+        "duration": duration_f,
+        "startSec": start_sec,
+        "endSec": end_sec,
+    }
+
+    if clip_type == "video":
+        asset_id = getattr(clip_obj, "assetId", "")
+        in_pt_f = int(getattr(clip_obj, "inPoint",  0))
+        out_pt_f = int(getattr(clip_obj, "outPoint", duration_f))
+        in_sec = round(in_pt_f  / fps, 3)
+        out_sec = round(out_pt_f / fps, 3)
+        asset = _lib.get(asset_id)
+        filepath = getattr(asset, "filepath", "") if asset else ""
+
+        chunks = _get_chroma_chunks(asset_id)
+        # Filter  
+        if chunks:
+            chunks = [c for c in chunks if c["start_sec"] < out_sec and c["end_sec"] > in_sec]
+
+        # Split into vision 
+        timeline = []
+        for c in chunks:
+            entry = {"time_sec": c["start_sec"]}
+            txt = c["text"]
+            if txt.startswith("Visual:") or " | Speech:" in txt:
+                 
+                parts = txt.split(" | Speech:")
+                entry["scene"] = parts[0].replace("Visual:", "").strip()
+                if len(parts) > 1:
+                    entry["speech"] = parts[1].strip()
+            elif txt.startswith("Speech:"):
+                entry["speech"] = txt[7:].strip()
+            else:
+                entry["scene"] = txt
+            timeline.append(entry)
+
+        from backend.worker.transcript_status import is_done as _ts_done
+        return {
+            **base,
+            "assetId": asset_id,
+            "filepath": filepath,
+            "inPointSec": in_sec,
+            "outPointSec": out_sec,
+            "transcriptIndexed": _ts_done(asset_id),
+            "indexed": len(chunks) > 0,
+            "timeline": timeline,
+        }
+
+ 
+    if clip_type == "audio":
+        asset_id = getattr(clip_obj, "assetId", "")
+        asset = _lib.get(asset_id)
+        filepath = getattr(asset, "filepath", "") if asset else ""
+        volume = getattr(clip_obj, "volume", 1.0)
+        mute = getattr(clip_obj, "mute",   False)
+
+        chunks = _get_chroma_chunks(asset_id)
+        transcript = [
+            {
+                "start_sec": c["start_sec"],
+                "end_sec": c["end_sec"],
+                "text": c["text"].replace("Speech:", "").strip(),
+            }
+            for c in chunks
+            if c.get("asset_type") == "audio" or c["text"].startswith("Speech:")
+        ]
+
+        from backend.worker.transcript_status import is_done as _ts_done
+        return {
+            **base,
+            "assetId": asset_id,
+            "filepath": filepath,
+            "volume": volume,
+            "mute": mute,
+            "transcriptIndexed": _ts_done(asset_id),
+            "transcript": transcript,
+        }
+
+    if clip_type == "image":
+        asset_id = getattr(clip_obj, "assetId", "")
+        asset = _lib.get(asset_id)
+        filepath = getattr(asset, "filepath", "") if asset else ""
+        description = _get_image_description(asset_id)
+        return {
+            **base,
+            "assetId": asset_id,
+            "filepath": filepath,
+            "description": description or "(not yet indexed â€” run vision indexing first)",
+            "indexed": bool(description),
+        }
+
+    if clip_type == "text":
+        style = getattr(clip_obj, "style", None)
+        if style:
+            style_dict = style.toDict() if hasattr(style, "toDict") else vars(style)
+        else:
+            style_dict = {}
+        return {
+            **base,
+            "text":  style_dict.get("text", ""),
+            "style": {
+                k: v for k, v in style_dict.items()
+                if k not in ("text",)
+            },
+        }
+
+    if clip_type in ("shape", "rectangle", "ellipse", "line", "triangle"):
+        style = getattr(clip_obj, "style", None)
+        style_dict = style.toDict() if (style and hasattr(style, "toDict")) else {}
+        return {
+            **base,
+            "clipType":    "shape",
+            "shapeType":   getattr(clip_obj, "clipType", clip_type),
+            "style":       style_dict,
+        }
+
+    if clip_type == "webcomp":
+        webcomp_id = getattr(clip_obj, "webcompId", "")
+        asset = _lib.get(webcomp_id)
+        folder = getattr(asset, "folderPath", "") if asset else ""
+        name = getattr(asset, "name", webcomp_id) if asset else webcomp_id
+        runtime_params = getattr(clip_obj, "_runtimeParams", {})
+
+        html = _read_file_safe(os.path.join(folder, "index.html")) if folder else ""
+        css  = _read_file_safe(os.path.join(folder, "index.css"))  if folder else ""
+        js   = _read_file_safe(os.path.join(folder, "index.js"))   if folder else ""
+         
+        if not css  and folder: css  = _read_file_safe(os.path.join(folder, "style.css"))
+        if not js   and folder: js   = _read_file_safe(os.path.join(folder, "script.js"))
+
+        return {
+            **base,
+            "webcompId": webcomp_id,
+            "name": name,
+            "folderPath": folder,
+            "runtimeParams": runtime_params,
+            "html": html,
+            "css": css,
+            "js": js,
+        }
+
+    if clip_type in ("comp", "composition"):
+        comp_id = getattr(clip_obj, "compId", "")
+        # Find the nested timeline
+        nested_tl = None
+        if engine.project:
+            for tl in engine.project.timelines:
+                if getattr(tl, "compId", None) == comp_id or getattr(tl, "id", None) == comp_id:
+                    nested_tl = tl
+                    break
+        nested_summary = []
+        if nested_tl:
+            nested_fps = float(getattr(nested_tl, "fps", fps))
+            for track in getattr(nested_tl, "tracks", []):
+                track_info = {
+                    "trackName": getattr(track, "name", ""),
+                    "clips": [
+                        {
+                            "clipId": getattr(c, "clipId", ""),
+                            "type": getattr(c, "CLIP_TYPE", getattr(c, "clipType", "unknown")),
+                            "startFrame": getattr(c, "startFrame", 0),
+                            "duration": getattr(c, "duration", 0),
+                            "name": getattr(c, "name", ""),
+                        }
+                        for c in getattr(track, "clips", [])
+                    ],
+                }
+                nested_summary.append(track_info)
+        return {
+            **base,
+            "compId": comp_id,
+            "nestedTracks": nested_summary,
+        }
+
+ 
+    if clip_type == "svg":
+        filepath = getattr(clip_obj, "filepath", "")
+        svg_content = _read_file_safe(filepath, max_bytes=4096) if filepath else ""
+        return {
+            **base,
+            "filepath":   filepath,
+            "svgPreview": svg_content,
+        }
+
+       
+    if clip_type in ("pen", "path"):
+        path_prop = getattr(clip_obj, "path", None)
+        points_count = 0
+        if path_prop:
+            try:
+                points_count = len(path_prop.vertices) if hasattr(path_prop, "vertices") else 0
+            except Exception:
+                pass
+        return {
+            **base,
+            "pointsCount": points_count,
+        }
+
+     
+    return {**base, "note": f"No detailed description available for clip type '{clip_type}'."}
+
+
 #   endpoints  
 
 @router.get("/timeline")
@@ -154,10 +400,10 @@ def get_timeline_context(format: str = "json"):
         lines = ["=== TIMELINE CONTEXT ===", f"FPS: {fps}", ""]
         for r in results:
             lines.append(f"CLIP: {r['clipId']} | {r['filepath']}")
-            lines.append(f"  Timeline: {r['startSec']:.1f}s – {r['endSec']:.1f}s  |  Track: {r['track']}")
-            lines.append(f"  Source:   {r['inPointSec']:.1f}s – {r['outPointSec']:.1f}s")
+            lines.append(f"  Timeline: {r['startSec']:.1f}s â€“ {r['endSec']:.1f}s  |  Track: {r['track']}")
+            lines.append(f"  Source:   {r['inPointSec']:.1f}s â€“ {r['outPointSec']:.1f}s")
             if not r["context"]["indexed"]:
-                lines.append("  [not yet indexed — run indexing first]")
+                lines.append("  [not yet indexed â€” run indexing first]")
             else:
                 for entry in r["context"]["timeline"]:
                     ts = f"  [{entry['time_sec']:.1f}s]"
@@ -195,13 +441,13 @@ def get_clip_context(clip_id: str, format: str = "json"):
         lines = [
             f"CLIP: {clip_id}",
             f"File: {clip['filepath']}",
-            f"Timeline position: {clip['startSec']:.1f}s – {clip['endSec']:.1f}s",
-            f"Source range: {clip['inPointSec']:.1f}s – {clip['outPointSec']:.1f}s",
+            f"Timeline position: {clip['startSec']:.1f}s â€“ {clip['endSec']:.1f}s",
+            f"Source range: {clip['inPointSec']:.1f}s â€“ {clip['outPointSec']:.1f}s",
             f"Indexed: {ctx['indexed']} ({ctx['semantic_chunks']} chunks, {ctx['transcript_segments']} transcript segments)",
             "",
         ]
         if not ctx["indexed"]:
-            lines.append("[Not yet indexed — drop this video into the library to start indexing]")
+            lines.append("[Not yet indexed â€” drop this video into the library to start indexing]")
         else:
             for entry in ctx["timeline"]:
                 ts = f"[{entry['time_sec']:.1f}s]"
@@ -239,3 +485,43 @@ def get_asset_context(asset_id: str, format: str = "json"):
         return "\n".join(lines)
 
     return ctx
+
+
+ 
+@router.get("/clip/{clip_id}/describe")
+def describe_clip(clip_id: str):
+     
+    if not engine.project:
+        raise HTTPException(404, "No project loaded")
+
+    clip_obj = None
+    fps = _FPS_DEFAULT
+    for tl in engine.project.timelines:
+        tl_fps = float(getattr(tl, "fps", _FPS_DEFAULT))
+        for track in tl.tracks:
+            for c in track.clips:
+                if c.clipId == clip_id:
+                    clip_obj = c
+                    fps = tl_fps
+                    break
+            if clip_obj:
+                break
+        if clip_obj:
+            break
+
+    if not clip_obj:
+        raise HTTPException(404, f"Clip '{clip_id}' not found in any timeline")
+
+    return _build_clip_description(clip_obj, fps=fps)
+
+
+@router.get("/selected/describe")
+def describe_selected_clip():
+     
+    import backend.state as _state
+    clip_id = getattr(_state, "_selected_clip_id", None)
+    if not clip_id:
+        raise HTTPException(404, "No clip currently selected")
+
+    # Reuse the per-clip endpoint logic
+    return describe_clip(clip_id)

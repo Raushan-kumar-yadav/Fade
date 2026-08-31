@@ -1450,7 +1450,7 @@ def update_webcomp_meta(
     return json.dumps(result)
 
 
-#   Register all WebComp tools with the LangGraph agent  
+ 
 
 WEBCOMP_TOOLS = [
     create_webcomp,
@@ -1589,6 +1589,54 @@ VIDEOSEMANTIC_TOOLS = [
 ]
 
 ALL_TOOLS.extend(VIDEOSEMANTIC_TOOLS)
+
+
+#   Rich per-clip description tools  
+
+@tool
+def describe_clip(clip_id: str) -> str:
+    """Get a rich, type-specific description of any clip on the timeline.
+
+    Unlike get_clip_context (which only handles video/image), this tool works
+    for ALL clip types and returns the most relevant content for each:
+
+    - **video**: indexed scene descriptions + Whisper transcript timeline,
+      inPoint/outPoint, transcriptIndexed flag
+    - **audio**: Whisper transcript segments, volume, mute state
+    - **image**: AI vision description of the image
+    - **text**: text string + full style properties (font, color, shadow, etc.)
+    - **shape**: shape type + style (fill, stroke, dimensions)
+    - **webcomp**: component name, runtimeParams, and the actual HTML/CSS/JS source
+    - **comp**: nested composition track/clip summary
+    - **svg**: SVG file path + SVG source (up to 4 KB)
+    - **pen/path**: number of bezier control points
+
+    Use this when you need to understand what a specific clip contains — especially
+    before editing, styling, or rewriting it.
+
+    Args:
+        clip_id: The clipId of the clip (get from get_timeline_state).
+    """
+    return json.dumps(_get(f"/context/clip/{clip_id}/describe"), indent=2)
+
+
+@tool
+def describe_selected_clip() -> str:
+    """Get a rich, type-specific description of the clip currently selected in the UI.
+
+    Equivalent to calling describe_clip() on whichever clip the user has selected.
+    Returns 404 if nothing is selected.
+
+    Returns the same rich payload as describe_clip — type-dispatched content that
+    includes visual/audio context, text content, style properties, or source code
+    depending on the clip type.
+    """
+    r = _get("/context/selected/describe")
+    return json.dumps(r, indent=2)
+
+
+CLIP_DESCRIBE_TOOLS = [describe_clip, describe_selected_clip]
+ALL_TOOLS.extend(CLIP_DESCRIBE_TOOLS)
 
 
 #   Scene-Aware Clip Management Tools  

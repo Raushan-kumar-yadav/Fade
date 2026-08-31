@@ -75,8 +75,18 @@ def _queue_semantic_index(asset_id: str, filepath: str, mtype: str) -> None:
         print(f"[Library] ✗ Semantic index queue error (non-fatal): {_e}", flush=True)
 
 
+def _queue_audio_transcript(asset_id: str, filepath: str) -> None:
+    """Queue Whisper transcription for an audio file. Non-fatal."""
+    try:
+        from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
+        _worker_bus.submit_transcribe_audio(asset_id, filepath, db_path=_get_db())
+    except Exception as _e:
+        print(f"[Library] ✗ Audio transcript queue error (non-fatal): {_e}", flush=True)
+
+
 def _import_file(filepath: str) -> dict:
     """Register a file into _library, deduplicating by path. Returns asset dict."""
+    _AUDIO_EXTS = {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a"}
     for a in _library.values():
         if a.filepath == filepath:
             if a.hasAudio:
@@ -85,6 +95,8 @@ def _import_file(filepath: str) -> dict:
                 except Exception:
                     pass
             mtype = a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType)
+            if mtype == "audio" or os.path.splitext(filepath)[1].lower() in _AUDIO_EXTS:
+                _queue_audio_transcript(a.assetId, a.filepath)
             return {"assetId": a.assetId, "filename": os.path.basename(a.filepath),
                     "filepath": a.filepath, "type": mtype, "hasAudio": a.hasAudio}
     assetId = str(uuid.uuid4())
@@ -97,8 +109,12 @@ def _import_file(filepath: str) -> dict:
             pass
     mtype = asset.mediaType.value if hasattr(asset.mediaType, 'value') else str(asset.mediaType)
     print(f"[Library] Imported {os.path.basename(filepath)} → assetId={assetId[:8]} type={mtype}", flush=True)
-     
-    _queue_semantic_index(assetId, filepath, mtype)
+
+    # Queue semantic indexing for video/image; transcript for audio
+    if mtype == "audio" or os.path.splitext(filepath)[1].lower() in _AUDIO_EXTS:
+        _queue_audio_transcript(assetId, filepath)
+    else:
+        _queue_semantic_index(assetId, filepath, mtype)
     return {"assetId": assetId, "filename": os.path.basename(filepath),
             "filepath": filepath, "type": mtype, "hasAudio": asset.hasAudio}
 
@@ -141,6 +157,18 @@ def importAsset(req: ImportRequest):
             from backend.routers.jobs import register_asset_job as _rj
             _rj("image_index", result["assetId"], f"Indexing: {fname}",
                 message="Describing image…")
+        except Exception:
+            pass
+
+    return result
+
+    # Register job progress overlay for audio
+    if result.get("type") == "audio" or os.path.splitext(req.filepath)[1].lower() in {".wav",".mp3",".aac",".flac",".ogg",".m4a"}:
+        try:
+            from backend.routers.jobs import register_asset_job as _rj
+            fname = os.path.basename(req.filepath)
+            _rj("audio_transcript", result["assetId"], f"Transcribing: {fname}",
+                message="Running Whisper…")
         except Exception:
             pass
 

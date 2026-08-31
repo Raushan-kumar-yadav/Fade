@@ -16,11 +16,7 @@ class VideoTrack(BaseTrack):
     #   Transition helpers  
 
     def getTransitionAt(self, frame: int):
-        """
-        If `frame` falls inside any transition zone return
-        (Transition, progress, clipA, clipB).
-        Otherwise return None.
-        """
+         
         for tr in self.transitions:
             # Resolve clips by id
             clipA = next((c for c in self.clips if c.clipId == tr.clipA_id), None)
@@ -63,39 +59,41 @@ class VideoTrack(BaseTrack):
 
     def toDict(self) -> dict:
         d = self._baseDict()
-        d["type"]        = self.TRACK_TYPE
-        d["opacity"]     = self.opacity
+        d["type"] = self.TRACK_TYPE
+        d["opacity"] = self.opacity
         d["transitions"] = [t.toDict() for t in self.transitions]
         return d
 
     @classmethod
     def fromDict(cls, data: dict) -> "VideoTrack":
-        from backend.timeline.clips.videoClip  import VideoClip
-        from backend.timeline.clips.imageClip   import ImageClip
-        from backend.timeline.clips.textClip    import TextClip
-        from backend.timeline.clips.shapeClip   import ShapeClip
-        from backend.timeline.clips.penClip     import PenClip
-        from backend.timeline.clips.svgClip     import SvgClip
-        from backend.timeline.clips.compClip    import CompClip
-        from backend.timeline.clips.webComp     import WebCompClip
+        from backend.timeline.clips.videoClip import VideoClip
+        from backend.timeline.clips.imageClip import ImageClip
+        from backend.timeline.clips.textClip import TextClip
+        from backend.timeline.clips.shapeClip import ShapeClip
+        from backend.timeline.clips.penClip import PenClip
+        from backend.timeline.clips.svgClip import SvgClip
+        from backend.timeline.clips.compClip import CompClip
+        from backend.timeline.clips.webComp import WebCompClip
+        from backend.timeline.clips.audioClip import AudioClip
         from backend.timeline.transitions.transition import Transition
 
         _CLIP_REGISTRY = {
-            "video":   VideoClip,
-            "image":   ImageClip,
-            "text":    TextClip,
-            "shape":   ShapeClip,
-            "pen":     PenClip,
-            "svg":     SvgClip,
-            "comp":    CompClip,
+            "video": VideoClip,
+            "image": ImageClip,
+            "text": TextClip,
+            "shape": ShapeClip,
+            "pen": PenClip,
+            "svg": SvgClip,
+            "comp": CompClip,
             "webcomp": WebCompClip,
+            "audio": AudioClip,   
         }
 
         t = cls(name=data["name"])
         t._applyBaseDict(data)
         t.opacity = data.get("opacity", 1.0)
         for clipData in data.get("clips", []):
-            # Clips serialized with "type" (VideoClip, ImageClip…) or "clipType" (TextClip, ShapeClip…)
+            # Clips serialized with "type" 
             clip_type = clipData.get("type") or clipData.get("clipType") or "video"
             clip_cls  = _CLIP_REGISTRY.get(clip_type, VideoClip)
             try:

@@ -166,6 +166,16 @@ def _import_and_index(filepath: str) -> dict:
         except Exception as _e:
             print(f"[Jobs] index_image submit error (non-fatal): {_e}", flush=True)
 
+    elif asset_type == "audio" or os.path.splitext(filepath)[1].lower() in {".wav",".mp3",".aac",".flac",".ogg",".m4a"}:
+        try:
+            from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
+            _worker_bus.submit_transcribe_audio(asset_id, filepath, db_path=_get_db())
+            register_asset_job("audio_transcript", asset_id,
+                               f"Transcribing: {os.path.basename(filepath)}",
+                               message="Running Whisper…")
+        except Exception as _e:
+            print(f"[Jobs] audio transcript submit error (non-fatal): {_e}", flush=True)
+
     return info
 
 
@@ -407,7 +417,7 @@ def _run_tts_generate(job_id: str, text: str, voice: str, speed: float) -> None:
         info = _import_file(result["filepath"])
         asset_id = info["assetId"]
 
-        # Submit waveform generation so the timeline shows the audio bar
+        # Submit waveform generation  
         try:
             _worker_bus.submit_waveform(asset_id, result["filepath"])
         except Exception:
@@ -472,7 +482,7 @@ def start_video_download(req: VideoDownloadRequest):
         notify("job", job)   # push placeholder card to UI
         _start(_run_video_download, job["jobId"], req.query, i, num)
         job_ids.append(job["jobId"])
-    # Return first jobId for backward-compat; caller can poll any
+    # Return first jobId for backward-compat 
     return {"jobId": job_ids[0], "jobIds": job_ids,
             "label": f"Downloading {num} video(s): {req.query}",
             "status": "pending"}
@@ -513,7 +523,7 @@ def start_tts_generate(req: TTSGenerateRequest):
     short_text = req.text[:60] + ("…" if len(req.text) > 60 else "")
     label = f"TTS [{req.voice}]: {short_text}"
     job = _make_job("tts_generate", label)
-    notify("job", job)   # push placeholder card to UI right away
+    notify("job", job)    
     _start(_run_tts_generate, job["jobId"], req.text, req.voice, req.speed)
     return {"jobId": job["jobId"], "label": label, "status": "pending"}
 

@@ -20,8 +20,8 @@ class AddClipRequest(BaseModel):
     trackIndex: int
     startFrame: int
     duration: int
-    mediaOffset: int = 0       # in-point offset in frames (from ChromaDB scene hit)
-    compId: str | None = None  # target comp; None = root/main timeline (never the UI active comp)
+    mediaOffset: int = 0        
+    compId: str | None = None  
 
 
 class MoveClipRequest(BaseModel):
@@ -43,8 +43,7 @@ class SplitClipRequest(BaseModel):
 
 @router.post("/timeline/add-clip")
 def addClip(req: AddClipRequest):
-    # Resolve target timeline: explicit compId beats root; never use engine.activeTimeline
-    # (which would silently redirect to whichever comp tab the user has open in the UI).
+     
     if req.compId:
         tl = engine.getTimeline(req.compId)
         if tl is None:
@@ -103,14 +102,39 @@ def addClip(req: AddClipRequest):
         clip_type = "audio"
 
     else:
-        clip = VideoClip(startFrame=req.startFrame, duration=req.duration,
-                         assetId=req.assetId, mediaOffset=req.mediaOffset)
-        if engine.scheduler:
-            clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
-            engine.scheduler.registerClip(clip.clipId, asset)
-        clip_type = "video"
-
-
+         
+        _AUDIO_EXTS = {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a"}
+        import os as _os
+        if _os.path.splitext(asset.filepath)[1].lower() in _AUDIO_EXTS:
+            fps = float(engine.project.fps) if engine.project else 30.0
+            actual_dur = req.duration
+            try:
+                import av as _av
+                _c = _av.open(asset.filepath)
+                dur_us = _c.duration
+                _audio_st = next((s for s in _c.streams if s.type == "audio"), None)
+                if _audio_st and _audio_st.duration is not None and _audio_st.time_base:
+                    dur_secs = float(_audio_st.duration * _audio_st.time_base)
+                elif dur_us:
+                    dur_secs = dur_us / 1_000_000.0
+                else:
+                    dur_secs = 0.0
+                _c.close()
+                if dur_secs > 0:
+                    actual_dur = max(1, int(round(dur_secs * fps)))
+            except Exception:
+                pass
+            clip = AudioClip(startFrame=req.startFrame, duration=actual_dur,
+                             assetId=req.assetId, mediaOffset=req.mediaOffset)
+            clip_type = "audio"
+            print(f"[addClip] Treated audio-extension file as AudioClip: {asset.filepath}", flush=True)
+        else:
+            clip = VideoClip(startFrame=req.startFrame, duration=req.duration,
+                             assetId=req.assetId, mediaOffset=req.mediaOffset)
+            if engine.scheduler:
+                clip.setScheduler(engine.scheduler, engine.project.fps if engine.project else 30.0)
+                engine.scheduler.registerClip(clip.clipId, asset)
+            clip_type = "video"
     from backend.history.commandStack import AddClipCommand
     engine.commandStack.execute(AddClipCommand(track, clip))
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
@@ -123,10 +147,21 @@ def addClip(req: AddClipRequest):
         except Exception as _e:
             print(f"[addClip] waveform submit error: {_e}", flush=True)
 
+     
+    if clip_type == "audio":
+        try:
+            import pathlib as _pl
+            _AUDIO_EXTS = {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a"}
+            if _pl.Path(asset.filepath).suffix.lower() in _AUDIO_EXTS:
+                from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
+                _worker_bus.submit_transcribe_audio(req.assetId, asset.filepath, db_path=_get_db())
+        except Exception as _e:
+            print(f"[addClip] audio transcript submit error (non-fatal): {_e}", flush=True)
+
     from backend.events import notify
     notify("timeline")   
     if clip_type == "audio":
-        # Extra signal so the viewport audio engine 
+         
         notify("render")
     return {
         "clipId": clip.clipId, "trackId": track.trackId,

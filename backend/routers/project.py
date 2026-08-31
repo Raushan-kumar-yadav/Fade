@@ -69,12 +69,7 @@ def _project_folder(req: SaveRequest) -> "Path":
 
 
 def _migrate_chroma_to_project(proj_folder: "Path", asset_ids: set[str]) -> int:
-    """
-    Ensure the project's chroma_db has all entries for *asset_ids*.
-    - If currently on scratch DB: copy entries then switch to project DB.
-    - If already on project DB: reopen client fresh (picks up worker-written data) and count.
-    Returns total chunk count in project DB for these assets.
-    """
+     
     from pathlib import Path
     from backend.ai.VideoSemantic.indexer import (
         _col, _img_col, switch_db, get_db_path
@@ -85,8 +80,8 @@ def _migrate_chroma_to_project(proj_folder: "Path", asset_ids: set[str]) -> int:
     src_path  = get_db_path()
 
     if src_path != dest_path:
-        # ── Scratch → Project: copy entries, then switch ──────────────────────
-        # Open destination as a separate client (src _col still valid)
+        
+         
         dest_client = chromadb.PersistentClient(path=dest_path)
         dest_vid = dest_client.get_or_create_collection(
             name="video_segments", metadata={"hnsw:space": "cosine"}
@@ -116,13 +111,13 @@ def _migrate_chroma_to_project(proj_folder: "Path", asset_ids: set[str]) -> int:
                     print(f"[Project] ChromaDB migrated image: {len(res2['ids'])} for {aid[:8]}", flush=True)
             except Exception as e:
                 print(f"[Project] ChromaDB image migrate skip {aid[:8]}: {e}", flush=True)
-        del dest_client   # close separate client before switch_db opens another
+        del dest_client    
         switch_db(dest_path)
         print(f"[Project] ChromaDB migrated scratch→project: {total} entries", flush=True)
     else:
-        # ── Already on project DB: reopen to pick up worker-written data ──────
+         
         switch_db(dest_path)
-        # Re-import _col after switch so we get the fresh client
+         
         from backend.ai.VideoSemantic.indexer import _col as _fresh_col, _img_col as _fresh_img
         total = 0
         for aid in asset_ids:
@@ -140,10 +135,7 @@ def _migrate_chroma_to_project(proj_folder: "Path", asset_ids: set[str]) -> int:
 
 
 def _copy_webcomp_to_project(wc_asset, proj_folder: "Path") -> str:
-    """
-    Copy a WebComp folder into <proj_folder>/assets/webcomps/<name>/.
-    Returns the new folderPath.
-    """
+     
     from pathlib import Path
     src = Path(wc_asset.folderPath)
     if not src.is_dir():
@@ -189,6 +181,33 @@ def saveProject(req: SaveRequest):
     }
     proj_dict["assets"] = media_assets
 
+    
+    audio_dest = proj_folder / "assets" / "audio"
+    _AUDIO_EXTS = {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a"}
+    for asset_id, src_path in list(media_assets.items()):
+        src = Path(src_path)
+        if src.suffix.lower() not in _AUDIO_EXTS:
+            continue
+        try:
+            src_resolved = src.resolve()
+            proj_resolved = proj_folder.resolve()
+            # Only copy if outside the project folder
+            src_resolved.relative_to(proj_resolved)
+        except ValueError:
+            # File is outside the project — copy it in
+            audio_dest.mkdir(parents=True, exist_ok=True)
+            dest = audio_dest / src.name
+            if not dest.exists() or dest.stat().st_size != src.stat().st_size:
+                shutil.copy2(src, dest)
+                print(f"[Project] Audio copied: {src.name} → assets/audio/", flush=True)
+            new_path = str(dest)
+            media_assets[asset_id] = new_path
+            # Update in-memory  
+            if asset_id in _library:
+                _library[asset_id].filepath = new_path
+
+    proj_dict["assets"] = media_assets   
+
     #   WebComp assets 
     wc_dicts = []
     for asset in _library.values():
@@ -206,7 +225,7 @@ def saveProject(req: SaveRequest):
     ) or ""
     proj_dict["projectFolder"] = str(proj_folder)
 
-    #   ChromaDB — migrate from scratch/current DB to project folder, then switch
+    #   ChromaDB  
     all_asset_ids = set(media_assets.keys()) | {d.get("assetId", "") for d in wc_dicts}
     chroma_chunks = _migrate_chroma_to_project(proj_folder, all_asset_ids)
     proj_dict["chromaDbBundled"] = True
@@ -271,6 +290,25 @@ def loadProject(req: LoadRequest):
 
     tl_data = data.get("timeline")
     if tl_data:
+        
+        _AUDIO_EXTS = (".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a")
+        scrubbed = 0
+        for track_d in tl_data.get("tracks", []):
+            if track_d.get("type") != "video":
+                continue
+            clean_clips = []
+            for clip_d in track_d.get("clips", []):
+                clip_type = clip_d.get("type") or clip_d.get("clipType", "")
+                fp = clip_d.get("filepath", "")
+                if clip_type == "video" and fp.lower().endswith(_AUDIO_EXTS):
+                    scrubbed += 1
+                    print(f"[Project] Scrubbed ghost video clip on audio file: {os.path.basename(fp)}", flush=True)
+                    continue
+                clean_clips.append(clip_d)
+            track_d["clips"] = clean_clips
+        if scrubbed:
+            print(f"[Project] Removed {scrubbed} ghost video clip(s) pointing to audio files.", flush=True)
+
         tl = Timeline.fromDict(tl_data)
         for ti, track in enumerate(tl.tracks):
             for clip in track.clips:

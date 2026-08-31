@@ -233,6 +233,71 @@ def _do_transcribe_only(asset_id: str, filepath: str) -> int:
     return count
 
 
+#   Audio-only transcription  
+
+def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
+    """
+    Run Whisper on a pure audio file and save transcript segments to ChromaDB.
+    No frame extraction or Ollama vision is performed — transcript only.
+    Returns number of segments indexed.
+    """
+    import traceback
+    from backend.ai.VideoSemantic.indexer import _col, _embedder
+    from backend.worker import transcript_status as _ts
+
+    print(f"[SandboxWorker] transcribe_audio start: {asset_id[:8]} | {filepath}", flush=True)
+
+    import backend.ai.whisper_tool as _wt
+    from backend.config.global_config import cfg
+    model_name = cfg.get("ai.whisper_model", "small")
+    try:
+        device, compute_type = _wt._detect_device()
+        print(f"[Whisper][Audio] Device: {device}/{compute_type}  model: {model_name}", flush=True)
+        _wt.get_model(model_name)
+        try:
+            raw = _wt.transcribe(filepath, model_name=model_name, language=None)
+        except RuntimeError as cuda_err:
+            if any(kw in str(cuda_err).lower() for kw in ("cublas", "cufft", "cudnn", ".dll", "cuda")):
+                print("[Whisper][Audio] CUDA error — CPU fallback", flush=True)
+                _wt.force_cpu()
+                raw = _wt.transcribe(filepath, model_name=model_name, language=None)
+            else:
+                raise
+        segments = [
+            {"text": s["text"], "start": s["start_s"], "end": s["end_s"]}
+            for s in raw if s.get("text", "").strip()
+        ]
+        print(f"[Whisper][Audio] Done: {len(segments)} segments for {asset_id[:8]}", flush=True)
+    except Exception as e:
+        print(f"[Whisper][Audio] FAILED — {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
+        _ts.mark_failed(asset_id)
+        return 0
+
+    if not segments:
+        _ts.mark_failed(asset_id)
+        print(f"[SandboxWorker] transcribe_audio: 0 segments (silence?) for {asset_id[:8]}", flush=True)
+        return 0
+
+    # Save to ChromaDB video_segments collection with asset_type="audio"
+    texts = [f"Speech: {s['text']}" for s in segments]
+    embeddings = _embedder.encode(texts).tolist()
+    ids = [f"{asset_id}__audio__{i}" for i in range(len(segments))]
+    metadatas = [
+        {
+            "assetId": asset_id,
+            "start_sec": float(s["start"]),
+            "end_sec":   float(s["end"]),
+            "asset_type": "audio",
+        }
+        for s in segments
+    ]
+    _col.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
+    _ts.mark_done(asset_id)
+    print(f"[SandboxWorker] transcribe_audio done: {asset_id[:8]} → {len(segments)} segments in ChromaDB", flush=True)
+    return len(segments)
+
+
 #   Image indexing  
 
 def _do_index_image(asset_id: str, filepath: str, vision_model: str = "") -> bool:
@@ -341,6 +406,22 @@ def worker_main(job_queue: multiprocessing.Queue,
                 result_queue.put({"type": "index_image_done", "assetId": asset_id, "saved": ok})
             except Exception as e:
                 result_queue.put({"type": "index_image_error", "assetId": asset_id, "message": str(e)})
+            continue
+
+        if job.get("type") == "transcribe_audio":
+            asset_id = job["assetId"]
+            filepath = job["filepath"]
+            db_path = job.get("db_path", "")
+            if db_path:
+                from backend.ai.VideoSemantic.indexer import switch_db as _sw
+                _sw(db_path)
+                from backend.worker import transcript_status as _ts
+                _ts.set_db_path(db_path)
+            try:
+                count = _do_transcribe_audio(asset_id, filepath)
+                result_queue.put({"type": "transcribe_audio_done", "assetId": asset_id, "segments": count})
+            except Exception as e:
+                result_queue.put({"type": "transcribe_audio_error", "assetId": asset_id, "message": str(e)})
             continue
 
         print(f"[SandboxWorker] unknown job type: {job.get('type')}", flush=True)

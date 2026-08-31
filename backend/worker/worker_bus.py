@@ -152,6 +152,19 @@ class WorkerBus:
             "db_path": db_path,   # empty = use default
         })
 
+    def submit_transcribe_audio(self, asset_id: str, filepath: str, db_path: str = "") -> None:
+        """Queue a Whisper-only transcript job for a pure audio file (no vision)."""
+        from backend.worker.transcript_status import is_done as _ts_done
+        if _ts_done(asset_id):
+            return  # already transcribed
+        print(f"[WorkerBus] transcribe_audio queued for {asset_id[:8]}", flush=True)
+        self.submit({
+            "type": "transcribe_audio",
+            "assetId": asset_id,
+            "filepath": filepath,
+            "db_path": db_path,
+        })
+
     def get_index_status(self, asset_id: str) -> dict | None:
         return index_cache.get(asset_id)
 
@@ -247,6 +260,29 @@ class WorkerBus:
                 except Exception:
                     pass
 
+            elif rtype == "transcribe_audio_done":
+                segs = result.get("segments", 0)
+                print(f"[WorkerBus] transcribe_audio done: {asset_id[:8]} ({segs} segments)", flush=True)
+                try:
+                    from backend.routers.jobs import complete_asset_job
+                    complete_asset_job(asset_id, "audio_transcript")
+                except Exception:
+                    pass
+                try:
+                    from backend.events import notify
+                    notify("library")
+                except Exception:
+                    pass
+
+            elif rtype == "transcribe_audio_error":
+                print(f"[WorkerBus] transcribe_audio error: {asset_id[:8]}: {result.get('message')}", flush=True)
+                try:
+                    from backend.routers.jobs import complete_asset_job
+                    complete_asset_job(asset_id, "audio_transcript",
+                                       error=result.get("message", "transcription failed"))
+                except Exception:
+                    pass
+
 
     def check_and_resume(self, db_path: str = "", port: int = 8000) -> None:
          
@@ -273,8 +309,10 @@ class WorkerBus:
         from backend.worker.transcript_status import is_done as _ts_done
 
         video_exts = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
+        audio_exts = {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a"}
         queued_vision = 0
         queued_transcript = 0
+        queued_audio = 0
 
         for asset in assets:
             aid   = asset.get("assetId", "")
@@ -282,34 +320,38 @@ class WorkerBus:
             if not aid or not fpath:
                 continue
             import pathlib
-            if pathlib.Path(fpath).suffix.lower() not in video_exts:
-                continue  # skip images / audio
+            ext = pathlib.Path(fpath).suffix.lower()
 
-            vision_done = is_asset_indexed(aid)
-            transcript_done = _ts_done(aid)
+            if ext in video_exts:
+                vision_done = is_asset_indexed(aid)
+                transcript_done = _ts_done(aid)
 
-            if not vision_done:
-                # Full pipeline needed
-                existing = index_cache.get(aid)
-                if not existing or existing.get("status") not in ("pending", "running", "done"):
-                    print(f"[WorkerBus] resume: queuing full index for {aid[:8]}", flush=True)
-                    self.submit_index_video(aid, fpath, port=port, db_path=db_path)
-                    queued_vision += 1
-            elif not transcript_done:
-               
-                existing = index_cache.get(aid)
-                if not existing or existing.get("status") not in ("pending", "running"):
-                    print(f"[WorkerBus] resume: queuing transcript retry for {aid[:8]}", flush=True)
-                    self.submit({
-                        "type": "transcribe_only",
-                        "assetId": aid,
-                        "filepath": fpath,
-                        "db_path": db_path,
-                    })
-                    index_cache.set_pending(aid)
-                    queued_transcript += 1
+                if not vision_done:
+                    existing = index_cache.get(aid)
+                    if not existing or existing.get("status") not in ("pending", "running", "done"):
+                        print(f"[WorkerBus] resume: queuing full index for {aid[:8]}", flush=True)
+                        self.submit_index_video(aid, fpath, port=port, db_path=db_path)
+                        queued_vision += 1
+                elif not transcript_done:
+                    existing = index_cache.get(aid)
+                    if not existing or existing.get("status") not in ("pending", "running"):
+                        print(f"[WorkerBus] resume: queuing transcript retry for {aid[:8]}", flush=True)
+                        self.submit({
+                            "type": "transcribe_only",
+                            "assetId": aid,
+                            "filepath": fpath,
+                            "db_path": db_path,
+                        })
+                        index_cache.set_pending(aid)
+                        queued_transcript += 1
 
-        print(f"[WorkerBus] check_and_resume: {queued_vision} vision + {queued_transcript} transcript jobs queued", flush=True)
+            elif ext in audio_exts:
+                if not _ts_done(aid):
+                    print(f"[WorkerBus] resume: queuing audio transcript for {aid[:8]}", flush=True)
+                    self.submit_transcribe_audio(aid, fpath, db_path=db_path)
+                    queued_audio += 1
+
+        print(f"[WorkerBus] check_and_resume: {queued_vision} vision + {queued_transcript} transcript + {queued_audio} audio jobs queued", flush=True)
 
 
 # Global singleton
