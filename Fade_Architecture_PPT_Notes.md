@@ -80,3 +80,37 @@ _Use this section if you get technical questions from judges about performance, 
 - **Watchdog Auto-Recovery:** A daemon thread constantly monitors the sandbox worker. If the worker crashes (e.g., from a CUDA error), the watchdog automatically restarts it in the background, ensuring system resilience without user intervention.
 
 > **🗣️ Speaker Choice:** This is pure engineering flex. Use these points to prove the application is production-ready, highly optimized, and fault-tolerant.
+
+---
+
+## 6. Real-Time Sync & Event-Driven Architecture (Medium Priority)
+
+_Explain how the frontend and backend talk to each other so fluidly._
+
+- **Server-Sent Events (SSE):** Unlike standard web apps that poll the server every few seconds (which is slow and wastes resources), Fade uses an SSE stream. When the agent edits a clip or changes a track on the backend, a single `notify("timeline")` call is fired. The React frontend instantly receives this event and re-fetches only what it needs, guaranteeing the UI is always perfectly in sync with the agent's actions with zero lag.
+- **Optimistic UI Updates:** For user-driven interactions (like dragging a clip), the React frontend updates optimistically for 60fps smoothness, and then silently commits the final state to the Python backend on mouse-release.
+
+> **🗣️ Speaker Choice:** Highlight **SSE (Server-Sent Events)** if you want to emphasize how you solved the classic "AI vs User" state synchronization problem. The AI and the User are essentially multiplayer co-editing the same timeline.
+
+---
+
+## 7. The Command Pattern & History Management (Advanced)
+
+_Explain how complex editing history (Undo/Redo) is maintained._
+
+- **The Command Stack:** Every action that modifies the timeline (splitting a clip, moving a clip, trimming, etc.) is encapsulated in a Command object (e.g., `MoveClipCommand`, `SplitClipCommand`).
+- **Deep Copy State Reversion:** Instead of writing complex inverse logic for every possible action, the Command Pattern takes a deep copy of the timeline state before execution. When the user (or the AI) hits "Undo", the state is instantly reverted to the snapshot.
+- **Agent Integration:** The AI agent has access to `undo()` and `redo()` tools, meaning if the agent makes a mistake, the user can ask it to "undo that", or click the undo button themselves.
+
+> **🗣️ Speaker Choice:** Use this to show strong software engineering fundamentals. The **Command Pattern** is a classic Gang of Four design pattern that ensures the editing engine remains robust and bug-free even as complexity scales.
+
+---
+
+## 8. Nested Compositions & Node Graphs (Advanced)
+
+_Explain the data structures that allow for complex visual effects._
+
+- **Hierarchical Timelines:** Fade doesn't just have one flat timeline. It supports infinite nesting (Compositions). A timeline can contain a `CompClip`, which points to another entire timeline. This allows for complex groupings of edits, similar to Pre-Composing in Adobe After Effects.
+- **Render Graph Compilation:** When it's time to export or preview a frame, the Python engine walks the hierarchical timeline and compiles it into a flat Node Graph (a Directed Acyclic Graph). This graph is then passed to the C++ rendering engine, which executes it efficiently on the GPU.
+
+> **🗣️ Speaker Choice:** Highlight **Nested Timelines** to show that Fade is not just a toy "AI editor", but a professional-grade NLE (Non-Linear Editor) capable of complex professional workflows.

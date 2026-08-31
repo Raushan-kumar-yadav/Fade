@@ -1,6 +1,7 @@
-import React, { memo, useCallback, useRef } from 'react';
+import React, { memo, useCallback, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, HEADER_WIDTH, MIN_TRACK_H, MAX_TRACK_H } from './types';
+import { addTrack } from '../../api/useApi';
 
 interface Props {
   scrollTop: number;
@@ -9,20 +10,52 @@ interface Props {
 
  
 const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx }: Props) {
+  const [adding, setAdding] = useState(false);
+  const { state } = useTimeline();
+
+  const handleAddTrack = useCallback(async (type: 'video' | 'audio') => {
+    if (adding) return;
+    setAdding(true);
+    try {
+      await addTrack(type);
+      // TimelineContext already listens to this event to refetch
+      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+    } finally {
+      setAdding(false);
+    }
+  }, [adding]);
+
   return (
     <div
       className="tl-headers"
-      style={{ width: HEADER_WIDTH, overflow: 'hidden', height: '100%' }}
+      style={{ width: HEADER_WIDTH, overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}
     >
       <div
         style={{
           transform: `translateY(-${scrollTop}px)`,
           height: totalTrackHeightPx,
+          flexShrink: 0,
         }}
       >
-        {useTimeline().state.tracks.map((track, index) => (
+        {state.tracks.map((track, index) => (
           <TrackHeaderItem key={track.id} track={track} index={index} />
         ))}
+      </div>
+
+      {/* Add Track button — always visible at the bottom of the headers column */}
+      <div className="tl-headers__add-row">
+        <button
+          id="tl-add-video-track"
+          className="tl-headers__add-btn"
+          title="Add Video Track (Shift+click for Audio Track)"
+          disabled={adding}
+          onClick={(e) => handleAddTrack(e.shiftKey ? 'audio' : 'video')}
+        >
+          {adding ? '…' : '+'}
+        </button>
+        <div className="tl-headers__add-label">
+          {adding ? 'Adding…' : 'Add Track'}
+        </div>
       </div>
     </div>
   );

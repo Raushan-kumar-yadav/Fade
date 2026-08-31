@@ -41,7 +41,30 @@ class SplitClipRequest(BaseModel):
     frame: int
 
 
-@router.post("/timeline/add-clip")
+class AddTrackRequest(BaseModel):
+    type: str = "video"   # "video" | "audio"
+    name: str = ""
+
+
+@router.post("/timeline/add-track")
+def addTrack(req: AddTrackRequest):
+    tl = engine.activeTimeline
+    if tl is None:
+        from fastapi import HTTPException
+        raise HTTPException(400, "No active timeline")
+    if req.type == "audio":
+        from backend.timeline.tracks.audioTrack import AudioTrack
+        name = req.name or f"Audio {len(tl.tracks) + 1}"
+        track = AudioTrack(name=name)
+    else:
+        name = req.name or f"Video {len(tl.tracks) + 1}"
+        track = VideoTrack(name=name)
+    tl.addTrack(track)
+    from backend.events import notify; notify("timeline")
+    return {"trackId": track.trackId, "name": track.name, "type": req.type}
+
+
+
 def addClip(req: AddClipRequest):
      
     if req.compId:
@@ -352,6 +375,36 @@ def lockTrack(trackId: str):
         raise HTTPException(404, f"Track {trackId!r} not found")
     track.locked = not track.locked
     return {"trackId": trackId, "locked": track.locked}
+
+
+@router.delete("/timeline/track/{trackId}")
+def deleteTrack(trackId: str):
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    track = tl.getTrack(trackId)
+    if track is None:
+        raise HTTPException(404, f"Track {trackId!r} not found")
+    tl.removeTrack(trackId)
+    from backend.events import notify; notify("timeline")
+    return {"removed": trackId}
+
+
+@router.delete("/timeline/track-by-index/{index}")
+def deleteTrackByIndex(index: int):
+    tl = engine.activeTimeline
+    if tl is None:
+        raise HTTPException(400, "No active timeline")
+    if index < 0 or index >= len(tl.tracks):
+        raise HTTPException(
+            400,
+            f"Track index {index} out of range "
+            f"(timeline has {len(tl.tracks)} track(s), indices 0–{len(tl.tracks)-1})"
+        )
+    removed_id = tl.tracks[index].trackId
+    tl.removeTrack(removed_id)
+    from backend.events import notify; notify("timeline")
+    return {"removed": removed_id, "index": index}
 
 
 @router.get("/timeline/state")

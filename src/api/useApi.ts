@@ -212,6 +212,26 @@ export async function setTrackLock(trackId: string): Promise<void> {
   await fetch(`${base()}/timeline/track/${trackId}/lock`, { method: "POST" });
 }
 
+export async function addTrack(
+  type: "video" | "audio" = "video",
+  name = "",
+): Promise<{ trackId: string; name: string; type: string } | null> {
+  try {
+    const r = await fetch(`${base()}/timeline/add-track`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type, name }),
+    });
+    return r.ok ? r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function removeTrack(trackId: string): Promise<void> {
+  await fetch(`${base()}/timeline/track/${trackId}`, { method: "DELETE" });
+}
+
 // Re-fetch timeline state (used after undo/redo to sync UI)
 export async function fetchTimeline(): Promise<any> {
   try {

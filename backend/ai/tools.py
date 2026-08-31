@@ -533,6 +533,137 @@ def mute_track(track_id: str, muted: bool) -> str:
     _post(f"/timeline/track/{track_id}/mute", {"muted": muted})
     return f"Track {track_id} {'muted' if muted else 'unmuted'}."
 
+
+@tool
+def add_track(track_type: str = "video", name: str = "") -> str:
+    """Add a new empty track to the active timeline.
+
+    Use this when you need extra room to place clips — for example, adding a second
+    video track for overlays, or an audio track for music / voiceover.
+
+    Args:
+        track_type: Either 'video' (default) or 'audio'.
+        name: Optional display name for the track.
+               If omitted, a sensible default is generated (e.g. 'Video 2').
+    Returns:
+        JSON with {trackId, name, type} of the newly created track.
+    """
+    result = _post("/timeline/add-track", {"type": track_type, "name": name})
+    return json.dumps(result, indent=2)
+
+
+@tool
+def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
+    """Find (or create) the lowest track index that is guaranteed to render
+    ABOVE all opaque clips in the given frame range.
+
+    ALWAYS call this before placing any text, title, shape, or overlay clip.
+    Placing overlays on track 0 will bury them under video clips. This tool
+    returns the correct track index so your clip is always visible.
+
+    HOW IT WORKS:
+    • Track 0 = bottom of the composite stack (drawn first = background).
+    • Higher index = drawn later = visually on top.
+    • The tool scans every video/image/comp clip that overlaps [start_frame, end_frame]
+      and finds the highest track index that has one. It then returns that index + 1
+      (one track above). If that track does not exist yet, it creates it automatically.
+
+    Args:
+        start_frame: First frame of the clip you are about to place.
+        end_frame: Last frame of the clip (start_frame + duration - 1).
+
+    Returns:
+        JSON with:
+          track_index  – the safe track index to pass to add_text_clip / place_clip
+          track_id – the trackId of that track
+          created – true if a new track was auto-created
+          reason – human-readable explanation of the decision
+    """
+    data = _get("/timeline/state")
+    tracks = data.get("tracks", [])
+
+     
+    opaque_track_indices: list[int] = []
+    for i, track in enumerate(tracks):
+        track_type = track.get("type", "video")
+        if track_type == "audio":
+            continue
+        for clip in track.get("clips", []):
+            clip_end = clip["startFrame"] + clip["duration"] - 1
+             
+            if clip["startFrame"] <= end_frame and start_frame <= clip_end:
+                clip_type = clip.get("type", "video")
+                 
+                if clip_type not in ("adjustment",):
+                    opaque_track_indices.append(i)
+                    break  
+
+    if not opaque_track_indices:
+        # No opaque clips at all  
+        reason = "No opaque clips found in this range; track 0 is safe."
+        track_id = tracks[0]["id"] if tracks else None
+        return json.dumps({"track_index": 0, "track_id": track_id,
+                           "created": False, "reason": reason}, indent=2)
+
+    highest_opaque = max(opaque_track_indices)
+    overlay_index  = highest_opaque + 1
+
+    created = False
+    if overlay_index < len(tracks):
+        track_id = tracks[overlay_index]["id"]
+        reason = (f"Track {highest_opaque} has opaque clips in range; "
+                  f"using existing track {overlay_index} above it.")
+    else:
+        # Need a new track on top
+        new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay"})
+        track_id  = new_track.get("trackId")
+        created   = True
+        reason    = (f"Track {highest_opaque} has opaque clips; "
+                     f"auto-created new track {overlay_index} on top.")
+
+    return json.dumps({
+        "track_index": overlay_index,
+        "track_id": track_id,
+        "created": created,
+        "reason": reason,
+    }, indent=2)
+
+
+@tool
+def remove_track(track_id: str) -> str:
+    """Remove an entire track (and all its clips) by its trackId.
+
+    Use when you already have the exact trackId from get_timeline_state().
+    If you only know the track's position (e.g. 'track 2'), use
+    remove_track_at_index() instead.
+
+    ⚠️  Irreversible via this tool — call undo() afterwards if needed.
+
+    Args:
+        track_id: The trackId string (get it from get_timeline_state()).
+    """
+    _delete(f"/timeline/track/{track_id}")
+    return f"Track {track_id} removed."
+
+
+@tool
+def remove_track_at_index(track_index: int) -> str:
+    """Remove an entire track (and all its clips) by its zero-based position.
+
+    This is the most convenient tool when you can see the track list from
+    get_timeline_state() and just want to drop track number N.
+
+    ⚠️  Irreversible via this tool — call undo() afterwards if needed.
+
+    Args:
+        track_index: Zero-based position in the tracks list
+                     (track 0 = topmost/first track shown in the timeline UI).
+    Returns:
+        JSON with {removed: trackId, index: N} confirming what was deleted.
+    """
+    result = _delete(f"/timeline/track-by-index/{track_index}")
+    return json.dumps(result, indent=2)
+
 # downloader
 
 @tool
@@ -698,7 +829,7 @@ def place_clip(
         "trackIndex": track_index,
         "startFrame": start_frame,
         "duration": duration,
-        "compId": comp_id,   # None = root; str = target that comp directly
+        "compId": comp_id,    
     })
     return f"Placed asset {asset_id} on track {track_index} at frame {start_frame} with clipId {result.get('clipId')}."
 
@@ -1154,6 +1285,10 @@ ALL_TOOLS = [
     undo,
     redo,
     mute_track,
+    add_track,
+    find_free_overlay_track,
+    remove_track,
+    remove_track_at_index,
     download_videos,
     download_images,
     schedule_download,

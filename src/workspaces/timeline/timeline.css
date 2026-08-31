@@ -210,6 +210,49 @@
   z-index: 10;
 }
 
+/* Add track row at bottom of headers */
+.tl-headers__add-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 16px 0;
+  gap: 8px;
+}
+
+.tl-headers__add-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px dashed var(--tl-text-2);
+  background: transparent;
+  color: var(--tl-text-1);
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tl-headers__add-btn:hover:not(:disabled) {
+  border-color: var(--tl-accent);
+  color: var(--tl-accent);
+  background: rgba(74, 144, 226, 0.1);
+}
+
+.tl-headers__add-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tl-headers__add-label {
+  font-size: 10px;
+  color: var(--tl-text-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /*   Track content   */
 .tl-content {
   overflow: auto;

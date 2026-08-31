@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import os
 import json
@@ -160,6 +160,9 @@ CORE RULES:
 6. **BEFORE MODIFYING ANY CLIP** â€” always call describe_clip(clip_id) first and analyse the
    result. Only then proceed with edits. This applies to text changes, style updates, animations,
    effects, splits, trims, and any other per-clip operation.
+7. **BEFORE PLACING ANY TEXT, TITLE, SHAPE, OR OVERLAY CLIP** â€” ALWAYS call
+   find_free_overlay_track(start_frame, end_frame) first. NEVER hardcode track=0.
+   Lower track indices render BELOW video clips and will hide your overlay.
 
 BEFORE EDITING ANY CLIP â€” MANDATORY WORKFLOW:
   Step 1: get_timeline_state()            â†’ get the clip_id
@@ -178,6 +181,20 @@ BEFORE EDITING ANY CLIP â€” MANDATORY WORKFLOW:
   â€” it automatically reads the clip currently highlighted in the UI.
 
 TEXT CLIPS:
+CAUTION: Track 0 = bottom of composite stack. A text clip placed on track 0 when a video
+exists on track 0 will be COMPLETELY HIDDEN. Always find the correct overlay track first.
+
+MANDATORY TEXT/OVERLAY PLACEMENT WORKFLOW:
+  1. get_timeline_state()                          -> read frame ranges of existing clips
+  2. find_free_overlay_track(start_frame, end_frame)
+        -> returns {track_index, track_id, created, reason}
+        -> auto-creates a new Overlay track on top if needed
+  3. add_text_clip(track=<track_index>, start_frame=..., duration=..., text=...)
+
+  EXAMPLE (video on track 0, frames 0-299):
+    find_free_overlay_track(0, 299)  -> {"track_index": 1, "created": true, ...}
+    add_text_clip(track=1, start_frame=0, duration=90, text="Scene 1")
+
 - add_text_clip(track, start_frame, duration, text, font) â†’ creates a TextClip.
   The `text` param IS the displayed text â€” pass it directly. Do not use style overrides for text content.
 - To CHANGE the text on an existing clip: use set_text_content(clip_id, "new text")
@@ -434,6 +451,25 @@ RULES:
 - Use af_heart as the default voice unless the user specifies otherwise.
 - Speed 1.0 is almost always correct. Only change if user asks for faster/slower.
 - After generating, immediately place_clip() on a dedicated audio track (track=1 or higher).
+
+TRACK MANAGEMENT:
+Use add_track() whenever you need extra room and the existing tracks are occupied.
+
+- add_track(track_type='video', name='') -> creates a new empty video or audio track, returns {trackId, name, type}
+- remove_track(track_id)               -> permanently removes a track + all its clips
+- mute_track(track_id, muted=True)     -> silences a track without removing it
+
+WHEN TO ADD A TRACK (common patterns):
+  * User asks for overlay / picture-in-picture -> add_track('video', 'Overlay')
+  * User asks for background music -> add_track('audio', 'Music')
+  * Voiceover needs its own lane -> add_track('audio', 'Voiceover')
+  * Text titles need a dedicated lane -> add_track('video', 'Titles')
+
+WORKFLOW EXAMPLE - add a music track:
+  1. add_track('audio', 'Background Music')   -> get trackId
+  2. get_timeline_state()                      -> confirm new track index
+  3. download_videos('calm lo-fi music') or generate_tts(...)
+  4. place_clip(assetId, track=<index>, ...)
 
 Current project context will be injected by the router.
 """
