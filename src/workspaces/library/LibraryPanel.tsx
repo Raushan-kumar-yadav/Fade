@@ -696,7 +696,8 @@ export default function LibraryPanel({ onAddToTimeline }: {
   // Semantic search state
   const [semanticResults, setSemanticResults] = useState<any[] | null>(null);
   const [semanticLoading, setSemanticLoading] = useState(false);
-  const [indexStatuses, setIndexStatuses] = useState<Record<string, string>>({}); // assetId → status
+  const [indexStatuses, setIndexStatuses] = useState<Record<string, string>>({}); // assetId → status (video)
+  const [transcriptStatuses, setTranscriptStatuses] = useState<Record<string, string>>({}); // assetId → status (audio)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [comps, setComps] = useState<CompMeta[]>([]);
@@ -775,8 +776,37 @@ export default function LibraryPanel({ onAddToTimeline }: {
     poll();
     // keep polling while any video is still being indexed
     const interval = setInterval(async () => {
-      const cur = indexStatusesRef.current;  // always read latest, no stale closure
+      const cur = indexStatusesRef.current;   
       const stillActive = videoAssets.some(a => cur[a.assetId] === 'pending' || cur[a.assetId] === 'running');
+      if (!stillActive) { clearInterval(interval); return; }
+      await poll();
+    }, 3000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [assets]);
+
+  // Poll transcript status for all audio assets
+  const transcriptStatusesRef = useRef<Record<string, string>>(transcriptStatuses);
+  useEffect(() => { transcriptStatusesRef.current = transcriptStatuses; }, [transcriptStatuses]);
+
+  useEffect(() => {
+    const audioAssets = assets.filter(a => a.type === 'audio');
+    if (!audioAssets.length) return;
+    let cancelled = false;
+    const poll = async () => {
+      const statuses: Record<string, string> = {};
+      await Promise.all(audioAssets.map(async a => {
+        try {
+          const r = await fetch(`${base()}/library/transcript-status/${a.assetId}`);
+          const d = await r.json();
+          statuses[a.assetId] = d.status;
+        } catch { statuses[a.assetId] = 'unknown'; }
+      }));
+      if (!cancelled) setTranscriptStatuses(statuses);
+    };
+    poll();
+    const interval = setInterval(async () => {
+      const cur = transcriptStatusesRef.current;
+      const stillActive = audioAssets.some(a => cur[a.assetId] === 'running');
       if (!stillActive) { clearInterval(interval); return; }
       await poll();
     }, 3000);
@@ -1130,10 +1160,14 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     onContextMenu={e => assetCtx(e, asset)}
                     onDelete={async () => { await removeAsset(asset.assetId); setAssets(p => p.filter(a => a.assetId !== asset.assetId)); }}
                   />
-                  {/* Small overlay strip for active background tasks on this asset */}
+                  
                   <AssetTaskOverlay
                     jobs={assetJobs}
-                    indexStatus={indexStatuses[asset.assetId]}
+                    indexStatus={
+                      asset.type === 'audio'
+                        ? transcriptStatuses[asset.assetId]
+                        : indexStatuses[asset.assetId]
+                    }
                     assetType={asset.type}
                   />
                 </div>

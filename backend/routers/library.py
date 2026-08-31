@@ -79,9 +79,26 @@ def _queue_audio_transcript(asset_id: str, filepath: str) -> None:
     """Queue Whisper transcription for an audio file. Non-fatal."""
     try:
         from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
+        from backend.worker.transcript_status import is_done as _ts_done
+        if _ts_done(asset_id):
+            return  # already done 
         _worker_bus.submit_transcribe_audio(asset_id, filepath, db_path=_get_db())
+        # Create an SSE job card so the library card shows  
+        try:
+            from backend.routers.jobs import register_asset_job as _reg
+            from backend.events import notify as _notify
+            import os as _os
+            _reg(
+                "audio_transcript",
+                asset_id,
+                f"Transcribing: {_os.path.basename(filepath)}",
+                message="Running Whisper…",
+            )
+            _notify("library")   
+        except Exception as _je:
+            print(f"[Library]   audio_transcript job register error (non-fatal): {_je}", flush=True)
     except Exception as _e:
-        print(f"[Library] ✗ Audio transcript queue error (non-fatal): {_e}", flush=True)
+        print(f"[Library]  Audio transcript queue error (non-fatal): {_e}", flush=True)
 
 
 def _import_file(filepath: str) -> dict:
@@ -196,6 +213,23 @@ def getIndexStatus(assetId: str):
     if not status:
         return {"assetId": assetId, "status": "not_started"}
     return {"assetId": assetId, **status}
+
+
+@router.get("/library/transcript-status/{assetId}")
+def getTranscriptStatus(assetId: str):
+     
+    from backend.worker.transcript_status import is_done as _ts_done
+    from backend.routers.jobs import _ASSET_JOB_KEY, _jobs, _lock
+    if _ts_done(assetId):
+        return {"assetId": assetId, "status": "done"}
+    # Check if there's an active job for this asset
+    job_id = _ASSET_JOB_KEY.get((assetId, "audio_transcript"))
+    if job_id:
+        with _lock:
+            job = _jobs.get(job_id)
+        if job and job.get("status") in ("running", "pending"):
+            return {"assetId": assetId, "status": "running"}
+    return {"assetId": assetId, "status": "not_started"}
 
 
 @router.post("/library/relink/{assetId}")
@@ -326,17 +360,13 @@ def generate_image_endpoint(req: GenerateImageRequest):
 
 @router.post("/media/generate-tts")
 def generate_tts_endpoint(req: GenerateTTSRequest):
-    """
-    Generate speech audio from text.
-    Provider (google / kokoro / local) is read from settings/generators.
-    Returns the imported audio asset.
-    """
+     
     provider = _cfg.get("generators.tts_provider", "google")
     ollama_url = _cfg.get("generators.ollama_url", "http://localhost:11434")
     local_model = _cfg.get("generators.tts_local_model", "kokoro")
     speed = float(_cfg.get("generators.tts_kokoro_speed", 1.0))
 
-    gen_dir   = _resolve_download_dir(subdir="tts")
+    gen_dir = _resolve_download_dir(subdir="tts")
     generator = get_tts_generator(provider=provider, ollama_url=ollama_url)
 
     try:

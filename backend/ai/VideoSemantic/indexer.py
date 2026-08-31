@@ -84,6 +84,36 @@ def index_video(asset_id: str, chunks: list[dict]) -> int:
     return total
 
 
+def get_segments_for_asset(asset_id: str) -> list[dict]:
+    """Return all stored transcript segments for *asset_id* sorted by start time.
+    Returns an empty list if the asset is not indexed yet.
+    Each dict has: start_s, end_s, text.
+    """
+    if not _col:
+        return []
+    try:
+        result = _col.get(
+            where={"assetId": asset_id},
+            include=["documents", "metadatas"],
+            limit=2000,
+        )
+        segments = []
+        for doc, meta in zip(result["documents"], result["metadatas"]):
+            # Only include text-bearing segments (skip pure vision frame entries)
+            if not doc or not doc.strip():
+                continue
+            segments.append({
+                "start_s": float(meta.get("start_sec", 0)),
+                "end_s":   float(meta.get("end_sec", 0)),
+                "text":    doc.strip(),
+            })
+        segments.sort(key=lambda s: s["start_s"])
+        return segments
+    except Exception as exc:
+        print(f"[ChromaDB] get_segments_for_asset failed: {exc}", flush=True)
+        return []
+
+
 def _try_heal_collection(col_name: str) -> None:
     """
     ChromaDB can get into a state where SQLite has records but HNSW index
@@ -114,7 +144,11 @@ def _try_heal_collection(col_name: str) -> None:
             _img_col = new_col
         print(f"[ChromaDB] ✓ Healed HNSW for '{col_name}' ({len(all_data['ids'])} entries)", flush=True)
     except Exception as _e:
-        print(f"[ChromaDB] Heal failed for '{col_name}' (non-fatal): {_e}", flush=True)
+        _msg = str(_e).lower()
+        # Suppress the common benign startup case: HNSW files missing because the
+        # collection is brand-new or has zero vectors.  Any other error is logged.
+        if "nothing found on disk" not in _msg and "hnsw" not in _msg:
+            print(f"[ChromaDB] Heal note for '{col_name}' (non-fatal): {_e}", flush=True)
 
 
 

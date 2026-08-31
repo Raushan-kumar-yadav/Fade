@@ -10,54 +10,82 @@ _AI_FRAME_INTERVAL: float = 4.0
 #   Waveform  
 
 def _do_waveform(filepath: str, bins: int) -> list[float]:
-    """Extract audio waveform peaks using PyAV (no external ffmpeg needed)."""
+     
     try:
         import av
-        import numpy as np
+        import math
     except ImportError:
-        raise RuntimeError("PyAV / numpy not installed")
+        raise RuntimeError("PyAV not installed")
 
     container = av.open(filepath)
-    audio_stream = next((s for s in container.streams if s.type == 'audio'), None)
+    audio_stream = next((s for s in container.streams if s.type == "audio"), None)
     if audio_stream is None:
         container.close()
         return [0.0] * bins
 
-    samples_list: list[float] = []
+ 
+    duration_sec: float = 0.0
+    if audio_stream.duration and audio_stream.time_base:
+        duration_sec = float(audio_stream.duration) * float(audio_stream.time_base)
+    elif container.duration:
+        duration_sec = container.duration / 1_000_000.0  
+
+    sample_rate = audio_stream.sample_rate or 44100
+    total_samples_est = max(1, int(duration_sec * sample_rate))
+    samples_per_bin = max(1, total_samples_est // bins)
+
+    #   Single-pass streaming accumulator  
+    bin_sum_sq = 0.0    
+    bin_count  = 0     # samples in current bin
+    peaks: list[float] = []
+    total_seen = 0
+
     for packet in container.demux(audio_stream):
+        if len(peaks) >= bins:
+            break
         for frame in packet.decode():
             arr = frame.to_ndarray()
-            mono = arr.mean(axis=0) if arr.ndim > 1 else arr
-            if frame.format.name in ('s16', 's16p'):
-                mono = mono.astype(float) / 32768.0
-            elif frame.format.name in ('s32', 's32p'):
-                mono = mono.astype(float) / 2147483648.0
-            elif frame.format.name in ('fltp', 'flt'):
-                mono = mono.astype(float)
+            # Collapse to mono float
+            if arr.ndim > 1:
+                mono = arr.mean(axis=0)
             else:
+                mono = arr
+            fmt = frame.format.name
+            if fmt in ("s16", "s16p"):
                 mono = mono.astype(float) / 32768.0
-            samples_list.extend(mono.tolist())
+            elif fmt in ("s32", "s32p"):
+                mono = mono.astype(float) / 2_147_483_648.0
+            else:
+                mono = mono.astype(float)
+
+            # Feed samples into the bin accumulator
+            for sample in mono:
+                bin_sum_sq += float(sample) * float(sample)
+                bin_count  += 1
+                total_seen += 1
+
+                if bin_count >= samples_per_bin:
+                    rms = math.sqrt(bin_sum_sq / bin_count)
+                    peaks.append(min(1.0, rms))
+                    bin_sum_sq = 0.0
+                    bin_count  = 0
+                    if len(peaks) >= bins:
+                        break
 
     container.close()
 
-    if not samples_list:
-        return [0.0] * bins
-
-    n = len(samples_list)
-    chunk = max(1, n // bins)
-    peaks: list[float] = []
-    for i in range(0, n, chunk):
-        sl = samples_list[i: i + chunk]
-        if not sl:
-            break
-        rms = (sum(s * s for s in sl) / len(sl)) ** 0.5
+    # Flush the last partial bin
+    if bin_count > 0 and len(peaks) < bins:
+        rms = math.sqrt(bin_sum_sq / bin_count)
         peaks.append(min(1.0, rms))
-        if len(peaks) >= bins:
-            break
 
+    # Pad to exactly `bins` values
     while len(peaks) < bins:
         peaks.append(0.0)
-    return peaks
+
+    return peaks[:bins]
+
+
 
 
 #   VideoSemantic indexing  
@@ -67,11 +95,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
                     vision_model: str = "",
                     frame_interval: float = 4.0,
                     result_queue=None) -> int:
-    """
-    Full VideoSemantic pipeline — runs inside the sandboxed worker process.
-    Vision (Ollama) and Transcription (Whisper) run in parallel.
-    Returns number of chunks indexed.
-    """
+     
     import tempfile
     from concurrent.futures import ThreadPoolExecutor, Future
 
@@ -114,7 +138,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
                     _cuda_kw = ("cublas", "cufft", "cudnn", "cusolver", ".dll", "cuda")
                     if any(kw in str(cuda_err).lower() for kw in _cuda_kw):
                         print(f"[Whisper][Worker] CUDA runtime error — falling back to CPU and retrying", flush=True)
-                        _wt.force_cpu()   # clears cache, resets to cpu/int8
+                        _wt.force_cpu()   # clears cache 
                         raw = _wt.transcribe(filepath, model_name=model_name, language=None)
                     else:
                         raise
@@ -133,7 +157,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
             vision_future:     Future = pool.submit(_run_vision)
             transcribe_future: Future = pool.submit(_run_transcribe)
 
-            # Phase 1: vision done → save immediately, signal frontend (job still open)
+            # vision done  
             scenes = vision_future.result()
             vision_chunks = merge_and_chunk(scenes, [], window_sec=4.0)
             count = index_video(asset_id, vision_chunks)
@@ -141,7 +165,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
             if result_queue is not None:
                 result_queue.put({"type": "index_video_phase1", "assetId": asset_id, "chunks": count})
 
-            # Phase 2: wait for transcript → enrich and upsert
+            #  whisper done 
             print(f"[SandboxWorker] Waiting for Whisper transcript…", flush=True)
             transcript = transcribe_future.result()
             from backend.worker import transcript_status as _ts
@@ -162,11 +186,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
 
 
 def _do_transcribe_only(asset_id: str, filepath: str) -> int:
-    """
-    Transcript-only retry: fetch existing vision chunks from ChromaDB,
-    run Whisper, re-merge and upsert enriched embeddings.
-    No frame extraction or Ollama needed.
-    """
+     
     import traceback
     from backend.ai.VideoSemantic.indexer import index_video, get_db_path, _col
     from backend.ai.VideoSemantic.merger import merge_and_chunk
@@ -174,7 +194,7 @@ def _do_transcribe_only(asset_id: str, filepath: str) -> int:
 
     print(f"[SandboxWorker] transcribe_only start: {asset_id[:8]}", flush=True)
 
-    # ── Rebuild scenes list from existing ChromaDB chunks ──
+    #   Rebuild scenes list    
     try:
         col = _col
         existing = col.get(where={"assetId": asset_id}, include=["documents", "metadatas"])
@@ -185,7 +205,7 @@ def _do_transcribe_only(asset_id: str, filepath: str) -> int:
             scenes.append({
                 "text": vis_text,
                 "start": float(meta.get("start_sec", 0)),
-                "end":   float(meta.get("end_sec",   4)),
+                "end": float(meta.get("end_sec", 4)),
             })
         scenes.sort(key=lambda s: s["start"])
         print(f"[SandboxWorker] transcribe_only: loaded {len(scenes)} existing vision chunks", flush=True)
@@ -193,7 +213,7 @@ def _do_transcribe_only(asset_id: str, filepath: str) -> int:
         print(f"[SandboxWorker] transcribe_only: failed to load scenes ({e})", flush=True)
         return 0
 
-    # ── Run Whisper ──
+    #   Run Whisper  
     import backend.ai.whisper_tool as _wt
     from backend.config.global_config import cfg
     model_name = cfg.get("ai.whisper_model", "small")
@@ -236,11 +256,7 @@ def _do_transcribe_only(asset_id: str, filepath: str) -> int:
 #   Audio-only transcription  
 
 def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
-    """
-    Run Whisper on a pure audio file and save transcript segments to ChromaDB.
-    No frame extraction or Ollama vision is performed — transcript only.
-    Returns number of segments indexed.
-    """
+     
     import traceback
     from backend.ai.VideoSemantic.indexer import _col, _embedder
     from backend.worker import transcript_status as _ts
@@ -279,7 +295,7 @@ def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
         print(f"[SandboxWorker] transcribe_audio: 0 segments (silence?) for {asset_id[:8]}", flush=True)
         return 0
 
-    # Save to ChromaDB video_segments collection with asset_type="audio"
+    # Save to ChromaDB video_segments  
     texts = [f"Speech: {s['text']}" for s in segments]
     embeddings = _embedder.encode(texts).tolist()
     ids = [f"{asset_id}__audio__{i}" for i in range(len(segments))]
@@ -287,7 +303,7 @@ def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
         {
             "assetId": asset_id,
             "start_sec": float(s["start"]),
-            "end_sec":   float(s["end"]),
+            "end_sec": float(s["end"]),
             "asset_type": "audio",
         }
         for s in segments
@@ -301,10 +317,7 @@ def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
 #   Image indexing  
 
 def _do_index_image(asset_id: str, filepath: str, vision_model: str = "") -> bool:
-    """
-    Describe a single image with Ollama and save to ChromaDB.
-    No frame extraction or transcription needed.
-    """
+     
     from backend.config.global_config import cfg
     from backend.ai.VideoSemantic.descriptions import describe_frame, _get_model
     from backend.ai.VideoSemantic.indexer import index_image

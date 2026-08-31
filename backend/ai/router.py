@@ -1,10 +1,4 @@
-"""
-backend/ai/router.py
-FastAPI router for all AI endpoints.
-Mount in main.py with:
-    from backend.ai.router import ai_router
-    app.include_router(ai_router, prefix="/ai")
-"""
+ 
 from __future__ import annotations
 import json
 import asyncio
@@ -43,7 +37,7 @@ class CreateVideoRequest(BaseModel):
 def ai_status():
     import os
     provider = os.environ.get("FADE_AI_PROVIDER", "ollama")
-    model    = os.environ.get("FADE_AI_MODEL", "")
+    model = os.environ.get("FADE_AI_MODEL", "")
 
     ollama_ok = False
     available_models: list[str] = []
@@ -73,15 +67,7 @@ def ai_status():
 
 @ai_router.post("/chat")
 async def ai_chat(req: ChatRequest):
-    """
-    Stream the agent response as Server-Sent Events.
-    Each event is a JSON line with one of:
-        {"type": "token", "content": "..."}
-        {"type": "tool_call", "name": "...", "args": {...}}
-        {"type": "tool_result", "name": "...", "content": "..."}
-        {"type": "done"}
-        {"type": "error", "message": "..."}
-    """
+     
     from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
     async def event_stream():
@@ -102,6 +88,7 @@ async def ai_chat(req: ChatRequest):
             async for event in agent.astream_events(
                 {"messages": messages},
                 version="v2",
+                config={"recursion_limit": 100},
             ):
                 kind = event["event"]
 
@@ -144,11 +131,7 @@ async def ai_chat(req: ChatRequest):
 
 @ai_router.get("/resume-queue")
 def ai_resume_queue():
-    """
-    Return (and drain) all pending agent resume messages.
-    These are messages queued when a background job the agent scheduled has completed.
-    The frontend SSE handler calls this automatically; also available for polling.
-    """
+     
     from backend.ai.agent_jobs import pop_resume_messages
     return {"messages": pop_resume_messages()}
 
@@ -164,12 +147,7 @@ def ai_pending_jobs():
 
 @ai_router.post("/transcribe")
 def ai_transcribe(req: TranscribeRequest):
-    """
-    Transcribe audio from an asset using Whisper.
-    If create_text_clips=True, creates TextClip objects on the timeline
-    for each subtitle segment.
-    Returns: {segments: [{start_s, end_s, text}], srt: str}
-    """
+     
     import httpx as _httpx
 
     # Resolve filepath from library
@@ -198,8 +176,8 @@ def ai_transcribe(req: TranscribeRequest):
                 r = _httpx.post(f"{base}/clips/text", json={
                     "trackIndex": req.track_index,
                     "startFrame": start_frame,
-                    "duration":   duration,
-                    "text":       seg["text"],
+                    "duration": duration,
+                    "text": seg["text"],
                     "fontSize":   36.0,
                 }, timeout=10)
                 if r.is_success:
@@ -215,14 +193,7 @@ def ai_transcribe(req: TranscribeRequest):
  
 @ai_router.post("/create-video")
 async def ai_create_video(req: CreateVideoRequest):
-    """
-    Run the full news-to-video pipeline and stream progress as SSE.
-
-    Events:
-        {"type": "progress", "stage": "...", "detail": "..."}
-        {"type": "done",     "summary": "..."}
-        {"type": "error",    "message": "..."}
-    """
+     
     async def event_stream():
         import threading
         import queue as queue_mod
@@ -231,7 +202,7 @@ async def ai_create_video(req: CreateVideoRequest):
 
         def progress_cb(msg: str):
             """Called synchronously from pipeline nodes."""
-            # Parse stage prefix written by pipeline nodes: "stage:xxx — detail"
+             
             if " — " in msg:
                 stage, detail = msg.split(" — ", 1)
                 stage = stage.replace("stage:", "").strip()
@@ -245,8 +216,7 @@ async def ai_create_video(req: CreateVideoRequest):
                 from backend.ai.video_pipeline.pipeline import get_pipeline
                 pipeline = get_pipeline()
 
-                # Monkey-patch progress into pipeline state
-                # We pass a mutable dict so nodes can push messages
+                 
                 initial_state = {
                     "query": req.query,
                     "scene_duration": req.scene_duration,
@@ -258,7 +228,7 @@ async def ai_create_video(req: CreateVideoRequest):
                 # Run the graph synchronously in this thread
                 final_state = None
                 for step_output in pipeline.stream(initial_state):
-                    # Each step_output is {node_name: state_delta}
+                    # Each step_output is 
                     for node_name, delta in step_output.items():
                         new_progress = delta.get("progress", [])
                         for msg in new_progress:
@@ -275,11 +245,11 @@ async def ai_create_video(req: CreateVideoRequest):
             finally:
                 q.put(None)  # sentinel
 
-        # Run pipeline in background thread so we can stream from async
+         
         thread = threading.Thread(target=run_pipeline, daemon=True)
         thread.start()
 
-        # Drain the queue and yield SSE events
+         
         while True:
             try:
                 item = await asyncio.get_event_loop().run_in_executor(

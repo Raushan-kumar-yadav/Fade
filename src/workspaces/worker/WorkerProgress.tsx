@@ -242,10 +242,18 @@ export default function WorkerProgress() {
 
           <div className="wp-panel__footer">
             <span className="wp-panel__queue">Queue: {status.queueDepth}</span>
-            <button className="wp-panel__clear" onClick={() => {
-              setWorkerJobs(prev => prev.filter(j => j.status !== 'done'));
-              setMediaJobs(prev => prev.filter(j => j.status !== 'done'));
-            }}>Clear done</button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="wp-panel__clear" onClick={async () => {
+                try {
+                  const port = (window as any).__FADE_PORT__ ?? 8000;
+                  await fetch(`http://127.0.0.1:${port}/jobs/clear-stuck?older_than_s=15`, { method: 'DELETE' });
+                } catch { /* ignore */ }
+              }} title="Mark all stuck pending jobs as failed">Clear stuck</button>
+              <button className="wp-panel__clear" onClick={() => {
+                setWorkerJobs(prev => prev.filter(j => j.status !== 'done'));
+                setMediaJobs(prev => prev.filter(j => j.status !== 'done'));
+              }}>Clear done</button>
+            </div>
           </div>
         </div>
       )}

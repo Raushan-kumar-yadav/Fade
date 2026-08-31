@@ -70,7 +70,7 @@ def _list_jobs() -> list[dict]:
 
 # Public helper 
  
-_ASSET_JOB_KEY: dict[tuple[str, str], str] = {}  # (assetId, jobType)  
+_ASSET_JOB_KEY: dict[tuple[str, str], str] = {}   
 
 
 def register_asset_job(
@@ -79,13 +79,10 @@ def register_asset_job(
     label: str,
     message: str = "",
 ) -> str:
-    """
-    Create a running asset-bound job and emit an SSE notification immediately.
-    Returns the jobId.
-    """
+     
     job = _make_job(job_type, label, asset_id=asset_id)
     job_id = job["jobId"]
-    # Track by (assetId, jobType) 
+    # Track by  
     _ASSET_JOB_KEY[(asset_id, job_type)] = job_id
     _update_job(job_id, status="running", progress=0.0,
                 message=message or label)
@@ -119,13 +116,8 @@ def complete_asset_job(
 # Worker helpers
 
 def _import_and_index(filepath: str) -> dict:
-    """
-    Import a file into the library AND fire semantic indexing + waveform —
-    same as the HTTP /library/import route does, but callable from the worker
-    thread so agent-downloaded media is treated identically to GUI-imported media.
-    Returns the asset dict with assetId, type, etc.
-    """
-    from backend.routers.library import _import_file, _resolve_download_dir
+     
+    from backend.routers.library import _import_file
     from backend.worker.worker_bus import bus as _worker_bus
     import os
 
@@ -133,48 +125,27 @@ def _import_and_index(filepath: str) -> dict:
     asset_id = info["assetId"]
     asset_type = info.get("type", "")
 
-    # Fire waveform for audio-bearing assets
+     
     if info.get("hasAudio"):
         try:
             _worker_bus.submit_waveform(asset_id, filepath)
         except Exception:
             pass
 
-    # Fire semantic indexing — the core that was missing for agent downloads
-    if asset_type == "video":
-        try:
-            import os as _os
-            port = int(_os.environ.get("BACKEND_PORT", 8000))
-            from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
-            _worker_bus.submit_index_video(asset_id, filepath,
-                                           port=port, db_path=_get_db())
-            # Register the overlay job (direct call — same module, no circular import)
+     
+    try:
+        import os as _os
+        if asset_type == "video":
             register_asset_job("video_index", asset_id,
                                f"Indexing: {_os.path.basename(filepath)}",
                                message="Running Vision + Whisper…")
-        except Exception as _e:
-            print(f"[Jobs] index_video submit error (non-fatal): {_e}", flush=True)
-
-    elif asset_type == "image":
-        try:
-            from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
-            _worker_bus.submit_index_image(asset_id, filepath, db_path=_get_db())
-            import os as _os
+        elif asset_type == "image":
             register_asset_job("image_index", asset_id,
                                f"Indexing: {_os.path.basename(filepath)}",
                                message="Describing image…")
-        except Exception as _e:
-            print(f"[Jobs] index_image submit error (non-fatal): {_e}", flush=True)
-
-    elif asset_type == "audio" or os.path.splitext(filepath)[1].lower() in {".wav",".mp3",".aac",".flac",".ogg",".m4a"}:
-        try:
-            from backend.ai.VideoSemantic.indexer import get_db_path as _get_db
-            _worker_bus.submit_transcribe_audio(asset_id, filepath, db_path=_get_db())
-            register_asset_job("audio_transcript", asset_id,
-                               f"Transcribing: {os.path.basename(filepath)}",
-                               message="Running Whisper…")
-        except Exception as _e:
-            print(f"[Jobs] audio transcript submit error (non-fatal): {_e}", flush=True)
+        # audio job card is registered inside _queue_audio_transcript already
+    except Exception as _e:
+        print(f"[Jobs] register overlay job error (non-fatal): {_e}", flush=True)
 
     return info
 
@@ -360,7 +331,7 @@ def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
             _update_job(job_id, status="error", message="Gemini generation failed", error=str(exc))
             return
 
-    # ── Import results into library ────────────────────────────────────────────
+    # Import results into library  
     try:
         asset_ids = []
         for i, r in enumerate(results):
@@ -444,7 +415,24 @@ def _run_tts_generate(job_id: str, text: str, voice: str, speed: float) -> None:
 
 
 def _start(fn, *args) -> None:
-    t = threading.Thread(target=fn, args=args, daemon=True)
+     
+    job_id = args[0] if args else None
+
+    def _safe_run():
+        try:
+            fn(*args)
+        except Exception as exc:
+            import traceback
+            print(f"[Jobs] Unhandled thread error in {fn.__name__}: {exc}", flush=True)
+            traceback.print_exc()
+            if job_id:
+                try:
+                    _update_job(job_id, status="error",
+                                message="Failed", error=str(exc))
+                except Exception:
+                    pass
+
+    t = threading.Thread(target=_safe_run, daemon=True, name=fn.__name__)
     t.start()
 
 
@@ -480,7 +468,7 @@ def start_video_download(req: VideoDownloadRequest):
         label = f"Downloading [{i+1}/{num}]: {req.query}"
         job = _make_job("video_download", label)
         notify("job", job)   # push placeholder card to UI
-        _start(_run_video_download, job["jobId"], req.query, i, num)
+        _start(_run_video_download, job["jobId"], req.query, 1, i, num)
         job_ids.append(job["jobId"])
     # Return first jobId for backward-compat 
     return {"jobId": job_ids[0], "jobIds": job_ids,
@@ -545,3 +533,24 @@ def get_job(jobId: str):
     if job is None:
         raise HTTPException(404, f"Job '{jobId}' not found")
     return job
+
+
+@router.delete("/jobs/clear-stuck")
+def clear_stuck_jobs(older_than_s: int = 30):
+    """Mark all pending/running jobs older than `older_than_s` seconds as error.
+    Useful for clearing jobs whose worker thread crashed before updating status.
+    Returns count of jobs cleared."""
+    import time
+    now = time.time()
+    cleared = 0
+    with _lock:
+        for job in _jobs.values():
+            if job.get("status") in ("pending", "running"):
+                age = now - job.get("createdAt", now)
+                if age >= older_than_s:
+                    job["status"] = "error"
+                    job["message"] = "Timed out (worker crashed)"
+                    job["error"] = "Worker thread crashed or timed out"
+                    notify("job", dict(job))
+                    cleared += 1
+    return {"cleared": cleared}

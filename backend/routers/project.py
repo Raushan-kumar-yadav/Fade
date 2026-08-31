@@ -449,10 +449,21 @@ def loadProject(req: LoadRequest):
                 if mt == MediaType.image:
                     _worker_bus.submit_index_image(aid, fp, db_path=db_path)
                     print(f"[Project] ↑ Queued image index: {aid[:8]} ({os.path.basename(fp)})", flush=True)
+                    queued_count += 1
+                elif mt == MediaType.audio or os.path.splitext(fp)[1].lower() in {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a"}:
+                    # Audio-only file  
+                    from backend.worker.transcript_status import is_done as _ts_done
+                    if not _ts_done(aid):
+                        _worker_bus.submit_transcribe_audio(aid, fp, db_path=db_path)
+                        print(f"[Project] ↑ Queued audio transcript: {aid[:8]} ({os.path.basename(fp)})", flush=True)
+                        queued_count += 1
+                    else:
+                        indexed_count += 1
+                        print(f"[Project] ✓ Already transcribed: {aid[:8]} ({os.path.basename(fp)})", flush=True)
                 else:
                     _worker_bus.submit_index_video(aid, fp, port=port, db_path=db_path)
                     print(f"[Project] ↑ Queued video index: {aid[:8]} ({os.path.basename(fp)})", flush=True)
-                queued_count += 1
+                    queued_count += 1
         print(f"[Project] Semantic index: {indexed_count} already indexed, {queued_count} queued", flush=True)
     except Exception as _ie:
         print(f"[Project] Semantic index check failed (non-fatal): {_ie}", flush=True)

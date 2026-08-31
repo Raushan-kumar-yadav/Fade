@@ -413,19 +413,43 @@ def removeSilence(req: RemoveSilenceRequest):
 
 @router.get("/audio/transcribe/{clipId}")
 def transcribeClip(clipId: str, words: bool = False, language: str | None = None):
-     
+    """Return transcript for a clip.
+
+    Strategy (fastest first):
+    1. If ChromaDB already has segments for this asset → return them immediately
+       (background worker already ran Whisper; no need to do it again).
+    2. Otherwise run Whisper synchronously and store the result in ChromaDB.
+    """
     from backend.ai.whisper_tool import transcribe, transcribe_with_words
+    from backend.ai.VideoSemantic.indexer import is_asset_indexed, get_segments_for_asset
 
     clip, _, _ = _find_clip(clipId)
     filepath = _resolve_filepath(clip)
+    asset_id = getattr(clip, "assetId", "")
 
+    # Check storage first
+    if asset_id and is_asset_indexed(asset_id):
+        cached = get_segments_for_asset(asset_id)
+        if cached:
+            print(f"[AudioTools] Serving cached transcript for {asset_id[:8]} ({len(cached)} segments)", flush=True)
+             
+            return {
+                "clipId": clipId,
+                "filepath": filepath,
+                "segments": cached,
+                "wordLevel": False,
+                "chromaIndexed": len(cached),
+                "source": "cache",
+            }
+
+    #   Slow path: run Whisper  
+    print(f"[AudioTools] Running Whisper for {asset_id[:8] if asset_id else clipId}…", flush=True)
     if words:
         segments = transcribe_with_words(filepath, language=language or None)
     else:
         segments = transcribe(filepath, language=language or None)
 
-    # Save to ChromaDB so transcript is searchable later
-    asset_id = getattr(clip, "assetId", "")
+    # Save to ChromaDB  
     indexed = _index_transcript(asset_id, segments)
 
     return {
@@ -434,4 +458,5 @@ def transcribeClip(clipId: str, words: bool = False, language: str | None = None
         "segments": segments,
         "wordLevel": words,
         "chromaIndexed": indexed,
+        "source": "whisper",
     }

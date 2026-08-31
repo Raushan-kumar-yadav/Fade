@@ -16,6 +16,13 @@ def _get(path: str) -> dict:
     r.raise_for_status()
     return r.json()
 
+def _get_long(path: str, timeout: int = 300) -> dict:
+    """Like _get but with a long timeout for endpoints that run heavy CPU work
+    (e.g. Whisper transcription on CPU can take 30-120s per file)."""
+    r = httpx.get(f"{_base()}{path}", timeout=timeout)
+    r.raise_for_status()
+    return r.json()
+
 def _post(path: str, body: dict | None = None) -> dict:
     r = httpx.post(f"{_base()}{path}", json=body or {}, timeout=30)
     r.raise_for_status()
@@ -1617,7 +1624,12 @@ def describe_clip(clip_id: str) -> str:
     Args:
         clip_id: The clipId of the clip (get from get_timeline_state).
     """
-    return json.dumps(_get(f"/context/clip/{clip_id}/describe"), indent=2)
+    try:
+        return json.dumps(_get(f"/context/clip/{clip_id}/describe"), indent=2)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return f"Clip '{clip_id}' not found on any timeline. Call get_timeline_state() to get valid clip IDs."
+        return f"describe_clip error: {e}"
 
 
 @tool
@@ -1625,14 +1637,22 @@ def describe_selected_clip() -> str:
     """Get a rich, type-specific description of the clip currently selected in the UI.
 
     Equivalent to calling describe_clip() on whichever clip the user has selected.
-    Returns 404 if nothing is selected.
+    Returns a 'nothing selected' message if the user hasn't clicked a clip yet.
 
     Returns the same rich payload as describe_clip — type-dispatched content that
     includes visual/audio context, text content, style properties, or source code
     depending on the clip type.
     """
-    r = _get("/context/selected/describe")
-    return json.dumps(r, indent=2)
+    try:
+        r = _get("/context/selected/describe")
+        return json.dumps(r, indent=2)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            return (
+                "No clip is currently selected in the UI. "
+                "Ask the user to click a clip, or use describe_clip(clip_id) directly."
+            )
+        return f"describe_selected_clip error: {e}"
 
 
 CLIP_DESCRIBE_TOOLS = [describe_clip, describe_selected_clip]
@@ -1847,7 +1867,7 @@ def get_transcript(clip_id: str, word_level: bool = False) -> str:
         clip_id:    The clipId of the video clip to transcribe.
         word_level: If True, include per-word timestamps in each segment.
     """
-    result = _get(f"/audio/transcribe/{clip_id}?words={'true' if word_level else 'false'}")
+    result = _get_long(f"/audio/transcribe/{clip_id}?words={'true' if word_level else 'false'}")
     segs = result.get("segments", [])
     if not segs:
         return "No speech detected in clip."

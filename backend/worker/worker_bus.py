@@ -3,6 +3,7 @@ from __future__ import annotations
 import multiprocessing
 import threading
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from backend.worker import sandbox_worker
@@ -17,6 +18,11 @@ class WorkerBus:
         self._process:  Optional[multiprocessing.Process] = None
         self._drain_thread: Optional[threading.Thread] = None
         self._running = False
+         
+        self._waveform_pool = ThreadPoolExecutor(
+            max_workers=3, thread_name_prefix="FadeWaveform"
+        )
+        self._watchdog_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
         if self._process and self._process.is_alive():
@@ -25,9 +31,7 @@ class WorkerBus:
         import sys, os
         parent_syspath = sys.path[:]    
 
-        # Fix Windows PermissionError [WinError 5] with multiprocessing.spawn
-        # If running via uvicorn.exe shim, multiprocessing fails to spawn.
-        # Force it to use the actual python executable.
+       
         if sys.platform == "win32" and getattr(sys, "executable", "").lower().endswith(".exe"):
             python_exe = os.path.join(sys.exec_prefix, "python.exe")
             if os.path.exists(python_exe) and sys.executable.lower() != python_exe.lower():
@@ -49,6 +53,14 @@ class WorkerBus:
             name="FadeWorkerDrain",
         )
         self._drain_thread.start()
+
+        # Watchdog 
+        self._watchdog_thread = threading.Thread(
+            target=self._watchdog,
+            daemon=True,
+            name="FadeWorkerWatchdog",
+        )
+        self._watchdog_thread.start()
         print("[WorkerBus] sandbox worker started", flush=True)
 
     def submit(self, job: dict) -> None:
@@ -68,7 +80,23 @@ class WorkerBus:
             self._process.join(timeout=5)
             if self._process.is_alive():
                 self._process.terminate()
+        self._waveform_pool.shutdown(wait=False)
         print("[WorkerBus] stopped", flush=True)
+
+    def _watchdog(self) -> None:
+        """Restart the sandbox process if it dies unexpectedly."""
+        import time
+        while self._running:
+            time.sleep(10)
+            if not self._running:
+                break
+            if self._process and not self._process.is_alive():
+                exit_code = self._process.exitcode
+                print(
+                    f"[WorkerBus] sandbox process died (exit={exit_code}) — restarting",
+                    flush=True,
+                )
+                self.start()
 
     def is_alive(self) -> bool:
         return bool(self._process and self._process.is_alive())
@@ -85,18 +113,26 @@ class WorkerBus:
         return waveform_cache.get(asset_id)
 
     def submit_waveform(self, asset_id: str, filepath: str, bins: int = 1000) -> None:
-        """Convenience: mark pending + enqueue waveform job."""
+         
         if waveform_cache.has(asset_id):
             entry = waveform_cache.get(asset_id)
             if entry and entry.get("status") == "done":
                 return  # already cached
         waveform_cache.set_pending(asset_id)
-        self.submit({
-            "type": "waveform",
-            "assetId":  asset_id,
-            "filepath": filepath,
-            "bins": bins,
-        })
+        self._waveform_pool.submit(self._run_waveform_thread, asset_id, filepath, bins)
+
+    def _run_waveform_thread(self, asset_id: str, filepath: str, bins: int) -> None:
+        """Runs inside the waveform thread pool — calls _do_waveform directly."""
+        try:
+            peaks = sandbox_worker._do_waveform(filepath, bins)
+            waveform_cache.set_result(asset_id, peaks)
+            print(f"[WorkerBus] waveform done: {asset_id[:8]}", flush=True)
+        except Exception as exc:
+            import traceback
+            msg = f"{type(exc).__name__}: {exc}"
+            waveform_cache.set_error(asset_id, msg)
+            print(f"[WorkerBus] waveform error: {asset_id[:8]}: {msg}", flush=True)
+            traceback.print_exc()
 
     # VideoSemantic indexing helpers  
 
