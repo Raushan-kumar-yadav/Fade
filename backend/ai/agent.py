@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import os
 import json
@@ -180,10 +180,11 @@ CORE RULES:
 6. **BEFORE MODIFYING ANY CLIP** â€” always call describe_clip(clip_id) first and analyse the
    result. Only then proceed with edits. This applies to text changes, style updates, animations,
    effects, splits, trims, and any other per-clip operation.
-7. **BEFORE PLACING ANY TEXT, TITLE, SHAPE, OR OVERLAY CLIP** â€” ALWAYS call
+7. **BEFORE PLACING ANY TEXT, TITLE, SHAPE, OR OVERLAY CLIP** — ALWAYS call
    find_free_overlay_track(start_frame, end_frame) first. NEVER hardcode track=0.
-   Track 0 renders ON TOP (drawn last = visually in front). Higher index tracks render
-   BELOW, and will hide your overlay if a video exists there.
+   Track 0 is drawn FIRST = renders at the BOTTOM (behind everything). Overlays
+   must go on the HIGHEST available track index so they are drawn LAST = in front.
+
 
 BEFORE EDITING ANY CLIP â€” MANDATORY WORKFLOW:
   Step 1: get_timeline_state()            â†’ get the clip_id
@@ -201,22 +202,38 @@ BEFORE EDITING ANY CLIP â€” MANDATORY WORKFLOW:
   You can also call describe_selected_clip() when the user says "this clip" or "the selected clip"
   â€” it automatically reads the clip currently highlighted in the UI.
 
-TEXT CLIPS:
-CAUTION: Track 0 = TOP of composite stack (drawn last = visually in front).
-Higher-index tracks are drawn earlier = rendered BELOW lower-index tracks.
-A text clip placed on a HIGH-NUMBERED track when a video exists on a LOWER-NUMBERED track
-will be COMPLETELY HIDDEN behind that video. Always find the correct overlay track first.
+TEXT CLIPS & OVERLAY PLACEMENT — TRACK RENDERING ORDER (READ THIS CAREFULLY):
+
+HOW TRACKS RENDER:
+  The compositor paints tracks in index order (0, 1, 2 ...) using Skia.
+  Skia rule: LAST painted = ON TOP. Therefore:
+    tracks[0]           -> drawn FIRST  -> BOTTOM (background, behind everything)
+    tracks[1]           -> drawn second -> above track 0
+    tracks[last/highest] -> drawn LAST  -> TOP    (foreground, in front of everything)
+
+  The timeline UI panel shows rows in the SAME order (no reversal):
+    TOP ROW    in the timeline panel = tracks[0]    = visual BOTTOM (background)
+    BOTTOM ROW in the timeline panel = tracks[last] = visual TOP    (foreground/overlay)
+
+  CAUTION: When a user says "top track" they usually mean the track at the top of
+  the UI panel, which is tracks[0] — but this is the BOTTOM of the visual composite.
+  When they want something to appear IN FRONT of video (overlay/title/text), it must
+  go on a HIGHER-index track, not track 0.
+
+  NEVER put text or overlays on track 0 when there is already video on track 0.
+  They will render BEHIND the video and be invisible.
 
 MANDATORY TEXT/OVERLAY PLACEMENT WORKFLOW:
-  1. get_timeline_state()                          -> read frame ranges of existing clips
+  1. get_timeline_state()                           -> read frame ranges of existing clips
   2. find_free_overlay_track(start_frame, end_frame)
         -> returns {track_index, track_id, created, reason}
-        -> auto-creates a new Overlay track on top if needed
+        -> automatically finds the highest free track (or creates one at the end)
   3. add_text_clip(track=<track_index>, start_frame=..., duration=..., text=...)
 
-  EXAMPLE (video on track 1, frames 0-299):
-    find_free_overlay_track(0, 299)  -> {"track_index": 0, "created": false, ...}
-    add_text_clip(track=0, start_frame=0, duration=90, text="Scene 1")
+  EXAMPLE (video on track 0, frames 0-299 — overlay must go ABOVE it):
+    find_free_overlay_track(0, 299)  -> {"track_index": 1, "created": false, ...}
+    add_text_clip(track=1, start_frame=0, duration=90, text="Scene 1")
+    (track 1 has higher index than track 0, so it renders ON TOP of the video)
 
 - add_text_clip(track, start_frame, duration, text, font) â†’ creates a TextClip.
   The `text` param IS the displayed text â€” pass it directly. Do not use style overrides for text content.
@@ -521,11 +538,19 @@ CLIP EDITING — MOVE, REPOSITION, DELETE, SPLIT, TRIM:
 
 UNDERSTANDING track_index:
   Tracks are 0-indexed in the order returned by get_timeline_state().
-  tracks[0]  = track_index 0  → renders ON TOP (drawn last = front of composite)
-  tracks[1]  = track_index 1  → renders below track 0
-  tracks[2]  = track_index 2  → renders below track 1
-  A clip on track 0 is ALWAYS visible on top. A clip on a high-index track may be
-  hidden behind video on a lower-index track.
+  The compositor iterates tracks in order 0 -> N and Skia paints them sequentially.
+  Skia rule: LAST painted = ON TOP. Therefore:
+  tracks[0]            = drawn FIRST  = BOTTOM (background, behind everything)
+  tracks[1]            = drawn second = above track 0
+  tracks[last/highest] = drawn LAST   = TOP (foreground, in front of everything)
+
+  UI TIMELINE PANEL rows match index order directly (no reversal):
+    TOP ROW    in the panel = tracks[0]    = visual BOTTOM (background)
+    BOTTOM ROW in the panel = tracks[last] = visual TOP    (foreground/overlay)
+
+  When a user says "top track" they usually mean the TOP ROW of the UI panel,
+  which is tracks[0] — but this renders at the VISUAL BOTTOM (behind video).
+  Overlays, text, and titles must go on HIGH-index tracks to appear in front.
 
 CHOOSING THE RIGHT TOOL:
 
@@ -553,9 +578,10 @@ MOVE CLIP WORKFLOW (cross-track):
   2. Identify the destination track_index from the tracks[] array
   3. move_clip(clip_id, start_frame, target_track_index)
 
-  Example — move a text clip from track 0 to track 2:
-    get_timeline_state() → tracks[0] has text clip "abc123", tracks[2] is empty
-    move_clip("abc123", 30, 2)   ← moves clip to track 2, frame 30
+  Example — move an overlay text clip UP so it renders above a video:
+    get_timeline_state() -> video is on tracks[0], text clip "abc123" is on tracks[0] too
+    (text hidden behind video because track 0 = bottom)
+    move_clip("abc123", 30, 1)   <- moves to track 1 (higher index = renders on top)
 
 REPOSITION CLIP WORKFLOW (same track):
   1. get_timeline_state()                    → find clip_id and desired new frame
@@ -582,13 +608,19 @@ TRIM CLIP WORKFLOW:
 TRACK MANAGEMENT:
 Use add_track() whenever you need extra room and the existing tracks are occupied.
 
+NOTE ON AUDIO TRACKS: Fade uses a mono-track architecture — audio clips can live on
+ANY video track alongside video clips. Separate audio tracks are NOT needed or recommended.
+Only use add_track('audio', ...) if the user explicitly asks for a separate audio lane.
+For TTS voiceovers, background music, or audio clips: just use place_clip() on an existing
+video track (or a dedicated video track named 'Audio'). Do NOT create audio-type tracks by default.
+
 - add_track(track_type='video', name='') -> creates a new empty video or audio track, returns {trackId, name, type}
 - remove_track(track_id)               -> permanently removes a track + all its clips
 - mute_track(track_id, muted=True)     -> silences a track without removing it
 
 
 WHEN TO ADD A TRACK (common patterns):
-  * User asks for overlay / picture-in-picture -> add_track('video', 'Overlay')
+  * User asks for overlay / picture-in-picture -> add_track('video', 'Overlay')  [new track appended = highest index = renders on top]
   * User asks for background music -> add_track('audio', 'Music')
   * Voiceover needs its own lane -> add_track('audio', 'Voiceover')
   * Text titles need a dedicated lane -> add_track('video', 'Titles')

@@ -181,7 +181,8 @@ def move_clip(clip_id: str, new_start_frame: int, track_index: int) -> str:
 
     HOW TO GET track_index:
       Call get_timeline_state() first. The tracks array is 0-indexed:
-        tracks[0] -> track_index 0 (renders ON TOP in the compositor)
+        tracks[0]           -> drawn FIRST  -> BOTTOM (background, behind everything)
+        tracks[last/highest] -> drawn LAST  -> TOP (foreground, in front of everything)
         tracks[1] -> track_index 1
         tracks[2] -> track_index 2  (etc.)
       Read the trackId of the target track, count its position in the array.
@@ -198,14 +199,14 @@ def move_clip(clip_id: str, new_start_frame: int, track_index: int) -> str:
         clip_id: The clipId to move. Get from get_timeline_state().
         new_start_frame: The new start frame on the timeline (>= 0).
         track_index: 0-based index of the destination track.
-                     0 = top track (renders on top), 1 = next track below, etc.
+                     0 = BOTTOM (background), highest index = TOP (foreground/overlay).
 
     Returns:
         Confirmation with the clip's new position and track.
 
     Examples:
-        # Move clip to frame 60 on track 0 (top/overlay track)
-        move_clip("abc123", 60, 0)
+        # Move clip to frame 60 on track 2 (an overlay/foreground track)
+        move_clip("abc123", 60, 2)
 
         # Move clip from track 1 to track 2, keeping start frame the same
         move_clip("abc123", 30, 2)
@@ -424,7 +425,7 @@ def update_clip(clip_id: str, params: dict) -> str:
     other = {k: params[k] for k in params
              if k not in TRANSFORM_PARAMS and k not in TIMING_PARAMS}
 
-    # --- 1. Transform / animatable params ---
+     
     applied: list[str] = []
     errors:  list[str] = []
 
@@ -435,7 +436,7 @@ def update_clip(clip_id: str, params: dict) -> str:
         except Exception as exc:
             errors.append(f"{key}: {exc}")
 
-    # --- 2. Timing ---
+     
     if timing:
         try:
             _post(f"/clips/{clip_id}/trim", timing)
@@ -443,7 +444,7 @@ def update_clip(clip_id: str, params: dict) -> str:
         except Exception as exc:
             errors.append(f"timing: {exc}")
 
-    # --- 3. Text / Shape / WebComp style — try all routes; first success wins ---
+    
     if other:
         # Separate text key from rest of style
         text_content = other.pop("text", None)
@@ -550,13 +551,13 @@ def get_selected_clips() -> str:
         track_id = track.get("trackId") or track.get("id", "")
         for clip in track.get("clips", []):
             clips.append({
-                "clipId":     clip.get("id") or clip.get("clipId", ""),
-                "trackId":    track_id,
+                "clipId": clip.get("id") or clip.get("clipId", ""),
+                "trackId": track_id,
                 "trackIndex": ti,
-                "type":       clip.get("type", ""),
-                "name":       clip.get("name", ""),
+                "type": clip.get("type", ""),
+                "name": clip.get("name", ""),
                 "startFrame": clip.get("startFrame", 0),
-                "duration":   clip.get("duration", 0),
+                "duration": clip.get("duration", 0),
             })
     return json.dumps(clips, indent=2)
 
@@ -589,7 +590,7 @@ def add_text_clip(
         "duration": duration,
         "text": text,
         "fontFamily": font,
-        "compId": comp_id,     # None = root timeline; str = target that comp directly
+        "compId": comp_id,      
     })
     return json.dumps(result, indent=2)
 
@@ -735,97 +736,119 @@ def add_track(track_type: str = "video", name: str = "") -> str:
 
 @tool
 def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
-    """Find (or create) the lowest track index that is guaranteed to render
-    ABOVE all opaque clips in the given frame range.
+    """Find (or create) the highest-index track that is guaranteed to render
+    ABOVE (in front of) all opaque clips in the given frame range.
 
     ALWAYS call this before placing any text, title, shape, or overlay clip.
 
-    HOW THE COMPOSITOR WORKS (CRITICAL):
-    • Tracks are painted in REVERSE order: the LAST track in the list is drawn FIRST.
-    • Track index 0 = drawn LAST = visually ON TOP (highest Z-order).
-    • Track index N (highest) = drawn FIRST = visually at the BOTTOM (background).
-    • So to place something ABOVE a clip, put it on a LOWER track index.
+    HOW THE COMPOSITOR WORKS — CRITICAL:
+    The renderer iterates timeline.tracks in INDEX ORDER (0, 1, 2 ...) and
+    paints each track onto a Skia canvas sequentially.
+    Skia rule: the LAST thing painted appears ON TOP.
 
-    EXAMPLE:
-      Track 0 (index 0) → renders on top  ← overlays / text go here
-      Track 1 (index 1) → renders below track 0
-      Track 2 (index 2) → renders at the bottom (background video)
+      tracks[0] -> drawn FIRST  -> BOTTOM of visual stack (background)
+      tracks[1] -> drawn second -> above background
+      tracks[last/highest] -> drawn LAST  -> TOP of visual stack (foreground / overlay)
+
+    UI TIMELINE PANEL — rows match the index order directly (no reversal):
+      TOP ROW    in the timeline = tracks[0]    = bottom of compositor (background)
+      BOTTOM ROW in the timeline = tracks[last] = top   of compositor (foreground)
+
+    So to put text or an overlay ABOVE a video clip:
+      * video should be on a LOW-index track  (e.g. 0)
+      * overlay must be on a HIGH-index track (e.g. 1, 2, 3 ...)
 
     Args:
-        start_frame: First frame of the clip you are about to place.
-        end_frame: Last frame of the clip (start_frame + duration - 1).
+        start_frame: First frame of the range you are about to place a clip into.
+        end_frame:   Last frame of that range (start_frame + duration - 1).
 
     Returns:
         JSON with:
-          track_index  – the safe track index to pass to add_text_clip / place_clip
-          track_id     – the trackId of that track
-          created      – true if a new track was auto-created at index 0
-          reason       – human-readable explanation of the decision
+          track_index  - safe track index to pass to add_text_clip / place_clip
+          track_id - trackId of that track
+          created - true if a new track was auto-created
+          reason - human-readable explanation
     """
     data = _get("/timeline/state")
     tracks = data.get("tracks", [])
 
-    # Find which track indices have opaque clips overlapping [start_frame, end_frame]
-    occupied_indices: list[int] = []
-    for i, track in enumerate(tracks):
-        track_type = track.get("type", "video")
-        if track_type == "audio":
-            continue
+    # Only consider video tracks  
+    video_tracks = [
+        (i, t) for i, t in enumerate(tracks)
+        if t.get("type", "video") != "audio"
+    ]
+
+    if not video_tracks:
+        # No video tracks at all  
+        new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay"})
+        new_track_id = new_track.get("trackId")
+        return json.dumps({
+            "track_index": 0, "track_id": new_track_id,
+            "created": True,
+            "reason": "No video tracks existed. Created the first track at index 0.",
+        }, indent=2)
+
+    # Which track indices have opaque clips overlapping  
+    occupied: set[int] = set()
+    for i, track in video_tracks:
         for clip in track.get("clips", []):
             clip_end = clip["startFrame"] + clip["duration"] - 1
             if clip["startFrame"] <= end_frame and start_frame <= clip_end:
-                clip_type = clip.get("type", "video")
-                if clip_type not in ("adjustment",):
-                    occupied_indices.append(i)
-                    break   
-
-    if not occupied_indices:
-        # No conflicting clips 
-        reason = "No opaque clips found in this range; track 0 is safe (it renders on top)."
-        track_id = tracks[0].get("trackId") if tracks else None
-        return json.dumps({"track_index": 0, "track_id": track_id,
-                           "created": False, "reason": reason}, indent=2)
-
+                if clip.get("type", "video") not in ("adjustment",):
+                    occupied.add(i)
+                    break
     
-    lowest_occupied = min(occupied_indices)
-    if lowest_occupied > 0:
-         
-        overlay_index = lowest_occupied - 1
-         
-        for candidate in range(lowest_occupied - 1, -1, -1):
-            if candidate not in occupied_indices:
-                overlay_index = candidate
-            else:
-                break
-        track_id = tracks[overlay_index].get("trackId")
+ 
+
+    if not occupied:
+        
+        last_i, last_t = video_tracks[-1]
         reason = (
-            f"Track {lowest_occupied} has opaque clips in this range. "
-            f"Using track {overlay_index} (lower index = renders on top)."
+            f"No clips in frames {start_frame}-{end_frame}. "
+            f"Using track {last_i} (highest existing video track = renders on top)."
         )
         return json.dumps({
-            "track_index": overlay_index,
-            "track_id": track_id,
+            "track_index": last_i,
+            "track_id": last_t.get("trackId"),
             "created": False,
             "reason": reason,
         }, indent=2)
-    else:
-        # All occupied indices include 0 — must insert a new track at index 0
-        # by adding a track and moving it to the front.
-        new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay"})
-        new_track_id = new_track.get("trackId")
-        # Move the new track to index 0 so it renders on top
-        _post("/timeline/move-track", {"trackId": new_track_id, "newIndex": 0})
+
+    max_occupied = max(occupied)
+
+    # Look for an existing free video track  
+    best_i, best_t = None, None
+    for i, t in video_tracks:
+        if i > max_occupied and i not in occupied:
+            best_i, best_t = i, t
+            break   # take the first  
+
+    if best_i is not None:
         reason = (
-            "All existing tracks have conflicting opaque clips at index 0 or above. "
-            "Created a new Overlay track and moved it to index 0 (top of composite stack)."
+            f"Track {best_i} is free and its index ({best_i}) > highest occupied ({max_occupied}) "
+            f"-> drawn after all video -> renders ON TOP."
         )
         return json.dumps({
-            "track_index": 0,
-            "track_id": new_track_id,
-            "created": True,
+            "track_index": best_i,
+            "track_id": best_t.get("trackId"),
+            "created": False,
             "reason": reason,
         }, indent=2)
 
+    # No free track above the video  
+    new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay"})
+    new_track_id = new_track.get("trackId")
+    new_index = len(tracks)    
+    reason = (
+        f"All tracks at index > {max_occupied} are occupied or don't exist. "
+        f"Created new Overlay track at index {new_index} (highest = renders ON TOP)."
+    )
+    return json.dumps({
+        "track_index": new_index,
+        "track_id": new_track_id,
+        "created": True,
+        "reason": reason,
+    }, indent=2)
 
 @tool
 def remove_track(track_id: str) -> str:
@@ -1210,12 +1233,12 @@ def create_news_video(query: str, scene_duration_seconds: float = 5.0) -> str:
     if not items:
         return "❌ No news articles found for that query. Try a different topic."
 
-    # 2. Plan scenes via LLM structured output
+    
     print(f"[create_news_video] Planning {len(items)} scenes…", flush=True)
     llm = get_agent_llm(_PORT)
     plan = plan_scenes(query, items, llm, scene_duration=scene_duration, fps=fps)
 
-    # 3. Gather assets in parallel (yt-dlp + Gemini image gen)
+    #   Gather assets in parallel 
     print(f"[create_news_video] Gathering assets…", flush=True)
     try:
         loop = asyncio.get_event_loop()
@@ -1354,11 +1377,11 @@ def add_clip_to_comp(
     Use get_comp_state(comp_id) first to inspect existing tracks/clips.
 
     Args:
-        comp_id:     The compId of the target composition (from list_compositions()).
-        asset_id:    The assetId of the media to add (from get_library()).
+        comp_id: The compId of the target composition (from list_compositions()).
+        asset_id: The assetId of the media to add (from get_library()).
         track_index: Which track inside the comp to add to (0 = first).
         start_frame: Frame inside the comp where the clip starts.
-        duration:    Duration in frames.
+        duration: Duration in frames.
     """
     result = _post("/timeline/add-clip", {
         "assetId": asset_id,
@@ -1402,7 +1425,7 @@ def add_solid_clip(
         "fillR": r, "fillG": g, "fillB": b, "fillA": a,
         "strokeA": 0.0,
         "width": 1920, "height": 1080,
-        "compId": comp_id,     # None = root timeline; str = target that comp directly
+        "compId": comp_id,     # None = root timeline; str 
     })
     return json.dumps(result, indent=2)
 
@@ -1442,7 +1465,7 @@ def add_shape_clip(
         "fillR": fill_r, "fillG": fill_g, "fillB": fill_b, "fillA": fill_a,
         "strokeA": 0.0,
         "width": width, "height": height,
-        "compId": comp_id,     # None = root timeline; str = target that comp directly
+        "compId": comp_id,     # None = root timeline 
     })
     return json.dumps(result, indent=2)
 
@@ -2310,7 +2333,7 @@ def animate_property(
         handle_out_frames: Right bezier handle frame offset.
         handle_out_value: Right bezier handle value offset.
     """
-    # Resolve preset → easing + handles before sending to backend
+    # Resolve preset  
     _hin_f, _hin_v, _hout_f, _hout_v = handle_in_frames, handle_in_value, handle_out_frames, handle_out_value
     _easing = easing
     if preset:
