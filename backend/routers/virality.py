@@ -126,13 +126,22 @@ def _call_llm(prompt: str) -> str:
 
 
 #   YouTube helpers  
- 
-_YT_CLIENT_ID = os.environ.get("YOUTUBE_CLIENT_ID",     "")
-_YT_CLIENT_SECRET = os.environ.get("YOUTUBE_CLIENT_SECRET", "")
-_YT_API_KEY = os.environ.get("YOUTUBE_API_KEY",       "")
-_REDIRECT_URI = "http://localhost:9999/oauth2callback"  
+def _get_youtube_credentials():
+    try:
+        from dotenv import load_dotenv
+        env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+        load_dotenv(env_path)
+    except ImportError:
+        pass
+    return (
+        os.environ.get("YOUTUBE_CLIENT_ID", ""),
+        os.environ.get("YOUTUBE_CLIENT_SECRET", "")
+    )
 
-YOUTUBE_SCOPES = "https://www.googleapis.com/auth/youtube.readonly"
+_YT_API_KEY = os.environ.get("YOUTUBE_API_KEY",       "")
+_REDIRECT_URI = "http://127.0.0.1:8000/virality/youtube/oauth2callback"
+
+YOUTUBE_SCOPES = "https://www.googleapis.com/auth/youtube"
 
 
 def _yt_api_get(path: str, params: dict, access_token: str = "") -> dict:
@@ -335,11 +344,12 @@ def get_connections():
 
 @router.get("/virality/youtube/auth-url")
 def youtube_auth_url():
-    if not _YT_CLIENT_ID:
+    client_id, _ = _get_youtube_credentials()
+    if not client_id:
         # Return a placeholder  
         return {"url": "", "error": "YOUTUBE_CLIENT_ID not set in environment"}
     params = urllib.parse.urlencode({
-        "client_id": _YT_CLIENT_ID,
+        "client_id": client_id,
         "redirect_uri": _REDIRECT_URI,
         "response_type": "code",
         "scope": YOUTUBE_SCOPES,
@@ -347,6 +357,69 @@ def youtube_auth_url():
         "prompt": "consent",
     })
     return {"url": f"https://accounts.google.com/o/oauth2/v2/auth?{params}"}
+
+
+@router.get("/virality/youtube/oauth2callback")
+def youtube_oauth2_callback(code: str = "", error: str = ""):
+    from fastapi.responses import HTMLResponse
+    if error:
+        return HTMLResponse(f"<h1>OAuth Error</h1><p>{error}</p>")
+    if not code:
+        return HTMLResponse("<h1>Error</h1><p>No authorization code provided.</p>")
+
+    # Exchange code for tokens
+    client_id, client_secret = _get_youtube_credentials()
+    token_url = "https://oauth2.googleapis.com/token"
+    data = urllib.parse.urlencode({
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": _REDIRECT_URI
+    }).encode("utf-8")
+
+    try:
+        req = urllib.request.Request(token_url, data=data, method="POST")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            token_info = json.loads(resp.read())
+            
+        access_token = token_info.get("access_token", "")
+        refresh_token = token_info.get("refresh_token", "")
+        
+        # Now fetch the user's channel to get their ID and name
+        channel_id = ""
+        channel_name = ""
+        try:
+            me = _yt_api_get("/channels", {"mine": "true", "part": "id,snippet"}, access_token)
+            items = me.get("items", [])
+            if items:
+                channel_id = items[0]["id"]
+                channel_name = items[0]["snippet"]["title"]
+        except Exception as e:
+            print(f"[Virality] Warning: could not fetch channel info during OAuth: {e}")
+
+        with _db() as conn:
+            conn.execute("""
+                UPDATE connections SET
+                    access_token=?, refresh_token=?, channel_id=?,
+                    channel_name=?, connected=1
+                WHERE platform='youtube'
+            """, (access_token, refresh_token, channel_id, channel_name))
+
+        return HTMLResponse("""
+            <html>
+                <head><title>Success</title></head>
+                <body style="font-family: sans-serif; text-align: center; margin-top: 50px;">
+                    <h2>YouTube Connected Successfully!</h2>
+                    <p>You can close this window and return to the Fade editor.</p>
+                    <script>
+                        setTimeout(() => window.close(), 1500);
+                    </script>
+                </body>
+            </html>
+        """)
+    except Exception as e:
+        return HTMLResponse(f"<h1>Token Exchange Failed</h1><p>{e}</p>")
 
 
 @router.post("/virality/connections/youtube")
