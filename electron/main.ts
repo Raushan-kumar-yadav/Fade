@@ -317,7 +317,14 @@ ipcMain.on('export:start', async (_event, config) => {
     : Promise.resolve()
   await pyScaleReset
 
- 
+
+  // Clips available to the export loop for just-in-time C++ cache pushes
+  interface WcExportClip {
+    webcompId: string; startFrame: number; endFrame: number;
+    mediaOffset: number; width: number; height: number;
+  }
+  const wcExportClips: WcExportClip[] = []
+
   if (detectedPort) {
     try {
       const { default: httpWC } = await import('http')
@@ -352,7 +359,19 @@ ipcMain.on('export:start', async (_event, config) => {
         }>
         const assetMap = new Map(assetList.map(a => [a.assetId, a]))
 
-         
+        // Populate hoisted wcExportClips so the export loop can do JIT pushes
+        for (const clip of clips) {
+          const asset = assetMap.get(clip.webcompId)
+          wcExportClips.push({
+            webcompId:   clip.webcompId,
+            startFrame:  clip.startFrame,
+            endFrame:    clip.endFrame,
+            mediaOffset: clip.mediaOffset,
+            width:  asset?.width  ?? config.width  ?? 1920,
+            height: asset?.height ?? config.height ?? 1080,
+          })
+        }
+
         const uniqueIds = [...new Set(clips.map(c => c.webcompId))]
         for (const wcId of uniqueIds) {
           const existing = getActiveInstances().find(i => i.webcompId === wcId)
@@ -392,7 +411,7 @@ ipcMain.on('export:start', async (_event, config) => {
             if (rgba && renderEngine) {
               try {
                 ;(renderEngine as any).pushWebCompFrame(
-                  clip.webcompId, f, rgba,
+                  clip.webcompId, localFrame, rgba,   // localFrame = cache key the compositor uses
                   config.width ?? 1920, config.height ?? 1080
                 )
               } catch (e) {
@@ -503,7 +522,25 @@ ipcMain.on('export:start', async (_event, config) => {
         if (exportCancelled) { exportError = 'Cancelled'; break }
         if (ffExited) { exportError = `FFmpeg exited early (code ${ffExitCode}): ${ffStderr.slice(-400)}`; break }
 
-         
+        // ── Just-in-time WebComp push ────────────────────────────────────
+        // Push each active clip's frame to the C++ cache RIGHT BEFORE seekFrame.
+        // This sidesteps the 1GB LRU eviction problem: Phase 0 already filled
+        // the per-instance JS cache (360 frames each), so captureFrame() is a
+        // fast memory read — no new Chromium round-trip needed.
+        for (const wcc of wcExportClips) {
+          if (f >= wcc.startFrame && f < wcc.endFrame) {
+            const localFrame = Math.max(0, (f - wcc.startFrame) + wcc.mediaOffset)
+            const rgba = await captureFrame(wcc.webcompId, localFrame) // JS-cache hit
+            if (rgba && renderEngine) {
+              try {
+                ;(renderEngine as any).pushWebCompFrame(
+                  wcc.webcompId, localFrame, rgba, wcc.width, wcc.height
+                )
+              } catch { /* non-fatal — compositor continues without this frame */ }
+            }
+          }
+        }
+
         await new Promise<void>(resolve => {
           _frameResolve = resolve
           renderEngine!.seekFrame(f)

@@ -53,6 +53,26 @@ export function useWebCompSync() {
         // Playhead jumped  
         for (const set of pushedRef.current.values()) set.clear();
         for (const set of pendingRef.current.values()) set.clear();
+
+         
+        if (api?.webcompPushToNative) {
+          for (const clip of wcClipsRef.current) {
+            const srcFrame = newFrame - clip.startFrame;
+            if (srcFrame < 0 || srcFrame >= clip.duration) continue;
+            const pushed  = pushedRef.current.get(clip.webcompId);
+            const pending = pendingRef.current.get(clip.webcompId);
+            if (!pushed || !pending) continue;
+            if (pushed.has(srcFrame) || pending.has(srcFrame)) continue;
+            pending.add(srcFrame);
+            const capSrc = srcFrame;
+            api.webcompPushToNative(clip.webcompId, capSrc, clip.width, clip.height)
+              .then((ok: boolean) => {
+                pending.delete(capSrc);
+                if (ok) pushed.add(capSrc);
+              })
+              .catch(() => { pending.delete(capSrc); });
+          }
+        }
       }
     };
     window.addEventListener('fade:frame', onFrame);
