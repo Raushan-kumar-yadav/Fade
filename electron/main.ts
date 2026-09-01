@@ -765,17 +765,21 @@ ipcMain.on('webcomp:destroy', (_, webcompId: string) => {
   destroyWebComp(webcompId)
 })
 
- 
+
+// ─── WebComp push-to-native ───────────────────────────────────────────────────
+// IMPORTANT: the C++ compositor looks up WebComp frames via:
+//   tryGetCachedFrame(clip.file, clip.sourceFrame)
+// where clip.sourceFrame = (timelineFrame - clip.startFrame) + mediaOffset = localFrame.
+// Therefore we MUST cache by localFrame, NOT by timelineFrame.
+// Passing timelineFrame here was the original cache-key mismatch bug.
 ipcMain.handle('webcomp:push-to-native', async (
   _, webcompId: string, localFrame: number, width: number, height: number,
-  timelineFrame?: number
+  _timelineFrame?: number   // kept in IPC signature for compat; not used as cache key
 ) => {
   const rgba = await captureFrame(webcompId, localFrame)
   if (rgba && renderEngine) {
-     
-    const schedulerKey = timelineFrame ?? localFrame
     try {
-      (renderEngine as any).pushWebCompFrame(webcompId, schedulerKey, rgba, width, height)
+      (renderEngine as any).pushWebCompFrame(webcompId, localFrame, rgba, width, height)
       return true
     } catch (e) {
       console.error('[WebComp] pushWebCompFrame failed:', e)

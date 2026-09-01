@@ -146,13 +146,13 @@ export function useWebCompSync() {
 
             pending.add(srcFrame);
 
+
             const capGen = myGen;
             api.webcompPushToNative(
               webcompId,
-              srcFrame,        // localFrame: what Chromium renders
+              srcFrame,   // localFrame ← cache key the compositor uses
               clip.width,
               clip.height,
-              absFrame,        // timelineFrame 
             ).then((ok: boolean) => {
               pending.delete(srcFrame);
               if (generationRef.current !== capGen) {
@@ -180,7 +180,6 @@ export function useWebCompSync() {
               const capGen = myGen;
               api.webcompPushToNative(
                 webcompId, f, clip.width, clip.height,
-                clip.startFrame + f,  // timelineFrame 
               ).then((ok: boolean) => {
                 pending.delete(f);
                 if (generationRef.current !== capGen) return;

@@ -9,10 +9,13 @@ interface WebCompInstance {
   frameCache: Map<number, Buffer>
   ready: boolean
   readyPromise: Promise<void>
+  // Serializes concurrent captures: only one executeJavaScript+capturePage
+  // runs at a time per instance, preventing FADE_FRAME races.
+  captureQueue: Promise<Buffer | null>
 }
 
 const instances = new Map<string, WebCompInstance>()
-const MAX_CACHE_FRAMES = 60
+const MAX_CACHE_FRAMES = 360  // ~12 s at 30fps; JS-side LRU before C++ cache fills
 
 export async function createWebComp(
   webcompId: string, htmlUrl: string,
@@ -65,11 +68,12 @@ export async function createWebComp(
     frameCache: new Map(),
     ready: false,
     readyPromise,
+    captureQueue: Promise.resolve(null),  // serial capture chain
   }
   instances.set(webcompId, inst)
   console.log(`[WebComp] Created ${webcompId} (${width}x${height}@${fps}fps)`)
 
-  // Wait for page  
+  // Wait for page to finish loading so the first capture attempt always succeeds
   await readyPromise
   inst.ready = true
   console.log(`[WebComp] Ready ${webcompId}`)
@@ -85,54 +89,70 @@ export async function captureFrame(
   // Wait for page to finish loading on first capture
   if (!inst.ready) await inst.readyPromise
 
-  // Cache hit
+  // JS-side LRU cache hit — no Chrome round-trip needed
   if (inst.frameCache.has(frame)) return inst.frameCache.get(frame)!
 
-  try {
-    // Inject frame number into the page
-    await inst.win.webContents.executeJavaScript(`
-      window.FADE_FRAME = ${frame};
-      window.FADE_TIME = ${frame / inst.fps};
-      window.FADE_FPS = ${inst.fps};
-      window.FADE_WIDTH = ${inst.width};
-      window.FADE_HEIGHT = ${inst.height};
-      window.dispatchEvent(new CustomEvent('fade:frame', {
-        detail: { frame: ${frame}, time: ${frame / inst.fps} }
-      }));
-    `)
+  // ── Serialize captures through a per-instance queue ─────────────────────
+  // Only ONE executeJavaScript+capturePage sequence runs at a time.
+  // Without this, concurrent callers can race on window.FADE_FRAME:
+  //   caller A sets FADE_FRAME=5, caller B immediately sets FADE_FRAME=10,
+  //   caller A's capturePage() gets frame 10 — silently wrong pixels.
+  const doCapture = async (): Promise<Buffer | null> => {
+    // Re-check cache inside the queue (another caller may have captured it)
+    if (inst.frameCache.has(frame)) return inst.frameCache.get(frame)!
+    if (inst.win.isDestroyed()) return null
 
-    // Wait for render  
-    await inst.win.webContents.executeJavaScript(
-      `new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`
-    )
+    try {
+      // Inject frame number into the page
+      await inst.win.webContents.executeJavaScript(`
+        window.FADE_FRAME = ${frame};
+        window.FADE_TIME = ${frame / inst.fps};
+        window.FADE_FPS = ${inst.fps};
+        window.FADE_WIDTH = ${inst.width};
+        window.FADE_HEIGHT = ${inst.height};
+        window.dispatchEvent(new CustomEvent('fade:frame', {
+          detail: { frame: ${frame}, time: ${frame / inst.fps} }
+        }));
+      `)
 
-    // Capture BGRA bitmap from Chromium
-    const nativeImage = await inst.win.webContents.capturePage()
-    const size = nativeImage.getSize()
-    const bgra = nativeImage.toBitmap()
+      // Wait for render (double rAF ensures paint is complete)
+      await inst.win.webContents.executeJavaScript(
+        `new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`
+      )
 
-    // Swizzle BGRA  
-    const rgba = Buffer.alloc(size.width * size.height * 4)
-    for (let i = 0; i < size.width * size.height; i++) {
-      const o = i * 4
-      rgba[o + 0] = bgra[o + 2]  // R ← B
-      rgba[o + 1] = bgra[o + 1]  // G ← G
-      rgba[o + 2] = bgra[o + 0]  // B ← R
-      rgba[o + 3] = bgra[o + 3]  // A ← A
+      // Capture BGRA bitmap from Chromium
+      const nativeImage = await inst.win.webContents.capturePage()
+      const size = nativeImage.getSize()
+      const bgra = nativeImage.toBitmap()
+
+      // Swizzle BGRA → RGBA (Chromium outputs BGRA, Skia expects RGBA)
+      const rgba = Buffer.alloc(size.width * size.height * 4)
+      for (let i = 0; i < size.width * size.height; i++) {
+        const o = i * 4
+        rgba[o + 0] = bgra[o + 2]  // R ← B
+        rgba[o + 1] = bgra[o + 1]  // G ← G
+        rgba[o + 2] = bgra[o + 0]  // B ← R
+        rgba[o + 3] = bgra[o + 3]  // A ← A
+      }
+
+      // LRU cache — keep last MAX_CACHE_FRAMES frames
+      inst.frameCache.set(frame, rgba)
+      if (inst.frameCache.size > MAX_CACHE_FRAMES) {
+        const oldest = inst.frameCache.keys().next().value
+        if (oldest !== undefined) inst.frameCache.delete(oldest)
+      }
+
+      return rgba
+    } catch (err) {
+      console.error(`[WebComp] captureFrame error ${webcompId}:${frame}`, err)
+      return null
     }
-
-    // LRU cache  
-    inst.frameCache.set(frame, rgba)
-    if (inst.frameCache.size > MAX_CACHE_FRAMES) {
-      const oldest = inst.frameCache.keys().next().value
-      if (oldest !== undefined) inst.frameCache.delete(oldest)
-    }
-
-    return rgba
-  } catch (err) {
-    console.error(`[WebComp] captureFrame error ${webcompId}:${frame}`, err)
-    return null
   }
+
+  // Chain this capture AFTER any in-flight one; the queue itself never rejects.
+  const result = inst.captureQueue.then(doCapture, doCapture)
+  inst.captureQueue = result.then(() => null, () => null)  // advance queue silently
+  return result
 }
 
 export async function prefetchFrames(
