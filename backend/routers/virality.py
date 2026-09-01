@@ -203,6 +203,43 @@ def _fetch_yt_thumbnail_bytes(url: str) -> bytes:
         return b""
 
 
+def _refresh_yt_access_token(refresh_token: str) -> str:
+    """Exchange a refresh_token for a fresh access_token via Google OAuth2.
+    Returns the new access_token string, or empty string on failure.
+    Updates the DB row automatically on success.
+    """
+    client_id, client_secret = _get_youtube_credentials()
+    if not refresh_token or not client_id or not client_secret:
+        return ""
+    try:
+        body = urllib.parse.urlencode({
+            "client_id":     client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+            "grant_type":    "refresh_token",
+        }).encode()
+        req = urllib.request.Request(
+            "https://oauth2.googleapis.com/token",
+            data=body,
+            method="POST",
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            info = json.loads(resp.read())
+        new_token = info.get("access_token", "")
+        if new_token:
+            with _db() as conn:
+                conn.execute(
+                    "UPDATE connections SET access_token=? WHERE platform='youtube'",
+                    (new_token,)
+                )
+            print("[Virality] OAuth token auto-refreshed.", flush=True)
+        return new_token
+    except Exception as exc:
+        print(f"[Virality] Token refresh failed: {exc}", flush=True)
+        return ""
+
+
 def _fetch_latest_yt_videos(channel_id: str, access_token: str) -> list:
     """Return top-10 latest videos for a channel with all info the model needs."""
     try:
@@ -529,8 +566,32 @@ def get_youtube_videos():
     if not row or not row["connected"]:
         raise HTTPException(400, "YouTube not connected")
 
-    access_token = row["access_token"]
-    channel_id   = row["channel_id"]
+    access_token  = row["access_token"]
+    refresh_token = row["refresh_token"]
+    channel_id    = row["channel_id"]
+
+    # Auto-refresh: try the stored token; if it's a 401 use refresh_token to get a new one
+    def _get_token_with_refresh() -> str:
+        nonlocal access_token
+        try:
+            # Quick probe — just ask for the channel to validate the token
+            _yt_api_get("/channels", {"mine": "true", "part": "id"}, access_token)
+            return access_token
+        except HTTPException as e:
+            if e.status_code == 403 and "401" in str(e.detail):
+                new_token = _refresh_yt_access_token(refresh_token)
+                if new_token:
+                    access_token = new_token
+                    return access_token
+            raise
+
+    try:
+        access_token = _get_token_with_refresh()
+    except HTTPException:
+        # Token expired and refresh failed — mark disconnected so UI shows reconnect button
+        with _db() as conn:
+            conn.execute("UPDATE connections SET connected=0 WHERE platform='youtube'")
+        raise HTTPException(401, "YouTube session expired. Please reconnect in Settings.")
 
     if not channel_id:
         # Try to fetch it from the API
