@@ -106,52 +106,207 @@ def seek_to(frame: int) -> str:
 
 @tool
 def split_clip(clip_id: str, frame: int) -> str:
-    """Split a clip at a specific timeline frame, creating two clips.
+    """Split a clip into two separate clips at a specific timeline frame.
+
+    The original clip keeps frames up to (but not including) the split point.
+    A new clip is created for frames from the split point onwards.
+    Both clips stay on the same track.
+
+    WORKFLOW:
+      1. get_timeline_state()          -> find clip_id and its startFrame + duration
+      2. split_clip(clip_id, frame)    -> frame must be INSIDE the clip's range
+
     Args:
-        clip_id: The clipId of the clip to split.
-        frame: The timeline frame number where the split should occur.
+        clip_id: The clipId of the clip to split. Get from get_timeline_state().
+        frame: The TIMELINE frame number where the split occurs.
+               Must satisfy: clip.startFrame < frame < clip.startFrame + clip.duration
+
+    Returns:
+        Confirmation with the two new clip IDs.
+
+    Example:
+        # Clip starts at frame 30, duration 120 (ends at frame 149)
+        # Split at frame 90 -> clip A: frames 30-89, clip B: frames 90-149
+        split_clip("abc123", 90)
     """
     result = _post("/timeline/split-clip", {"clipId": clip_id, "frame": frame})
-    return f"Split clip {clip_id} at frame {frame}. New clip IDs: {result}"
+    ids = result if isinstance(result, dict) else {}
+    return (
+        f"✂️ Split clip {clip_id[:8]}… at frame {frame}.\n"
+        f"  Result: {json.dumps(ids)}"
+    )
+
 
 @tool
 def trim_clip(clip_id: str, side: str, frame_delta: int) -> str:
-    """Trim the start or end of a clip by a number of frames.
+    """Trim the start or end of a clip by a number of frames (non-destructive).
+
+    Trimming changes where the clip starts/ends on the timeline without
+    affecting other clips. It also shifts the media offset for left-trims.
+
     Args:
-        clip_id: The clipId of the clip to trim.
-        side: 'left' to trim the start, 'right' to trim the end.
-        frame_delta: Number of frames to trim (positive number).
+        clip_id: The clipId of the clip to trim. Get from get_timeline_state().
+        side: Which end to trim:
+              'left'  -> moves the clip's start point LATER (shortens from the front)
+              'right' -> moves the clip's end point EARLIER (shortens from the back)
+        frame_delta: Number of frames to remove (always a positive integer).
+
+    Returns:
+        Confirmation with the clip's new startFrame and duration.
+
+    Examples:
+        trim_clip("abc123", "left",  15)  # remove first 15 frames
+        trim_clip("abc123", "right", 30)  # remove last 30 frames
     """
     result = _post("/timeline/trim-clip", {
         "clipId": clip_id,
         "side": side,
-        "frameDelta": frame_delta
+        "frameDelta": frame_delta,
     })
-    return f"Trimmed {side} of clip {clip_id} by {frame_delta} frames."
+    new_start = result.get("startFrame", "?")
+    new_dur   = result.get("duration", "?")
+    return (
+        f"✂️ Trimmed {side} of clip {clip_id[:8]}… by {frame_delta} frames.\n"
+        f"  New startFrame: {new_start}  duration: {new_dur}"
+    )
+
 
 @tool
 def move_clip(clip_id: str, new_start_frame: int, track_index: int) -> str:
-    """Move a clip to a new position on the timeline.
+    """Move a clip to a different position AND/OR a different track.
+
+    Use this when you need to change BOTH position and track at once,
+    or when you know the exact target track_index.
+    To slide a clip on its CURRENT track only, use reposition_clip() instead.
+
+    HOW TO GET track_index:
+      Call get_timeline_state() first. The tracks array is 0-indexed:
+        tracks[0] -> track_index 0 (renders ON TOP in the compositor)
+        tracks[1] -> track_index 1
+        tracks[2] -> track_index 2  (etc.)
+      Read the trackId of the target track, count its position in the array.
+
+    HOW TO MOVE ACROSS TRACKS (e.g. video clip from track 1 to track 2):
+      1. get_timeline_state()                    -> read current track positions
+      2. move_clip(clip_id, same_start_frame, 2) -> moves to track index 2
+
+    HOW TO MOVE TO A SPECIFIC FRAME ON SAME TRACK:
+      move_clip(clip_id, new_start_frame, current_track_index)
+      OR simply use reposition_clip(clip_id, new_start_frame) which auto-detects the track.
+
     Args:
-        clip_id: The clipId to move.
-        new_start_frame: The new start frame on the timeline.
-        track_index: The track index (0-based) to move the clip to.
+        clip_id: The clipId to move. Get from get_timeline_state().
+        new_start_frame: The new start frame on the timeline (>= 0).
+        track_index: 0-based index of the destination track.
+                     0 = top track (renders on top), 1 = next track below, etc.
+
+    Returns:
+        Confirmation with the clip's new position and track.
+
+    Examples:
+        # Move clip to frame 60 on track 0 (top/overlay track)
+        move_clip("abc123", 60, 0)
+
+        # Move clip from track 1 to track 2, keeping start frame the same
+        move_clip("abc123", 30, 2)
     """
     result = _post("/timeline/move-clip", {
         "clipId": clip_id,
         "startFrame": new_start_frame,
-        "trackIndex": track_index
+        "trackIndex": track_index,
     })
-    return f"Moved clip {clip_id} to frame {new_start_frame} on track {track_index}."
+    ok = result.get("status", "ok") == "ok"
+    if ok:
+        return (
+            f"✅ Moved clip {clip_id[:8]}…\n"
+            f"  New start frame: {new_start_frame}\n"
+            f"  Track index:     {track_index}"
+        )
+    return f"❌ move_clip failed: {result}"
+
+
+@tool
+def reposition_clip(clip_id: str, new_start_frame: int) -> str:
+    """Slide a clip to a new start frame on its CURRENT track (no track change).
+
+    This is the simplest way to move a clip earlier or later in time
+    without changing which track it lives on.
+
+    Use this when the user says things like:
+      'move that clip 2 seconds later', 'push the intro clip to frame 90',
+      'slide the B-roll to start after the title', 'reorder clips'.
+
+    The tool automatically looks up the clip's current track so you don't
+    need to know the track_index.
+
+    Args:
+        clip_id: The clipId to reposition. Get from get_timeline_state().
+        new_start_frame: The new start frame (>= 0). Must not overlap other clips
+                         (check get_timeline_state() first to confirm free space).
+
+    Returns:
+        Confirmation with the new start frame and which track it stayed on.
+
+    Examples:
+        # Push a clip 90 frames (3 seconds @ 30fps) later
+        reposition_clip("abc123", current_start + 90)
+
+        # Move an intro clip to frame 0
+        reposition_clip("abc123", 0)
+    """
+    # Look up the current track index from the timeline state
+    data   = _get("/timeline/state")
+    tracks = data.get("tracks", [])
+    track_index = None
+    for i, track in enumerate(tracks):
+        for clip in track.get("clips", []):
+            if clip.get("clipId") == clip_id:
+                track_index = i
+                break
+        if track_index is not None:
+            break
+    if track_index is None:
+        return f"❌ reposition_clip: clip {clip_id[:8]}… not found in any track."
+
+    result = _post("/timeline/move-clip", {
+        "clipId": clip_id,
+        "startFrame": new_start_frame,
+        "trackIndex": track_index,
+    })
+    ok = result.get("status", "ok") == "ok"
+    if ok:
+        return (
+            f"✅ Repositioned clip {clip_id[:8]}…\n"
+            f"  New start frame: {new_start_frame}\n"
+            f"  Track index:     {track_index} (unchanged)"
+        )
+    return f"❌ reposition_clip failed: {result}"
+
 
 @tool
 def delete_clip(clip_id: str) -> str:
-    """Remove a clip from the timeline entirely.
+    """Permanently remove a clip from the timeline.
+
+    This action is undoable via the editor's undo stack.
+    The clip's media asset is NOT deleted — only the timeline placement.
+
+    Use when the user says:
+      'delete that clip', 'remove the intro', 'cut out clip X',
+      'get rid of the B-roll', 'remove all text clips'.
+
+    WORKFLOW (always confirm clip_id first):
+      1. get_timeline_state()   -> identify the clip by name/type/position
+      2. delete_clip(clip_id)   -> remove it
+
     Args:
-        clip_id: The clipId to delete.
+        clip_id: The clipId to delete. Get from get_timeline_state().
+                 NEVER invent clipIds — always read them from the timeline.
+
+    Returns:
+        Confirmation that the clip was removed.
     """
     _delete(f"/timeline/clips/{clip_id}")
-    return f"Deleted clip {clip_id}."
+    return f"🗑️ Deleted clip {clip_id[:8]}… — removed from timeline."
 
 # effects  
 
@@ -627,7 +782,7 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
     if not occupied_indices:
         # No conflicting clips 
         reason = "No opaque clips found in this range; track 0 is safe (it renders on top)."
-        track_id = tracks[0]["id"] if tracks else None
+        track_id = tracks[0].get("trackId") if tracks else None
         return json.dumps({"track_index": 0, "track_id": track_id,
                            "created": False, "reason": reason}, indent=2)
 
@@ -642,7 +797,7 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
                 overlay_index = candidate
             else:
                 break
-        track_id = tracks[overlay_index]["id"]
+        track_id = tracks[overlay_index].get("trackId")
         reason = (
             f"Track {lowest_occupied} has opaque clips in this range. "
             f"Using track {overlay_index} (lower index = renders on top)."
@@ -1316,6 +1471,7 @@ ALL_TOOLS = [
     split_clip,
     trim_clip,
     move_clip,
+    reposition_clip,
     delete_clip,
     get_effects_catalog,
     add_effect,
@@ -2824,3 +2980,8 @@ def get_clip_volume(clip_id: str) -> str:
 
 VOLUME_TOOLS = [set_clip_volume, mute_clip, get_clip_volume]
 ALL_TOOLS.extend(VOLUME_TOOLS)
+
+
+# ── Publishing tools ──────────────────────────────────────────────────────────
+from backend.ai.publish_tools import PUBLISH_TOOLS as _PUBLISH_TOOLS
+ALL_TOOLS.extend(_PUBLISH_TOOLS)

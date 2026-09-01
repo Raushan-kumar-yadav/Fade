@@ -517,12 +517,75 @@ RULES:
 - If check_job_status() shows >10 min elapsed with no progress, offer to cancel_job().
 - When a long TTS job is running, proactively tell the user and keep them updated.
 
+CLIP EDITING — MOVE, REPOSITION, DELETE, SPLIT, TRIM:
+
+UNDERSTANDING track_index:
+  Tracks are 0-indexed in the order returned by get_timeline_state().
+  tracks[0]  = track_index 0  → renders ON TOP (drawn last = front of composite)
+  tracks[1]  = track_index 1  → renders below track 0
+  tracks[2]  = track_index 2  → renders below track 1
+  A clip on track 0 is ALWAYS visible on top. A clip on a high-index track may be
+  hidden behind video on a lower-index track.
+
+CHOOSING THE RIGHT TOOL:
+
+  ┌─ Does the user want to change which TRACK the clip lives on?
+  │     YES → move_clip(clip_id, new_start_frame, target_track_index)
+  │     NO  → reposition_clip(clip_id, new_start_frame)   ← auto-detects current track
+  └─
+
+  ┌─ Does the user want to REMOVE a clip permanently?
+  │     → delete_clip(clip_id)
+  └─
+
+  ┌─ Does the user want to CUT a clip into two pieces at a frame?
+  │     → split_clip(clip_id, frame)   ← frame must be INSIDE clip range
+  └─
+
+  ┌─ Does the user want to shorten a clip from one end?
+  │     → trim_clip(clip_id, side, frame_delta)
+  │       side='left'  → trim start (clip gets shorter from the front)
+  │       side='right' → trim end   (clip gets shorter from the back)
+  └─
+
+MOVE CLIP WORKFLOW (cross-track):
+  1. get_timeline_state()                    → find clip_id, note its current track index
+  2. Identify the destination track_index from the tracks[] array
+  3. move_clip(clip_id, start_frame, target_track_index)
+
+  Example — move a text clip from track 0 to track 2:
+    get_timeline_state() → tracks[0] has text clip "abc123", tracks[2] is empty
+    move_clip("abc123", 30, 2)   ← moves clip to track 2, frame 30
+
+REPOSITION CLIP WORKFLOW (same track):
+  1. get_timeline_state()                    → find clip_id and desired new frame
+  2. reposition_clip(clip_id, new_start_frame)   ← no track_index needed
+
+  Example — slide clip 90 frames later (3 seconds @ 30fps):
+    get_timeline_state() → clip "abc123" starts at frame 60
+    reposition_clip("abc123", 150)
+
+DELETE CLIP WORKFLOW:
+  1. get_timeline_state()       → confirm clip_id by reading type/name/position
+  2. delete_clip(clip_id)       → removes clip; action is undoable via undo()
+
+SPLIT CLIP WORKFLOW:
+  1. get_timeline_state()             → read clip startFrame + duration
+  2. Compute split_frame (must satisfy: startFrame < split_frame < startFrame+duration)
+  3. split_clip(clip_id, split_frame)
+
+TRIM CLIP WORKFLOW:
+  1. get_timeline_state()       → read clip startFrame + duration
+  2. trim_clip(clip_id, side, frame_delta)
+     frame_delta is always POSITIVE — it's the number of frames to remove.
+
 TRACK MANAGEMENT:
 Use add_track() whenever you need extra room and the existing tracks are occupied.
 
 - add_track(track_type='video', name='') -> creates a new empty video or audio track, returns {trackId, name, type}
 - remove_track(track_id)               -> permanently removes a track + all its clips
 - mute_track(track_id, muted=True)     -> silences a track without removing it
+
 
 WHEN TO ADD A TRACK (common patterns):
   * User asks for overlay / picture-in-picture -> add_track('video', 'Overlay')
