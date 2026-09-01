@@ -145,6 +145,26 @@ def _build_llm():
     else:
         raise ValueError(f"Unknown FADE_AI_PROVIDER: {provider}")
 
+
+# ── User profile helper ───────────────────────────────────────────────────────
+
+def _get_user_name() -> str:
+    """Read the saved display name from virality.db. Returns empty string if not set."""
+    try:
+        from pathlib import Path as _Path
+        import sqlite3 as _sqlite3
+        db_path = _Path(__file__).resolve().parent.parent.parent / "virality.db"
+        if not db_path.exists():
+            return ""
+        conn = _sqlite3.connect(str(db_path))
+        conn.row_factory = _sqlite3.Row
+        row = conn.execute("SELECT name FROM user_profile WHERE id=1").fetchone()
+        conn.close()
+        return (row["name"] or "").strip() if row else ""
+    except Exception:
+        return ""
+
+
 # System prompt  
 
 _SYSTEM = """\
@@ -574,7 +594,18 @@ def build_agent(port: int = 8000):
     tool_node = ToolNode(ALL_TOOLS)
 
     def call_model(state: AgentState):
-        messages = [SystemMessage(content=_SYSTEM)] + state["messages"]
+        # Personalise system prompt with the user's saved profile name
+        user_name = _get_user_name()
+        if user_name:
+            greeting = (
+                f"The creator you are assisting is named **{user_name}**. "
+                f"Address them as {user_name} when greeting or referring to them. "
+                "Be warm, professional, and personal.\n\n"
+            )
+            system_content = greeting + _SYSTEM
+        else:
+            system_content = _SYSTEM
+        messages = [SystemMessage(content=system_content)] + state["messages"]
         response = llm_with_tools.invoke(messages)
         return {"messages": [response]}
 

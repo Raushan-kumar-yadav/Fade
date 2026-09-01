@@ -2662,7 +2662,15 @@ def export_video(
     preset: str = "medium",
     crf: int = 22,
 ) -> str:
-     
+    """Export the current timeline to a video file.
+
+    format: one of mp4-1080, mp4-4k, mp4-720, shorts, reels, webm, gif.
+    fps: frames per second (default 30).
+    output_path: absolute path for the output file; auto-generated if empty.
+    preset: FFmpeg encoding speed preset (ultrafast … veryslow).
+    crf: constant rate factor quality (0 = lossless, 51 = worst; default 22).
+    Returns a status string with the output path on success.
+    """
     # Normalise format alias
     fmt_id = _FORMAT_MAP.get(format.lower().strip(), "mp4-1080")
     w, h = _FORMAT_DIMS.get(fmt_id, (1920, 1080))
