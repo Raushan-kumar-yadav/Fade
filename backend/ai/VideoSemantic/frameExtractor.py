@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 
-# Candidate ffmpeg directories — checked in order if not on PATH
+ 
 _FFMPEG_CANDIDATES = [
     str(Path(__file__).resolve().parents[4] / "tools" / "ffmpeg"),  # bundled
     r"D:\ffmpeg\FFmpeg",
@@ -22,7 +22,7 @@ def _find_ffmpeg() -> str:
         candidate = os.path.join(d, "ffmpeg.exe") if os.name == "nt" else os.path.join(d, "ffmpeg")
         if os.path.isfile(candidate):
             return candidate
-    return "ffmpeg"  # last resort — will fail with a clear error
+    return "ffmpeg"   
 
 
 def extractFrame(

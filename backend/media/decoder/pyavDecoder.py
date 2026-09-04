@@ -27,8 +27,8 @@ class PyAVDecoder:
         self._lock = threading.Lock()
 
         info = _probe(filepath)
-        self._fps  = info["fps"] or fps or 30.0
-        self._width_src  = info["width"]
+        self._fps = info["fps"] or fps or 30.0
+        self._width_src = info["width"]
         self._height_src = info["height"]
         self._total_frames = info["nb_frames"] or int(round(info["duration"] * self._fps))
 

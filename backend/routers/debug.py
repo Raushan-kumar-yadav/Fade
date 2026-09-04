@@ -149,7 +149,7 @@ def anim_eval(clipId: str, frame: int = 0, param: str = "opacity"):
     kfs = ap.track.keyframes()
     value = ap.track.evaluateAt(local_frame)
 
-    # Compute linear reference between surrounding keyframes
+ 
     import bisect
     nxt_idx = bisect.bisect_right([k.frame for k in kfs], local_frame)
     if nxt_idx == 0:
@@ -170,15 +170,15 @@ def anim_eval(clipId: str, frame: int = 0, param: str = "opacity"):
                else f"CURVED ✅ (dev={deviation:+.4f})")
 
     return {
-        "clipId":       clipId,
-        "param":        param,
+        "clipId": clipId,
+        "param": param,
         "timeline_frame": frame,
         "local_frame":  local_frame,
-        "value":        round(value, 6),
+        "value": round(value, 6),
         "linear_ref":   round(lin, 6),
-        "deviation":    round(deviation, 6),
-        "interp":       interp_name,
-        "verdict":      verdict,
+        "deviation": round(deviation, 6),
+        "interp": interp_name,
+        "verdict": verdict,
         "keyframe_frames": [k.frame for k in kfs],
         "keyframe_values": [k.value for k in kfs],
     }

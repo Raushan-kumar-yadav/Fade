@@ -1,6 +1,4 @@
-// Lower Third — Fade WebComp Template
-// Animated slide-in/out with easing
-
+ 
 const lt = document.getElementById('lt');
 const bar = document.getElementById('bar');
 const nameEl = document.getElementById('nameText');

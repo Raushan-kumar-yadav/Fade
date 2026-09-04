@@ -170,7 +170,7 @@ def listAssetsRich():
     from backend.worker import transcript_status as _ts
     from backend.routers.jobs import _ASSET_JOB_KEY, _jobs, _lock as _job_lock
 
-    # ── helpers ──────────────────────────────────────────────────────────────
+    # helpers  
     def _index_status(asset_id: str) -> str:
         status = _worker_bus.get_index_status(asset_id)
         if not status:

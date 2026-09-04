@@ -3,7 +3,7 @@ import base64
 import re
 from pathlib import Path
 
-# Fallback priority when the configured model isn't installed
+ 
 _MODEL_PRIORITY = ["moondream:latest", "moondream", "moondream2", "gemma3:4b", "llava", "llava-phi3"]
 
 VISION_PROMPT = (
@@ -33,7 +33,7 @@ def _get_model(override: str | None = None) -> str:
             print(f"[VideoSemantic] Using model: {chosen}", flush=True)
             return chosen
 
-        # Chosen model not installed — warn and fall back
+        # Chosen model not installed  
         print(f"[VideoSemantic] Configured model {chosen!r} not found, trying fallbacks…", flush=True)
         for preferred in _MODEL_PRIORITY:
             if preferred in models:

@@ -122,7 +122,7 @@ private:
   int m_width;
   int m_height;
   float m_fps;
-  float m_previewScale = 0.5f; // decode scale for live preview
+  float m_previewScale = 0.5f;  
 
   // Directory that contains
   std::string m_skslDir;

@@ -110,10 +110,10 @@ class _HwProbe:
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                 bufsize=frame_bytes * 4, env=_ENV,
             )
-            buf   = bytearray(frame_bytes)
-            mv    = memoryview(buf)
-            t0    = time.monotonic()
-            read  = 0
+            buf = bytearray(frame_bytes)
+            mv = memoryview(buf)
+            t0 = time.monotonic()
+            read = 0
             for _ in range(n_frames):
                 total = 0
                 while total < frame_bytes:
@@ -214,7 +214,7 @@ class FFmpegVideoDecoder:
         self._height = max(2, round(info["height"] * self._scale_factor) // 2 * 2)
         self._total_frames = info["nb_frames"] or int(round(info["duration"] * self._fps))
         self._frame_bytes  = self._width * self._height * 4
-        self._read_buf     = bytearray(self._frame_bytes)
+        self._read_buf = bytearray(self._frame_bytes)
 
         pct = int(self._scale_factor * 100)
         _safe_print(

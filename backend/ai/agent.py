@@ -1,7 +1,8 @@
-﻿ 
+ 
 from __future__ import annotations
 import os
 import json
+import time
 from pathlib import Path
 from typing import Annotated
 
@@ -88,7 +89,7 @@ def _build_llm():
         base_url = os.environ.get("TABI_BASE_URL", "https://tabitoken.com/v1").strip().strip('"')
         if not key:
             print("[AI Agent] WARNING: TABI_API_KEY not set in .env", flush=True)
-        m = model_name or "claude-opus-4-8"
+        m = model_name or "claude-opus-5-thinking"
         print(f"[AI Agent] Using Tabi model: {m} via {base_url}", flush=True)
         return ChatOpenAI(
             model=m,
@@ -146,7 +147,7 @@ def _build_llm():
         raise ValueError(f"Unknown FADE_AI_PROVIDER: {provider}")
 
 
-# ── User profile helper ───────────────────────────────────────────────────────
+#   User profile helper  
 
 def _get_user_name() -> str:
     """Read the saved display name from virality.db. Returns empty string if not set."""
@@ -205,20 +206,20 @@ BEFORE EDITING ANY CLIP â€” MANDATORY WORKFLOW:
 TEXT CLIPS & OVERLAY PLACEMENT — TRACK RENDERING ORDER (READ THIS CAREFULLY):
 
 HOW TRACKS RENDER:
-  The compositor paints tracks in index order (0, 1, 2 ...) using Skia.
+  The compositor paints tracks in ASCENDING index order (0, 1, 2 ...) using Skia.
   Skia rule: LAST painted = ON TOP. Therefore:
-    tracks[0]           -> drawn FIRST  -> BOTTOM (background, behind everything)
-    tracks[1]           -> drawn second -> above track 0
-    tracks[last/highest] -> drawn LAST  -> TOP    (foreground, in front of everything)
+    tracks[0]            -> drawn FIRST  -> BOTTOM layer (background, behind everything)
+    tracks[1]            -> drawn second -> above track 0
+    tracks[last/highest] -> drawn LAST   -> TOP layer    (foreground, in front of everything)
 
-  The timeline UI panel shows rows in the SAME order (no reversal):
+  UI TIMELINE PANEL — rows match index order DIRECTLY (NO reversal, NO flip):
     TOP ROW    in the timeline panel = tracks[0]    = visual BOTTOM (background)
     BOTTOM ROW in the timeline panel = tracks[last] = visual TOP    (foreground/overlay)
 
-  CAUTION: When a user says "top track" they usually mean the track at the top of
-  the UI panel, which is tracks[0] — but this is the BOTTOM of the visual composite.
-  When they want something to appear IN FRONT of video (overlay/title/text), it must
-  go on a HIGHER-index track, not track 0.
+  ⚠️  COMMON MISTAKE — avoid this:
+    "Top track" in the UI = tracks[0] = renders at the BOTTOM (behind everything).
+    If a user wants an overlay/title IN FRONT of video, it must go on a HIGHER-index
+    track (lower in the UI panel), NOT on track 0.
 
   NEVER put text or overlays on track 0 when there is already video on track 0.
   They will render BEHIND the video and be invisible.
@@ -538,17 +539,17 @@ CLIP EDITING — MOVE, REPOSITION, DELETE, SPLIT, TRIM:
 
 UNDERSTANDING track_index:
   Tracks are 0-indexed in the order returned by get_timeline_state().
-  The compositor iterates tracks in order 0 -> N and Skia paints them sequentially.
+  The compositor iterates tracks in ASCENDING order (0 -> N) and Skia paints them sequentially.
   Skia rule: LAST painted = ON TOP. Therefore:
-  tracks[0]            = drawn FIRST  = BOTTOM (background, behind everything)
+  tracks[0]            = drawn FIRST  = BOTTOM layer (background, behind everything)
   tracks[1]            = drawn second = above track 0
-  tracks[last/highest] = drawn LAST   = TOP (foreground, in front of everything)
+  tracks[last/highest] = drawn LAST   = TOP layer    (foreground, in front of everything)
 
-  UI TIMELINE PANEL rows match index order directly (no reversal):
+  UI TIMELINE PANEL rows match index order DIRECTLY (NO reversal, NO flip):
     TOP ROW    in the panel = tracks[0]    = visual BOTTOM (background)
     BOTTOM ROW in the panel = tracks[last] = visual TOP    (foreground/overlay)
 
-  When a user says "top track" they usually mean the TOP ROW of the UI panel,
+  ⚠️  When a user says "top track" they mean the TOP ROW of the UI panel,
   which is tracks[0] — but this renders at the VISUAL BOTTOM (behind video).
   Overlays, text, and titles must go on HIGH-index tracks to appear in front.
 
@@ -701,8 +702,25 @@ def build_agent(port: int = 8000):
         else:
             system_content = _SYSTEM
         messages = [SystemMessage(content=system_content)] + state["messages"]
-        response = llm_with_tools.invoke(messages)
-        return {"messages": [response]}
+        # Retry on transient proxy/network disconnects (e.g. Tabi dropping the
+        # streaming connection mid-response with RemoteProtocolError).
+        _MAX_RETRIES = 3
+        for _attempt in range(_MAX_RETRIES):
+            try:
+                response = llm_with_tools.invoke(messages)
+                return {"messages": [response]}
+            except Exception as _exc:
+                _exc_str = str(type(_exc).__name__)
+                _is_network = any(k in _exc_str for k in ("RemoteProtocol", "ReadTimeout", "ConnectError", "Connection"))
+                if not _is_network:
+                    # Re-check by message text as well (httpx2 wraps the class)
+                    _is_network = "peer closed connection" in str(_exc).lower() or "incomplete chunked" in str(_exc).lower()
+                if _is_network and _attempt < _MAX_RETRIES - 1:
+                    _wait = 2 ** _attempt  # 1s, 2s, 4s
+                    print(f"[AI Agent] Network error ({_exc_str}), retrying in {_wait}s (attempt {_attempt + 1}/{_MAX_RETRIES})...", flush=True)
+                    time.sleep(_wait)
+                    continue
+                raise
 
     def should_continue(state: AgentState):
         last = state["messages"][-1]

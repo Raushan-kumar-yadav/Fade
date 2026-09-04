@@ -67,6 +67,8 @@
 .lib__grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  /* Uniform row height — each row is tall enough for a 4:3 thumb + body */
+  grid-auto-rows: minmax(130px, auto);
   gap: 5px;
   padding: 6px 8px;
   overflow-y: auto;
@@ -81,6 +83,8 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
+  /* min-height fills cell; auto allows content to grow if thumb is tall */
+  min-height: 100%;
 }
 
 .lib__grid::-webkit-scrollbar       { width: 4px; }
@@ -99,6 +103,8 @@
   position: relative;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
   min-width: 0;
+  /* min-height fills cell; content can grow beyond if needed */
+  min-height: 100%;
 }
 
 .lib-card:hover {
@@ -118,9 +124,14 @@
 .lib-card__thumb {
   width: 100%;
   aspect-ratio: 4 / 3;
+  /* Cap height so thumbnail never fills the entire card on wide panels.
+     This ensures the body (badge + title + subtitle) is always visible. */
+  max-height: 120px;
+  min-height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Never shrink — thumb must always be visible */
   flex-shrink: 0;
   position: relative;
   overflow: hidden;
@@ -134,6 +145,8 @@
   gap: 1px;
   min-width: 0;
   position: relative;
+  /* Never let the body shrink away — title must always be visible */
+  flex-shrink: 0;
 }
 
 .lib-card__badge {
@@ -629,14 +642,14 @@
   border-radius: 8px;
   overflow: hidden;
   animation: lib-fade-in 0.25s ease;
-  /* Same dimensions   */
-  aspect-ratio: 1 / 1.15;
+  /* Match lib-card: fill the grid cell uniformly */
+  height: 100%;
+  min-height: 130px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   cursor: default;
-  min-height: 90px;
 }
 
 /* Full-card dimming overlay */

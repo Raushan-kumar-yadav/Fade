@@ -21,37 +21,37 @@ async function del(path: string): Promise<void> {
   await fetch(`${base()}${path}`, { method: 'DELETE' });
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────
+//   Types  
 
 export type InterpMode = 'constant' | 'linear' | 'bezier' | 'ease_in' | 'ease_out' | 'ease_both';
 export type ParamType  = 'float' | 'int' | 'toggle' | 'vec2' | 'vec3' | 'vec4';
 
 export interface ParamRow {
-  id:          string;
-  label:       string;
-  type:        ParamType;
-  min:         number;
-  max:         number;
-  default:     number;
-  group:       string;
-  value:       number;
+  id: string;
+  label: string;
+  type: ParamType;
+  min: number;
+  max: number;
+  default: number;
+  group: string;
+  value: number;
   isAnimated:  boolean;
   hasKeyframe: boolean;
   keyframes:   number[];
 }
 
 export interface ClipParams {
-  clipId:     string;
-  clipType:   string;
+  clipId: string;
+  clipType: string;
   startFrame: number;
-  duration:   number;
-  params:     ParamRow[];
+  duration: number;
+  params: ParamRow[];
 }
 
 export interface KFDef {
-  frame:        number;
-  value:        number;
-  interp:       InterpMode;
+  frame: number;
+  value: number;
+  interp: InterpMode;
   handle_in_f:  number;
   handle_in_v:  number;
   handle_out_f: number;
@@ -59,13 +59,13 @@ export interface KFDef {
 }
 
 export interface KFListResult {
-  frames:     KFDef[];
-  allFrames:  number[];
-  vecType:    ParamType;
+  frames: KFDef[];
+  allFrames: number[];
+  vecType: ParamType;
   components: number;
 }
 
-// ── API calls ─────────────────────────────────────────────────────────────
+//   API calls  
 
 export const inspectorApi = {
   getParams: (clipId: string, frame: number): Promise<ClipParams> =>

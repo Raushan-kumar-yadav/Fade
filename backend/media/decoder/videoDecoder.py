@@ -55,11 +55,11 @@ class VideoDecoder(BaseDecoder):
 
         return DecodedFrame(
             frameNumber = ff.frameNumber,
-            width       = ff.width,
-            height      = ff.height,
-            dataRGBA    = ff.dataRGBA,
-            valid       = True,
-            skiaImage   = image,
+            width = ff.width,
+            height = ff.height,
+            dataRGBA = ff.dataRGBA,
+            valid = True,
+            skiaImage = image,
         )
 
     def getDurationFrames(self) -> int:

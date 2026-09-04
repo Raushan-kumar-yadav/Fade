@@ -12,10 +12,7 @@ class NewsItem:
 
 
 def search_news(query: str, max_results: int = 10) -> list[NewsItem]:
-    """
-    Searches DuckDuckGo News for the given query and returns a list of articles.
-    Uses the already-installed `ddgs` package.
-    """
+     
     try:
         from ddgs import DDGS
     except ImportError:

@@ -87,7 +87,7 @@ class Compositor:
         self,
         timeline: "Timeline",
         frame: int,
-        quality: int   = 85,   # JPEG quality 
+        quality: int = 85,   # JPEG quality 
         panX: float = 0.0,
         panY: float = 0.0,
         zoom: float = 1.0,

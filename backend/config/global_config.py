@@ -15,27 +15,27 @@ _DEFAULTS: dict = {
     },
     "generators": {
         # image  — "google" | "comfyui" | "local" | "stability"
-        "image_provider":        "google",
-        "image_local_model":     "gemma3:4b",       # ollama model tag
-        "comfyui_url":           "http://127.0.0.1:8188",
-        "comfyui_path":          "",                # path to ComfyUI folder (contains main.py)
-        "comfyui_model":         "v1-5-pruned-emaonly.safetensors",
-        "comfyui_width":         512,
-        "comfyui_height":        512,
-        "comfyui_steps":         20,
-        "comfyui_cfg":           7.0,
+        "image_provider": "google",
+        "image_local_model": "gemma3:4b",       # ollama model tag
+        "comfyui_url": "http://127.0.0.1:8188",
+        "comfyui_path": "",                # path to ComfyUI folder (contains main.py)
+        "comfyui_model": "v1-5-pruned-emaonly.safetensors",
+        "comfyui_width": 512,
+        "comfyui_height": 512,
+        "comfyui_steps": 20,
+        "comfyui_cfg": 7.0,
         # Stability AI
-        "stability_model":       "core",            # "core" | "ultra" | "sd3"
-        "stability_style":       "",               # "" | "photographic" | "anime" | etc.
-        "stability_width":       1024,
-        "stability_height":      1024,
+        "stability_model": "core",            # "core" | "ultra" | "sd3"
+        "stability_style": "",               # "" | "photographic" | "anime" | etc.
+        "stability_width": 1024,
+        "stability_height": 1024,
         # tts  — "google" | "local"
-        "tts_provider":          "google",
-        "tts_google_voice":      "Kore",
-        "tts_local_model":       "kokoro",
+        "tts_provider": "google",
+        "tts_google_voice": "Kore",
+        "tts_local_model": "kokoro",
         # video  — "google" | "local"
-        "video_provider":        "google",
-        "video_local_model":     "wan2.1",
+        "video_provider": "google",
+        "video_local_model": "wan2.1",
     }
 }
 

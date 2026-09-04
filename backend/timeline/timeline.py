@@ -80,10 +80,15 @@ class Timeline:
         self.tracks.remove(track)
         self.tracks.insert(newIndex, track)
 
-    # Rendering  
+    # Rendering
+    # Tracks are painted in ASCENDING index order (0, 1, 2 ...).
+    # Skia rule: last painted = on top. Therefore:
+    #   tracks[0]    → drawn FIRST  → BOTTOM (background, behind everything)
+    #   tracks[last] → drawn LAST   → TOP    (foreground, in front of everything)
+    # This matches the C++ compositor sort (ascending zOrder) and graphBuilder.py.
 
     def render(self, canvas, frame: int) -> None:
-        for track in reversed(self.tracks):
+        for track in self.tracks:          # ascending — do NOT reverse
             if not track.muted:
                 track.render(canvas, frame)
 

@@ -15,15 +15,15 @@ export type ClipType =
   | "adjustment";
 
 export const CLIP_COLORS: Record<ClipType, string> = {
-  comp:       "#00897b",
-  webcomp:    "#7c3aed",
-  video:      "#4a90e2",
-  audio:      "#546e7a",
-  text:       "#e6a817",
-  solid:      "#00b8a9",
-  shape:      "#43a047",
-  lottie:     "#e91e8c",
-  image:      "#00bcd4",
+  comp: "#00897b",
+  webcomp: "#7c3aed",
+  video: "#4a90e2",
+  audio: "#546e7a",
+  text: "#e6a817",
+  solid: "#00b8a9",
+  shape: "#43a047",
+  lottie: "#e91e8c",
+  image: "#00bcd4",
   adjustment: "#ff6d00",
 };
 
@@ -119,11 +119,10 @@ export type TimelineAction =
       rightClip: Clip;
     }
   | { type: "SELECT_CLIP"; clipId: string; trackId: string; multi: boolean }
-  | { type: "DESELECT_CLIP"; clipId: string }  // ctrl+click an already-selected clip
+  | { type: "DESELECT_CLIP"; clipId: string }  
   | { type: "CLEAR_SELECTION" }
   | {
-      // Rubber-band / box select: mark all clips that overlap [frameStart, frameEnd]
-      // across all visible tracks. additive=true keeps currently selected clips.
+      
       type: "BOX_SELECT_CLIPS";
       frameStart: number;
       frameEnd: number;

@@ -132,8 +132,8 @@ def _iter_video_clips(tl) -> list[dict]:
                 "outPoint": out_pt,
                 "startSec": round(start_f / fps, 3),
                 "endSec": round(end_f   / fps, 3),
-                "inPointSec":   round(in_pt   / fps, 3),
-                "outPointSec":  round(out_pt  / fps, 3),
+                "inPointSec": round(in_pt   / fps, 3),
+                "outPointSec": round(out_pt  / fps, 3),
                 "fps": fps,
             })
     return clips_info
@@ -281,9 +281,9 @@ def _build_clip_description(clip_obj, fps: float = 30.0) -> dict:
         style_dict = style.toDict() if (style and hasattr(style, "toDict")) else {}
         return {
             **base,
-            "clipType":    "shape",
-            "shapeType":   getattr(clip_obj, "clipType", clip_type),
-            "style":       style_dict,
+            "clipType": "shape",
+            "shapeType": getattr(clip_obj, "clipType", clip_type),
+            "style": style_dict,
         }
 
     if clip_type == "webcomp":
@@ -298,7 +298,7 @@ def _build_clip_description(clip_obj, fps: float = 30.0) -> dict:
         js   = _read_file_safe(os.path.join(folder, "index.js"))   if folder else ""
          
         if not css  and folder: css  = _read_file_safe(os.path.join(folder, "style.css"))
-        if not js   and folder: js   = _read_file_safe(os.path.join(folder, "script.js"))
+        if not js   and folder: js = _read_file_safe(os.path.join(folder, "script.js"))
 
         return {
             **base,
@@ -350,7 +350,7 @@ def _build_clip_description(clip_obj, fps: float = 30.0) -> dict:
         svg_content = _read_file_safe(filepath, max_bytes=4096) if filepath else ""
         return {
             **base,
-            "filepath":   filepath,
+            "filepath": filepath,
             "svgPreview": svg_content,
         }
 
@@ -523,5 +523,5 @@ def describe_selected_clip():
     if not clip_id:
         raise HTTPException(404, "No clip currently selected")
 
-    # Reuse the per-clip endpoint logic
+     
     return describe_clip(clip_id)

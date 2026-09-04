@@ -15,12 +15,12 @@ interface ExportProgress {
 const PORT = () => (window as any).__FADE_PORT__ ?? 8000
 
 export default function ExportProgressOverlay() {
-  const [jobId,      setJobId]      = useState<string | null>(null)
-  const [progress,   setProgress]   = useState<ExportProgress | null>(null)
-  const [visible,    setVisible]    = useState(false)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [progress, setProgress] = useState<ExportProgress | null>(null)
+  const [visible, setVisible] = useState(false)
   const [dismissing, setDismissing] = useState(false)
 
-  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const elecClean  = useRef<(() => void) | null>(null)
   const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -68,7 +68,7 @@ export default function ExportProgressOverlay() {
 
       const elec = (window as any).electronAPI
 
-      // ── Electron native path (jobId === 'native') ─────────────────────────
+      //   Electron native path  
       if (jid === 'native' && elec?.onExportProgress) {
         elecClean.current = elec.onExportProgress(
           (p: { frame: number; total: number; done: boolean; error: string; status?: string }) => {
@@ -84,7 +84,7 @@ export default function ExportProgressOverlay() {
         return
       }
 
-      // ── Python REST polling path ──────────────────────────────────────────
+      //   Python REST polling path  
       pollRef.current = setInterval(async () => {
         try {
           const r = await fetch(`http://127.0.0.1:${PORT()}/export/progress/${jid}`)
@@ -106,8 +106,8 @@ export default function ExportProgressOverlay() {
 
   if (!visible) return null
 
-  const pct      = progress?.percent ?? 0
-  const done     = progress?.done    ?? false
+  const pct = progress?.percent ?? 0
+  const done = progress?.done    ?? false
   const hasError = !!progress?.error
 
   return (

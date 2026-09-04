@@ -1,14 +1,4 @@
-"""
-TTS Generator — Google Gemini TTS (cloud), Kokoro local (2026), or Ollama local.
-
-Provider selection via global_config generators.tts_provider:
-  "google"  → Gemini 3.1 Flash TTS (cloud, requires GOOGLE_API_KEY)
-  "kokoro"  → Kokoro local TTS (pip install kokoro soundfile)  ← RECOMMENDED
-  "local"   → Ollama server (legacy)
-
-Output: WAV file saved to output_dir.
-"""
-
+ 
 from __future__ import annotations
 import os
 import uuid
@@ -19,7 +9,7 @@ from pathlib import Path
 
 _GEMINI_TTS_MODEL = "gemini-3.1-flash-tts-preview"
 
-# Supported Gemini voices (30 options from August 2026 docs)
+# Supported Gemini voices  
 GEMINI_VOICES = [
     "Zephyr", "Puck", "Charon", "Kore", "Fenrir", "Leda", "Orus", "Aoede",
     "Callirrhoe", "Autonoe", "Enceladus", "Iapetus", "Umbriel", "Algieba",
@@ -45,13 +35,10 @@ def _write_wav(filepath: str, pcm_bytes: bytes,
         wf.writeframes(pcm_bytes)
 
 
-# ── Google Gemini TTS ─────────────────────────────────────────────────────────
+# Google Gemini TTS  
 
 class GeminiTTSGenerator:
-    """
-    Text-to-speech using the Gemini 3.1 Flash TTS model (August 2026 API).
-    Requires GOOGLE_API_KEY with billing enabled.
-    """
+     
 
     def generate(
         self,
@@ -67,7 +54,7 @@ class GeminiTTSGenerator:
         Raises:
             PermissionError  — quota exhausted / billing required
             EnvironmentError — API key not set
-            RuntimeError     — other API failure
+            RuntimeError — other API failure
         """
         api_key = _load_env()
         if not api_key:
@@ -125,22 +112,12 @@ class GeminiTTSGenerator:
             raise RuntimeError(f"Gemini TTS failed: {err[:300]}")
 
 
-# ── Kokoro Local TTS (2026 — kokoro PyPI package) ─────────────────────────────
-#
-# Kokoro v0.9.4+ / v1.x  (82M params, Apache 2.0 licence)
-# Pure Python inference — no Ollama, no cloud, no GPU required.
-#
-# Install:
-#   pip install kokoro soundfile
-#   Windows: espeak-ng from https://github.com/espeak-ng/espeak-ng/releases
-#
-# 24 kHz mono float32 output, up to 54 voices across 10 languages.
-
+ 
 # All Kokoro voices grouped by language tag
 KOKORO_VOICES: dict[str, list[str]] = {
     # American English  (lang_code='a')
     "en-us": [
-        "af_heart",     # ★ warm, natural — default
+        "af_heart",     # ★ warm, natural  
         "af_alloy",
         "af_aoede",
         "af_bella",
@@ -198,14 +175,14 @@ _ALL_KOKORO_VOICES: set[str] = {v for voices in KOKORO_VOICES.values() for v in 
 _VOICE_LANG_MAP: dict[str, str] = {
     "af_": "en-us", "am_": "en-us",   # American English
     "bf_": "en-gb", "bm_": "en-gb",   # British English
-    "jf_": "ja",    "jm_": "ja",       # Japanese
-    "zf_": "ko",    "zm_": "ko",       # Korean (z-prefix = Korean/Chinese mix in kokoro)
-    "ef_": "es",    "em_": "es",       # Spanish
-    "ff_": "fr",    "fm_": "fr",       # French
-    "hf_": "hi",    "hm_": "hi",       # Hindi
-    "if_": "it",    "im_": "it",       # Italian
-    "pf_": "pt",    "pm_": "pt",       # Portuguese
-    "cf_": "zh",    "cm_": "zh",       # Mandarin Chinese
+    "jf_": "ja", "jm_": "ja",       # Japanese
+    "zf_": "ko", "zm_": "ko",       # Korean  
+    "ef_": "es", "em_": "es",       # Spanish
+    "ff_": "fr", "fm_": "fr",       # French
+    "hf_": "hi", "hm_": "hi",       # Hindi
+    "if_": "it", "im_": "it",       # Italian
+    "pf_": "pt", "pm_": "pt",       # Portuguese
+    "cf_": "zh", "cm_": "zh",       # Mandarin Chinese
 }
 
 

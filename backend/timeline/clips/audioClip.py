@@ -13,17 +13,17 @@ class AudioClip(BaseClip):
 
     def __init__(
         self,
-        clipId:      str  = "",
-        startFrame:  int  = 0,
-        duration:    int  = 90,
-        assetId:     str  = "",
+        clipId: str  = "",
+        startFrame: int  = 0,
+        duration: int  = 90,
+        assetId: str  = "",
         mediaOffset: int  = 0,
-        volume:      float = 1.0,
-        mute:        bool  = False,
+        volume: float = 1.0,
+        mute: bool  = False,
     ) -> None:
         super().__init__(clipId or str(uuid.uuid4()), startFrame, duration)
         self.assetId:     str   = assetId
-        self.mediaOffset: int   = mediaOffset   # frame offset into the source media
+        self.mediaOffset: int   = mediaOffset   # frame offset  
         self.volume:      float = volume
         self.mute:        bool  = mute
 
@@ -31,8 +31,7 @@ class AudioClip(BaseClip):
         pass  # audio-only: no visual render
 
     def getThumbnail(self, frame: int, width: int = 160, height: int = 90) -> bytes:
-        """Return a minimal JPEG for the timeline thumbnail strip.
-        Audio clips show a dark teal bar — no Skia or heavy deps needed."""
+         
         try:
             import skia
             surface = skia.Surface(width, height)

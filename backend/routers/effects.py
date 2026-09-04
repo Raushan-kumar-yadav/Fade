@@ -11,7 +11,7 @@ class EffectAddRequest(BaseModel):
 
 class EffectPatchRequest(BaseModel):
     enabled: bool | None = None
-    params:  dict | None = None
+    params: dict | None = None
 
 
 def _find_clip(clipId: str):

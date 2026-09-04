@@ -44,9 +44,9 @@ class MediaAsset(BaseAsset):
         # Populated lazily
         self.durationFrames: int   = 0
         self.fps: float = 0.0
-        self.width: int   = 0
-        self.height: int   = 0
-        # Audio presence — probed once on import
+        self.width: int = 0
+        self.height: int = 0
+        # Audio presence  
         self._hasAudio: bool | None = None
 
     @property

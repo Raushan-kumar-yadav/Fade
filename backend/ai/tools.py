@@ -1,6 +1,7 @@
  
 from __future__ import annotations
 import json
+import os
 import httpx
 from langchain_core.tools import tool
 
@@ -180,11 +181,14 @@ def move_clip(clip_id: str, new_start_frame: int, track_index: int) -> str:
     To slide a clip on its CURRENT track only, use reposition_clip() instead.
 
     HOW TO GET track_index:
-      Call get_timeline_state() first. The tracks array is 0-indexed:
-        tracks[0]           -> drawn FIRST  -> BOTTOM (background, behind everything)
-        tracks[last/highest] -> drawn LAST  -> TOP (foreground, in front of everything)
-        tracks[1] -> track_index 1
-        tracks[2] -> track_index 2  (etc.)
+      Call get_timeline_state() first. The tracks array is 0-indexed.
+      RENDER ORDER (compositor paints ascending, Skia rule: last painted = on top):
+        tracks[0]            -> drawn FIRST  -> BOTTOM layer (background, behind everything)
+        tracks[1]            -> drawn second -> above track 0
+        tracks[last/highest] -> drawn LAST   -> TOP layer (foreground, in front of everything)
+      UI TIMELINE PANEL (rows match index directly — NO reversal):
+        TOP ROW    of the panel = tracks[0]    = visual BOTTOM (background)
+        BOTTOM ROW of the panel = tracks[last] = visual TOP    (foreground/overlay)
       Read the trackId of the target track, count its position in the array.
 
     HOW TO MOVE ACROSS TRACKS (e.g. video clip from track 1 to track 2):
@@ -199,7 +203,8 @@ def move_clip(clip_id: str, new_start_frame: int, track_index: int) -> str:
         clip_id: The clipId to move. Get from get_timeline_state().
         new_start_frame: The new start frame on the timeline (>= 0).
         track_index: 0-based index of the destination track.
-                     0 = BOTTOM (background), highest index = TOP (foreground/overlay).
+                     0 = TOP ROW of UI = visual BOTTOM (background).
+                     Highest index = BOTTOM ROW of UI = visual TOP (foreground/overlay).
 
     Returns:
         Confirmation with the clip's new position and track.
@@ -746,13 +751,16 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
     paints each track onto a Skia canvas sequentially.
     Skia rule: the LAST thing painted appears ON TOP.
 
-      tracks[0] -> drawn FIRST  -> BOTTOM of visual stack (background)
-      tracks[1] -> drawn second -> above background
-      tracks[last/highest] -> drawn LAST  -> TOP of visual stack (foreground / overlay)
+      tracks[0]            -> drawn FIRST  -> BOTTOM of visual stack (background, behind)
+      tracks[1]            -> drawn second -> above track 0
+      tracks[last/highest] -> drawn LAST   -> TOP of visual stack (foreground / overlay)
 
-    UI TIMELINE PANEL — rows match the index order directly (no reversal):
-      TOP ROW    in the timeline = tracks[0]    = bottom of compositor (background)
-      BOTTOM ROW in the timeline = tracks[last] = top   of compositor (foreground)
+    UI TIMELINE PANEL — rows match index order directly (NO reversal):
+      TOP ROW    in the timeline panel = tracks[0]    = visual BOTTOM (background)
+      BOTTOM ROW in the timeline panel = tracks[last] = visual TOP    (foreground/overlay)
+
+    NOTE: When a user says "top track" they usually mean the TOP ROW of the panel,
+    which is tracks[0] — but this is the visual BOTTOM (behind video).
 
     So to put text or an overlay ABOVE a video clip:
       * video should be on a LOW-index track  (e.g. 0)
@@ -877,8 +885,9 @@ def remove_track_at_index(track_index: int) -> str:
     ⚠️  Irreversible via this tool — call undo() afterwards if needed.
 
     Args:
-        track_index: Zero-based position in the tracks list
-                     (track 0 = topmost/first track shown in the timeline UI).
+        track_index: Zero-based position in the tracks list.
+                     track 0 = TOP ROW of the timeline UI = visual BOTTOM (background).
+                     highest index = BOTTOM ROW of UI = visual TOP (foreground/overlay).
     Returns:
         JSON with {removed: trackId, index: N} confirming what was deleted.
     """

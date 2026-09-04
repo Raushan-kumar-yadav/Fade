@@ -25,8 +25,8 @@ class RenderContext:
         import skia
         width  = max(1, w or self.width)
         height = max(1, h or self.height)
-        info   = skia.ImageInfo.MakeN32Premul(width, height)
-        surf   = skia.Surface.MakeRaster(info)
+        info = skia.ImageInfo.MakeN32Premul(width, height)
+        surf = skia.Surface.MakeRaster(info)
         if surf is None:
             raise RuntimeError(
                 f"skia.Surface.MakeRaster({width}x{height}) returned None — "

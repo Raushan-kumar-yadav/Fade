@@ -22,7 +22,7 @@ class Keyframe:
     handleInValue: float =  0.0
     handleOutFrame: float =  5.0
     handleOutValue: float =  0.0
-    # When True, auto-handle recompute skips this keyframe (handles set manually / by a preset)
+     
     manualHandles: bool = False
 
 

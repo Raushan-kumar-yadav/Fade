@@ -1120,57 +1120,59 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
             {/* WebComps */}
             {webcomps.map(wc => (
-              <LibCard
-                key={wc.assetId}
-                type="webcomp"
-                title={wc.name}
-                badge="WC"
-                subtitle={`${wc.width}×${wc.height} · ${wc.fps}fps`}
-                isDragging={dragging === wc.assetId}
-                onDragStart={e => {
-                  setDragging(wc.assetId);
-                  e.dataTransfer.setData('application/fade-webcomp', JSON.stringify(wc));
-                  e.dataTransfer.effectAllowed = 'copy';
-                }}
-                onDragEnd={() => setDragging(null)}
-                onDoubleClick={() => handleAddWebCompToTimeline(wc)}
-                onContextMenu={e => openCtx(e, [
-                  { icon: '↓', label: 'Add to Timeline', onClick: () => handleAddWebCompToTimeline(wc) },
-                  { icon: '📁', label: 'Open Folder', onClick: () => (window as any).electronAPI?.shellOpenPath?.(wc.folderPath) },
-                  { icon: '', label: '', sep: true, onClick: () => {} },
-                  { icon: '✕', label: 'Delete', danger: true, onClick: async () => {
-                    if (!window.confirm(`Delete WebComp "${wc.name}"?`)) return;
-                    await fetch(`${base()}/timeline/webcomp/${wc.assetId}`, { method: 'DELETE' });
-                    setWebcomps(p => p.filter(w => w.assetId !== wc.assetId));
-                  }},
-                ])}
-              />
+              <div key={wc.assetId} className="lib__card-wrap">
+                <LibCard
+                  type="webcomp"
+                  title={wc.name}
+                  badge="WC"
+                  subtitle={`${wc.width}×${wc.height} · ${wc.fps}fps`}
+                  isDragging={dragging === wc.assetId}
+                  onDragStart={e => {
+                    setDragging(wc.assetId);
+                    e.dataTransfer.setData('application/fade-webcomp', JSON.stringify(wc));
+                    e.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                  onDoubleClick={() => handleAddWebCompToTimeline(wc)}
+                  onContextMenu={e => openCtx(e, [
+                    { icon: '↓', label: 'Add to Timeline', onClick: () => handleAddWebCompToTimeline(wc) },
+                    { icon: '📁', label: 'Open Folder', onClick: () => (window as any).electronAPI?.shellOpenPath?.(wc.folderPath) },
+                    { icon: '', label: '', sep: true, onClick: () => {} },
+                    { icon: '✕', label: 'Delete', danger: true, onClick: async () => {
+                      if (!window.confirm(`Delete WebComp "${wc.name}"?`)) return;
+                      await fetch(`${base()}/timeline/webcomp/${wc.assetId}`, { method: 'DELETE' });
+                      setWebcomps(p => p.filter(w => w.assetId !== wc.assetId));
+                    }},
+                  ])}
+                />
+              </div>
             ))}
 
             {comps.map(comp => {
               const isActive = state.activeCompId === comp.compId;
               return (
-                <LibCard
-                  key={comp.compId}
-                  type="comp"
-                  title={comp.name}
-                  badge={comp.isRoot ? 'ROOT' : 'COMP'}
-                  isActive={isActive}
-                  isDragging={dragging === comp.compId}
-                  onDragStart={e => {
-                    if (comp.isRoot) return;
-                    setDragging(comp.compId);
-                    e.dataTransfer.setData('application/fade-comp', JSON.stringify(comp));
-                    e.dataTransfer.effectAllowed = 'copy';
-                  }}
-                  onDragEnd={() => setDragging(null)}
-                  renaming={renamingId === comp.compId}
-                  onRenameCommit={v => handleRenameComp(comp.compId, v)}
-                  onRenameCancel={() => setRenamingId(null)}
-                  subtitle={`${comp.width}×${comp.height} · ${comp.fps}fps`}
-                  onDoubleClick={() => handleEnterComp(comp)}
-                  onContextMenu={e => compCtx(e, comp)}
-                />
+                <div key={comp.compId} className="lib__card-wrap">
+                  <LibCard
+                    type="comp"
+                    title={comp.name}
+                    badge={comp.isRoot ? 'ROOT' : 'COMP'}
+                    isActive={isActive}
+                    isDragging={dragging === comp.compId}
+                    onDragStart={e => {
+                      if (comp.isRoot) return;
+                      setDragging(comp.compId);
+                      e.dataTransfer.setData('application/fade-comp', JSON.stringify(comp));
+                      e.dataTransfer.effectAllowed = 'copy';
+                    }}
+                    onDragEnd={() => setDragging(null)}
+                    renaming={renamingId === comp.compId}
+                    onRenameCommit={v => handleRenameComp(comp.compId, v)}
+                    onRenameCancel={() => setRenamingId(null)}
+                    subtitle={`${comp.width}×${comp.height} · ${comp.fps}fps`}
+                    onDoubleClick={() => handleEnterComp(comp)}
+                    onContextMenu={e => compCtx(e, comp)}
+                  />
+                </div>
               );
             })}
 
