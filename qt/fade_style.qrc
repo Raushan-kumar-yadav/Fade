@@ -1,0 +1,26 @@
+<RCC>
+  <qresource prefix="/fade">
+
+    <!-- ── Design tokens singleton ─────────────────────────────────── -->
+    <file>qml/FadeTheme.qml</file>
+
+    <!-- ── Shared primitives ───────────────────────────────────────── -->
+    <file>qml/FadeButton.qml</file>
+    <file>qml/FadeInput.qml</file>
+    <file>qml/FadeSelect.qml</file>
+    <file>qml/FadeToggle.qml</file>
+    <file>qml/FadeFormRow.qml</file>
+
+    <!-- ── UI Screens ──────────────────────────────────────────────────────── -->
+    <file>qml/main.qml</file>
+    <file>qml/CreateProjectModal.qml</file>
+    <file>qml/RemoteMCPPanel.qml</file>
+
+    <!-- ── Fonts (download Inter from fonts.google.com/specimen/Inter) -->
+    <file>fonts/Inter-Regular.ttf</file>
+    <file>fonts/Inter-Medium.ttf</file>
+    <file>fonts/Inter-SemiBold.ttf</file>
+    <file>fonts/Inter-Bold.ttf</file>
+
+  </qresource>
+</RCC>

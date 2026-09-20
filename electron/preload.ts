@@ -4,8 +4,13 @@ export interface ElectronAPI {
   minimize: () => void
   maximize: () => void
   close: () => void
+  send: (channel: string, ...args: any[]) => void
   onBackendPort: (cb: (port: number) => void) => void
   getPort: () => Promise<number | null>
+  // Splash screen status (only used by splash.html)
+  onSplashStatus: (cb: (msg: { text: string; progress?: number; cls?: string; done?: boolean }) => void) => void
+  // Dev log (used by devlog.html)
+  onDevLog: (cb: (msg: { type: string; text: string; alive?: boolean }) => void) => void
 
   //   Native render engine  
   isNativeRender: () => Promise<boolean>
@@ -68,12 +73,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   minimize: (): void => ipcRenderer.send('window:minimize'),
   maximize: (): void => ipcRenderer.send('window:maximize'),
   close:    (): void => ipcRenderer.send('window:close'),
+  send:     (channel: string, ...args: any[]): void => ipcRenderer.send(channel, ...args),
 
   onBackendPort: (cb: (port: number) => void): void => {
     ipcRenderer.on('backend:port', (_event, port: number) => cb(port))
   },
 
   getPort: (): Promise<number | null> => ipcRenderer.invoke('backend:get-port'),
+
+  onSplashStatus: (cb: (msg: any) => void): void => {
+    ipcRenderer.on('splash:status', (_event, msg) => cb(msg))
+  },
+
+  onDevLog: (cb: (msg: any) => void): void => {
+    ipcRenderer.on('devlog', (_event, msg) => cb(msg))
+  },
 
   //   Native render engine  
   isNativeRender: (): Promise<boolean> => ipcRenderer.invoke('render:is-native'),

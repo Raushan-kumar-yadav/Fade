@@ -31,17 +31,18 @@ AIModels/
 
 ### 1. Whisper (Speech-to-Text / Transcription)
 
-| Property | Value |
-|----------|-------|
-| **Library** | `faster-whisper` (CTranslate2) or `openai-whisper` (fallback) |
-| **Default model** | `small` |
-| **Config key** | `ai.whisper_model` (`tiny` / `base` / `small` / `medium` / `large`) |
-| **Backend key** | `ai.whisper_backend` (`faster` / `openai`) |
-| **Code** | `backend/ai/whisper_tool.py` |
-| **Auto-download** | Yes - downloads from HuggingFace on first transcription request |
-| **GPU support** | Yes - auto-detects CUDA via `ctranslate2`, falls back to CPU |
+| Property          | Value                                                               |
+| ----------------- | ------------------------------------------------------------------- |
+| **Library**       | `faster-whisper` (CTranslate2) or `openai-whisper` (fallback)       |
+| **Default model** | `small`                                                             |
+| **Config key**    | `ai.whisper_model` (`tiny` / `base` / `small` / `medium` / `large`) |
+| **Backend key**   | `ai.whisper_backend` (`faster` / `openai`)                          |
+| **Code**          | `backend/ai/whisper_tool.py`                                        |
+| **Auto-download** | Yes - downloads from HuggingFace on first transcription request     |
+| **GPU support**   | Yes - auto-detects CUDA via `ctranslate2`, falls back to CPU        |
 
 **Used for:**
+
 - Video semantic indexing (scene captions + transcript enrichment)
 - Caption generation on the timeline
 - Speech-segment detection for audio tools
@@ -50,17 +51,18 @@ AIModels/
 
 ### 2. Kokoro TTS (Text-to-Speech)
 
-| Property | Value |
-|----------|-------|
-| **Library** | `kokoro-onnx` (ONNX Runtime inference) |
-| **Model** | Kokoro v1.0 INT8 ONNX (~82M params, Apache 2.0) |
-| **Config key** | `generators.tts_provider = "kokoro"` |
-| **Voice key** | `generators.tts_kokoro_voice` (default: `af_heart`) |
-| **Code** | `backend/tools/generators/tts_generator.py` |
+| Property          | Value                                                  |
+| ----------------- | ------------------------------------------------------ |
+| **Library**       | `kokoro-onnx` (ONNX Runtime inference)                 |
+| **Model**         | Kokoro v1.0 INT8 ONNX (~82M params, Apache 2.0)        |
+| **Config key**    | `generators.tts_provider = "kokoro"`                   |
+| **Voice key**     | `generators.tts_kokoro_voice` (default: `af_heart`)    |
+| **Code**          | `backend/tools/generators/tts_generator.py`            |
 | **Auto-download** | Yes - downloads from GitHub releases on first TTS call |
-| **GPU support** | No - ONNX CPU inference (fast enough, no GPU needed) |
+| **GPU support**   | No - ONNX CPU inference (fast enough, no GPU needed)   |
 
 **Available voice families (54+ voices):**
+
 - `af_*` / `am_*` - American English (female / male)
 - `bf_*` / `bm_*` - British English (female / male)
 - `hf_*` / `hm_*` - Hindi
@@ -81,12 +83,12 @@ https://github.com/espeak-ng/espeak-ng/releases/download/1.52.0/espeak-ng.msi
 
 These run as external services or use cloud APIs - no local files needed:
 
-| Service | Purpose | Config |
-|---------|---------|--------|
-| **Ollama** | LLM inference, image captioning, legacy TTS | `generators.ollama_url` |
-| **Google Gemini** | Cloud image generation, TTS, LLM agent | `GOOGLE_API_KEY` in `.env` |
-| **Google Imagen** | Cloud image generation | `GOOGLE_API_KEY` in `.env` |
-| **ChromaDB** | Vector DB for semantic search (data, not model) | Per-project `.chroma/` folder |
+| Service           | Purpose                                         | Config                        |
+| ----------------- | ----------------------------------------------- | ----------------------------- |
+| **Ollama**        | LLM inference, image captioning, legacy TTS     | `generators.ollama_url`       |
+| **Google Gemini** | Cloud image generation, TTS, LLM agent          | `GOOGLE_API_KEY` in `.env`    |
+| **Google Imagen** | Cloud image generation                          | `GOOGLE_API_KEY` in `.env`    |
+| **ChromaDB**      | Vector DB for semantic search (data, not model) | Per-project `.chroma/` folder |
 
 ---
 

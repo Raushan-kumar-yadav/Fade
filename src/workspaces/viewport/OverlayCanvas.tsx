@@ -1,4 +1,4 @@
-/**
+﻿/**
  * OverlayCanvas.tsx — After Effects style tool overlay
  *
  * Modes:
@@ -192,7 +192,7 @@ export default function OverlayCanvas({
         },
         cx, cy,  // position = center of drawn box
       );
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
       onDone?.(result.clipId);
     } catch (err) {
       console.error('[OverlayCanvas] shape create error', err);
@@ -208,7 +208,7 @@ export default function OverlayCanvas({
       if (!penClipId.current) {
         const clip: any = await penApi.add(startFrame, duration, bpts, isClosed);
         penClipId.current = clip.clipId;
-        window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+        window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
         onDone?.(clip.clipId);
       } else {
         await penApi.updatePoints(penClipId.current, bpts, isClosed);
@@ -224,7 +224,7 @@ export default function OverlayCanvas({
         });
         createdMaskId.current = result.maskId ?? null;
         console.log('[OverlayCanvas] mask created', result.maskId, 'pts', bpts.length);
-        window.dispatchEvent(new CustomEvent('fade:masks-changed', { detail: targetClipId }));
+        window.dispatchEvent(new CustomEvent('Fade:masks-changed', { detail: targetClipId }));
         onDone?.(targetClipId);
       } else {
         // Subsequent commits — update the existing mask

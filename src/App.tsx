@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import TitleBar from './components/TitleBar'
 import SettingsPanel from './components/SettingsPanel'
 import CreateProjectModal from './components/createProjectModal.'
@@ -36,10 +36,10 @@ function LoadingOverlay({ message }: { message: string }) {
         border: '3px solid rgba(255,255,255,0.15)',
         borderTopColor: '#7c6fff',
         borderRadius: '50%',
-        animation: 'fade-spin 0.8s linear infinite',
+        animation: 'Fade-spin 0.8s linear infinite',
       }} />
       <div style={{ fontSize: 15, opacity: 0.85 }}>{message}</div>
-      <style>{`@keyframes fade-spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes Fade-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }
@@ -55,7 +55,7 @@ function MediaOfflineBanner({
   assets: MissingAsset[];
   onRelinked: (assetId: string) => void;
 }) {
-  const port = (window as any).__FADE_PORT__ ?? 8000;
+  const port = (window as any).__Fade_PORT__ ?? 8000;
   const relink = async (a: MissingAsset) => {
     const el = (window as any).electronAPI;
     const fp: string | undefined = await el?.showOpenDialog({
@@ -73,7 +73,7 @@ function MediaOfflineBanner({
     });
     if (r.ok) {
       onRelinked(a.assetId);
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
     }
   };
   return (
@@ -134,8 +134,8 @@ export default function App() {
   // Any workspace can dispatch ' 
   useEffect(() => {
     const h = () => setAiOpen(v => !v)
-    window.addEventListener('fade:ai-toggle', h)
-    return () => window.removeEventListener('fade:ai-toggle', h)
+    window.addEventListener('Fade:ai-toggle', h)
+    return () => window.removeEventListener('Fade:ai-toggle', h)
   }, [])
 
   // Auto-show on AI tab 
@@ -146,14 +146,14 @@ export default function App() {
   // When a clip is selected, push to backend so AI tools can read it
   const setSelected = useCallback((item: SelectedItem | null) => {
     setSelectedRaw(item)
-    const port = (window as any).__FADE_PORT__ ?? 8000
+    const port = (window as any).__Fade_PORT__ ?? 8000
     const clipId = item?.type === 'clip' ? item.clipId : null
     fetch(`http://127.0.0.1:${port}/clips/select`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clipId }),
     }).catch(() => {})
-    window.dispatchEvent(new CustomEvent('fade:clip-selected', {
+    window.dispatchEvent(new CustomEvent('Fade:clip-selected', {
       detail: item?.type === 'clip' ? {
         clipId: item.clipId,
         trackIndex: item.trackIndex,
@@ -174,18 +174,18 @@ export default function App() {
   }, [activeTool])
 
   useEffect(() => {
-    const port = (window as any).__FADE_PORT__ ?? 8000
+    const port = (window as any).__Fade_PORT__ ?? 8000
     const base  = `http://127.0.0.1:${port}`
     const onKey = async (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
         await fetch(`${base}/history/undo`, { method: 'POST' })
-        window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+        window.dispatchEvent(new CustomEvent('Fade:tracks-changed'))
       } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
         e.preventDefault()
         await fetch(`${base}/history/redo`, { method: 'POST' })
-        window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+        window.dispatchEvent(new CustomEvent('Fade:tracks-changed'))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -197,9 +197,9 @@ export default function App() {
     setLoadingMsg(null)
     setOfflineAssets(result.missing_assets ?? [])
     setActiveTab('video')
-    window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
-    window.dispatchEvent(new CustomEvent('fade:library-changed'))   // refresh library panel
-    window.dispatchEvent(new CustomEvent('fade:project-loaded', { detail: result }))
+    window.dispatchEvent(new CustomEvent('Fade:tracks-changed'))
+    window.dispatchEvent(new CustomEvent('Fade:library-changed'))   // refresh library panel
+    window.dispatchEvent(new CustomEvent('Fade:project-loaded', { detail: result }))
   }, [])
 
   // Expose a way for TitleBar  
@@ -271,7 +271,7 @@ export default function App() {
               onProjectCreated={() => {
                 setShowNewProject(false)
                 setActiveTab('video')
-                window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+                window.dispatchEvent(new CustomEvent('Fade:tracks-changed'))
               }}
             />
           )}

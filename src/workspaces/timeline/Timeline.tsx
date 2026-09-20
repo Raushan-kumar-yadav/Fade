@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+﻿import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   TimelineProvider,
   useTimeline,
@@ -281,20 +281,26 @@ function TimelineInner() {
   // Seek on ruler click  
   const onSeek = useCallback(
     (frame: number) => {
-      dispatch({ type: "SEEK", frame });
-      playbackSeek(frame).catch(() => {});
-      const api = (window as any).electronAPI;
-      api?.renderSeek(frame);
+      dispatch({ type: 'SEEK', frame });
+      // engine.seek() already notifies the C++ compositor via pipeline.notify_seek().
+      // Chain audio-seek after HTTP ack so audio and video stay in lockstep.
+      playbackSeek(frame)
+        .then(() => {
+          window.dispatchEvent(new CustomEvent('Fade:audio-seek', { detail: frame }));
+        })
+        .catch(() => {
+          window.dispatchEvent(new CustomEvent('Fade:audio-seek', { detail: frame }));
+        });
     },
     [dispatch],
   );
 
-  // Rubber-band box-select — pointer tool, from any empty/background area
+   
   const onContentMouseDown = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       if (state.selectedTool !== "pointer") return;
-      // Block if the click landed ON or INSIDE a clip element or a UI control
+       
       const target = e.target as HTMLElement;
       const onClip = !!target.closest('.tl-clip, .tl-track-row__resize, .tl-toolbar, [data-no-boxselect]');
       if (onClip) return;

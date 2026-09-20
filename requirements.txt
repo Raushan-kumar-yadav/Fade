@@ -1,5 +1,4 @@
- 
-#   Core backend  
+#   Core backend
 fastapi>=0.111
 uvicorn[standard]>=0.29
 av>=13.0
@@ -7,18 +6,45 @@ Pillow>=10.0
 numpy>=1.26
 python-multipart>=0.0.9
 psutil>=6.0.0
-
- 
-langgraph>=0.2
-langchain-core>=0.3
+aiofiles
+websockets
+requests
 httpx>=0.27
 python-dotenv>=1.0
+pydantic-settings
 
- 
-langchain-anthropic>=0.3      # FADE_AI_PROVIDER=claude
-langchain-openai>=0.2         # FADE_AI_PROVIDER=openai | tabi  ← ACTIVE
- 
+#   Compositor / rendering
+skia-python
+
+#   Media / downloads
+yt-dlp
+duckduckgo-search
+opencv-python-headless
+
+#   AI / LLM stack
+mcp>=1.0                      
+langgraph>=0.2
+langchain-core>=0.3
+langchain-anthropic>=0.3       
+langchain-openai>=0.2         
+anthropic
+openai
+ollama
+
+#   ML / embeddings
 torch>=2.0
-torchvision --extra-index-url https://download.pytorch.org/whl/cpu
+# torchvision: pip install torchvision --extra-index-url https://download.pytorch.org/whl/cpu
+torchvision
 sentence-transformers>=2.0
 scikit-learn>=1.3
+chromadb
+
+langchain-ollama>=1.1.0
+langchain-google-genai>=4.4.0
+langchain-groq>=1.1.3
+ddgs>=9.0.0
+ctranslate2==4.8.2
+faster-whisper==1.2.1
+llvmlite==0.49.0
+numba==0.67.0
+openai-whisper==20250625

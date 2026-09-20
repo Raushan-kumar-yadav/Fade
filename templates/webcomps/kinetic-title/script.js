@@ -1,4 +1,4 @@
- 
+﻿ 
 const scene = document.getElementById('scene');
 const bg = document.getElementById('bg');
 const grid = document.getElementById('grid');
@@ -10,14 +10,14 @@ const headline = document.getElementById('headline');
 const subline  = document.getElementById('subline');
 const frameNum = document.getElementById('frameNum');
 
-// Defaults from FADE_PARAMS (set before first frame event)
+// Defaults from Fade_PARAMS (set before first frame event)
 let p = Object.assign({
   headline:   'BREAKING NEWS',
   subline:    'Live Coverage',
   color1:     '#ff6b35',
   color2:     '#f7c59f',
   dark:       true,
-}, window.FADE_PARAMS || {});
+}, window.Fade_PARAMS || {});
 
 function applyParams() {
   headline.textContent = p.headline || 'BREAKING NEWS';
@@ -97,7 +97,7 @@ window.addEventListener('fade:frame', (e) => {
   subline.style.transform = `translateY(${lerp(110, 0, sp2) + sOut * -110}%)`;
 });
 
-window.addEventListener('fade:params', (e) => {
+window.addEventListener('Fade:params', (e) => {
   Object.assign(p, e.detail);
   applyParams();
 });

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+﻿import { useState, useRef, useEffect, useCallback } from 'react'
 import './FloatingAIChat.css'
 
 // Types
@@ -95,11 +95,11 @@ const LIBRARY_TOOLS = new Set([
 // Port hook
 
 function usePort(): number {
-  const [port, setPort] = useState<number>((window as any).__FADE_PORT__ ?? 8000)
+  const [port, setPort] = useState<number>((window as any).__Fade_PORT__ ?? 8000)
   useEffect(() => {
     const h = (e: Event) => setPort((e as CustomEvent<number>).detail)
-    window.addEventListener('fade:port', h, { once: true })
-    return () => window.removeEventListener('fade:port', h)
+    window.addEventListener('Fade:port', h, { once: true })
+    return () => window.removeEventListener('Fade:port', h)
   }, [])
   return port
 }
@@ -113,8 +113,8 @@ function SelectedClipBadge() {
       const d = (e as CustomEvent).detail
       setClip(d?.clipId ? d : null)
     }
-    window.addEventListener('fade:clip-selected', h)
-    return () => window.removeEventListener('fade:clip-selected', h)
+    window.addEventListener('Fade:clip-selected', h)
+    return () => window.removeEventListener('Fade:clip-selected', h)
   }, [])
   if (!clip) return null
   return (
@@ -251,11 +251,11 @@ export default function FloatingAIChat({ onClose }: Props) {
 
   const dispatchToolEvents = useCallback((toolName: string) => {
     if (TIMELINE_TOOLS.has(toolName))
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+      window.dispatchEvent(new CustomEvent('Fade:tracks-changed'))
     if (LIBRARY_TOOLS.has(toolName))
-      window.dispatchEvent(new CustomEvent('fade:library-changed'))
+      window.dispatchEvent(new CustomEvent('Fade:library-changed'))
     if (toolName.includes('effect'))
-      window.dispatchEvent(new CustomEvent('fade:effects-changed'))
+      window.dispatchEvent(new CustomEvent('Fade:effects-changed'))
   }, [])
 
   async function send() {
@@ -320,7 +320,7 @@ export default function FloatingAIChat({ onClose }: Props) {
               if (evt.name === 'export_video' && typeof evt.content === 'string') {
                 const m = evt.content.match(/EXPORT_JOB_ID:([\w-]+)/)
                 if (m) {
-                  window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: m[1] } }))
+                  window.dispatchEvent(new CustomEvent('Fade:export-started', { detail: { jobId: m[1] } }))
                 }
               }
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * EffectsPanel.tsx
  * Left: Effect browser with drag support (draggable onto timeline clips or the applied-effects panel).
  * Right: Applied effects on the selected clip with full param editing:
@@ -284,7 +284,7 @@ export default function EffectsPanel() {
 
   // Load catalog from backend
   useEffect(() => {
-    const port = (window as any).__FADE_PORT__ ?? 8000
+    const port = (window as any).__Fade_PORT__ ?? 8000
     fetch(`http://127.0.0.1:${port}/effects/catalog`)
       .then(r => r.json())
       .then(d => { if (d.effects) setCatalog(d.effects) })
@@ -307,15 +307,15 @@ export default function EffectsPanel() {
       const targetId = (e as CustomEvent<string>).detail
       if (!targetId || targetId === clipId) loadApplied()
     }
-    window.addEventListener('fade:effects-changed', handler)
-    return () => window.removeEventListener('fade:effects-changed', handler)
+    window.addEventListener('Fade:effects-changed', handler)
+    return () => window.removeEventListener('Fade:effects-changed', handler)
   }, [clipId, loadApplied])
 
   async function applyEffect(effectType: string) {
     if (!clipId) return
     await effectsApi.add(clipId, effectType)
     loadApplied()
-    window.dispatchEvent(new CustomEvent('fade:effects-changed', { detail: clipId }))
+    window.dispatchEvent(new CustomEvent('Fade:effects-changed', { detail: clipId }))
   }
 
   const categories = useMemo(
@@ -333,7 +333,7 @@ export default function EffectsPanel() {
   const handleDragStart = (type: string, e: React.DragEvent) => {
     dragTypeRef.current = type
     // MIME type used by TimelineClip to detect effect drags
-    e.dataTransfer.setData('application/fade-effect', type)
+    e.dataTransfer.setData('application/Fade-effect', type)
     e.dataTransfer.effectAllowed = 'copy'
   }
 
@@ -387,14 +387,14 @@ export default function EffectsPanel() {
       <div
         className={`efx-applied-panel${dropping ? ' efx-applied-panel--drop' : ''}`}
         onDragOver={e => {
-          if (e.dataTransfer.types.includes('application/fade-effect')) {
+          if (e.dataTransfer.types.includes('application/Fade-effect')) {
             e.preventDefault(); setDropping(true)
           }
         }}
         onDragLeave={() => setDropping(false)}
         onDrop={async e => {
           e.preventDefault(); setDropping(false)
-          const type = e.dataTransfer.getData('application/fade-effect') || dragTypeRef.current
+          const type = e.dataTransfer.getData('application/Fade-effect') || dragTypeRef.current
           if (type) await applyEffect(type)
           dragTypeRef.current = null
         }}

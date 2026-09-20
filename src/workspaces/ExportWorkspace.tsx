@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 import './ExportWorkspace.css'
 import { exportApi, type ExportProgress } from '../api/toolsApi'
 
@@ -28,7 +28,7 @@ function estimatedMB(w: number, h: number, fpsVal: number, durSec: number, kbps:
 export default function ExportWorkspace() {
   const [selected,    setSelected]    = useState<string>('mp4-1080')
   const [fps,         setFps]         = useState<string>('30')
-  const [outputPath,  setOutputPath]  = useState<string>('fade_export.mp4')
+  const [outputPath,  setOutputPath]  = useState<string>('Fade_export.mp4')
   const [jobId,       setJobId]       = useState<string | null>(null)
   const [progress,    setProgress]    = useState<ExportProgress | null>(null)
   const [webcompPhase, setWebcompPhase] = useState<{ active: boolean; done: number; total: number } | null>(null)
@@ -62,7 +62,7 @@ export default function ExportWorkspace() {
     api.getAppPath('videos').then((videosDir: string | null) => {
       const sep = videosDir?.includes('/') ? '/' : '\\'
       const dir = videosDir ?? ''
-      setOutputPath(dir ? `${dir}${sep}fade_export.${fmt.ext}` : `fade_export.${fmt.ext}`)
+      setOutputPath(dir ? `${dir}${sep}Fade_export.${fmt.ext}` : `Fade_export.${fmt.ext}`)
     }).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

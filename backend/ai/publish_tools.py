@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import os
 import json
 import time
@@ -231,7 +231,7 @@ def post_to_platform(
     ext  = _EXT.get(fmt_id, "mp4")
 
     safe = "".join(c if c.isalnum() or c in " _-" else "_" for c in title)[:40].strip()
-    base = f"{safe or 'fade_export'}.{ext}"
+    base = f"{safe or 'Fade_export'}.{ext}"
     proj_file = getattr(engine.project, "filePath", None) if engine.project else None
     if proj_file:
         output_path = os.path.join(os.path.dirname(proj_file), base)

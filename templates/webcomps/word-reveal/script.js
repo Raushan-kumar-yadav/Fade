@@ -1,4 +1,4 @@
-// Word Reveal — Fade WebComp Template
+﻿// Word Reveal — Fade WebComp Template
 // Each word blurs/slides in with a staggered offset
 
 const DUR = 210;
@@ -9,7 +9,7 @@ let p = Object.assign({
   caption: 'A New Chapter',
   accent:  '#6c63ff',
   stagger: 8,
-}, window.FADE_PARAMS || {});
+}, window.Fade_PARAMS || {});
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const line1El     = document.getElementById('line1');
@@ -121,7 +121,7 @@ window.addEventListener('fade:frame', (e) => {
   animateWordIn(wordsC, capStart, 5, f, 168);
 });
 
-window.addEventListener('fade:params', (e) => {
+window.addEventListener('Fade:params', (e) => {
   Object.assign(p, e.detail);
   rebuild();
 });

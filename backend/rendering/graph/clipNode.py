@@ -2,7 +2,6 @@ from __future__ import annotations
 import skia
 from backend.rendering.graph.baseNode import BaseNode, RenderResult
 from backend.rendering.renderContext import RenderContext
-from backend.rendering.nodes.effectNode import applyEffects
 from backend.timeline.clips.baseClip import BaseClip
 
 
@@ -40,8 +39,8 @@ class ClipNode(BaseNode):
                 apply_masks(canvas, clip, lambda: clip.render(canvas, frame))
             else:
                 clip.render(canvas, frame)
-            
-            applyEffects(canvas, clip, frame)
+            # NOTE: effects are applied by chained EffectNode(s) in the DAG,
+            # not here — applyEffects() removed to prevent double-application.
         except Exception as e:
             print(f"[ClipNode] render error for {clip.clipId}: {e}")
             import traceback; traceback.print_exc()

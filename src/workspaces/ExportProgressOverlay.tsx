@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+﻿import { useState, useEffect, useRef, useCallback } from 'react'
 import './ExportProgressOverlay.css'
 
 interface ExportProgress {
@@ -12,7 +12,7 @@ interface ExportProgress {
   status?: string
 }
 
-const PORT = () => (window as any).__FADE_PORT__ ?? 8000
+const PORT = () => (window as any).__Fade_PORT__ ?? 8000
 
 export default function ExportProgressOverlay() {
   const [jobId, setJobId] = useState<string | null>(null)
@@ -96,9 +96,9 @@ export default function ExportProgressOverlay() {
       }, 500)
     }
 
-    window.addEventListener('fade:export-started', handler)
+    window.addEventListener('Fade:export-started', handler)
     return () => {
-      window.removeEventListener('fade:export-started', handler)
+      window.removeEventListener('Fade:export-started', handler)
       stopPoll()
       if (dismissRef.current) clearTimeout(dismissRef.current)
     }

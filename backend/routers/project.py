@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+﻿from fastapi import APIRouter
 from backend.state import engine, _library, _clipTrackMap
 from backend.worker.worker_bus import bus as _worker_bus
 from backend.media.asset.mediaAsset import MediaAsset
@@ -63,7 +63,7 @@ def _project_folder(req: SaveRequest) -> "Path":
         return Path(req.folderPath)
     # Legacy: derive folder from filepath stem
     p = Path(req.filepath)
-    if p.suffix == ".fade":
+    if p.suffix == ".Fade":
         return p.parent / p.stem
     return p
 
@@ -165,7 +165,7 @@ def saveProject(req: SaveRequest):
 
     proj_folder = _project_folder(req)
     proj_folder.mkdir(parents=True, exist_ok=True)
-    anchor_path = proj_folder / "project.fade"
+    anchor_path = proj_folder / "project.Fade"
 
     tl = engine.activeTimeline
     proj_dict = engine.project.toDict()
@@ -180,6 +180,38 @@ def saveProject(req: SaveRequest):
         and getattr(asset, "mediaType", None) != MediaType.webcomp
     }
     proj_dict["assets"] = media_assets
+
+    # ── Safety guard: don't overwrite a real project with empty in-memory state ──
+    # This prevents the crash-restart-save race where the backend restarts with
+    # no project loaded (0 clips, 0 media) and then Ctrl+S overwrites good data.
+    clip_count_now = 0
+    if tl:
+        for track in tl.tracks:
+            clip_count_now += len(track.clips)
+    if clip_count_now == 0 and len(media_assets) == 0 and anchor_path.exists():
+        try:
+            import json as _json_check
+            existing = _json_check.loads(anchor_path.read_text(encoding="utf-8"))
+            existing_clips = sum(len(t.get("clips", [])) for t in existing.get("timeline", {}).get("tracks", []))
+            existing_media = len(existing.get("assets", {}))
+            if existing_clips > 0 or existing_media > 0:
+                print(
+                    f"[Project] ⚠ Save blocked — backend has empty state "
+                    f"but disk has {existing_clips} clips / {existing_media} assets. "
+                    f"Reload the project first.",
+                    flush=True,
+                )
+                raise HTTPException(
+                    409,
+                    f"Save blocked: backend state is empty (0 clips, 0 assets) "
+                    f"but '{anchor_path.name}' on disk has {existing_clips} clips "
+                    f"and {existing_media} assets. Reload the project first to avoid data loss."
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Can't read disk — allow save
+
 
     
     audio_dest = proj_folder / "assets" / "audio"
@@ -227,7 +259,15 @@ def saveProject(req: SaveRequest):
 
     #   ChromaDB  
     all_asset_ids = set(media_assets.keys()) | {d.get("assetId", "") for d in wc_dicts}
-    chroma_chunks = _migrate_chroma_to_project(proj_folder, all_asset_ids)
+    from backend.worker.worker_bus import bus as _bus
+    if _bus.is_indexing_active():
+        # Sandbox subprocess has exclusive write access to project ChromaDB right now.
+        # Reading/healing from the main process concurrently causes a Rust HNSW
+        # segfault → backend.exe exits with code 1. Skip safely and use last count.
+        chroma_chunks = proj_dict.get("chromaDbChunks", 0)
+        print(f"[Project] ChromaDB access deferred (indexing active) — cached count: {chroma_chunks}", flush=True)
+    else:
+        chroma_chunks = _migrate_chroma_to_project(proj_folder, all_asset_ids)
     proj_dict["chromaDbBundled"] = True
     proj_dict["chromaDbChunks"] = chroma_chunks
 
@@ -275,7 +315,7 @@ def loadProject(req: LoadRequest):
 
     # Accept either a folder  
     if given.is_dir():
-        anchor_path = given / "project.fade"
+        anchor_path = given / "project.Fade"
     else:
         anchor_path = given
 
@@ -580,6 +620,9 @@ class AiSettingsPayload(BaseModel):
     frameInterval: float | None = None
     whisperBackend: str | None = None
     whisperModel: str | None = None
+    maxConcurrentIndex: int | None = None
+    indexProvider: str | None = None      # 'ollama' | 'gemini'
+    indexGeminiModel: str | None = None   # e.g. 'gemini-1.5-flash'
 
 
 def _get_ai_settings() -> dict:
@@ -590,12 +633,19 @@ def _get_ai_settings() -> dict:
     except Exception:
         pass
 
+    from backend.worker.worker_bus import bus as _bus
+    queue_info = _bus.get_index_queue_info()
+
     return {
         "visionModel": _cfg.get("ai.vision_model", "moondream:latest"),
         "frameInterval": _cfg.get("ai.frame_interval", 4.0),
         "whisperBackend": _cfg.get("ai.whisper_backend", "faster"),
         "whisperModel": _cfg.get("ai.whisper_model", "small"),
+        "maxConcurrentIndex": _cfg.get("ai.max_concurrent_index", 2),
         "availableModels": available,
+        "indexQueue": queue_info,
+        "indexProvider": _cfg.get("ai.index_provider", "ollama"),
+        "indexGeminiModel": _cfg.get("ai.index_gemini_model", "gemini-1.5-flash"),
     }
 
 
@@ -614,6 +664,18 @@ def postAiSettings(payload: AiSettingsPayload):
         _cfg.set("ai.whisper_backend", payload.whisperBackend)
         from backend.ai import whisper_tool as _wt
         _wt._model_cache.clear()
+    if payload.whisperModel is not None:
+        _cfg.set("ai.whisper_model", payload.whisperModel.strip())
+    if payload.maxConcurrentIndex is not None:
+        val = max(1, min(10, payload.maxConcurrentIndex))
+        _cfg.set("ai.max_concurrent_index", val)
+        from backend.worker.worker_bus import bus as _bus
+        _bus.set_max_concurrent_index(val)
+    if payload.indexProvider is not None and payload.indexProvider in ("ollama", "gemini"):
+        _cfg.set("ai.index_provider", payload.indexProvider)
+    if payload.indexGeminiModel is not None:
+        _cfg.set("ai.index_gemini_model", payload.indexGeminiModel.strip())
+    return _get_ai_settings()
 # Generator Settings  
 
 class GeneratorSettingsPayload(BaseModel):
@@ -770,3 +832,130 @@ def postGeneratorSettings(payload: GeneratorSettingsPayload):
     if payload.ollamaUrl is not None:
         _cfg.set("generators.ollama_url", payload.ollamaUrl.strip())
     return _get_generator_settings()
+
+
+# ── API Keys / .env Settings ──────────────────────────────────────────────
+
+import os as _os
+import sys as _sys
+from pathlib import Path as _Path
+
+def _resolve_env_file() -> _Path:
+    """
+    Resolve the .env file path for both dev and packaged (PyInstaller) mode.
+    - Dev:       <repo_root>/.env  (next to package.json)
+    - Packaged:  FADE_RESOURCES_PATH env var set by Electron main.ts
+                 → typically %APPDATA%/Fade/.env
+    """
+    resources_path = _os.environ.get('FADE_RESOURCES_PATH', '')
+    if resources_path:
+        p = _Path(resources_path) / '.env'
+        # Ensure the parent dir exists (first run)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    # Dev fallback: climb up from this file to repo root
+    return _Path(__file__).resolve().parents[2] / '.env'
+
+_ENV_FILE = _resolve_env_file()
+
+# Only these keys can be read/written from the GUI
+_ALLOWED_ENV_KEYS = [
+    "FADE_AI_PROVIDER",
+    "FADE_AI_MODEL",
+    "GOOGLE_API_KEY",
+    "OPENAI_API_KEY",
+    "GROQ_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "TABI_API_KEY",
+    "TABI_BASE_URL",
+    "TOKENROUTER_API_KEY",
+    "TOKENROUTER_BASE_URL",
+    "OPENROUTER_API_KEY",
+    "OPENROUTER_BASE_URL",
+    "STABILITY_API_KEY",
+    "YOUTUBE_CLIENT_ID",
+    "YOUTUBE_CLIENT_SECRET",
+    "OLLAMA_HOST",
+    "LLAMACPP_BASE_URL",
+]
+
+
+def _read_env_file() -> dict[str, str]:
+    """Parse the .env file into a dict (preserves comments as-is)."""
+    result: dict[str, str] = {}
+    if not _ENV_FILE.exists():
+        return result
+    for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" in stripped:
+            key, _, val = stripped.partition("=")
+            result[key.strip()] = val.strip()
+    return result
+
+
+def _write_env_file(updates: dict[str, str]) -> None:
+    """Update .env file with new values, preserving comments and order."""
+    lines: list[str] = []
+    if _ENV_FILE.exists():
+        lines = _ENV_FILE.read_text(encoding="utf-8").splitlines()
+
+    updated_keys: set[str] = set()
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.partition("=")[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}")
+                updated_keys.add(key)
+                continue
+        new_lines.append(line)
+
+    # Add any new keys not already in the file
+    for key, val in updates.items():
+        if key not in updated_keys:
+            new_lines.append(f"{key}={val}")
+
+    _ENV_FILE.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    # Also update os.environ so changes take effect immediately
+    for key, val in updates.items():
+        _os.environ[key] = val
+
+
+def _mask_key(val: str) -> str:
+    """Show only last 4 chars: sk-****abcd"""
+    if not val or len(val) <= 4:
+        return val
+    return val[:3] + "…" + val[-4:]
+
+
+@router.get("/settings/env")
+def getEnvSettings():
+    env_data = _read_env_file()
+    result: dict[str, dict] = {}
+    for key in _ALLOWED_ENV_KEYS:
+        raw = env_data.get(key, _os.environ.get(key, ""))
+        is_secret = "KEY" in key or "SECRET" in key
+        result[key] = {
+            "value": raw,
+            "masked": _mask_key(raw) if is_secret else raw,
+            "isSecret": is_secret,
+        }
+    return result
+
+
+class EnvUpdatePayload(BaseModel):
+    updates: dict[str, str]
+
+
+@router.post("/settings/env")
+def postEnvSettings(payload: EnvUpdatePayload):
+    # Only allow whitelisted keys
+    safe_updates = {k: v for k, v in payload.updates.items() if k in _ALLOWED_ENV_KEYS}
+    if safe_updates:
+        _write_env_file(safe_updates)
+        print(f"[Settings] Updated .env keys: {list(safe_updates.keys())}", flush=True)
+    return getEnvSettings()

@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './TextInspectorPanel.css';
 
-function port(): number { return (window as any).__FADE_PORT__ ?? 8000; }
+function port(): number { return (window as any).__Fade_PORT__ ?? 8000; }
 const base = () => `http://127.0.0.1:${port()}`;
 
 async function patchTextStyle(clipId: string, style: Record<string, unknown>) {
@@ -13,7 +13,7 @@ async function patchTextStyle(clipId: string, style: Record<string, unknown>) {
     });
     if (r.ok) {
       // Only trigger re-render after the server has confirmed the update
-      window.dispatchEvent(new CustomEvent('fade:render-now'));
+      window.dispatchEvent(new CustomEvent('Fade:render-now'));
     }
   } catch {
     // backend not ready

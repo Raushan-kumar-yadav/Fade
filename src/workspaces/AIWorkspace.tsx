@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+﻿import { useCallback } from 'react'
 import { Allotment } from 'allotment'
 import 'allotment/dist/style.css'
 import ViewportWidget from './viewport/ViewportWidget'
@@ -15,7 +15,7 @@ export default function AIWorkspace() {
 
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
     await addClipToTimeline(asset.assetId, trackIndex, 0, 300)
-    window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+    window.dispatchEvent(new CustomEvent('Fade:tracks-changed'))
   }, [])
 
   return (

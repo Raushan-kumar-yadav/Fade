@@ -1,5 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import os
+import sys
 import subprocess
 import threading
 import uuid
@@ -10,20 +11,49 @@ if TYPE_CHECKING:
     from backend.timeline.timeline import Timeline
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Encoder auto-detection
-# ──────────────────────────────────────────────────────────────────────────────
+ 
+def _ffmpeg_exe() -> str:
+    """Return an absolute path to ffmpeg. Works in dev and PyInstaller bundles."""
+    import shutil
+     
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+     
+    if getattr(sys, 'frozen', False):
+        _res = os.path.dirname(sys.executable)  # resources/backend/
+        _res = os.path.dirname(_res)             # resources/
+        candidates = [
+            os.path.join(_res, "renderer", "build", "Release", "ffmpeg.exe"),
+            os.path.join(_res, "tools", "ffmpeg", "ffmpeg.exe"),
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                return c
+     
+    _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for c in [
+        os.path.join(_root, "renderer", "build", "Release", "ffmpeg.exe"),
+        os.path.join(_root, "tools", "ffmpeg", "ffmpeg.exe"),
+    ]:
+        if os.path.isfile(c):
+            return c
+    return "ffmpeg"  
 
+
+ 
 def detect_encoder() -> str:
+    ffmpeg = _ffmpeg_exe()
     candidates = ["h264_nvenc", "h264_qsv", "libx264"]
     for enc in candidates:
         try:
             r = subprocess.run(
-                ["ffmpeg", "-f", "lavfi", "-i", "nullsrc=s=16x16:d=0.1",
+                [ffmpeg, "-f", "lavfi", "-i", "nullsrc=s=16x16:d=0.1",
                  "-c:v", enc, "-f", "null", "-"],
                 capture_output=True, timeout=5,
             )
             if r.returncode == 0:
+                print(f"[encoder] Using encoder: {enc}", flush=True)
                 return enc
         except Exception:
             pass
@@ -40,10 +70,7 @@ def _cached_encoder() -> str:
     return _ENCODER_CACHE
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ExportJob — tracks state of one export run
-# ──────────────────────────────────────────────────────────────────────────────
-
+  
 class ExportJob:
     def __init__(self, settings: dict) -> None:
         self.jobId    = str(uuid.uuid4())
@@ -77,23 +104,20 @@ class ExportJob:
         }
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Main export runner — called from background thread
-# ──────────────────────────────────────────────────────────────────────────────
-
+ 
 def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -> None:
-    s               = job.settings
-    width           = s.get("width",           1920)
-    height          = s.get("height",          1080)
-    fps             = s.get("fps",             30.0)
-    codec           = s.get("codec",           "auto")
-    vbr             = s.get("videoBitrate",    "8M")
-    crf             = s.get("crf",             -1)
-    preset          = s.get("preset",          "medium")
-    abr             = s.get("audioBitrate",    "192k")
-    audio_sr        = s.get("audioSampleRate", 48000)
-    audio_ch        = s.get("audioChannels",   2)
-    out             = s.get("outputPath",      "output.mp4")
+    s = job.settings
+    width = s.get("width", 1920)
+    height = s.get("height", 1080)
+    fps = s.get("fps", 30.0)
+    codec = s.get("codec", "auto")
+    vbr = s.get("videoBitrate",    "8M")
+    crf = s.get("crf", -1) 
+    preset = s.get("preset", "medium")
+    abr = s.get("audioBitrate", "192k")
+    audio_sr = s.get("audioSampleRate", 48000)
+    audio_ch = s.get("audioChannels",   2)
+    out = s.get("outputPath",      "output.mp4")
 
     if codec == "auto":
         codec = _cached_encoder()
@@ -111,15 +135,17 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
         job.done  = True
         return
 
-    # Ensure the output directory exists — FFmpeg cannot create parent directories
+    # Ensure the output directory exists 
     out_dir = os.path.dirname(os.path.abspath(out))
     os.makedirs(out_dir, exist_ok=True)
 
-    tmp_video = os.path.join(out_dir, f".fade_tmp_{uuid.uuid4().hex[:8]}.mp4")
+    tmp_video = os.path.join(out_dir, f".Fade_tmp_{uuid.uuid4().hex[:8]}.mp4")
 
     # Build FFmpeg video encode command
+    ffmpeg = _ffmpeg_exe()
+    print(f"[encoder] ffmpeg: {ffmpeg}", flush=True)
     ffmpeg_cmd = [
-        "ffmpeg", "-y",
+        ffmpeg, "-y",
         "-f", "rawvideo",
         "-vcodec",  "rawvideo",
         "-pix_fmt", "rgba",
@@ -130,7 +156,7 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
         "-pix_fmt", "yuv420p",
     ]
 
-    # Quality mode: CRF preferred over bitrate for CPU encoders
+     
     cpu_encoders = ("libx264", "libx265")
     if crf >= 0 and codec in cpu_encoders:
         ffmpeg_cmd += ["-crf", str(crf), "-preset", preset]
@@ -247,7 +273,7 @@ def _mux_audio_v2(
         os.rename(video_path, out_path)
         return
 
-    # Build FFmpeg command with complex filter graph
+     
     inputs = ["-i", video_path]
     for c in audio_clips:
         inputs += ["-i", c["path"]]
@@ -286,7 +312,8 @@ def _mux_audio_v2(
     )
     filter_graph = ";".join(filter_parts)
 
-    cmd = ["ffmpeg", "-y"] + inputs + [
+    ffmpeg = _ffmpeg_exe()
+    cmd = [ffmpeg, "-y"] + inputs + [
         "-filter_complex", filter_graph,
         "-map",  "0:v",
         "-map", "[aout]",
@@ -297,14 +324,19 @@ def _mux_audio_v2(
         "-ac",   str(channels),
         out_path,
     ]
+    print(f"[encoder] mux cmd: {' '.join(cmd[:6])} ...", flush=True)
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        # Fallback 
-        print(f"[encoder] _mux_audio_v2 failed: {result.stderr.decode(errors='replace')[-400:]}")
+        err = result.stderr.decode(errors='replace')
+        print(f"[encoder] _mux_audio_v2 FAILED (code {result.returncode}):\n{err[-800:]}", flush=True)
+         
         try:
-            os.rename(video_path, out_path)
+            if not os.path.exists(out_path):
+                os.rename(video_path, out_path)
         except Exception:
             pass
+    else:
+        print(f"[encoder] mux OK → {out_path}", flush=True)
 
 
 

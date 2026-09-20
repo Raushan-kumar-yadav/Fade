@@ -1,0 +1,7 @@
+torch
+torchvision
+sentence-transformers
+scikit-learn
+numpy
+gradio
+pillow

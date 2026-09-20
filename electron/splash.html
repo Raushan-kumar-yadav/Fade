@@ -1,0 +1,216 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Fade</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0b0b0e;
+    color: #f0f0f2;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    width: 100vw; height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+
+  .wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 32px;
+    width: 380px;
+  }
+
+  /* Logo */
+  .logo-ring {
+    width: 80px; height: 80px;
+    border-radius: 22px;
+    background: linear-gradient(135deg, #6c63ff 0%, #a855f7 100%);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 40px rgba(108,99,255,0.45);
+    animation: pulse 2.5s ease-in-out infinite;
+  }
+  .logo-ring svg { width: 44px; height: 44px; }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 30px rgba(108,99,255,0.35); }
+    50%      { box-shadow: 0 0 60px rgba(108,99,255,0.65); }
+  }
+
+  .app-name {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #ffffff 0%, rgba(255,255,255,0.55) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-top: -12px;
+  }
+  .app-sub {
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-top: -22px;
+  }
+
+  /* Progress bar */
+  .bar-track {
+    width: 100%;
+    height: 3px;
+    background: rgba(255,255,255,0.07);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #6c63ff, #a855f7);
+    border-radius: 99px;
+    transition: width 0.6s cubic-bezier(0.4,0,0.2,1);
+    box-shadow: 0 0 10px rgba(108,99,255,0.6);
+  }
+
+  /* Log area */
+  .log-box {
+    width: 100%;
+    height: 100px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+    padding: 10px 14px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .log-box::-webkit-scrollbar { width: 3px; }
+  .log-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
+
+  .log-line {
+    font-size: 11px;
+    font-family: "Consolas","JetBrains Mono",monospace;
+    color: rgba(255,255,255,0.35);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    animation: fadeIn 0.2s ease;
+    transition: color 0.3s;
+  }
+  .log-line.active {
+    color: rgba(255,255,255,0.8);
+  }
+  .log-line.ok { color: #00d4aa; }
+  .log-line.warn { color: #f59e0b; }
+  .log-line.err { color: #f87171; }
+
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+  /* Dot spinner */
+  .spinner {
+    display: flex; gap: 5px; align-items: center;
+  }
+  .spinner span {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: rgba(108,99,255,0.7);
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+  .spinner span:nth-child(2) { animation-delay: 0.2s; }
+  .spinner span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,80%,100%{transform:scale(0.6);opacity:0.4} 40%{transform:scale(1);opacity:1} }
+
+  .version { font-size: 10px; color: rgba(255,255,255,0.15); }
+
+  /* Fade out */
+  body.fade-out { animation: fadeOut 0.4s ease forwards; }
+  @keyframes fadeOut { to { opacity: 0; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo-ring">
+    <svg viewBox="0 0 44 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="22" cy="22" r="16" stroke="white" stroke-width="2.5" stroke-dasharray="6 4"/>
+      <circle cx="22" cy="22" r="8" fill="white" fill-opacity="0.9"/>
+      <circle cx="22" cy="22" r="3.5" fill="#6c63ff"/>
+    </svg>
+  </div>
+
+  <div class="app-name">Fade</div>
+  <div class="app-sub">AI Video Editor</div>
+
+  <div class="bar-track"><div class="bar-fill" id="bar"></div></div>
+
+  <div class="log-box" id="log"></div>
+
+  <div class="spinner" id="spinner">
+    <span></span><span></span><span></span>
+  </div>
+
+  <div class="version" id="ver">v1.0.0</div>
+</div>
+
+<script>
+  const bar     = document.getElementById("bar");
+  const logBox  = document.getElementById("log");
+  const spinner = document.getElementById("spinner");
+  let progress  = 0;
+
+  function addLog(text, cls) {
+    // Dim all previous lines
+    logBox.querySelectorAll(".log-line.active").forEach(l => l.classList.remove("active"));
+    const line = document.createElement("div");
+    line.className = "log-line active" + (cls ? " " + cls : "");
+    // prefix icon
+    const icon = cls === "ok" ? "✓ " : cls === "err" ? "✗ " : cls === "warn" ? "⚠ " : "• ";
+    line.textContent = icon + text;
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
+    // Keep max 20 lines
+    while (logBox.children.length > 20) logBox.removeChild(logBox.firstChild);
+  }
+
+  function setProgress(pct) {
+    progress = Math.max(progress, Math.min(100, pct));
+    bar.style.width = progress + "%";
+  }
+
+  // Listen for status messages from main process
+  window.addEventListener("message", e => {
+    if (e.data && e.data.type === "splash:status") {
+      addLog(e.data.text, e.data.cls);
+      if (e.data.progress !== undefined) setProgress(e.data.progress);
+    }
+    if (e.data && e.data.type === "splash:done") {
+      setProgress(100);
+      addLog("Ready!", "ok");
+      spinner.style.opacity = "0";
+      setTimeout(() => { document.body.classList.add("fade-out"); }, 300);
+    }
+  });
+
+  // Electron IPC bridge
+  if (window.electronAPI) {
+    window.electronAPI.onSplashStatus && window.electronAPI.onSplashStatus((msg) => {
+      addLog(msg.text, msg.cls);
+      if (msg.progress !== undefined) setProgress(msg.progress);
+      if (msg.done) {
+        setProgress(100);
+        addLog("Ready!", "ok");
+        spinner.style.opacity = "0";
+        setTimeout(() => { document.body.classList.add("fade-out"); }, 300);
+      }
+    });
+  }
+
+  // Initial log
+  addLog("Starting Fade...");
+  setProgress(5);
+</script>
+</body>
+</html>

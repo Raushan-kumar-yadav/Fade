@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useEffect, useState, useLayoutEffect } from "react";
+﻿import React, { memo, useCallback, useRef, useEffect, useState, useLayoutEffect } from "react";
 import ReactDOM from "react-dom";
 import { useSelection } from "../../context/selectionContext";
 import {
@@ -119,10 +119,10 @@ const TimelineClip = memo(function TimelineClip({
   const handleDelete = useCallback(async () => {
     setCtxMenu(null);
     try {
-      const port = (window as any).__FADE_PORT__ ?? 8000;
+      const port = (window as any).__Fade_PORT__ ?? 8000;
       await fetch(`http://127.0.0.1:${port}/timeline/clips/${clip.id}`, { method: 'DELETE' });
       dispatch({ type: 'DELETE_CLIP', clipId: clip.id });
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
     } catch (err) {
       console.error('[TimelineClip] delete failed', err);
     }
@@ -384,7 +384,7 @@ const TimelineClip = memo(function TimelineClip({
   const [effectDropOver, setEffectDropOver] = useState(false);
 
   const handleEffectDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes('application/fade-effect')) {
+    if (e.dataTransfer.types.includes('application/Fade-effect')) {
       e.preventDefault();
       e.stopPropagation();
       setEffectDropOver(true);
@@ -397,14 +397,14 @@ const TimelineClip = memo(function TimelineClip({
     e.preventDefault();
     e.stopPropagation();
     setEffectDropOver(false);
-    const effectType = e.dataTransfer.getData('application/fade-effect');
+    const effectType = e.dataTransfer.getData('application/Fade-effect');
     if (!effectType || !clip.id) return;
     try {
       await effectsApi.add(clip.id, effectType);
       // Select this clip so inspector shows the new effect
       dispatch({ type: 'SELECT_CLIP', clipId: clip.id, trackId: track.id, multi: false });
       setSelected({ type: 'clip', clipId: clip.id, clipName: clip.name, clipType: clip.type, trackIndex });
-      window.dispatchEvent(new CustomEvent('fade:effects-changed', { detail: clip.id }));
+      window.dispatchEvent(new CustomEvent('Fade:effects-changed', { detail: clip.id }));
     } catch (err) {
       console.error('[TimelineClip] effect drop failed', err);
     }

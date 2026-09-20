@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import os
 import faulthandler
 from pathlib import Path
@@ -8,18 +8,50 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
- 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_FFMPEG_DIRS = [
-    str(_PROJECT_ROOT / "tools" / "ffmpeg"),   # bundled  
-    r"D:\ffmpeg\FFmpeg",                         
-    r"C:\Users\raush\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0-full_build\bin",  # fallback B
+# ── Load saved .env at startup ─────────────────────────────────────────────────
+# FADE_RESOURCES_PATH is set by Electron before spawning the backend process.
+# Without this, saved settings (AI provider, API keys) are lost on every restart
+# because os.environ only has the default system environment.
+def _load_saved_env() -> None:
+    try:
+        from dotenv import load_dotenv
+        resources = os.environ.get("FADE_RESOURCES_PATH", "")
+        if resources:
+            _env_path = Path(resources) / ".env"
+        else:
+            # Dev mode: repo root is two levels up from backend/main.py
+            _env_path = Path(__file__).resolve().parent.parent / ".env"
+        if _env_path.exists():
+            load_dotenv(str(_env_path), override=True)
+            print(f"[Startup] Loaded .env from: {_env_path}", flush=True)
+        else:
+            print(f"[Startup] No .env found at: {_env_path}", flush=True)
+    except Exception as e:
+        print(f"[Startup] Could not load .env: {e}", flush=True)
+
+_load_saved_env()
+
+
+import sys as _sys_early
+
+# ── Resolve project/resource root (works in dev AND PyInstaller frozen bundle) ──
+if getattr(_sys_early, 'frozen', False):
+    # PyInstaller: _MEIPASS is the extracted bundle temp dir
+    _RESOURCE_ROOT = Path(_sys_early._MEIPASS)  # type: ignore[attr-defined]
+else:
+    _RESOURCE_ROOT = Path(__file__).resolve().parent.parent
+
+# ── FFmpeg discovery (NO hardcoded user paths) ────────────────────────────────
+_FFMPEG_CANDIDATES = [
+    str(_RESOURCE_ROOT / "tools" / "ffmpeg"),           # bundled alongside app
+    str(_RESOURCE_ROOT / "renderer" / "build" / "Release"),  # C++ build output
 ]
-for _d in _FFMPEG_DIRS:
+for _d in _FFMPEG_CANDIDATES:
     if os.path.isdir(_d) and _d not in os.environ.get("PATH", ""):
         os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
         print(f"[main] Added ffmpeg to PATH: {_d}", flush=True)
-        break   
+        break
+# If neither bundled location exists, ffmpeg must be on system PATH already
 
 faulthandler.enable()
 
@@ -32,6 +64,11 @@ if sys.stderr and hasattr(sys.stderr, 'buffer') and getattr(sys.stderr, 'encodin
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 
 sys.setswitchinterval(0.001)
+
+if __name__ == "__main__":
+    # REQUIRED for PyInstaller + multiprocessing.spawn on Windows
+    import multiprocessing as _mp
+    _mp.freeze_support()
 
 import asyncio
 import concurrent.futures
@@ -268,6 +305,14 @@ try:
 except ImportError as _ai_err:
     print(f"[main] AI router not available: {_ai_err}", flush=True)
 
+# MCP Remote Control router
+try:
+    from backend.routers.mcp_remote_router import mcp_remote_router
+    app.include_router(mcp_remote_router)
+    print("[main] MCP remote router mounted at /mcp-remote", flush=True)
+except ImportError as _mcp_err:
+    print(f"[main] MCP remote router not available: {_mcp_err}", flush=True)
+
 # Domain routers
 app.include_router(project.router)
 app.include_router(render.router)
@@ -293,9 +338,7 @@ app.include_router(virality.router)  # virality predictor + social connections
 from fastapi.responses import FileResponse as _FileResponse
 import pathlib as _pathlib
 
-_RUNTIME_JS = (
-    _pathlib.Path(__file__).parent.parent / "templates" / "webcomps" / "_runtime" / "fade-react.js"
-)
+_RUNTIME_JS = _RESOURCE_ROOT / "templates" / "webcomps" / "_runtime" / "fade-react.js"
 
 @app.get("/runtime/fade-react.js", include_in_schema=False)
 async def serve_runtime_js():

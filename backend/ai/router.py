@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import json
 import asyncio
@@ -79,8 +79,8 @@ class CreateVideoRequest(BaseModel):
 @ai_router.get("/status")
 def ai_status():
     import os
-    provider = os.environ.get("FADE_AI_PROVIDER", "ollama")
-    model = os.environ.get("FADE_AI_MODEL", "")
+    provider = os.environ.get("FADE_AI_PROVIDER", os.environ.get("FADE_AI_PROVIDER", "ollama"))
+    model = os.environ.get("FADE_AI_MODEL", os.environ.get("FADE_AI_MODEL", ""))
 
     ollama_ok = False
     available_models: list[str] = []
@@ -105,6 +105,27 @@ def ai_status():
         "ollama_running":  ollama_ok,
         "available_models": available_models,
     }
+
+
+@ai_router.post("/restart")
+async def ai_restart():
+    """Reset the cached agent so it rebuilds with current os.environ on next request.
+    
+    NOTE: Do NOT re-read .env here. _write_env_file() in project.py already
+    updates os.environ immediately when settings are saved. Re-reading .env
+    with load_dotenv in a PyInstaller build would use the wrong path and
+    override the correct value, reverting the provider back to ollama.
+    """
+    import os
+    try:
+        from backend.ai.agent import _reset_agent
+        _reset_agent()
+        provider = os.environ.get("FADE_AI_PROVIDER", "ollama")
+        model = os.environ.get("FADE_AI_MODEL", "")
+        return {"ok": True, "provider": provider, "model": model,
+                "message": f"Agent will restart with provider '{provider}' on next message."}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
 
 # /ai/chat   
 
@@ -172,9 +193,20 @@ async def ai_chat(req: ChatRequest):
 
         except Exception as e:
             import traceback
-            traceback.print_exc()
+            err_str = str(e)
+            # Classify the error for a friendly user message
+            if any(k in type(e).__name__ for k in ("Timeout", "TimeoutError")):
+                msg = "⏱️ The AI model took too long to respond. The free model may be busy — please try again."
+            elif "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower():
+                msg = "⚠️ Rate limit reached on the AI model. Wait a moment and try again."
+            elif "connect" in err_str.lower() or "connection" in err_str.lower():
+                msg = "🔌 Could not connect to the AI model. Check your internet connection."
+            else:
+                traceback.print_exc()
+                msg = f"AI error: {err_str}"
+            print(f"[AI Router] error: {msg}", flush=True)
             yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
 
     return StreamingResponse(
         event_stream(),

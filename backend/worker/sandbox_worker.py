@@ -102,11 +102,8 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
                     cancel_queue=None) -> int:
      
     import tempfile
-    from concurrent.futures import ThreadPoolExecutor, Future
-
 
     from backend.ai.VideoSemantic.frameExtractor import extractFrame
-    from backend.ai.VideoSemantic.descriptions import describe_all_frames
     from backend.ai.VideoSemantic.merger import merge_and_chunk
     from backend.ai.VideoSemantic.indexer import index_video
 
@@ -114,14 +111,13 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
 
     with tempfile.TemporaryDirectory() as tmp_dir:
 
-        #  Extract frames  
+        #   Extract frames  
         frames = extractFrame(filepath, tmp_dir, frame_interval, ffmpeg_exe=ffmpeg_exe or None)
         if not frames:
             raise RuntimeError("ffmpeg extracted 0 frames")
 
-        # ── Cancel check: before heavy vision work ──────────────────────────────
+        # Cancel check  
         def _is_cancelled() -> bool:
-            """Drain cancel_queue and check if our asset_id was cancelled."""
             if cancel_queue is None:
                 return False
             cancelled_ids: set[str] = set()
@@ -130,7 +126,6 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
                     cancelled_ids.add(cancel_queue.get_nowait())
                 except Exception:
                     break
-            # Put others back (only ours matters right now)
             for cid in cancelled_ids:
                 if cid != asset_id:
                     try:
@@ -142,94 +137,118 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
         if _is_cancelled():
             raise _IndexCancelled(f"Indexing cancelled before vision phase: {asset_id[:8]}")
 
-      
-        print(f"[SandboxWorker] Starting vision + transcription in parallel…", flush=True)
+         
+        import os as _os
+        from backend.ai.VideoSemantic.descriptions import describe_frame, _get_provider_config
 
-        def _run_vision() -> list[dict]:
-            """Describe frames one-by-one, checking for cancellation between each."""
-            import os as _os
-            from backend.ai.VideoSemantic.descriptions import describe_frame, _get_model
-            model = vision_model or _get_model()
-            results: list[dict] = []
-            frame_files = sorted(
-                f for f in _os.listdir(tmp_dir)
-                if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
-            )
-            for i, fname in enumerate(frame_files):
-                # Cancel check between every frame
-                if _is_cancelled():
-                    print(f"[SandboxWorker] Vision cancelled at frame {i}/{len(frame_files)} for {asset_id[:8]}", flush=True)
-                    raise _IndexCancelled("Vision cancelled mid-frame")
-                fpath = _os.path.join(tmp_dir, fname)
-                # Compute approximate timestamp from filename or index
-                try:
-                    ts = float(fname.replace(".jpg","").replace(".jpeg","").replace(".png","").replace(".webp","").split("_")[-1])
-                except Exception:
-                    ts = i * frame_interval
-                desc = describe_frame(fpath, model)
-                if desc:
-                    results.append({"text": desc, "start": ts, "end": ts + frame_interval})
-            return results
+        prov, mdl, api_key = _get_provider_config()
+        if vision_model:
+            mdl = vision_model
 
-        def _run_transcribe() -> list[dict]:
-            import traceback
-            import backend.ai.whisper_tool as _wt
-            from backend.config.global_config import cfg
-            model_name = cfg.get("ai.whisper_model", "small")
+        frame_files = sorted(
+            f for f in _os.listdir(tmp_dir)
+            if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+        )
+        total_frames = len(frame_files)
+        print(f"[SandboxWorker] Phase 1: vision — {total_frames} frames, provider={prov} model={mdl}", flush=True)
+
+        scenes: list[dict] = []
+        BATCH_SAVE_EVERY = 5   # upsert to ChromaDB after every N described frames
+
+        for i, fname in enumerate(frame_files):
+            if _is_cancelled():
+                raise _IndexCancelled(f"Cancelled at frame {i}/{total_frames}")
+            fpath = _os.path.join(tmp_dir, fname)
             try:
-                device, compute_type = _wt._detect_device()
-                print(f"[Whisper][Worker] Device selected: {device}/{compute_type}", flush=True)
-                print(f"[Whisper][Worker] Loading model '{model_name}' on {device}…", flush=True)
-                _wt.get_model(model_name)  # warm-up / log
-                print(f"[Whisper][Worker] Model ready — transcribing {filepath}", flush=True)
-                try:
-                    raw = _wt.transcribe(filepath, model_name=model_name, language=None)
-                except RuntimeError as cuda_err:
-                    _cuda_kw = ("cublas", "cufft", "cudnn", "cusolver", ".dll", "cuda")
-                    if any(kw in str(cuda_err).lower() for kw in _cuda_kw):
-                        print(f"[Whisper][Worker] CUDA runtime error — falling back to CPU and retrying", flush=True)
-                        _wt.force_cpu()   # clears cache 
-                        raw = _wt.transcribe(filepath, model_name=model_name, language=None)
-                    else:
-                        raise
-                segs = [
-                    {"text": s["text"], "start": s["start_s"], "end": s["end_s"]}
-                    for s in raw if s.get("text", "").strip()
-                ]
-                print(f"[Whisper][Worker] Transcription done: {len(segs)} segments", flush=True)
-                return segs
-            except Exception as e:
-                print(f"[Whisper][Worker] FAILED — {type(e).__name__}: {e}", flush=True)
-                traceback.print_exc()
-                return []
+                ts = float(fname.rsplit("_", 1)[-1].split(".")[0])
+            except Exception:
+                ts = i * frame_interval
+            try:
+                desc = describe_frame(fpath, mdl, provider=prov, api_key=api_key)
+            except Exception as _de:
+                print(f"[SandboxWorker] Vision frame {i} error: {_de}", flush=True)
+                desc = ""
+            if desc:
+                scenes.append({"text": desc, "start": ts, "end": ts + frame_interval})
 
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="VideoIdx") as pool:
-            vision_future:     Future = pool.submit(_run_vision)
-            transcribe_future: Future = pool.submit(_run_transcribe)
-
-            # vision done  
-            scenes = vision_future.result()
-            vision_chunks = merge_and_chunk(scenes, [], window_sec=4.0)
-            count = index_video(asset_id, vision_chunks)
-            print(f"[SandboxWorker] Phase 1 done — {count} vision chunks saved (searchable, transcript pending…)", flush=True)
-            if result_queue is not None:
-                result_queue.put({"type": "index_video_phase1", "assetId": asset_id, "chunks": count})
-
-            #  whisper done 
-            print(f"[SandboxWorker] Waiting for Whisper transcript…", flush=True)
-            transcript = transcribe_future.result()
-            from backend.worker import transcript_status as _ts
-            if transcript:
-                enriched_chunks = merge_and_chunk(scenes, transcript, window_sec=4.0)
-                count = index_video(asset_id, enriched_chunks)
-                _ts.mark_done(asset_id)
+             
+            if scenes and len(scenes) % BATCH_SAVE_EVERY == 0:
+                _partial = merge_and_chunk(scenes, [], window_sec=4.0)
+                index_video(asset_id, _partial)
                 print(
-                    f"[SandboxWorker] Phase 2 done — {count} enriched chunks (vision+speech) saved",
+                    f"[SandboxWorker] 🔍 Batch saved {len(_partial)} chunks "
+                    f"({len(scenes)}/{total_frames} frames indexed — searchable now!)",
                     flush=True,
                 )
-            else:
-                _ts.mark_failed(asset_id)
-                print(f"[SandboxWorker] Phase 2: transcript failed — vision-only kept, marked for retry", flush=True)
+
+            # Per-frame progress (10% → 80%)
+            if result_queue is not None:
+                try:
+                    result_queue.put_nowait({
+                        "type": "index_video_frame_progress",
+                        "assetId": asset_id,
+                        "frame": i + 1,
+                        "total": total_frames,
+                    })
+                except Exception:
+                    pass
+
+        print(f"[SandboxWorker] Phase 1 complete — {len(scenes)}/{total_frames} frames described", flush=True)
+
+         
+        vision_chunks = merge_and_chunk(scenes, [], window_sec=4.0)
+        count = index_video(asset_id, vision_chunks)
+        print(f"[SandboxWorker] Phase 1 saved — {count} vision chunks (transcript pending…)", flush=True)
+        if result_queue is not None:
+            try:
+                result_queue.put({"type": "index_video_phase1", "assetId": asset_id, "chunks": count})
+            except Exception:
+                pass
+
+        if _is_cancelled():
+            raise _IndexCancelled("Cancelled after vision phase")
+
+         
+        print(f"[SandboxWorker] Phase 2: transcribing {filepath}", flush=True)
+        transcript: list[dict] = []
+        try:
+            import traceback
+            import backend.ai.whisper_tool as _wt
+            from backend.config.global_config import cfg as _cfg
+            model_name = _cfg.get("ai.whisper_model", "small")
+            device, compute_type = _wt._detect_device()
+            print(f"[Whisper][Worker] Device={device}/{compute_type} model={model_name}", flush=True)
+            _wt.get_model(model_name)
+            try:
+                raw = _wt.transcribe(filepath, model_name=model_name, language=None)
+            except RuntimeError as cuda_err:
+                _cuda_kw = ("cublas", "cufft", "cudnn", ".dll", "cuda")
+                if any(kw in str(cuda_err).lower() for kw in _cuda_kw):
+                    print(f"[Whisper][Worker] CUDA error — CPU fallback", flush=True)
+                    _wt.force_cpu()
+                    raw = _wt.transcribe(filepath, model_name=model_name, language=None)
+                else:
+                    raise
+            transcript = [
+                {"text": s["text"], "start": s["start_s"], "end": s["end_s"]}
+                for s in raw if s.get("text", "").strip()
+            ]
+            print(f"[Whisper][Worker] Done — {len(transcript)} segments", flush=True)
+        except Exception as e:
+            import traceback
+            print(f"[Whisper][Worker] FAILED — {type(e).__name__}: {e}", flush=True)
+            traceback.print_exc()
+            transcript = []
+
+        from backend.worker import transcript_status as _ts
+        if transcript:
+            enriched_chunks = merge_and_chunk(scenes, transcript, window_sec=4.0)
+            count = index_video(asset_id, enriched_chunks)
+            _ts.mark_done(asset_id)
+            print(f"[SandboxWorker] Phase 2 done — {count} enriched chunks (vision+speech)", flush=True)
+        else:
+            _ts.mark_failed(asset_id)
+            print(f"[SandboxWorker] Phase 2: transcript empty — vision-only kept", flush=True)
 
     print(f"[SandboxWorker] index_video done: {asset_id[:8]} → {count} chunks indexed", flush=True)
     return count
@@ -345,9 +364,14 @@ def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
         print(f"[SandboxWorker] transcribe_audio: 0 segments (silence?) for {asset_id[:8]}", flush=True)
         return 0
 
-    # Save to ChromaDB video_segments  
+
+     
+    from backend.ai.VideoSemantic.indexer import _col, _upsert
+    if _col is None:
+        print(f"[SandboxWorker] transcribe_audio: ChromaDB not ready — skipping save", flush=True)
+        _ts.mark_failed(asset_id)
+        return 0
     texts = [f"Speech: {s['text']}" for s in segments]
-    embeddings = _embedder.encode(texts).tolist()
     ids = [f"{asset_id}__audio__{i}" for i in range(len(segments))]
     metadatas = [
         {
@@ -358,10 +382,16 @@ def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
         }
         for s in segments
     ]
-    _col.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
-    _ts.mark_done(asset_id)
-    print(f"[SandboxWorker] transcribe_audio done: {asset_id[:8]} → {len(segments)} segments in ChromaDB", flush=True)
-    return len(segments)
+    try:
+        _upsert(_col, ids, texts, metadatas)
+        _ts.mark_done(asset_id)
+        print(f"[SandboxWorker] transcribe_audio done: {asset_id[:8]} → {len(segments)} segments in ChromaDB", flush=True)
+        return len(segments)
+    except Exception as e:
+        print(f"[SandboxWorker] transcribe_audio upsert failed: {e}", flush=True)
+        _ts.mark_failed(asset_id)
+        return 0
+
 
 
 #   Image indexing  
@@ -424,13 +454,18 @@ def worker_main(job_queue: multiprocessing.Queue,
             ffmpeg_exe   = job.get("ffmpeg_exe", "")
             vision_model = job.get("vision_model", "")
             frame_interval = float(job.get("frame_interval", 4.0))
+           
             db_path = job.get("db_path", "")
             if db_path:
+                # Switch sandbox indexer to the project DB so batch saves are
+                # immediately searchable in the project. The main process guards
+                # against concurrent access via bus.is_indexing_active() — it
+                # skips ChromaDB reads/heals while this subprocess is active.
                 from backend.ai.VideoSemantic.indexer import switch_db as _sw
                 _sw(db_path)
                 from backend.worker import transcript_status as _ts
                 _ts.set_db_path(db_path)
-            # Skip jobs that were cancelled before they got to run
+             
             from backend.worker import index_cache as _ic
             if _ic.is_cancelled(asset_id):
                 print(f"[SandboxWorker] Skipping cancelled index_video job: {asset_id[:8]}", flush=True)

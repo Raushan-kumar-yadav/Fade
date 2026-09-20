@@ -6,7 +6,10 @@ export default defineConfig({
   base: './',
   server: {
     port: 5173,
-    strictPort: true    // fail fast if 5173 is taken — don't silently drift
+    strictPort: true,
+    watch: {
+      ignored: ['**/.venv/**', '**/node_modules/**', '**/.venv_pkgs/**', '**/dist/**', '**/dist-electron/**']
+    }
   },
   build: {
     outDir: 'dist'

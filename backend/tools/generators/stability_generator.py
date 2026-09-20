@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import os
 import uuid
@@ -68,7 +68,7 @@ class StabilityImageGenerator:
         import requests
 
         if not output_dir:
-            output_dir = str(Path.home() / ".fade" / "generations")
+            output_dir = str(Path.home() / ".Fade" / "generations")
         os.makedirs(output_dir, exist_ok=True)
 
         model = model if model in _ENDPOINTS else "core"
@@ -146,3 +146,4 @@ class StabilityImageGenerator:
             results.append({"filepath": filepath, "title": f"AI: {prompt[:50]}"})
 
         return results
+

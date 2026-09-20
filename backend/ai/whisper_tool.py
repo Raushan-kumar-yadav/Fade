@@ -1,19 +1,24 @@
  
 from __future__ import annotations
 import os
+import sys
 import pathlib
 
-# Path to bundled whisper models — centralized in AIModels/
-_HERE = pathlib.Path(__file__).parent
-_PROJECT_ROOT = _HERE.parent.parent  # backend/ai/ -> backend/ -> Fade/
-WHISPER_MODELS_DIR = _PROJECT_ROOT / "AIModels" / "whisper"
+ 
+if getattr(sys, 'frozen', False):
+     _RESOURCE_ROOT = pathlib.Path(sys.executable).parent.parent   
+else:
+    _RESOURCE_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent   
+
+ 
+WHISPER_MODELS_DIR = _RESOURCE_ROOT / "AIModels" / "whisper"
 
 DEFAULT_MODEL = os.environ.get("FADE_WHISPER_MODEL", "small")
 
-_model_cache: dict[str, object] = {}
 
 
 _device_cache: tuple[str, str] | None = None
+_model_cache:  dict = {}
 
 
 def _detect_device() -> tuple[str, str]:
@@ -35,9 +40,9 @@ def _detect_device() -> tuple[str, str]:
             _probe = _WM("tiny", device="cuda", compute_type=best)
             
              
-            _silent = np.zeros(16000, dtype=np.float32)  # 1 second silence @ 16kHz
+            _silent = np.zeros(16000, dtype=np.float32)   
             _segs, _info = _probe.transcribe(_silent, language="en")
-            list(_segs)  # consume lazy iterator → triggers cuBLAS GEMM
+            list(_segs)   
             del _probe
             print(f"[Whisper] CUDA probe OK — using {best}/cuda", flush=True)
             _device_cache = ("cuda", best)
@@ -52,7 +57,7 @@ def force_cpu() -> None:
     """Reset device cache to CPU — call when a cuBLAS/CUDA runtime error occurs at inference time."""
     global _device_cache
     _device_cache = ("cpu", "int8")
-    # Evict any CUDA-loaded models from cache
+     
     for k in list(_model_cache.keys()):
         _model_cache.pop(k, None)
     print("[Whisper] Forced CPU fallback — model cache cleared", flush=True)
@@ -113,39 +118,59 @@ def transcribe(filepath: str, model_name: str | None = None,
      
     from backend.config.global_config import cfg
     model_name = model_name or cfg.get("ai.whisper_model", DEFAULT_MODEL)
-    model = get_model(model_name)
-    backend = getattr(model, "_backend", "openai")
 
-    print(f"[Whisper] Transcribing {filepath} (backend={backend})...", flush=True)
+    def _do_transcribe(m_name: str) -> list[dict]:
+        model = get_model(m_name)
+        backend = getattr(model, "_backend", "openai")
+        print(f"[Whisper] Transcribing {filepath} (backend={backend})...", flush=True)
 
-    if backend == "faster":
-        segments_iter, info = model.transcribe(
-            filepath,
-            language=language,
-            word_timestamps=False,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 500},
-        )
-        print(f"[Whisper] Detected language: {info.language} ({info.language_probability:.0%})", flush=True)
-        segments = []
-        for seg in segments_iter:
-            segments.append({
-                "start_s": round(seg.start, 3),
-                "end_s": round(seg.end, 3),
-                "text": seg.text.strip(),
-            })
-    else:
-        options = {}
-        if language:
-            options["language"] = language
-        result = model.transcribe(filepath, word_timestamps=False, **options)
-        segments = []
-        for seg in result.get("segments", []):
-            segments.append({
-                "start_s": round(seg["start"], 3),
-                "end_s": round(seg["end"], 3),
-                "text": seg["text"].strip(),
-            })
+        if backend == "faster":
+            segments_iter, info = model.transcribe(
+                filepath,
+                language=language,
+                word_timestamps=False,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+            )
+            print(f"[Whisper] Detected language: {info.language} ({info.language_probability:.0%})", flush=True)
+            segs = []
+            for seg in segments_iter:
+                segs.append({
+                    "start_s": round(seg.start, 3),
+                    "end_s": round(seg.end, 3),
+                    "text": seg.text.strip(),
+                })
+        else:
+            options = {}
+            if language:
+                options["language"] = language
+            result = model.transcribe(filepath, word_timestamps=False, **options)
+            segs = []
+            for seg in result.get("segments", []):
+                segs.append({
+                    "start_s": round(seg["start"], 3),
+                    "end_s": round(seg["end"], 3),
+                    "text": seg["text"].strip(),
+                })
+        return segs
+
+    try:
+        segments = _do_transcribe(model_name)
+    except (MemoryError, RuntimeError) as oom:
+        err_str = str(oom)
+        if "mkl_malloc" in err_str or "allocate" in err_str.lower() or "memory" in err_str.lower():
+            # Clear model cache to free RAM, then retry with the tiny model (~4x less memory).
+            # This happens after heavy vision indexing fills the sandbox's address space.
+            print(f"[Whisper] OOM ({err_str[:80]}) — freeing model cache, retrying with 'tiny'...", flush=True)
+            _model_cache.clear()
+            import gc; gc.collect()
+            try:
+                segments = _do_transcribe("tiny")
+            except Exception as e2:
+                print(f"[Whisper] Retry also failed: {e2}", flush=True)
+                return []
+        else:
+            raise
 
     print(f"[Whisper] Done — {len(segments)} segments", flush=True)
     return segments

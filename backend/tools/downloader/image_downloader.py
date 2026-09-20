@@ -1,4 +1,4 @@
-import os
+﻿import os
 import requests
 from pathlib import Path
 try:
@@ -30,7 +30,7 @@ class ImageDownloader:
         Returns a list of dicts with filepath and title.
         """
         if not output_dir:
-            output_dir = str(Path.home() / ".fade" / "downloads")
+            output_dir = str(Path.home() / ".Fade" / "downloads")
         
         os.makedirs(output_dir, exist_ok=True)
         num_images = max(1, min(num_images, 10))

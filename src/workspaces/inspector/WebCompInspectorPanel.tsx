@@ -1,4 +1,4 @@
- 
+﻿ 
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './WebCompInspectorPanel.css';
@@ -22,7 +22,7 @@ interface WebCompClipInfo {
 
 /* API */
 
-function base() { return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`; }
+function base() { return `http://127.0.0.1:${(window as any).__Fade_PORT__ ?? 8000}`; }
 
 async function fetchInfo(clipId: string): Promise<WebCompClipInfo | null> {
   try {
@@ -33,7 +33,7 @@ async function fetchInfo(clipId: string): Promise<WebCompClipInfo | null> {
 
 async function patchParams(clipId: string, webcompId: string, params: Record<string, any>) {
   // Signal the prefetch loop to pause and discard in-flight captures
-  window.dispatchEvent(new CustomEvent('fade:webcomp-params-changed', {
+  window.dispatchEvent(new CustomEvent('Fade:webcomp-params-changed', {
     detail: { webcompId },
   }));
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSelection } from '../../context/selectionContext';
 import { inspectorApi, type ParamRow, type ClipParams, type KFDef } from '../../api/inspectorApi';
 import { maskApi, effectsApi, type MaskInfo, type EffectInfo, type EffectParamDef } from '../../api/toolsApi';
@@ -314,7 +314,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
                    if (s.has(kf.frame)) s.delete(kf.frame); else s.add(kf.frame);
                    return s;
                  });
-                 window.dispatchEvent(new CustomEvent('fade:seek', { detail: kf.frame }));
+                 window.dispatchEvent(new CustomEvent('Fade:seek', { detail: kf.frame }));
                }}
                onContextMenu={e => {
                  e.preventDefault(); e.stopPropagation();
@@ -492,10 +492,10 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
     if (!frames.length) return;
     if (dir === 'prev') {
       const prev = [...frames].filter(f => f < currentFrame).pop();
-      if (prev != null) window.dispatchEvent(new CustomEvent('fade:seek', { detail: prev }));
+      if (prev != null) window.dispatchEvent(new CustomEvent('Fade:seek', { detail: prev }));
     } else {
       const next = frames.find(f => f > currentFrame);
-      if (next != null) window.dispatchEvent(new CustomEvent('fade:seek', { detail: next }));
+      if (next != null) window.dispatchEvent(new CustomEvent('Fade:seek', { detail: next }));
     }
   }, [param.keyframes, currentFrame]);
 
@@ -625,8 +625,8 @@ function MasksPanel({ clipId }: { clipId: string }) {
       const targetId = (e as CustomEvent<string>).detail;
       if (!targetId || targetId === clipId) load();
     };
-    window.addEventListener('fade:masks-changed', handler);
-    return () => window.removeEventListener('fade:masks-changed', handler);
+    window.addEventListener('Fade:masks-changed', handler);
+    return () => window.removeEventListener('Fade:masks-changed', handler);
   }, [clipId, load]);
 
   if (masks.length === 0) return null;
@@ -695,11 +695,11 @@ export default function InspectorPanel() {
       timer = setTimeout(() => setCF(frame), 200);
     };
     window.addEventListener('fade:frame', handler);
-    window.addEventListener('fade:seek',  handler);
+    window.addEventListener('Fade:seek',  handler);
     return () => {
       if (timer) clearTimeout(timer);
       window.removeEventListener('fade:frame', handler);
-      window.removeEventListener('fade:seek',  handler);
+      window.removeEventListener('Fade:seek',  handler);
     };
   }, []);
 
@@ -733,8 +733,8 @@ export default function InspectorPanel() {
 
   // Refresh when a mask is added from OverlayCanvas
   useEffect(() => {
-    window.addEventListener('fade:masks-changed', refresh as EventListener);
-    return () => window.removeEventListener('fade:masks-changed', refresh as EventListener);
+    window.addEventListener('Fade:masks-changed', refresh as EventListener);
+    return () => window.removeEventListener('Fade:masks-changed', refresh as EventListener);
   }, [refresh]);
 
   const handleParamChange = useCallback((_id: string, _val: number) => {
@@ -900,8 +900,8 @@ function InspectorEffectsPanel({ clipId }: { clipId: string }) {
       const targetId = (e as CustomEvent<string>).detail;
       if (!targetId || targetId === clipId) load();
     };
-    window.addEventListener('fade:effects-changed', handler);
-    return () => window.removeEventListener('fade:effects-changed', handler);
+    window.addEventListener('Fade:effects-changed', handler);
+    return () => window.removeEventListener('Fade:effects-changed', handler);
   }, [clipId, load]);
 
   if (effects.length === 0) return null;

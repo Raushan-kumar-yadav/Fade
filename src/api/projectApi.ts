@@ -1,6 +1,6 @@
- 
+﻿ 
 function base(): string {
-  const port = (window as any).__FADE_PORT__ ?? 8000
+  const port = (window as any).__Fade_PORT__ ?? 8000
   return `http://127.0.0.1:${port}`
 }
 
@@ -19,8 +19,7 @@ export interface ProjectMeta {
 export async function saveProject(defaultName = 'My Project'): Promise<string | null> {
   const el = (window as any).electronAPI
 
-  // Try Electron folder picker first
-  const folderPath: string | undefined = await el?.showOpenDialog({
+   const folderPath: string | undefined = await el?.showOpenDialog({
     title: 'Save Project To Folder',
     properties: ['openDirectory', 'createDirectory'],
     buttonLabel: 'Save Here',
@@ -42,9 +41,9 @@ export async function saveProject(defaultName = 'My Project'): Promise<string | 
 // Save to a known folder  
 
 export async function saveProjectTo(filepath: string): Promise<boolean> {
-  // filepath may be the anchor .fade file  
-  const folderPath = filepath.endsWith('project.fade')
-    ? filepath.replace(/[\\/]project\.fade$/, '')
+  // filepath may be the anchor .Fade file  
+  const folderPath = filepath.endsWith('project.Fade')
+    ? filepath.replace(/[\\/]project\.Fade$/, '')
     : filepath
 
   const r = await fetch(`${base()}/project/save`, {
@@ -73,17 +72,17 @@ export interface LoadResult {
 export async function loadProject(): Promise<LoadResult | null> {
   const el = (window as any).electronAPI
 
-  // Try folder picker first; fall back to .fade file picker
+  // Try folder picker first; fall back to .Fade file picker
   let filepath: string | undefined = await el?.showOpenDialog({
     title: 'Open Project',
     properties: ['openDirectory'],
     buttonLabel: 'Open Project',
   })
 
-  // If the user picked nothing or the dialog doesn't support folders, try .fade
+  // If the user picked nothing or the dialog doesn't support folders, try .Fade
   if (!filepath) {
     filepath = await el?.showOpenDialog({
-      filters: [{ name: 'Fade Project', extensions: ['fade'] }],
+      filters: [{ name: 'Fade Project', extensions: ['Fade'] }],
     })
   }
   if (!filepath) return null

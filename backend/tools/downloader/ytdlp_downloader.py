@@ -1,6 +1,24 @@
-import os
+﻿import os
+import sys
+import shutil
 from pathlib import Path
 import yt_dlp
+
+def _find_ffmpeg_dir() -> str | None:
+    """Find ffmpeg directory for yt-dlp, works in dev and PyInstaller builds."""
+     
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return str(Path(exe).parent)
+    if getattr(sys, 'frozen', False):
+        _base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        for candidate in [
+            _base / "renderer" / "build" / "Release",
+            _base / "tools" / "ffmpeg",
+        ]:
+            if (candidate / "ffmpeg.exe").exists():
+                return str(candidate)
+    return None   
 
 class YtdlpDownloader:
     def __init__(self):
@@ -15,34 +33,41 @@ class YtdlpDownloader:
     ) -> list[dict]:
         
         if not output_dir:
-            output_dir = str(Path.home() / ".fade" / "downloads")
+            output_dir = str(Path.home() / ".Fade" / "downloads")
         
         os.makedirs(output_dir, exist_ok=True)
         
         num_videos = max(1, min(num_videos, 5))
         search_query = f"ytsearch{num_videos}:{query}"
         
-        
         fmt = (
-            "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]"  # best h264 + aac (needs merge)
+            "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]"  # best h264 + aac  
             "/mp4[height<=720]"                                      
             "/mp4"                                                 
             "/best[ext=webm]"                                       
             "/best"                                                
         )
 
-        # Point yt-dlp 
-        _FFMPEG = r"C:\Users\raush\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0-full_build\bin"
+        _ffmpeg_dir = _find_ffmpeg_dir()
 
         ydl_opts = {
             'format': fmt,
             'merge_output_format': 'mp4',
             'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
             'noplaylist': True,
-            'ffmpeg_location': _FFMPEG,
-            # Don't abort if merge fails  
+            # Don't abort if merge fails
             'ignoreerrors': False,
+            # Windows fix: write directly to final filename — no .part temp file,
+            # so yt-dlp never has to rename and WinError 32 cannot occur.
+            'nopart': True,
+            # If the final file already exists, overwrite it cleanly.
+            'overwrites': True,
+            # Extra retries on file-access errors (Windows file-lock races).
+            'file_access_retries': 5,
         }
+        if _ffmpeg_dir:
+            ydl_opts['ffmpeg_location'] = _ffmpeg_dir
+
 
         results = []
         print(f"[YtdlpDownloader] Searching and downloading: {search_query}")

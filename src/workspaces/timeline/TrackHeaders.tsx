@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useState } from 'react';
+﻿import React, { memo, useCallback, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, HEADER_WIDTH, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import { addTrack } from '../../api/useApi';
@@ -19,7 +19,7 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
     try {
       await addTrack(type);
       // TimelineContext already listens to this event to refetch
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
     } finally {
       setAdding(false);
     }

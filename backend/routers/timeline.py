@@ -1,4 +1,4 @@
-import uuid
+﻿import uuid
 import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -44,6 +44,7 @@ class SplitClipRequest(BaseModel):
 class AddTrackRequest(BaseModel):
     type: str = "video"   # "video" | "audio"
     name: str = ""
+    index: int | None = None  # insert position (None = append)
 
 
 @router.post("/timeline/add-track")
@@ -59,7 +60,10 @@ def addTrack(req: AddTrackRequest):
     else:
         name = req.name or f"Video {len(tl.tracks) + 1}"
         track = VideoTrack(name=name)
-    tl.addTrack(track)
+    if req.index is not None and 0 <= req.index <= len(tl.tracks):
+        tl.tracks.insert(req.index, track)
+    else:
+        tl.addTrack(track)
     from backend.events import notify; notify("timeline")
     return {"trackId": track.trackId, "name": track.name, "type": req.type}
 
@@ -295,7 +299,8 @@ def splitClip(req: SplitClipRequest):
     for track in tl.tracks:
         clip = track.getClip(req.clipId)
         if clip:
-            asset = _library.get(clip.assetId) if clip.assetId else None
+            clip_asset_id = getattr(clip, 'assetId', None)
+            asset = _library.get(clip_asset_id) if clip_asset_id else None
             cmd = SplitClipCommand(track, clip, req.frame,
                                    scheduler=engine.scheduler, asset=asset, fps=fps)
             try:
@@ -447,6 +452,76 @@ def timelineState():
     data["fps"] = getattr(tl, "fps", fps)
     return data
 
+
+@router.get("/timeline/state/range")
+def timelineStateRange(from_frame: int = 0, to_frame: int = 0):
+    """Return compact clip data for clips that overlap [from_frame, to_frame].
+
+    A clip overlaps the range if: clip.startFrame < to_frame AND clip.endFrame > from_frame.
+    If to_frame == 0, defaults to totalFrames (returns everything, same as /state but compact).
+    Returns compact format: clipId, type, startFrame, duration, endFrame, assetId/text/name.
+    """
+    tl  = engine.activeTimeline
+    prj = engine.project
+    fps = prj.fps if prj else 30.0
+    totalFrames = getattr(tl, "totalFrames", None) or (prj.totalFrame if prj else 1800)
+
+    if to_frame <= 0:
+        to_frame = totalFrames
+
+    if tl is None:
+        return {"tracks": [], "totalFrames": totalFrames, "fps": fps,
+                "rangeFrom": from_frame, "rangeTo": to_frame}
+
+    compact_tracks = []
+    for t_idx, track in enumerate(tl.tracks):
+        compact_clips = []
+        for clip in track.clips:
+            clip_start = getattr(clip, "startFrame", 0)
+            clip_dur   = getattr(clip, "duration", 0)
+            clip_end   = clip_start + clip_dur
+            # Overlap check: clip must intersect [from_frame, to_frame]
+            if clip_start >= to_frame or clip_end <= from_frame:
+                continue
+            c: dict = {
+                "clipId":     clip.clipId,
+                "type":       getattr(clip, "CLIP_TYPE", "unknown"),
+                "startFrame": clip_start,
+                "duration":   clip_dur,
+                "endFrame":   clip_end,
+                "startSec":   round(clip_start / fps, 2),
+                "endSec":     round(clip_end   / fps, 2),
+                "trackIndex": t_idx,
+            }
+            asset_id = getattr(clip, "assetId", None)
+            if asset_id:
+                c["assetId"] = asset_id
+            text = getattr(clip, "text", None)
+            if text is not None:
+                c["text"] = str(text)[:80]
+            name = getattr(clip, "name", None)
+            if name:
+                c["name"] = name
+            compact_clips.append(c)
+
+        if compact_clips:
+            compact_tracks.append({
+                "trackIndex": t_idx,
+                "kind": getattr(track, "kind", getattr(track, "type", "video")),
+                "clips": compact_clips,
+            })
+
+    return {
+        "fps":        fps,
+        "totalFrames": totalFrames,
+        "rangeFrom":  from_frame,
+        "rangeTo":    to_frame,
+        "fromSec":    round(from_frame / fps, 2),
+        "toSec":      round(to_frame   / fps, 2),
+        "tracks":     compact_tracks,
+    }
+
+
 def _runtime_script_tag() -> str:
      
     port = int(os.environ.get("BACKEND_PORT", 8000))
@@ -550,7 +625,7 @@ async def createWebcomp(body: dict):
     css_code = body.get("css", "")      # agent styles           
     html_body = body.get("html_body", "") # inner DOM snippet only   
     project_dir  = engine.project.filePath or ""
-    project_root = os.path.dirname(project_dir) if project_dir else str(Path.home() / ".fade")
+    project_root = os.path.dirname(project_dir) if project_dir else str(Path.home() / ".Fade")
 
     safe_name = name.lower().replace(" ", "-").replace("/", "-")
     webcomps_root = os.path.join(project_root, "webcomps")

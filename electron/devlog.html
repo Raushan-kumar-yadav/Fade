@@ -1,0 +1,342 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Fade — Dev Log</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  :root {
+    --bg:      #0d0d0f;
+    --surface: #131318;
+    --border:  rgba(255,255,255,0.07);
+    --accent:  #6c63ff;
+    --ok:      #00d4aa;
+    --err:     #f87171;
+    --warn:    #f59e0b;
+    --py:      #a78bfa;
+    --dim:     rgba(255,255,255,0.3);
+    --text:    rgba(255,255,255,0.82);
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Consolas", "JetBrains Mono", "Cascadia Code", monospace;
+    font-size: 12px;
+    overflow: hidden;
+    user-select: text;
+    -webkit-app-region: no-drag;
+  }
+
+  /* Titlebar */
+  .titlebar {
+    height: 36px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 10px;
+    -webkit-app-region: drag;
+    flex-shrink: 0;
+  }
+  .titlebar-dot { width:10px; height:10px; border-radius:50%; }
+  .titlebar-dot.red    { background:#ff5f57; }
+  .titlebar-dot.yellow { background:#febc2e; }
+  .titlebar-dot.green  { background:#28c840; }
+  .titlebar h1 {
+    font-size: 11px;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-weight: 500;
+    color: var(--dim);
+    letter-spacing: 0.04em;
+    -webkit-app-region: drag;
+  }
+  .spacer { flex: 1; }
+  .btn-clear {
+    -webkit-app-region: no-drag;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    font-size: 10px;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    padding: 3px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .btn-clear:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+  /* Filter tabs */
+  .filters {
+    display: flex;
+    gap: 4px;
+    padding: 6px 10px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .filter-btn {
+    font-size: 10px;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    background: transparent;
+    color: var(--dim);
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+  .filter-btn.active { background: rgba(108,99,255,0.15); border-color: rgba(108,99,255,0.4); color: var(--accent); }
+  .count-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 16px; height: 14px; padding: 0 4px;
+    border-radius: 99px; font-size: 9px; font-weight: 700;
+    background: rgba(255,255,255,0.08);
+    margin-left: 4px; vertical-align: middle;
+  }
+
+  /* Log area */
+  .log-area {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 6px 4px;
+  }
+  .log-area::-webkit-scrollbar { width: 5px; }
+  .log-area::-webkit-scrollbar-track { background: transparent; }
+  .log-area::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+
+  .log-line {
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    padding: 1.5px 8px;
+    border-radius: 4px;
+    line-height: 1.55;
+    transition: background 0.1s;
+  }
+  .log-line:hover { background: rgba(255,255,255,0.03); }
+  .log-line.hidden { display: none; }
+
+  .ts {
+    color: rgba(255,255,255,0.2);
+    font-size: 10px;
+    flex-shrink: 0;
+    min-width: 56px;
+  }
+  .src {
+    font-size: 10px;
+    flex-shrink: 0;
+    width: 28px;
+    text-align: right;
+    font-weight: 600;
+  }
+  .src.py  { color: var(--py); }
+  .src.sys { color: var(--accent); }
+  .msg {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  /* Source colors */
+  .log-line.src-py   .msg { color: var(--text); }
+  .log-line.src-sys  .msg { color: var(--accent); opacity: 0.8; }
+  /* Level colors */
+  .log-line.lvl-err  .msg { color: var(--err); }
+  .log-line.lvl-warn .msg { color: var(--warn); }
+  .log-line.lvl-ok   .msg { color: var(--ok); }
+
+  /* Status bar */
+  .statusbar {
+    height: 22px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 12px;
+    gap: 14px;
+    font-size: 10px;
+    color: var(--dim);
+    flex-shrink: 0;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+  }
+  .sb-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .sb-dot.alive { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .sb-dot.dead  { background: var(--err); }
+  .auto-scroll-toggle {
+    -webkit-app-region: no-drag;
+    cursor: pointer; display: flex; align-items: center; gap: 5px;
+  }
+  .toggle-pip {
+    width: 22px; height: 12px; border-radius: 99px;
+    background: rgba(255,255,255,0.1);
+    position: relative; transition: background 0.2s;
+  }
+  .toggle-pip::after {
+    content: '';
+    position: absolute; top: 2px; left: 2px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: white; transition: transform 0.2s;
+  }
+  .auto-scroll-toggle.on .toggle-pip { background: var(--accent); }
+  .auto-scroll-toggle.on .toggle-pip::after { transform: translateX(10px); }
+
+  body { display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+
+<div class="titlebar">
+  <div class="titlebar-dot red"   onclick="window.electronAPI?.close()"></div>
+  <div class="titlebar-dot yellow"></div>
+  <div class="titlebar-dot green"></div>
+  <h1>Fade — Dev Log</h1>
+  <div class="spacer"></div>
+  <button class="btn-clear" onclick="clearLog()">Clear</button>
+</div>
+
+<div class="filters">
+  <button class="filter-btn active" id="fAll"  onclick="setFilter('all')">All <span class="count-badge" id="cAll">0</span></button>
+  <button class="filter-btn"        id="fPy"   onclick="setFilter('py')">Python <span class="count-badge" id="cPy">0</span></button>
+  <button class="filter-btn"        id="fSys"  onclick="setFilter('sys')">System <span class="count-badge" id="cSys">0</span></button>
+  <button class="filter-btn"        id="fErr"  onclick="setFilter('err')">Errors <span class="count-badge" id="cErr" style="background:rgba(248,113,113,0.25);color:#f87171">0</span></button>
+  <button class="filter-btn"        id="fWarn" onclick="setFilter('warn')">Warn <span class="count-badge" id="cWarn" style="background:rgba(245,158,11,0.2);color:#f59e0b">0</span></button>
+</div>
+
+<div class="log-area" id="logArea"></div>
+
+<div class="statusbar">
+  <div class="sb-dot alive" id="sbDot"></div>
+  <span id="sbStatus">Python: starting…</span>
+  <div class="spacer"></div>
+  <div class="auto-scroll-toggle on" id="autoScrollToggle" onclick="toggleAutoScroll()">
+    <div class="toggle-pip"></div>
+    <span>Auto-scroll</span>
+  </div>
+</div>
+
+<script>
+const logArea = document.getElementById('logArea');
+let filter = 'all';
+let autoScroll = true;
+let counts = {all:0, py:0, sys:0, err:0, warn:0};
+const MAX_LINES = 2000;
+
+function pad(n){ return String(n).padStart(2,'0'); }
+function ts(){
+  const d = new Date();
+  return pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+}
+
+function classifyLevel(text) {
+  const t = text.toLowerCase();
+  if (t.includes('error') || t.includes('traceback') || t.includes('exception') || t.includes('failed')) return 'err';
+  if (t.includes('warning') || t.includes('warn')) return 'warn';
+  if (t.includes('done') || t.includes('ready') || t.includes('success') || t.includes('started')) return 'ok';
+  return '';
+}
+
+function addLine(text, source) {
+  const lvl = classifyLevel(text);
+  const line = document.createElement('div');
+  const srcKey = source === 'py' ? 'py' : 'sys';
+  line.className = [
+    'log-line',
+    'src-' + srcKey,
+    lvl ? 'lvl-' + lvl : ''
+  ].filter(Boolean).join(' ');
+
+  if (filter !== 'all') {
+    const matchFilter =
+      (filter === 'py'   && srcKey === 'py')   ||
+      (filter === 'sys'  && srcKey === 'sys')  ||
+      (filter === 'err'  && lvl === 'err')     ||
+      (filter === 'warn' && lvl === 'warn');
+    if (!matchFilter) line.classList.add('hidden');
+  }
+
+  line.innerHTML =
+    '<span class="ts">' + ts() + '</span>' +
+    '<span class="src ' + srcKey + '">' + (srcKey === 'py' ? 'PY' : 'SYS') + '</span>' +
+    '<span class="msg">' + escHtml(text) + '</span>';
+
+  logArea.appendChild(line);
+
+  // Counts
+  counts.all++;
+  counts[srcKey] = (counts[srcKey] || 0) + 1;
+  if (lvl === 'err')  counts.err++;
+  if (lvl === 'warn') counts.warn++;
+  updateCounts();
+
+  // Prune
+  while (logArea.children.length > MAX_LINES) logArea.removeChild(logArea.firstChild);
+
+  if (autoScroll) logArea.scrollTop = logArea.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function updateCounts(){
+  document.getElementById('cAll').textContent  = counts.all;
+  document.getElementById('cPy').textContent   = counts.py  || 0;
+  document.getElementById('cSys').textContent  = counts.sys || 0;
+  document.getElementById('cErr').textContent  = counts.err || 0;
+  document.getElementById('cWarn').textContent = counts.warn|| 0;
+}
+
+function setFilter(f) {
+  filter = f;
+  ['All','Py','Sys','Err','Warn'].forEach(n => {
+    document.getElementById('f'+n).classList.remove('active');
+  });
+  document.getElementById('f' + f.charAt(0).toUpperCase() + f.slice(1)).classList.add('active');
+  logArea.querySelectorAll('.log-line').forEach(l => {
+    const isSys = l.classList.contains('src-sys');
+    const isPy  = l.classList.contains('src-py');
+    const isErr = l.classList.contains('lvl-err');
+    const isWarn= l.classList.contains('lvl-warn');
+    const show =
+      f === 'all' ||
+      (f === 'py'   && isPy)   ||
+      (f === 'sys'  && isSys)  ||
+      (f === 'err'  && isErr)  ||
+      (f === 'warn' && isWarn);
+    l.classList.toggle('hidden', !show);
+  });
+}
+
+function clearLog() {
+  logArea.innerHTML = '';
+  counts = {all:0,py:0,sys:0,err:0,warn:0};
+  updateCounts();
+}
+
+function toggleAutoScroll() {
+  autoScroll = !autoScroll;
+  document.getElementById('autoScrollToggle').classList.toggle('on', autoScroll);
+}
+
+// Receive log lines from main process
+if (window.electronAPI?.onDevLog) {
+  window.electronAPI.onDevLog((msg) => {
+    if (msg.type === 'py')  addLine(msg.text, 'py');
+    if (msg.type === 'sys') addLine(msg.text, 'sys');
+    if (msg.type === 'status') {
+      const dot = document.getElementById('sbDot');
+      const sb  = document.getElementById('sbStatus');
+      sb.textContent = msg.text;
+      dot.className = 'sb-dot ' + (msg.alive ? 'alive' : 'dead');
+    }
+  });
+}
+
+addLine('Dev log window ready', 'sys');
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Gemini Image Generator — updated for August 2026 Interactions API.
 
 Uses:  gemini-3.1-flash-image  (Nano Banana 2 — best versatile image model)
@@ -27,8 +27,7 @@ class GeminiImageGenerator:
     """
 
     def __init__(self):
-        from dotenv import load_dotenv
-        load_dotenv(dotenv_path=str(Path(__file__).parents[3] / ".env"))
+         
         self._api_key = os.getenv("GOOGLE_API_KEY", "").strip()
         if not self._api_key:
             raise EnvironmentError(
@@ -67,7 +66,7 @@ class GeminiImageGenerator:
             RuntimeError       — any other API failure
         """
         if not output_dir:
-            output_dir = str(Path.home() / ".fade" / "generations")
+            output_dir = str(Path.home() / ".Fade" / "generations")
         os.makedirs(output_dir, exist_ok=True)
         num_images = max(1, min(num_images, 4))
 

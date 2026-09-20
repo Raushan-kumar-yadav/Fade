@@ -1,11 +1,11 @@
-/**
+﻿/**
  * WorkerProgress - Floating circular progress button (top-right).
  * Sources: /worker/jobs (waveform cache) + /jobs/ (TTS/image/video, SSE + poll)
  */
 import React, { useState, useEffect, useRef } from 'react';
 import './WorkerProgress.css';
 
-function port(): number { return (window as any).__FADE_PORT__ ?? 8000; }
+function port(): number { return (window as any).__Fade_PORT__ ?? 8000; }
 const base = () => `http://127.0.0.1:${port()}`;
 
 interface WorkerStatus { alive: boolean; queueDepth: number; }
@@ -245,7 +245,7 @@ export default function WorkerProgress() {
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="wp-panel__clear" onClick={async () => {
                 try {
-                  const port = (window as any).__FADE_PORT__ ?? 8000;
+                  const port = (window as any).__Fade_PORT__ ?? 8000;
                   await fetch(`http://127.0.0.1:${port}/jobs/clear-stuck?older_than_s=15`, { method: 'DELETE' });
                 } catch { /* ignore */ }
               }} title="Mark all stuck pending jobs as failed">Clear stuck</button>

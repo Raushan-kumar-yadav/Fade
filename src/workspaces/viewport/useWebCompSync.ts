@@ -1,4 +1,4 @@
- 
+﻿ 
 import { useEffect, useRef } from 'react';
 
 interface WcClip {
@@ -13,7 +13,7 @@ interface WcClip {
 }
 
 function base(): string {
-  return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`;
+  return `http://127.0.0.1:${(window as any).__Fade_PORT__ ?? 8000}`;
 }
 
  
@@ -76,10 +76,10 @@ export function useWebCompSync() {
       }
     };
     window.addEventListener('fade:frame', onFrame);
-    window.addEventListener('fade:seek',  onFrame);
+    window.addEventListener('Fade:seek',  onFrame);
     return () => {
       window.removeEventListener('fade:frame', onFrame);
-      window.removeEventListener('fade:seek',  onFrame);
+      window.removeEventListener('Fade:seek',  onFrame);
     };
   }, []);
 
@@ -89,13 +89,13 @@ export function useWebCompSync() {
       for (const set of pushedRef.current.values()) set.clear();
     
     };
-    window.addEventListener('fade:seek',  onReset);
-    window.addEventListener('fade:stop',  onReset);
-    window.addEventListener('fade:reset', onReset);
+    window.addEventListener('Fade:seek',  onReset);
+    window.addEventListener('Fade:stop',  onReset);
+    window.addEventListener('Fade:reset', onReset);
     return () => {
-      window.removeEventListener('fade:seek',  onReset);
-      window.removeEventListener('fade:stop',  onReset);
-      window.removeEventListener('fade:reset', onReset);
+      window.removeEventListener('Fade:seek',  onReset);
+      window.removeEventListener('Fade:stop',  onReset);
+      window.removeEventListener('Fade:reset', onReset);
     };
   }, []);
 
@@ -118,8 +118,8 @@ export function useWebCompSync() {
 
       console.log(`[WebCompSync] params changed (gen=${generationRef.current}), settle ${PARAMS_SETTLE_MS}ms`);
     };
-    window.addEventListener('fade:webcomp-params-changed', onParamsChange);
-    return () => window.removeEventListener('fade:webcomp-params-changed', onParamsChange);
+    window.addEventListener('Fade:webcomp-params-changed', onParamsChange);
+    return () => window.removeEventListener('Fade:webcomp-params-changed', onParamsChange);
   }, []);
 
  
@@ -348,12 +348,12 @@ export function useWebCompSync() {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => { syncWindows(); }, 100);
     };
-    window.addEventListener('fade:tracks-changed',   handler);
-    window.addEventListener('fade:timeline-changed',  handler);  // SSE from backend
+    window.addEventListener('Fade:tracks-changed',   handler);
+    window.addEventListener('Fade:timeline-changed',  handler);  // SSE from backend
     return () => {
       if (timer) clearTimeout(timer);
-      window.removeEventListener('fade:tracks-changed',   handler);
-      window.removeEventListener('fade:timeline-changed',  handler);
+      window.removeEventListener('Fade:tracks-changed',   handler);
+      window.removeEventListener('Fade:timeline-changed',  handler);
     };
   }, []);
 

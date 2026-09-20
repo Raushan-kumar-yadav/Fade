@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import os
 import uuid
@@ -20,9 +20,7 @@ GEMINI_VOICES = [
 
 
 def _load_env() -> str:
-    """Load .env and return GOOGLE_API_KEY."""
-    from dotenv import load_dotenv
-    load_dotenv(dotenv_path=str(Path(__file__).parents[3] / ".env"))
+     
     return os.getenv("GOOGLE_API_KEY", "").strip()
 
 
@@ -64,7 +62,7 @@ class GeminiTTSGenerator:
             )
 
         if not output_dir:
-            output_dir = str(Path.home() / ".fade" / "tts")
+            output_dir = str(Path.home() / ".Fade" / "tts")
         os.makedirs(output_dir, exist_ok=True)
 
         if voice not in GEMINI_VOICES:
@@ -113,11 +111,11 @@ class GeminiTTSGenerator:
 
 
  
-# All Kokoro voices grouped by language tag
+ 
 KOKORO_VOICES: dict[str, list[str]] = {
-    # American English  (lang_code='a')
+     
     "en-us": [
-        "af_heart",     # ★ warm, natural  
+        "af_heart",      
         "af_alloy",
         "af_aoede",
         "af_bella",
@@ -129,7 +127,7 @@ KOKORO_VOICES: dict[str, list[str]] = {
         "af_sarah",
         "af_sky",
         "am_adam",
-        "am_echo",
+        "am_Fade",
         "am_eric",
         "am_fenrir",
         "am_liam",
@@ -138,7 +136,7 @@ KOKORO_VOICES: dict[str, list[str]] = {
         "am_puck",
         "am_santa",
     ],
-    # British English  (lang_code='b')
+     
     "en-gb": [
         "bf_alice",
         "bf_emma",
@@ -225,13 +223,19 @@ class KokoroTTSGenerator:
                 )
 
             import urllib.request
-            # Centralized model directory 
-            _tts_file = Path(__file__)   
-            _project_root = _tts_file.parent.parent.parent.parent   
-            ai_models_dir = _project_root / "AIModels" / "kokoro"
+             
+            import sys as _sys_tts
+            _tts_file = Path(__file__)
+            if getattr(_sys_tts, 'frozen', False):
+                 
+                _resource_root = Path(_sys_tts.executable).parent.parent
+            else:
+                _project_root = _tts_file.parent.parent.parent.parent   
+                _resource_root = _project_root
+            ai_models_dir = _resource_root / "AIModels" / "kokoro"
             ai_models_dir.mkdir(parents=True, exist_ok=True)
 
-            # kokoro-onnx GitHub release files 
+             
              
             _GH_BASE = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1"
             _MODELS = [
@@ -256,7 +260,7 @@ class KokoroTTSGenerator:
                     size_hint = "~109MB" if "int8" in fname else "~156MB"
                     print(f"[KokoroTTS] Downloading {fname} ({size_hint}) → AIModels/kokoro/ ...", flush=True)
                     try:
-                        # Use curl if available for progress display, fallback to urllib
+                        
                         import subprocess, shutil
                         if shutil.which("curl"):
                             subprocess.run(
@@ -267,7 +271,7 @@ class KokoroTTSGenerator:
                             urllib.request.urlretrieve(url, str(dest))
                     except Exception as e:
                         if dest.exists():
-                            dest.unlink()   # Remove partial download
+                            dest.unlink()    
                         raise RuntimeError(
                             f"Failed to download Kokoro model file: {fname}\n"
                             f"URL: {url}\n"
@@ -281,18 +285,18 @@ class KokoroTTSGenerator:
             print("[KokoroTTS] Loading ONNX model ...", flush=True)
             kokoro_instance = Kokoro(str(model_path), str(voices_path))
 
-            #   Monkey-patch fix for kokoro-onnx  
+             
              
             import types, numpy as _np
             _orig_create_audio = kokoro_instance._create_audio.__func__
 
             def _patched_create_audio(self, phonemes, voice, speed):
-                # Ensure speed is always float32  
+                 
                 speed = float(speed)
-                # Rebuild to call the real method body
+                 
                 import numpy as np
                 from kokoro_onnx import Kokoro as _K
-                # We re-implement the input-building to fix the dtype:
+                 
                 MAX_PH = 510
                 if len(phonemes) > MAX_PH:
                     phonemes = phonemes[:MAX_PH]
@@ -304,7 +308,7 @@ class KokoroTTSGenerator:
                     inputs = {
                         "input_ids": tokens_padded,
                         "style": np.array(voice_style, dtype=np.float32),
-                        "speed": np.array([speed], dtype=np.float32),   # FIX: float32 not int32
+                        "speed": np.array([speed], dtype=np.float32),   
                     }
                 else:
                     inputs = {
@@ -320,7 +324,7 @@ class KokoroTTSGenerator:
             kokoro_instance._create_audio = types.MethodType(
                 _patched_create_audio, kokoro_instance
             )
-            # End monkey-patch  
+             
 
             KokoroTTSGenerator._kokoro = kokoro_instance
             print("[KokoroTTS] Model ready.", flush=True)
@@ -344,7 +348,7 @@ class KokoroTTSGenerator:
             voice = "af_heart"
 
         if not output_dir:
-            output_dir = str(Path.home() / ".fade" / "tts")
+            output_dir = str(Path.home() / ".Fade" / "tts")
         os.makedirs(output_dir, exist_ok=True)
 
         kokoro = self._get_kokoro()
@@ -408,7 +412,7 @@ class LocalTTSGenerator:
         import requests
 
         if not output_dir:
-            output_dir = str(Path.home() / ".fade" / "tts")
+            output_dir = str(Path.home() / ".Fade" / "tts")
         os.makedirs(output_dir, exist_ok=True)
 
         print(f"[LocalTTS] Ollama model={model}, text: {text[:60]}…")
@@ -459,7 +463,7 @@ class LocalTTSGenerator:
             raise RuntimeError(f"espeak fallback failed: {e}")
 
 
-# ── Unified factory ───────────────────────────────────────────────────────────
+# Unified factory  
 
 def get_tts_generator(provider: str = "google", ollama_url: str = "http://localhost:11434"):
     """

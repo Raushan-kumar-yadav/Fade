@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import json
 import os
@@ -53,9 +53,54 @@ def set_port(port: int) -> None:
  
 @tool
 def get_timeline_state() -> str:
-    """Return the full current timeline state as JSON (tracks, clips, durations, fps)."""
-    data = _get("/timeline/state")
-    return json.dumps(data, indent=2)
+    """Return a COMPACT timeline summary for the AI agent.
+
+    Returns only the fields needed to operate on clips:
+      - fps, totalFrames
+      - tracks[]: index, clips[]: clipId, type, startFrame, durationFrames, endFrame,
+        assetId (video/image/audio), name/text (text clips), trackIndex
+
+    Use search_library() to find sceneChunks/transcripts. Use get_library_assets()
+    for full asset metadata. This tool is intentionally compact to avoid overloading context.
+    """
+    import requests, json
+    data = requests.get("http://127.0.0.1:8000/timeline/state").json()
+    fps = data.get("fps", 30)
+    total = data.get("totalFrames", 0)
+
+    compact_tracks = []
+    for t_idx, track in enumerate(data.get("tracks", [])):
+        compact_clips = []
+        for clip in track.get("clips", []):
+            c: dict = {
+                "clipId":         clip.get("clipId"),
+                "type":           clip.get("type"),
+                "startFrame":     clip.get("startFrame"),
+                "durationFrames": clip.get("durationFrames"),
+                "endFrame":       (clip.get("startFrame", 0) + clip.get("durationFrames", 0)),
+                "trackIndex":     t_idx,
+            }
+            # video/image/audio clips
+            if clip.get("assetId"):
+                c["assetId"] = clip["assetId"]
+            # text clips
+            if clip.get("text") is not None:
+                c["text"] = clip["text"][:60]  # truncate long text
+            if clip.get("name"):
+                c["name"] = clip["name"]
+            compact_clips.append(c)
+        compact_tracks.append({
+            "trackIndex": t_idx,
+            "kind":       track.get("kind", "video"),
+            "clips":      compact_clips,
+        })
+
+    return json.dumps({
+        "fps": fps,
+        "totalFrames": total,
+        "totalSec": round(total / fps, 2) if fps else 0,
+        "tracks": compact_tracks,
+    }, indent=2)
 
 @tool
 def get_library() -> str:
@@ -91,11 +136,60 @@ def get_library_assets() -> str:
 
 @tool
 def get_playback_state() -> str:
-    """Return current playback state: frame, fps, totalFrames, playing."""
+    """Return current playback state including the IN/OUT work range markers.
+
+    Returns:
+      - frame: current playhead position (frames)
+      - fps, totalFrames, playing, speed
+      - inPoint: left IN marker frame (None if not set)
+      - outPoint: right OUT marker frame (None if not set)
+
+    IMPORTANT — to inspect clips near the current work area without overflowing
+    context, use the IN/OUT points with get_timeline_range():
+
+        state = get_playback_state()        # get inPoint, outPoint
+        clips = get_timeline_range(
+            from_frame = state["inPoint"] or 0,
+            to_frame   = state["outPoint"] or state["totalFrames"]
+        )
+
+    This pattern is much safer than get_timeline_state() on large timelines.
+    """
     data = _get("/playback/state")
     return json.dumps(data, indent=2)
 
 # playback  
+
+@tool
+def get_timeline_range(from_frame: int, to_frame: int) -> str:
+    """Return a compact clip summary for clips that overlap [from_frame, to_frame].
+
+    Only clips whose timeline window intersects the given frame range are returned.
+    Each clip includes: clipId, type, startFrame, duration, endFrame, startSec, endSec,
+    trackIndex, and assetId / text / name where relevant.
+
+    RECOMMENDED USAGE — always call get_playback_state() first to get the IN/OUT
+    markers, then call this tool with those values:
+
+        # Step 1
+        state = get_playback_state()
+        in_f  = state["inPoint"]  or 0
+        out_f = state["outPoint"] or state["totalFrames"]
+
+        # Step 2 — only see clips in the work area, not the whole 10-minute timeline
+        clips = get_timeline_range(from_frame=in_f, to_frame=out_f)
+
+    Use get_timeline_state() only when you need ALL clips (e.g. to count total clips
+    or find the last clip). For any editing task scoped to a region, use this tool.
+
+    Args:
+        from_frame: Start of frame range (inclusive). Use inPoint from get_playback_state().
+        to_frame:   End of frame range (exclusive). Use outPoint from get_playback_state().
+                    Pass 0 to mean "end of timeline".
+    """
+    data = _get(f"/timeline/state/range?from_frame={from_frame}&to_frame={to_frame}")
+    return json.dumps(data, indent=2)
+
 
 @tool
 def seek_to(frame: int) -> str:
@@ -182,13 +276,13 @@ def move_clip(clip_id: str, new_start_frame: int, track_index: int) -> str:
 
     HOW TO GET track_index:
       Call get_timeline_state() first. The tracks array is 0-indexed.
-      RENDER ORDER (compositor paints ascending, Skia rule: last painted = on top):
-        tracks[0]            -> drawn FIRST  -> BOTTOM layer (background, behind everything)
-        tracks[1]            -> drawn second -> above track 0
-        tracks[last/highest] -> drawn LAST   -> TOP layer (foreground, in front of everything)
+      RENDER ORDER (compositor iterates tracks in REVERSE, Skia rule: last painted = on top):
+        tracks[0]            -> drawn LAST   -> TOP layer (foreground, in front of everything)
+        tracks[1]            -> drawn second-to-last -> below track 0
+        tracks[last/highest] -> drawn FIRST  -> BOTTOM layer (background, behind everything)
       UI TIMELINE PANEL (rows match index directly — NO reversal):
-        TOP ROW    of the panel = tracks[0]    = visual BOTTOM (background)
-        BOTTOM ROW of the panel = tracks[last] = visual TOP    (foreground/overlay)
+        TOP ROW    of the panel = tracks[0]    = visual TOP (foreground/overlay)
+        BOTTOM ROW of the panel = tracks[last] = visual BOTTOM (background)
       Read the trackId of the target track, count its position in the array.
 
     HOW TO MOVE ACROSS TRACKS (e.g. video clip from track 1 to track 2):
@@ -747,24 +841,24 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
     ALWAYS call this before placing any text, title, shape, or overlay clip.
 
     HOW THE COMPOSITOR WORKS — CRITICAL:
-    The renderer iterates timeline.tracks in INDEX ORDER (0, 1, 2 ...) and
+    The renderer iterates timeline.tracks in REVERSE ORDER (last, ..., 1, 0) and
     paints each track onto a Skia canvas sequentially.
     Skia rule: the LAST thing painted appears ON TOP.
 
-      tracks[0]            -> drawn FIRST  -> BOTTOM of visual stack (background, behind)
-      tracks[1]            -> drawn second -> above track 0
-      tracks[last/highest] -> drawn LAST   -> TOP of visual stack (foreground / overlay)
+      tracks[last/highest] -> drawn FIRST  -> BOTTOM of visual stack (background, behind)
+      tracks[1]            -> drawn second-to-last -> above tracks[last]
+      tracks[0]            -> drawn LAST   -> TOP of visual stack (foreground / overlay)
 
     UI TIMELINE PANEL — rows match index order directly (NO reversal):
-      TOP ROW    in the timeline panel = tracks[0]    = visual BOTTOM (background)
-      BOTTOM ROW in the timeline panel = tracks[last] = visual TOP    (foreground/overlay)
+      TOP ROW    in the timeline panel = tracks[0]    = visual TOP (foreground/overlay)
+      BOTTOM ROW in the timeline panel = tracks[last] = visual BOTTOM (background)
 
     NOTE: When a user says "top track" they usually mean the TOP ROW of the panel,
-    which is tracks[0] — but this is the visual BOTTOM (behind video).
+    which is tracks[0] — and this IS the visual TOP (foreground/overlay).
 
     So to put text or an overlay ABOVE a video clip:
-      * video should be on a LOW-index track  (e.g. 0)
-      * overlay must be on a HIGH-index track (e.g. 1, 2, 3 ...)
+      * video should be on a HIGH-index track  (e.g. 1, 2, 3 ...)
+      * overlay must be on a LOW-index track (e.g. 0)
 
     Args:
         start_frame: First frame of the range you are about to place a clip into.
@@ -809,32 +903,33 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
  
 
     if not occupied:
-        
-        last_i, last_t = video_tracks[-1]
+        # No clips at all — use the first (lowest) video track = renders on top
+        first_i, first_t = video_tracks[0]
         reason = (
             f"No clips in frames {start_frame}-{end_frame}. "
-            f"Using track {last_i} (highest existing video track = renders on top)."
+            f"Using track {first_i} (lowest index = renders on top)."
         )
         return json.dumps({
-            "track_index": last_i,
-            "track_id": last_t.get("trackId"),
+            "track_index": first_i,
+            "track_id": first_t.get("trackId"),
             "created": False,
             "reason": reason,
         }, indent=2)
 
-    max_occupied = max(occupied)
+    min_occupied = min(occupied)
 
-    # Look for an existing free video track  
+    # Look for an existing free video track with index LOWER than the lowest occupied
+    # (lower index = rendered on top = overlay appears in front)
     best_i, best_t = None, None
     for i, t in video_tracks:
-        if i > max_occupied and i not in occupied:
+        if i < min_occupied and i not in occupied:
             best_i, best_t = i, t
-            break   # take the first  
+            break   # take the first free track above (visually) the video
 
     if best_i is not None:
         reason = (
-            f"Track {best_i} is free and its index ({best_i}) > highest occupied ({max_occupied}) "
-            f"-> drawn after all video -> renders ON TOP."
+            f"Track {best_i} is free and its index ({best_i}) < lowest occupied ({min_occupied}) "
+            f"-> drawn AFTER all video (reversed iteration) -> renders ON TOP."
         )
         return json.dumps({
             "track_index": best_i,
@@ -843,16 +938,15 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
             "reason": reason,
         }, indent=2)
 
-    # No free track above the video  
-    new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay"})
+    # No free track above the video — create a new track at index 0 (top)
+    new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay", "index": 0})
     new_track_id = new_track.get("trackId")
-    new_index = len(tracks)    
     reason = (
-        f"All tracks at index > {max_occupied} are occupied or don't exist. "
-        f"Created new Overlay track at index {new_index} (highest = renders ON TOP)."
+        f"All tracks at index < {min_occupied} are occupied or don't exist. "
+        f"Created new Overlay track at index 0 (lowest = renders ON TOP)."
     )
     return json.dumps({
-        "track_index": new_index,
+        "track_index": 0,
         "track_id": new_track_id,
         "created": True,
         "reason": reason,
@@ -1565,7 +1659,7 @@ def create_webcomp(
 
     HOW FILES ARE SAVED (you never need to worry about paths):
       - Project saved → <project-folder>/webcomps/<name>/   (travels with the project)
-      - No project    → C:/Users/<user>/.fade/webcomps/<name>/  (global fallback)
+      - No project    → C:/Users/<user>/.Fade/webcomps/<name>/  (global fallback)
     The backend handles this automatically.
 
     WHAT THE BACKEND GENERATES FOR YOU:
@@ -1882,7 +1976,7 @@ def get_clip_context(clip_id: str, format: str = "txt") -> str:
         clip_id: The clipId of the clip (get from get_timeline_state).
         format: "txt" for human-readable (default), "json" for structured data.
     """
-    r = _get(f"/clip/{clip_id}?format={format}")
+    r = _get(f"/context/clip/{clip_id}?format={format}")
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
@@ -1899,7 +1993,7 @@ def get_asset_context(asset_id: str, format: str = "txt") -> str:
         asset_id: The assetId from the library (get from get_library).
         format: "txt" for human-readable (default), "json" for structured data.
     """
-    r = _get(f"/asset/{asset_id}?format={format}")
+    r = _get(f"/context/asset/{asset_id}?format={format}")
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
@@ -1922,15 +2016,15 @@ def search_video_scenes(query: str, top_k: int = 5) -> str:
         query: Natural language scene description to search for.
         top_k: Number of top results to return (default 5, max 20).
     """
-    data = _get(f"/video?q={query}&top_k={top_k}")
-    results = data.get("results", [])
-    if not results:
+    data = _get(f"/scene/search?q={query}&k={top_k}&type=video")
+    hits = data.get("hits", [])
+    if not hits:
         return f"No matching scenes found for: '{query}'"
     lines = [f"Scene search results for: '{query}'", ""]
-    for i, hit in enumerate(results, 1):
+    for i, hit in enumerate(hits, 1):
         score = round(hit.get("score", 0) * 100)
-        lines.append(f"{i}. [{score}% match] assetId={hit['assetId']}")
-        lines.append(f" Time: {hit['start_sec']:.1f}s – {hit['end_sec']:.1f}s")
+        lines.append(f"{i}. [{score}% match] assetId={hit['assetId']} ({hit.get('filename', '')})")
+        lines.append(f"   Time: {hit.get('start_sec', 0):.1f}s – {hit.get('end_sec', 0):.1f}s")
         lines.append(f"   {hit.get('text','')[:200]}")
         lines.append("")
     return "\n".join(lines)
@@ -1998,7 +2092,7 @@ def describe_clip(clip_id: str) -> str:
         clip_id: The clipId of the clip (get from get_timeline_state).
     """
     try:
-        return json.dumps(_get(f"/clip/{clip_id}/describe"), indent=2)
+        return json.dumps(_get(f"/context/clip/{clip_id}/describe"), indent=2)
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
             return f"Clip '{clip_id}' not found on any timeline. Call get_timeline_state() to get valid clip IDs."
@@ -2017,7 +2111,7 @@ def describe_selected_clip() -> str:
     depending on the clip type.
     """
     try:
-        r = _get("/selected/describe")
+        r = _get("/context/selected/describe")
         return json.dumps(r, indent=2)
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
@@ -2567,7 +2661,7 @@ def list_kokoro_voices(lang: str = "") -> str:
               'zh', 'es', 'fr', 'hi', 'it', 'pt'. Leave empty to list all.
 
     Returns a JSON map of language → [voice_ids].
-    Popular voices: af_heart (warm female), bf_emma (British), am_echo (male).
+    Popular voices: af_heart (warm female), bf_emma (British), am_Fade (male).
     """
     import json
     params = {}
@@ -2602,7 +2696,7 @@ def generate_tts(
     Args:
         text:  The text to speak. Can be multiple sentences / paragraphs.
         voice: Voice ID (default 'af_heart' — warm American female).
-               Kokoro voices: af_heart, af_bella, af_nicole, am_echo, am_michael,
+               Kokoro voices: af_heart, af_bella, af_nicole, am_Fade, am_michael,
                               bf_emma, bf_alice, bm_george, bm_daniel + 40 more.
                Gemini voices: Kore, Zephyr, Puck, Charon, Fenrir, Aoede, etc.
                Call list_kokoro_voices() to browse all options.
@@ -2868,7 +2962,7 @@ def export_video(
     if not output_path:
         from backend.state import engine
         import os
-        base_name = f"fade_export.{ext}"
+        base_name = f"Fade_export.{ext}"
         if engine.project and engine.project.filePath:
             proj_dir = os.path.dirname(engine.project.filePath)
             output_path = os.path.join(proj_dir, base_name)

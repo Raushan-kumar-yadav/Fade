@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   transitionApi,
   type TransitionInfo,
@@ -53,7 +53,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
   }, [tr, catalog]);
 
   const onDragStart = useCallback((e: React.DragEvent, typeId: string) => {
-    e.dataTransfer.setData('application/fade-transition', typeId);
+    e.dataTransfer.setData('application/Fade-transition', typeId);
     e.dataTransfer.effectAllowed = 'copy';
   }, []);
 
@@ -62,7 +62,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
     const updated = await transitionApi.patch(tr.transId, { params: { [key]: val } });
     setTr(updated);
     onSelect?.(updated);
-    window.dispatchEvent(new CustomEvent('fade:transition-changed'));
+    window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
   }, [tr, onSelect]);
 
   const patchDuration = useCallback(async (dur: number) => {
@@ -70,7 +70,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
     const updated = await transitionApi.patch(tr.transId, { duration: Math.max(1, dur) });
     setTr(updated);
     onSelect?.(updated);
-    window.dispatchEvent(new CustomEvent('fade:transition-changed'));
+    window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
   }, [tr, onSelect]);
 
   const patchType = useCallback(async (typeId: string) => {
@@ -78,7 +78,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
     const updated = await transitionApi.patch(tr.transId, { typeId });
     setTr(updated);
     onSelect?.(updated);
-    window.dispatchEvent(new CustomEvent('fade:transition-changed'));
+    window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
   }, [tr, onSelect]);
 
   const removeTr = useCallback(async () => {
@@ -86,7 +86,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
     await transitionApi.remove(tr.transId);
     setTr(null);
     onSelect?.(null);
-    window.dispatchEvent(new CustomEvent('fade:transition-changed'));
+    window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
   }, [tr, onSelect]);
 
   // Group catalog by category

@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import os
 import json
@@ -44,33 +44,58 @@ _PREFERRED_MODELS = [
     "mistral:latest",
 ]
 
+# Vision / embedding models that do NOT support tool/function calling.
+_NO_TOOLS_MODELS = [
+    "moondream", "moondream2", "llava", "llava-phi3", "llava-llama3",
+    "bakllava", "minicpm-v", "deepseek-vl", "internvl", "qwen-vl",
+    "nomic-embed-text", "mxbai-embed-large", "all-minilm", "bge-m3",
+]
+
 
 def _detect_ollama_model() -> str:
     """Query Ollama for installed models and pick the best one for tool-calling."""
     try:
         import httpx
         r = httpx.get("http://localhost:11434/api/tags", timeout=3)
-        models = [m["name"] for m in r.json().get("models", [])]
-        if not models:
+        all_models = [m["name"] for m in r.json().get("models", [])]
+
+        def _is_no_tools(name: str) -> bool:
+            n = name.lower()
+            return any(bad in n for bad in _NO_TOOLS_MODELS)
+
+        tool_models = [m for m in all_models if not _is_no_tools(m)]
+
+        if not all_models:
             print("[AI Agent] Ollama has no models installed. Run: ollama pull llama3.2", flush=True)
-            return "llama3.2"   
+            return "llama3.2"
 
-        # pick from preferred list
+        if not tool_models:
+            skipped = ", ".join(all_models)
+            raise RuntimeError(
+                f"Installed Ollama models ({skipped}) are vision/embedding models "
+                f"that do not support tool-calling. Run: ollama pull llama3.2"
+            )
+
+        # Pick from preferred list (tool-capable only)
         for pref in _PREFERRED_MODELS:
-            if pref in models:
+            if pref in tool_models:
                 return pref
-        # fallback: first available
-        print(f"[AI Agent] Using first available Ollama model: {models[0]}", flush=True)
-        return models[0]
 
+        # Fallback: first tool-capable model
+        print(f"[AI Agent] Using first tool-capable Ollama model: {tool_models[0]}", flush=True)
+        return tool_models[0]
+
+    except RuntimeError:
+        raise
     except Exception:
-        print("[AI Agent] Ollama not running â€” defaulting to llama3.2. Start Ollama first.", flush=True)
+        print("[AI Agent] Ollama not running - defaulting to llama3.2. Start Ollama first.", flush=True)
         return "llama3.2"
 
 
+
 def _build_llm():
-    provider = os.environ.get("FADE_AI_PROVIDER", "ollama").lower()
-    model_name = os.environ.get("FADE_AI_MODEL", "")
+    provider = os.environ.get("FADE_AI_PROVIDER", os.environ.get("FADE_AI_PROVIDER", "ollama")).lower()
+    model_name = os.environ.get("FADE_AI_MODEL", os.environ.get("FADE_AI_MODEL", ""))
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
@@ -80,7 +105,7 @@ def _build_llm():
             model_name = _detect_ollama_model()
 
         print(f"[AI Agent] Using Ollama model: {model_name}", flush=True)
-        return ChatOllama(model=model_name, temperature=0)
+        return ChatOllama(model=model_name, temperature=0, timeout=120)
 
     elif provider == "tabi":
         # tabitoken.com  
@@ -96,6 +121,7 @@ def _build_llm():
             temperature=0,
             api_key=key,
             base_url=base_url,
+            timeout=60,
         )
 
     elif provider == "openai":
@@ -105,7 +131,7 @@ def _build_llm():
             print("[AI Agent] WARNING: OPENAI_API_KEY not set in .env", flush=True)
         m = model_name or "gpt-4o-mini"
         print(f"[AI Agent] Using OpenAI model: {m}", flush=True)
-        return ChatOpenAI(model=m, temperature=0, api_key=key or None)
+        return ChatOpenAI(model=m, temperature=0, api_key=key or None, timeout=60)
 
     elif provider == "groq":
         from langchain_groq import ChatGroq
@@ -142,6 +168,60 @@ def _build_llm():
         if base_url:
             kwargs["anthropic_api_url"] = base_url
         return ChatAnthropic(**kwargs)
+
+    elif provider == "tokenrouter":
+        from langchain_openai import ChatOpenAI
+        key = os.environ.get("TOKENROUTER_API_KEY", "").strip().strip('"')
+        base_url = os.environ.get("TOKENROUTER_BASE_URL", "https://api.tokenrouter.com/v1").strip().strip('"')
+        if not key:
+            print("[AI Agent] WARNING: TOKENROUTER_API_KEY not set in .env", flush=True)
+        m = model_name or "z-ai/glm-5.3-free"
+        print(f"[AI Agent] Using TokenRouter model: {m} via {base_url}", flush=True)
+        return ChatOpenAI(
+            model=m,
+            temperature=0,
+            api_key=key,
+            base_url=base_url,
+            timeout=60,  # free models can be slow; fail fast instead of hanging forever
+        )
+
+    elif provider == "openrouter":
+        from langchain_openai import ChatOpenAI
+        key = os.environ.get("OPENROUTER_API_KEY", "").strip().strip('"')
+        base_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip().strip('"')
+        if not key:
+            print("[AI Agent] WARNING: OPENROUTER_API_KEY not set in .env", flush=True)
+        m = model_name or "mistralai/mistral-7b-instruct"
+        print(f"[AI Agent] Using OpenRouter model: {m} via {base_url}", flush=True)
+        return ChatOpenAI(
+            model=m,
+            temperature=0,
+            api_key=key,
+            base_url=base_url,
+            default_headers={"HTTP-Referer": "https://fade-editor.app", "X-Title": "Fade Editor"},
+            timeout=60,
+        )
+
+    elif provider == "llamacpp":
+        # llama.cpp server (local or Tailscale) — OpenAI-compatible API
+        # Start server with: llama-server -m model.gguf --port 8080 --jinja -fa -ngl 99
+        from langchain_openai import ChatOpenAI
+        base_url = (
+            os.environ.get("LLAMACPP_BASE_URL", "http://localhost:8080/v1")
+            .strip().strip('"')
+        )
+        # Normalise: ensure it ends with /v1
+        if not base_url.endswith("/v1"):
+            base_url = base_url.rstrip("/") + "/v1"
+        m = model_name or "local-model"
+        print(f"[AI Agent] Using llama.cpp at {base_url} (model={m})", flush=True)
+        return ChatOpenAI(
+            model=m,
+            temperature=0,
+            api_key="none",          # llama.cpp doesn't need a key
+            base_url=base_url,
+            timeout=120,
+        )
 
     else:
         raise ValueError(f"Unknown FADE_AI_PROVIDER: {provider}")
@@ -499,7 +579,7 @@ TOOLS:
 - cancel_job(job_id)               â†’ abort any running/pending job
 
 VOICE QUICK REFERENCE (most popular first):
-  American English  : af_heartâ˜… (warm), af_bella, af_nicole, am_echo, am_michael, am_puck
+  American English  : af_heartâ˜… (warm), af_bella, af_nicole, am_Fade, am_michael, am_puck
   British English   : bf_emma, bf_alice, bm_george, bm_daniel
   Japanese          : jf_nezuko, jm_kumo
   Korean/Chinese    : zf_xiaoxiao, zm_yunxi
@@ -680,6 +760,91 @@ WORKFLOW:
 Current project context will be injected by the router.
 """
 
+# ---------------------------------------------------------------------------
+#  Context-window guard — trim messages to stay within the model's ctx limit
+# ---------------------------------------------------------------------------
+
+# Conservative budget: leave ~20 K tokens headroom for system prompt +
+# tool schemas + the model's reply.  62 976 is the Gemma-27B ctx shown in
+# the error; we default to 40 000 so even smaller local models are safe.
+_CTX_BUDGET_CHARS = int(os.environ.get("FADE_CTX_BUDGET_CHARS", 40_000 * 4))  # ~40 K tokens
+_MAX_TOOL_RESULT_CHARS = 3_000   # truncate individual tool outputs beyond this
+
+
+def _trim_messages(messages: list) -> list:
+    """Trim a message list so its estimated token count fits inside the budget.
+
+    Strategy:
+    1. Always keep the first message (SystemMessage).
+    2. Truncate any ToolMessage / AIMessage whose content exceeds
+       _MAX_TOOL_RESULT_CHARS (long ChromaDB dumps, timeline JSON, etc.).
+    3. Drop the *oldest* non-system messages one by one until the total
+       estimated character count is within _CTX_BUDGET_CHARS.
+    4. Always keep the most-recent HumanMessage so the model knows what
+       the user actually asked.
+    """
+    if not messages:
+        return messages
+
+    # Step 1: truncate oversized individual messages
+    trimmed: list = []
+    for msg in messages:
+        content = getattr(msg, "content", "") or ""
+        if isinstance(content, str) and len(content) > _MAX_TOOL_RESULT_CHARS:
+            # Keep a short snippet so the model still has some context
+            short = content[:_MAX_TOOL_RESULT_CHARS]
+            msg = msg.__class__(
+                content=short + f"\n…[truncated {len(content) - _MAX_TOOL_RESULT_CHARS} chars]",
+                **{k: v for k, v in vars(msg).items()
+                   if k not in ("content", "type", "id") and not k.startswith("_")}
+            )
+        trimmed.append(msg)
+
+    # Step 2: drop oldest non-system messages until we fit
+    def _total_chars(msgs: list) -> int:
+        total = 0
+        for m in msgs:
+            c = getattr(m, "content", "") or ""
+            total += len(c) if isinstance(c, str) else sum(len(str(p)) for p in c)
+        return total
+
+    # Find the index of the last HumanMessage — we must keep it
+    last_human_idx = -1
+    for i in range(len(trimmed) - 1, -1, -1):
+        if isinstance(trimmed[i], HumanMessage):
+            last_human_idx = i
+            break
+
+    # Drop from index 1 (keep system at 0) upward, skip last_human_idx
+    drop_candidates = [
+        i for i in range(1, len(trimmed))
+        if i != last_human_idx
+    ]
+    ci = 0
+    while _total_chars(trimmed) > _CTX_BUDGET_CHARS and ci < len(drop_candidates):
+        idx = drop_candidates[ci]
+        trimmed.pop(idx)
+        # Recalculate drop_candidates after removal
+        last_human_idx = -1
+        for i in range(len(trimmed) - 1, -1, -1):
+            if isinstance(trimmed[i], HumanMessage):
+                last_human_idx = i
+                break
+        drop_candidates = [
+            i for i in range(1, len(trimmed))
+            if i != last_human_idx
+        ]
+        ci = 0  # restart from the beginning each time
+
+    if _total_chars(trimmed) > _CTX_BUDGET_CHARS:
+        print(
+            f"[AI Agent] ⚠️  Context still too large after trimming "
+            f"({_total_chars(trimmed)} chars). Sending anyway — model may error.",
+            flush=True,
+        )
+    return trimmed
+
+
 #   Graph builder  
 
 def build_agent(port: int = 8000):
@@ -701,23 +866,53 @@ def build_agent(port: int = 8000):
             system_content = greeting + _SYSTEM
         else:
             system_content = _SYSTEM
-        messages = [SystemMessage(content=system_content)] + state["messages"]
+        raw_messages = [SystemMessage(content=system_content)] + state["messages"]
+        messages = _trim_messages(raw_messages)
+        if len(messages) < len(raw_messages):
+            print(
+                f"[AI Agent] Context trimmed: {len(raw_messages)} → {len(messages)} messages",
+                flush=True,
+            )
         # Retry on transient proxy/network disconnects (e.g. Tabi dropping the
-        # streaming connection mid-response with RemoteProtocolError).
-        _MAX_RETRIES = 3
+        # streaming connection mid-response with RemoteProtocolError) AND on
+        # upstream HTTP 5xx errors from the LLM provider (e.g. TokenRouter 500).
+        _MAX_RETRIES = 4
         for _attempt in range(_MAX_RETRIES):
             try:
                 response = llm_with_tools.invoke(messages)
                 return {"messages": [response]}
             except Exception as _exc:
-                _exc_str = str(type(_exc).__name__)
-                _is_network = any(k in _exc_str for k in ("RemoteProtocol", "ReadTimeout", "ConnectError", "Connection"))
+                _exc_type = type(_exc).__name__
+                _exc_msg  = str(_exc).lower()
+                # Network-level transients
+                _is_network = any(k in _exc_type for k in (
+                    "RemoteProtocol", "ReadTimeout", "ConnectError", "Connection",
+                    "Timeout", "NetworkError",
+                ))
                 if not _is_network:
-                    # Re-check by message text as well (httpx2 wraps the class)
-                    _is_network = "peer closed connection" in str(_exc).lower() or "incomplete chunked" in str(_exc).lower()
-                if _is_network and _attempt < _MAX_RETRIES - 1:
-                    _wait = 2 ** _attempt  # 1s, 2s, 4s
-                    print(f"[AI Agent] Network error ({_exc_str}), retrying in {_wait}s (attempt {_attempt + 1}/{_MAX_RETRIES})...", flush=True)
+                    _is_network = any(k in _exc_msg for k in (
+                        "peer closed connection", "incomplete chunked",
+                        "connection reset", "connection refused",
+                    ))
+                # Upstream HTTP 5xx from LLM provider (TokenRouter, OpenAI, etc.)
+                _is_upstream_5xx = any(k in _exc_type for k in (
+                    "InternalServerError", "APIStatusError", "OpenAIAPIError",
+                    "ServiceUnavailable", "RateLimitError",
+                ))
+                if not _is_upstream_5xx:
+                    _is_upstream_5xx = any(k in _exc_msg for k in (
+                        "error code: 500", "error code: 502", "error code: 503",
+                        "upstream error", "do_request_failed",
+                        "rate_limit", "overloaded",
+                    ))
+                _should_retry = (_is_network or _is_upstream_5xx) and _attempt < _MAX_RETRIES - 1
+                if _should_retry:
+                    _wait = min(2 ** _attempt, 16)  # 1s, 2s, 4s, 8s max
+                    print(
+                        f"[AI Agent] Transient error ({_exc_type}), "
+                        f"retrying in {_wait}s (attempt {_attempt + 1}/{_MAX_RETRIES})...",
+                        flush=True,
+                    )
                     time.sleep(_wait)
                     continue
                 raise
@@ -748,6 +943,13 @@ def get_agent(port: int = 8000):
         _agent = build_agent(port)
         print("[AI Agent] Ready.", flush=True)
     return _agent
+
+
+def _reset_agent():
+    """Clear the cached agent so it is rebuilt with fresh env on next request."""
+    global _agent
+    _agent = None
+    print("[AI Agent] Agent cache cleared — will rebuild on next /ai/chat request.", flush=True)
 
 
 def get_agent_llm(port: int = 8000):

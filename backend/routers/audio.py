@@ -1,13 +1,79 @@
-import os
+﻿import os
 import tempfile
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from backend.state import engine, _library
 from backend.worker.worker_bus import bus as _worker_bus
 
 router = APIRouter()
 
-_audio_cache_dir = os.path.join(tempfile.gettempdir(), "fade_audio_cache")
+_CHUNK = 1 << 20  # 1 MB chunks
+
+
+def _stream_file(path: str, media_type: str, request: Request):
+    """
+    Range-aware chunked file streaming.
+    Avoids FileResponse's os.stat() → full-read mismatch on Windows
+    (causes RuntimeError: Response content longer than Content-Length).
+    """
+    file_size = os.path.getsize(path)
+    range_header = request.headers.get("range", "")
+
+    if range_header.startswith("bytes="):
+        # Parse first range only
+        try:
+            start_str, end_str = range_header[6:].split("-", 1)
+            start = int(start_str) if start_str else 0
+            end   = int(end_str)   if end_str   else file_size - 1
+        except Exception:
+            start, end = 0, file_size - 1
+        start = max(0, min(start, file_size - 1))
+        end   = max(start, min(end, file_size - 1))
+        length = end - start + 1
+
+        def _iter_range():
+            remaining = length
+            with open(path, "rb") as f:
+                f.seek(start)
+                while remaining > 0:
+                    chunk = f.read(min(_CHUNK, remaining))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    yield chunk
+
+        return StreamingResponse(
+            _iter_range(),
+            status_code=206,
+            media_type=media_type,
+            headers={
+                "Content-Range":  f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(length),
+                "Accept-Ranges":  "bytes",
+                "Cache-Control":  "no-cache",
+            },
+        )
+
+    # Full file
+    def _iter_full():
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(_CHUNK)
+                if not chunk:
+                    break
+                yield chunk
+
+    return StreamingResponse(
+        _iter_full(),
+        media_type=media_type,
+        headers={
+            "Content-Length": str(file_size),
+            "Accept-Ranges":  "bytes",
+            "Cache-Control":  "no-cache",
+        },
+    )
+
+_audio_cache_dir = os.path.join(tempfile.gettempdir(), "Fade_audio_cache")
 os.makedirs(_audio_cache_dir, exist_ok=True)
 
 
@@ -52,7 +118,7 @@ def workerJobs():
 
 
 @router.get("/assets/{assetId}/stream")
-def streamAsset(assetId: str):
+def streamAsset(assetId: str, request: Request):
     asset = _library.get(assetId)
     if asset is None:
         raise HTTPException(404, f"Asset {assetId!r} not found")
@@ -65,12 +131,14 @@ def streamAsset(assetId: str):
         ".flac": "audio/flac", ".ogg": "audio/ogg", ".m4a": "audio/mp4",
         ".mp4": "video/mp4", ".mov": "video/quicktime", ".avi": "video/x-msvideo",
     }
-    return FileResponse(path, media_type=mime_map.get(ext, "application/octet-stream"),
-                        headers={"Accept-Ranges": "bytes", "Cache-Control": "no-cache"})
+    # Use chunked streaming — FileResponse relies on os.stat() for Content-Length
+    # then reads the entire file; on Windows, OS buffering can make actual bytes
+    # read differ from st_size for large files → RuntimeError in uvicorn.
+    return _stream_file(path, mime_map.get(ext, "application/octet-stream"), request)
 
 
 @router.get("/assets/{assetId}/audio-stream")
-def audioStream(assetId: str):
+def audioStream(assetId: str, request: Request):
     import av
     asset = _library.get(assetId)
     if asset is None:
@@ -83,17 +151,19 @@ def audioStream(assetId: str):
     if ext in audio_exts:
         mime_map = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".aac": "audio/aac",
                     ".flac": "audio/flac", ".ogg": "audio/ogg", ".m4a": "audio/mp4"}
-        return FileResponse(path, media_type=mime_map.get(ext, "audio/mpeg"),
-                            headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=3600"})
+        return _stream_file(path, mime_map.get(ext, "audio/mpeg"), request)
     cache_path = os.path.join(_audio_cache_dir, f"{assetId}.wav")
     if not os.path.exists(cache_path):
+        # Write to .tmp first then rename atomically — prevents Content-Length
+        # mismatch if another request reads the cache file while it's being written.
+        tmp_path = cache_path + ".tmp"
         try:
             in_container  = av.open(path)
             audio_stream  = next((s for s in in_container.streams if s.type == 'audio'), None)
             if audio_stream is None:
                 in_container.close()
                 raise HTTPException(404, "No audio stream found in file")
-            out_container = av.open(cache_path, 'w')
+            out_container = av.open(tmp_path, 'w')
             out_stream    = out_container.add_stream('pcm_s16le', rate=audio_stream.sample_rate)
             for packet in in_container.demux(audio_stream):
                 for frame in packet.decode():
@@ -104,12 +174,25 @@ def audioStream(assetId: str):
                 out_container.mux(out_packet)
             out_container.close()
             in_container.close()
+            os.replace(tmp_path, cache_path)  # atomic — file appears complete or not at all
         except HTTPException:
             raise
         except Exception as e:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
             raise HTTPException(500, f"Audio extraction error: {e}")
-    return FileResponse(cache_path, media_type="audio/wav",
-                        headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=3600"})
+    return _stream_file(cache_path, "audio/wav", request)
+
+
+@router.get("/assets/{assetId}/audio-stream/{clipId}")
+def audioStreamForClip(assetId: str, clipId: str, request: Request):
+    """Clip-scoped alias for audioStream.
+    
+    Having a unique URL per clip (rather than per asset) prevents the browser
+    audio engine from treating two clips that share the same source file as
+    the same buffer node — which caused audio to play from the wrong clip.
+    """
+    return audioStream(assetId, request)
 
 
 @router.get("/timeline/audio-clips")
@@ -149,7 +232,9 @@ def listAudioClips():
                     "duration": clip.duration,
                     "mediaOffset": getattr(clip, "mediaOffset", 0),
                     "volume": getattr(clip, "volume", 1.0),
-                    "streamUrl":   f"/assets/{asset_id}/audio-stream",
+                    # Use clip-scoped URL so audio engine never confuses two clips
+                    # that share the same underlying asset.
+                    "streamUrl":   f"/assets/{asset_id}/audio-stream/{clip.clipId}",
                 })
 
     _collect_audio(tl)

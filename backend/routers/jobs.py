@@ -113,6 +113,22 @@ def complete_asset_job(
     _ASSET_JOB_KEY.pop((asset_id, job_type), None)
 
 
+def update_asset_job_progress(
+    asset_id: str,
+    job_type: str,
+    progress: float,
+    message: str = "",
+    job_id: str | None = None,
+) -> None:
+    """Push a progress update to an asset-bound job without changing its status."""
+    if job_id is None:
+        job_id = _ASSET_JOB_KEY.get((asset_id, job_type))
+    if job_id is None:
+        return
+    _update_job(job_id, status="running", progress=min(progress, 0.99), message=message)
+
+
+
 
 # Worker helpers
 

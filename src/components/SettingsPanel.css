@@ -18,11 +18,15 @@
   border: 1px solid rgba(255,255,255,0.07);
   border-radius: 14px;
   box-shadow: 0 28px 80px rgba(0,0,0,0.8);
-  width: 640px;
-  max-width: 96vw;
-  max-height: 88vh;
+  /* width/height driven by inline style (resizable) */
+  min-width: 520px;
+  min-height: 400px;
+  max-width: 99vw;
+  max-height: 99vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  position: relative;  /* needed for absolute resize handles */
   animation: sp-slide-in 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 @keyframes sp-slide-in {
@@ -68,7 +72,8 @@
 
 /*   Sidebar tabs   */
 .sp-sidebar {
-  width: 150px;
+  width: 145px;
+  min-width: 145px;
   flex-shrink: 0;
   border-right: 1px solid rgba(255,255,255,0.06);
   padding: 10px 0;
@@ -112,8 +117,10 @@
 /*   Content pane   */
 .sp-content {
   flex: 1;
-  padding: 18px 22px;
+  min-width: 0;
+  padding: 16px 18px;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -135,7 +142,8 @@
   font-family: 'Inter', sans-serif;
   font-size: 13px;
   color: rgba(255,255,255,0.65);
-  width: 140px;
+  width: 150px;
+  min-width: 150px;
   flex-shrink: 0;
 }
 .sp-value {
@@ -369,3 +377,148 @@
   display: inline-block;
   margin-top: 3px;
 }
+
+/*   API Key fields   */
+.sp-api-group {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+}
+.sp-api-group-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.4);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.sp-api-group-title .sp-api-icon {
+  font-size: 14px;
+}
+
+/* Each row = label + input(+btn+badge) */
+.sp-api-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  min-width: 0;
+}
+.sp-api-row:last-child { margin-bottom: 0; }
+
+.sp-api-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: rgba(255,255,255,0.45);
+  width: 140px;
+  min-width: 140px;
+  flex-shrink: 0;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Wrapper so input+btn stay together and shrink properly */
+.sp-api-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sp-api-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  color: #f0f0f2;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 11.5px;
+  outline: none;
+  transition: border-color 0.15s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sp-api-input:focus { border-color: rgba(108,99,255,0.6); }
+.sp-api-input::placeholder { color: rgba(255,255,255,0.15); }
+
+/* Select in api rows (provider dropdown) */
+.sp-api-row .sp-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.sp-api-btn {
+  padding: 5px 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.5);
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sp-api-btn:hover { background: rgba(108,99,255,0.15); color: #a99fff; border-color: rgba(108,99,255,0.4); }
+
+.sp-api-status {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sp-api-status--set {
+  background: rgba(0,212,170,0.12);
+  color: #00d4aa;
+}
+.sp-api-status--empty {
+  background: rgba(255,100,100,0.08);
+  color: rgba(255,120,120,0.65);
+}
+
+/* ── Resize handles ─────────────────────────────────────── */
+.sp-rz {
+  position: absolute;
+  z-index: 10;
+  /* transparent — only the cursor matters */
+}
+/* Edge handles */
+.sp-rz--e  { top: 8px; right: 0;  bottom: 8px; width: 6px;  cursor: ew-resize; }
+.sp-rz--w  { top: 8px; left:  0;  bottom: 8px; width: 6px;  cursor: ew-resize; }
+.sp-rz--s  { left: 8px; right: 8px; bottom: 0; height: 6px; cursor: ns-resize; }
+.sp-rz--n  { left: 8px; right: 8px; top:    0; height: 6px; cursor: ns-resize; }
+/* Corner handles */
+.sp-rz--se { right:  0; bottom: 0; width: 14px; height: 14px; cursor: se-resize; }
+.sp-rz--sw { left:   0; bottom: 0; width: 14px; height: 14px; cursor: sw-resize; }
+.sp-rz--ne { right:  0; top:    0; width: 14px; height: 14px; cursor: ne-resize; }
+.sp-rz--nw { left:   0; top:    0; width: 14px; height: 14px; cursor: nw-resize; }
+
+/* Visible SE corner grip dots */
+.sp-rz--se::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(
+    circle, rgba(255,255,255,0.18) 1px, transparent 1px
+  ) 0 0 / 3px 3px;
+  border-radius: 1px;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+.sp-rz--se:hover::after { opacity: 1; }

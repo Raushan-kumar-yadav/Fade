@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useState, useEffect, useCallback, useRef, useLayoutEffect,
 } from 'react';
 import ReactDOM from 'react-dom';
@@ -45,7 +45,7 @@ const PRESETS = [
   { label: '9:16',  w: 1080, h: 1920 }, { label: '4:3',   w: 1440, h: 1080 },
 ];
 const FPS_OPTIONS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60];
-function base() { return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`; }
+function base() { return `http://127.0.0.1:${(window as any).__Fade_PORT__ ?? 8000}`; }
 
 //   Type thumbnails
 
@@ -764,13 +764,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
   }, []);
 
   useEffect(() => {
-    if ((window as any).__FADE_PORT__) refreshAssets();
-    else { const h = () => refreshAssets(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
+    if ((window as any).__Fade_PORT__) refreshAssets();
+    else { const h = () => refreshAssets(); window.addEventListener('Fade:port', h, { once: true }); return () => window.removeEventListener('Fade:port', h); }
   }, [refreshAssets]);
   useEffect(() => {
     const h = () => refreshAssets();
-    window.addEventListener('fade:library-changed', h);
-    return () => window.removeEventListener('fade:library-changed', h);
+    window.addEventListener('Fade:library-changed', h);
+    return () => window.removeEventListener('Fade:library-changed', h);
   }, [refreshAssets]);
 
   // Subscribe to job SSE events  
@@ -785,8 +785,8 @@ export default function LibraryPanel({ onAddToTimeline }: {
       });
       if (job.status === 'done') refreshAssets();
     };
-    window.addEventListener('fade:job-update', handleJob);
-    return () => window.removeEventListener('fade:job-update', handleJob);
+    window.addEventListener('Fade:job-update', handleJob);
+    return () => window.removeEventListener('Fade:job-update', handleJob);
   }, [refreshAssets]);
 
   const dismissJob = useCallback((jobId: string) => {
@@ -875,13 +875,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
     try { setComps(await fetchComps()); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
-    if ((window as any).__FADE_PORT__) refreshComps();
-    else { const h = () => refreshComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
+    if ((window as any).__Fade_PORT__) refreshComps();
+    else { const h = () => refreshComps(); window.addEventListener('Fade:port', h, { once: true }); return () => window.removeEventListener('Fade:port', h); }
   }, [refreshComps]);
   useEffect(() => {
     const h = () => refreshComps();
-    window.addEventListener('fade:comps-changed', h);
-    return () => window.removeEventListener('fade:comps-changed', h);
+    window.addEventListener('Fade:comps-changed', h);
+    return () => window.removeEventListener('Fade:comps-changed', h);
   }, [refreshComps]);
 
   //   Load webcomps
@@ -889,13 +889,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
     try { setWebcomps(await fetchWebComps()); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
-    if ((window as any).__FADE_PORT__) refreshWebComps();
-    else { const h = () => refreshWebComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
+    if ((window as any).__Fade_PORT__) refreshWebComps();
+    else { const h = () => refreshWebComps(); window.addEventListener('Fade:port', h, { once: true }); return () => window.removeEventListener('Fade:port', h); }
   }, [refreshWebComps]);
   useEffect(() => {
     const h = () => refreshWebComps();
-    window.addEventListener('fade:webcomps-changed', h);
-    return () => window.removeEventListener('fade:webcomps-changed', h);
+    window.addEventListener('Fade:webcomps-changed', h);
+    return () => window.removeEventListener('Fade:webcomps-changed', h);
   }, [refreshWebComps]);
 
   //   Asset handlers  
@@ -1072,14 +1072,14 @@ export default function LibraryPanel({ onAddToTimeline }: {
                           outFrames,
                           duration:   dur,
                         });
-                        e.dataTransfer.setData('application/fade-scene-hit', payload);
-                        e.dataTransfer.setData('text/fade-scene-hit', payload); // Electron fallback
+                        e.dataTransfer.setData('application/Fade-scene-hit', payload);
+                        e.dataTransfer.setData('text/Fade-scene-hit', payload); // Electron fallback
                       }}
                       onClick={async () => {
                         if (!asset) return;
                         const frame = state.currentFrame ?? 0;
                         await addClipToTimeline(hit.assetId, 0, frame, dur, inFrames);
-                        window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+                        window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
                       }}
                       title={hit.text}
                     >
@@ -1129,7 +1129,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                   isDragging={dragging === wc.assetId}
                   onDragStart={e => {
                     setDragging(wc.assetId);
-                    e.dataTransfer.setData('application/fade-webcomp', JSON.stringify(wc));
+                    e.dataTransfer.setData('application/Fade-webcomp', JSON.stringify(wc));
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
                   onDragEnd={() => setDragging(null)}
@@ -1161,7 +1161,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     onDragStart={e => {
                       if (comp.isRoot) return;
                       setDragging(comp.compId);
-                      e.dataTransfer.setData('application/fade-comp', JSON.stringify(comp));
+                      e.dataTransfer.setData('application/Fade-comp', JSON.stringify(comp));
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={() => setDragging(null)}
@@ -1192,7 +1192,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     isDragging={dragging === asset.assetId}
                     onDragStart={e => {
                       setDragging(asset.assetId);
-                      e.dataTransfer.setData('application/fade-asset', JSON.stringify(asset));
+                      e.dataTransfer.setData('application/Fade-asset', JSON.stringify(asset));
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={() => setDragging(null)}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+﻿import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActiveTool } from '../context/toolContext';
 import WorkerProgress from '../workspaces/worker/WorkerProgress';
 import { saveProject, saveProjectTo, loadProject, newProject } from '../api/projectApi';
@@ -9,6 +9,7 @@ interface ElectronAPI {
   minimize: () => void;
   maximize: () => void;
   close: () => void;
+  send?: (channel: string, ...args: any[]) => void;
 }
 
 declare global {
@@ -122,7 +123,7 @@ export default function TitleBar({
       const fp = await saveProject(projectName);
       if (fp) {
         savedPathRef.current = fp;
-        const name = fp.split(/[\\/]/).pop()?.replace(/\.fade$/, '') ?? projectName;
+        const name = fp.split(/[\\/]/).pop()?.replace(/\.Fade$/, '') ?? projectName;
         setProjectName(name);
       }
     }
@@ -132,7 +133,7 @@ export default function TitleBar({
     const fp = await saveProject(projectName);
     if (fp) {
       savedPathRef.current = fp;
-      const name = fp.split(/[\\/]/).pop()?.replace(/\.fade$/, '') ?? projectName;
+      const name = fp.split(/[\\/]/).pop()?.replace(/\.Fade$/, '') ?? projectName;
       setProjectName(name);
     }
   }, [projectName]);
@@ -147,18 +148,18 @@ export default function TitleBar({
       buttonLabel: 'Open Project',
     });
 
-    // Fall back to .fade file picker (legacy single-file format)
+    // Fall back to .Fade file picker (legacy single-file format)
     if (!filepath) {
       filepath = await el?.showOpenDialog({
         title: 'Open Project File',
-        filters: [{ name: 'Fade Project', extensions: ['fade'] }],
+        filters: [{ name: 'Fade Project', extensions: ['Fade'] }],
       });
     }
     if (!filepath) return;
 
     onLoadStart?.('Loading project…');
     try {
-      const port = (window as any).__FADE_PORT__ ?? 8000;
+      const port = (window as any).__Fade_PORT__ ?? 8000;
       const r = await fetch(`http://127.0.0.1:${port}/project/load`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,7 +206,21 @@ export default function TitleBar({
     { label: 'Quit', shortcut: 'Alt+F4',       action: () => api?.close() },
   ];
 
- 
+  const toggleDevLog = useCallback(() => {
+    (window as any).electronAPI?.send?.('devlog:toggle');
+  }, []);
+
+   
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'L') {
+        e.preventDefault();
+        toggleDevLog();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [toggleDevLog]);
 
   const editItems: MenuItem[] = [
     { label: 'Undo', shortcut: 'Ctrl+Z', action: () => {} },
@@ -219,18 +234,24 @@ export default function TitleBar({
     { label: 'Delete Clip', shortcut: 'Del',    action: () => {} },
   ];
 
+  const settingsItems: MenuItem[] = [
+    { label: 'Settings', action: onSettings },
+    { sep: true },
+    { label: 'Backend Logs', shortcut: 'Ctrl+⇧L', action: toggleDevLog },
+  ];
+
   return (
     <div className="titlebar">
  
       <div className="titlebar__left">
         <div className="titlebar__logo">
           <div className="titlebar__logo-dot" />
-          <span>FADE</span>
+          <span>Fade</span>
         </div>
         <div className="titlebar__menus">
-          <MenuButton label="File"  items={fileItems} />
-          <MenuButton label="Edit"  items={editItems} />
-          <button className="tb-menu__btn" onClick={onSettings}>Settings</button>
+          <MenuButton label="File"     items={fileItems} />
+          <MenuButton label="Edit"     items={editItems} />
+          <MenuButton label="Settings" items={settingsItems} />
         </div>
 
   

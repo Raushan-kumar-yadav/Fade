@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+﻿import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import fs from 'fs'
@@ -9,11 +9,89 @@ import {
 } from './webComp/webCompRenderer'
 
 const isDev = process.env.NODE_ENV === 'development'
-let mainWindow: BrowserWindow | null = null
+let mainWindow:   BrowserWindow | null = null
+let splashWindow: BrowserWindow | null = null
+let devLogWindow: BrowserWindow | null = null
 let pyProcess: ChildProcess  | null = null
 let detectedPort:  number | null = null    
 let appQuitting  = false
 let pyKilledByUs = false
+let mainReady    = false    
+let backendReady = false   
+ 
+function getResourcesRoot(): string {
+  return app.isPackaged
+    ? process.resourcesPath
+    : path.join(__dirname, '..')
+}
+
+// Splash helpers  
+type SplashCls = 'ok' | 'warn' | 'err' | undefined
+
+function sendSplash(text: string, progress?: number, cls?: SplashCls, done = false) {
+  console.log('[Splash]', text)
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.webContents.send('splash:status', { text, progress, cls, done })
+  }
+}
+
+function closeSplashAndShowMain() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  
+  setTimeout(() => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.close()
+      splashWindow = null
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  }, 700)
+}
+
+function tryRevealMain() {
+  if (mainReady && backendReady) {
+    sendSplash('Launching editor…', 98, 'ok', true)
+    closeSplashAndShowMain()
+  }
+}
+
+// Dev log window — available in ALL builds for debugging
+function createDevLogWindow(): void {
+  if (devLogWindow && !devLogWindow.isDestroyed()) {
+    devLogWindow.focus()
+    return
+  }
+  devLogWindow = new BrowserWindow({
+    width: 720,
+    height: 700,
+    title: 'Fade — Backend Logs',
+    frame: false,
+    backgroundColor: '#0d0d0f',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  })
+  const logPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'app', 'dist-electron', 'devlog.html')
+    : path.join(__dirname, 'devlog.html')
+  devLogWindow.loadFile(logPath)
+  devLogWindow.on('closed', () => { devLogWindow = null })
+  devLogWindow.once('ready-to-show', () => devLogWindow?.show())
+}
+
+function sendDevLog(type: 'py' | 'sys', text: string) {
+  if (!devLogWindow || devLogWindow.isDestroyed()) return
+  devLogWindow.webContents.send('devlog', { type, text })
+}
+
+function sendDevStatus(text: string, alive: boolean) {
+  if (!devLogWindow || devLogWindow.isDestroyed()) return
+  devLogWindow.webContents.send('devlog', { type: 'status', text, alive })
+}
 
  // Loaded lazily  
 type RenderEngine = {
@@ -36,24 +114,16 @@ type RenderEngine = {
 
 let renderEngine: RenderEngine | null = null
 
-// ── JS-side mirror of g_previewScale ───────────────────────────────────────
-// The C++ setPreviewScale returns the NEW value (after clamping), not the old
-// one. So we track it here in JS, defaulting to 0.5 (C++ default) and updating
-// it on every call through main.ts. The export loop reads this to know what
-// scale to restore after export finishes.
-let currentPreviewScale = 0.5 // mirrors g_previewScale in RenderEngineAddon.cpp
+ 
+let currentPreviewScale = 0.5  
 
-// ── Viewport frame-ready callback ───────────────────────────────────────
-// Stored so the export loop's finally block can restore it after hijacking it
-// to drive frame-by-frame rendering. Without this the viewport goes dark after
-// export and the user has to restart.
+ 
 const viewportFrameReadyCb = (frameNum: number) => {
   mainWindow?.webContents.send('render:frame-ready', frameNum)
 }
 
-// ── Detect best H.264 encoder available in the bundled FFmpeg ────────────────
-// The bundled build has --disable-libx264, so we must pick an alternative.
-// Priority: h264_nvenc (NVIDIA) → h264_amf (AMD) → h264_mf (Win MediaFoundation)
+ 
+ 
 let _detectedCodec: string | null = null
 function detectH264Codec(ffmpegExe: string): string {
   if (_detectedCodec) return _detectedCodec
@@ -71,35 +141,33 @@ function detectH264Codec(ffmpegExe: string): string {
   } catch (e) {
     console.warn('[RenderEngine] Could not probe encoders:', e)
   }
-  // Absolute fallback: h264_mf is always present on Win10+
+ 
   _detectedCodec = 'h264_mf'
   return _detectedCodec
 }
 
 function loadRenderEngine(): void {
-  const addonPath = path.join(__dirname, '..', 'renderer', 'build', 'Release', 'render_engine.node')
+  const resRoot     = getResourcesRoot()
+  const addonPath   = path.join(resRoot, 'renderer', 'build', 'Release', 'render_engine.node')
+  const releaseBinDir = path.join(resRoot, 'renderer', 'build', 'Release')
+
   if (!fs.existsSync(addonPath)) {
     console.log('[RenderEngine] Native addon not found at', addonPath, '— using Python compositor fallback')
     return
   }
 
-  // ── Ensure bundled FFmpeg is on PATH so the C++ addon's _popen("ffmpeg ...") works
-  // Electron's process inherits a stripped PATH that often excludes user-installed tools.
-  // The C++ encoder calls _popen("ffmpeg -y ... pipe:0 output.mp4", "wb") — if `ffmpeg`
-  // isn't found, cmd.exe starts fine (so _popen returns non-NULL) but exits immediately,
-  // all fwrite() calls go to a dead pipe, and the file is never created.
-  const releaseBinDir = path.join(__dirname, '..', 'renderer', 'build', 'Release')
+ 
   const currentPath = process.env.PATH ?? ''
   if (!currentPath.includes(releaseBinDir)) {
     process.env.PATH = releaseBinDir + path.delimiter + currentPath
     console.log('[RenderEngine] Prepended FFmpeg dir to PATH:', releaseBinDir)
   }
 
-  // Probe available encoders now so it's ready before the first export
+ 
   detectH264Codec(path.join(releaseBinDir, 'ffmpeg.exe'))
 
   try {
-    // eslint-disable-next-line  
+    
     renderEngine = require(addonPath) as RenderEngine
     console.log('[RenderEngine] Native addon loaded successfully')
   } catch (e) {
@@ -110,19 +178,30 @@ function loadRenderEngine(): void {
 
 function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps = 30): void {
   if (!renderEngine) return
-
-  // SkSL shaders live at 
-  const projectRoot = path.join(__dirname, '..')
-  const effectsDir  = path.join(projectRoot, 'backend', 'timeline', 'effects', 'sksl')
-                          .replace(/\\/g, '/')   
-
+  const pw = Math.round(width * currentPreviewScale)
+  const ph = Math.round(height * currentPreviewScale)
+  console.log(`[RenderEngine] Init at preview res: ${pw}x${ph} (full: ${width}x${height}, scale: ${currentPreviewScale})`)
+  const effectsDir = path.join(getResourcesRoot(), 'backend', 'timeline', 'effects', 'sksl').replace(/\\/g, '/')
   try {
-    renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
+    renderEngine.initialize(pw, ph, fps, effectsDir, pythonPort)
     renderEngine.setFrameReadyCallback(viewportFrameReadyCb)
     console.log('[RenderEngine] Initialized — effectsDir:', effectsDir, 'port:', pythonPort)
   } catch (e) {
     console.error('[RenderEngine] Initialize error:', e)
     renderEngine = null
+  }
+}
+
+ 
+function initRenderEngineFullRes(pythonPort: number, width = 1920, height = 1080, fps = 30): void {
+  if (!renderEngine) return
+  const effectsDir = path.join(getResourcesRoot(), 'backend', 'timeline', 'effects', 'sksl').replace(/\\/g, '/')
+  try {
+    renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
+    renderEngine.setFrameReadyCallback(viewportFrameReadyCb)
+    console.log(`[RenderEngine] Full-res init: ${width}x${height} for export`)
+  } catch (e) {
+    console.error('[RenderEngine] Full-res init error:', e)
   }
 }
 
@@ -142,49 +221,82 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 function sendPort(port: number) {
   detectedPort = port
+  backendReady = true
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('backend:port', port)
   }
-  // Initialize native render engine once Python is ready
+ 
+  sendSplash('Loading render engine…', 80)
   initRenderEngine(port)
+  sendSplash('Render engine ready', 88, 'ok')
+  tryRevealMain()
 }
 
-// Python backend  
+// Python backend
 function startPython(): void {
-  const projectRoot = path.join(__dirname, '..')
-  const venvPython  = path.join(projectRoot, '.venv', 'Scripts', 'python.exe')
-  const fs = require('fs')
-  const pythonExe = fs.existsSync(venvPython) ? venvPython : 'python'
+  const resRoot = getResourcesRoot()
+  let pythonExe: string
+  let pythonArgs: string[]
+  let pythonCwd: string
 
-  pyProcess = spawn(pythonExe, ['-m', 'backend.main'], {
-    cwd:   projectRoot,
+  if (app.isPackaged) {
+    // Packaged: PyInstaller bundle is in resources/backend/
+    pythonExe  = path.join(resRoot, 'backend', 'backend.exe')
+    pythonArgs = []
+    pythonCwd  = path.join(resRoot, 'backend')
+  } else {
+    // Dev: use .venv
+    const venvPython = path.join(resRoot, '.venv', 'Scripts', 'python.exe')
+    pythonExe  = fs.existsSync(venvPython) ? venvPython : 'python'
+    pythonArgs = ['-m', 'backend.main']
+    pythonCwd  = resRoot
+  }
+
+  pyProcess = spawn(pythonExe, pythonArgs, {
+    cwd:   pythonCwd,
     stdio: 'pipe',
     env: {
       ...process.env,
-      PYTHONPATH: projectRoot + (process.env.PYTHONPATH ? ';' + process.env.PYTHONPATH : ''),
+      PYTHONPATH: resRoot + (process.env.PYTHONPATH ? ';' + process.env.PYTHONPATH : ''),
       OPENBLAS_NUM_THREADS: '1',
       OMP_NUM_THREADS: '1',
       MKL_NUM_THREADS: '1',
+      FADE_RESOURCES_PATH: resRoot,
     },
   })
 
   pyProcess.stdout?.on('data', (d: Buffer) => {
     const line = d.toString().trim()
     console.log('[PY]', line)
+    sendDevLog('py', line)
     const m = line.match(/starting on port (\d+)/)
-    if (m) sendPort(parseInt(m[1], 10))
+    if (m) {
+      sendSplash('Backend ready on port ' + m[1], 70, 'ok')
+      sendDevStatus('Python: ready on port ' + m[1], true)
+      sendPort(parseInt(m[1], 10))
+    } else if (line.length > 0 && line.length < 120) {
+       
+      sendSplash(line, undefined, undefined)
+    }
   })
 
   pyProcess.stderr?.on('data', (d: Buffer) => {
     const msg = d.toString().trim()
     if (!msg.includes('Watching for file changes') && !msg.includes('WARNING')) {
       console.error('[PY ERR]', msg)
+      sendDevLog('py', msg)
+      // Only surface real errors to splash
+      if (msg.includes('Error') || msg.includes('error')) {
+        sendSplash(msg.slice(0, 100), undefined, 'err')
+      }
     }
   })
 
   pyProcess.on('close', (code: number | null) => {
     const wasIntentional = pyKilledByUs || appQuitting
     console.log('[PY] exited — code:', code, '| intentional:', wasIntentional)
+    sendDevLog('sys', `Python exited (code ${code}) | intentional: ${wasIntentional}`)
+    sendDevStatus(`Python: exited (code ${code})`, false)
     pyKilledByUs  = false
     detectedPort  = null    
     if (!wasIntentional && code !== 0) {
@@ -196,8 +308,80 @@ function startPython(): void {
   console.log('[PY] started — pid:', pyProcess.pid, '| python:', pythonExe)
 }
 
-// Window  
+// ── Graceful shutdown ──────────────────────────────────────────────────────────
+// Kills the FULL process tree (backend.exe + all multiprocessing worker children).
+// On Windows a plain .kill() only signals the top-level process; child workers
+// created via multiprocessing.Process survive as orphans.
+function killPythonTree(): void {
+  const { execSync } = require('child_process') as typeof import('child_process')
+  const pid = pyProcess?.pid
 
+  if (process.platform === 'win32') {
+    // 1. Kill the tracked process tree by PID (covers current session)
+    if (pid) {
+      console.log(`[Cleanup] taskkill /F /T /PID ${pid}`)
+      try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 }) } catch { /* already dead */ }
+    }
+    // 2. Sweep ALL backend.exe processes by name — catches any orphans from
+    //    crashed restarts or processes whose PID we lost track of.
+    try { execSync('taskkill /F /IM backend.exe /T', { stdio: 'ignore', timeout: 5000 }) } catch { /* none running */ }
+  } else {
+    // Unix: kill entire process group
+    if (pid) {
+      try { process.kill(-pid, 'SIGKILL') } catch { /* ignore */ }
+    }
+  }
+
+  pyProcess = null
+}
+
+function doCleanup(): void {
+  if (appQuitting) return   // idempotent — only run once
+  appQuitting  = true
+  pyKilledByUs = true
+  console.log('[Cleanup] Starting graceful shutdown…')
+
+  // Pause render engine first so no more callbacks fire
+  try { renderEngine?.pause() } catch { /* ignore */ }
+
+  // Destroy all WebComp renderer windows
+  try { destroyAll() } catch { /* ignore */ }
+
+  // Close auxiliary windows so window-all-closed fires reliably
+  try { if (devLogWindow  && !devLogWindow.isDestroyed())  { devLogWindow.close();  devLogWindow  = null } } catch { /* ignore */ }
+  try { if (splashWindow  && !splashWindow.isDestroyed())  { splashWindow.close();  splashWindow  = null } } catch { /* ignore */ }
+
+  // Kill the full Python process tree
+  killPythonTree()
+  console.log('[Cleanup] Done')
+}
+
+//   Splash window  
+function createSplash(): void {
+  splashWindow = new BrowserWindow({
+    width: 460,
+    height: 380,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  })
+  const splashPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'app', 'dist-electron', 'splash.html')
+    : path.join(__dirname, 'splash.html')
+  splashWindow.loadFile(splashPath)
+  splashWindow.once('ready-to-show', () => splashWindow?.show())
+}
+
+//   Main window  
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -205,6 +389,7 @@ function createWindow(): void {
     minWidth: 1100,
     minHeight: 700,
     frame: false,
+    show: false,   
     backgroundColor: '#0d0d0f',
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
@@ -221,16 +406,28 @@ function createWindow(): void {
   }
 
   mainWindow.on('close', () => {
-     
-    try { renderEngine?.pause() } catch (_) {}
+    doCleanup()
   })
 
   mainWindow.webContents.on('did-finish-load', () => {
+    mainReady = true
+    sendSplash('UI loaded', 90, 'ok')
     if (detectedPort !== null) {
       mainWindow?.webContents.send('backend:port', detectedPort)
       console.log('[Electron] (re-)sent backend:port', detectedPort, 'after did-finish-load')
     }
+    tryRevealMain()
   })
+
+   
+  setTimeout(() => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      sendSplash('Timeout — showing app anyway', undefined, 'warn')
+      mainReady = true
+      backendReady = true
+      tryRevealMain()
+    }
+  }, 30_000)
 }
 
 // IPC  
@@ -240,6 +437,13 @@ ipcMain.on('window:maximize', () => {
   mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize()
 })
 ipcMain.on('window:close', () => mainWindow?.close())
+ipcMain.on('devlog:toggle', () => {
+  if (devLogWindow && !devLogWindow.isDestroyed()) {
+    devLogWindow.close()
+  } else {
+    createDevLogWindow()
+  }
+})
 
 ipcMain.handle('backend:get-port', () => detectedPort)
 
@@ -250,7 +454,7 @@ ipcMain.on('render:pause', () => renderEngine?.pause())
 ipcMain.handle('render:get-buffer', () => renderEngine?.getSharedBuffer() ?? null)
 ipcMain.handle('render:get-stats',  () => renderEngine?.getStats() ?? null)
 ipcMain.handle('render:is-native',  () => renderEngine !== null)
-// Keep JS scale tracker in sync when the renderer process sets preview scale
+ 
 ipcMain.on('render:set-preview-scale', (_, scale: number) => {
   if (renderEngine) {
     currentPreviewScale = renderEngine.setPreviewScale(scale)
@@ -268,7 +472,7 @@ ipcMain.on('export:start', async (_event, config) => {
     return
   }
 
-  // Resolve totalFrames from Python 
+   
   let totalFrames: number = config.totalFrames ?? 0
   if (!totalFrames && detectedPort) {
     try {
@@ -296,6 +500,12 @@ ipcMain.on('export:start', async (_event, config) => {
    
   renderEngine.pause()
 
+   
+  if (detectedPort) {
+    console.log('[Export] Re-initializing compositor at full 1920x1080 for export')
+    initRenderEngineFullRes(detectedPort, 1920, 1080, 30)
+  }
+
  
   const prevScale = currentPreviewScale  // save BEFORE setting
   currentPreviewScale = renderEngine.setPreviewScale(1.0)   
@@ -318,7 +528,7 @@ ipcMain.on('export:start', async (_event, config) => {
   await pyScaleReset
 
 
-  // Clips available to the export loop for just-in-time C++ cache pushes
+   
   interface WcExportClip {
     webcompId: string; startFrame: number; endFrame: number;
     mediaOffset: number; width: number; height: number;
@@ -359,7 +569,7 @@ ipcMain.on('export:start', async (_event, config) => {
         }>
         const assetMap = new Map(assetList.map(a => [a.assetId, a]))
 
-        // Populate hoisted wcExportClips so the export loop can do JIT pushes
+         
         for (const clip of clips) {
           const asset = assetMap.get(clip.webcompId)
           wcExportClips.push({
@@ -411,7 +621,7 @@ ipcMain.on('export:start', async (_event, config) => {
             if (rgba && renderEngine) {
               try {
                 ;(renderEngine as any).pushWebCompFrame(
-                  clip.webcompId, localFrame, rgba,   // localFrame = cache key the compositor uses
+                  clip.webcompId, localFrame, rgba,    
                   config.width ?? 1920, config.height ?? 1080
                 )
               } catch (e) {
@@ -441,7 +651,7 @@ ipcMain.on('export:start', async (_event, config) => {
   }
 
   
-  const releaseBinDir2 = path.join(__dirname, '..', 'renderer', 'build', 'Release')
+  const releaseBinDir2 = path.join(getResourcesRoot(), 'renderer', 'build', 'Release')
   const ffmpegExe = path.join(releaseBinDir2, 'ffmpeg.exe')
   const rawCodec = exportConfig.codec ?? 'h264_mf'
   const exportCodec = (rawCodec === 'auto' || rawCodec === '' || rawCodec === 'default') ? 'h264_mf' : rawCodec
@@ -459,14 +669,14 @@ ipcMain.on('export:start', async (_event, config) => {
   const cancelListener = () => { exportCancelled = true }
   ipcMain.once('export:cancel', cancelListener)
 
-  // Run the async export loop without blocking the IPC thread
+   
   ;(async () => {
     const { spawn: spawnProc } = require('child_process') as typeof import('child_process')
     const { width, height, fps } = exportConfig
 
     console.log(`[Export] Codec: ${exportCodec}  Bitrate: ${exportBr}  Size: ${width}x${height}  FPS: ${fps}`)
 
-    // Spawn FFmpeg reading rawvideo RGBA from stdin
+ 
     const ffArgs = [
       '-y',
       '-f', 'rawvideo', '-vcodec', 'rawvideo', '-pix_fmt', 'rgba',
@@ -481,12 +691,12 @@ ipcMain.on('export:start', async (_event, config) => {
 
     const ffProc = spawnProc(ffmpegExe, ffArgs, { stdio: ['pipe', 'ignore', 'pipe'] })
 
-    // Accumulate stderr so we can report on failure
+     
     let ffStderr = ''
     ffProc.stderr?.on('data', (d: Buffer) => {
       const line = d.toString()
       ffStderr += line
-      // Surface codec-level errors immediately
+       
       if (line.includes('Error') || line.includes('error') || line.includes('Invalid')) {
         console.warn('[Export][FFmpeg]', line.trim())
       }
@@ -522,21 +732,17 @@ ipcMain.on('export:start', async (_event, config) => {
         if (exportCancelled) { exportError = 'Cancelled'; break }
         if (ffExited) { exportError = `FFmpeg exited early (code ${ffExitCode}): ${ffStderr.slice(-400)}`; break }
 
-        // ── Just-in-time WebComp push ────────────────────────────────────
-        // Push each active clip's frame to the C++ cache RIGHT BEFORE seekFrame.
-        // This sidesteps the 1GB LRU eviction problem: Phase 0 already filled
-        // the per-instance JS cache (360 frames each), so captureFrame() is a
-        // fast memory read — no new Chromium round-trip needed.
+         
         for (const wcc of wcExportClips) {
           if (f >= wcc.startFrame && f < wcc.endFrame) {
             const localFrame = Math.max(0, (f - wcc.startFrame) + wcc.mediaOffset)
-            const rgba = await captureFrame(wcc.webcompId, localFrame) // JS-cache hit
+            const rgba = await captureFrame(wcc.webcompId, localFrame) 
             if (rgba && renderEngine) {
               try {
                 ;(renderEngine as any).pushWebCompFrame(
                   wcc.webcompId, localFrame, rgba, wcc.width, wcc.height
                 )
-              } catch { /* non-fatal — compositor continues without this frame */ }
+              } catch { }
             }
           }
         }
@@ -550,16 +756,16 @@ ipcMain.on('export:start', async (_event, config) => {
 
          
         const rawBuf = renderEngine.getSharedBuffer()
-        // The buffer may be preview-scaled; slice to exact frame size
+         
         const frameBytes = Buffer.from(rawBuf, 0, Math.min(frameByteSize, rawBuf.byteLength))
 
-        // Write to FFmpeg stdin; respect backpressure
+         
         const ok = ffProc.stdin!.write(frameBytes)
         if (!ok) {
           await new Promise<void>(r => ffProc.stdin!.once('drain', r))
         }
 
-        // Report progress every 10 frames or on the last frame
+         
         if (f % 10 === 0 || f === totalFrames - 1) {
           mainWindow?.webContents.send('export:progress', {
             frame: f + 1, total: totalFrames, done: false, error: ''
@@ -578,7 +784,9 @@ ipcMain.on('export:start', async (_event, config) => {
       if (prevScale !== 1.0) {
         currentPreviewScale = renderEngine.setPreviewScale(prevScale)
         console.log('[Export] Restored preview scale to', prevScale)
+         
         if (portSnapshot) {
+          initRenderEngine(portSnapshot, 1920, 1080, 30)
           const httpMod2 = require('http') as typeof import('http')
           const body2 = JSON.stringify({ scale: prevScale })
           const req2 = httpMod2.request(
@@ -691,7 +899,7 @@ ipcMain.on('export:start', async (_event, config) => {
               '-filter_complex', filterComplex,
               '-map', '0:v',
               '-map', '[aout]',
-              '-c:v', 'copy',      // video already encoded, just copy
+              '-c:v', 'copy',       
               '-c:a', 'aac',
               '-b:a', exportAudioBr,
               '-ar', String(exportAudioSR),
@@ -710,16 +918,16 @@ ipcMain.on('export:start', async (_event, config) => {
 
             if (muxExit === 0) {
               console.log('[Export][Audio] Mux complete:', exportConfig.outputPath)
-              // Remove temp video-only file
+               
               try { fs.unlinkSync(tmpVideoPath) } catch { /**/ }
             } else {
               exportError = `Audio mux failed (${muxExit}): ${muxStderr.slice(-400)}`
               console.error('[Export][Audio] Mux failed:', exportError)
-              // Restore video-only so user isn't left with nothing
+               
               try { if (!fs.existsSync(exportConfig.outputPath)) fs.renameSync(tmpVideoPath, exportConfig.outputPath) } catch { /**/ }
             }
           } else {
-            // No valid audio clips after filtering; restore video-only
+             
             fs.renameSync(tmpVideoPath, exportConfig.outputPath)
             console.log('[Export][Audio] No audio clips to mux, video-only kept')
           }
@@ -728,7 +936,7 @@ ipcMain.on('export:start', async (_event, config) => {
         }
       } catch (audioErr) {
         console.warn('[Export][Audio] Audio mux error (non-fatal):', audioErr)
-        // Audio mux failing is non-fatal; user gets video-only
+         
       }
     } else if (exitCode === 0 && !exportError) {
       console.log('[Export] Done (video only — no port for audio fetch):', exportConfig.outputPath)
@@ -742,7 +950,7 @@ ipcMain.on('export:start', async (_event, config) => {
       error: exportError
     })
 
-    // Clean up Python-side WebComp frame cache
+     
     if (portSnapshot) {
       httpModule.request(
         { hostname: '127.0.0.1', port: portSnapshot, path: '/export/webcomp-cache', method: 'DELETE' },
@@ -803,15 +1011,10 @@ ipcMain.on('webcomp:destroy', (_, webcompId: string) => {
 })
 
 
-// ─── WebComp push-to-native ───────────────────────────────────────────────────
-// IMPORTANT: the C++ compositor looks up WebComp frames via:
-//   tryGetCachedFrame(clip.file, clip.sourceFrame)
-// where clip.sourceFrame = (timelineFrame - clip.startFrame) + mediaOffset = localFrame.
-// Therefore we MUST cache by localFrame, NOT by timelineFrame.
-// Passing timelineFrame here was the original cache-key mismatch bug.
+ 
 ipcMain.handle('webcomp:push-to-native', async (
   _, webcompId: string, localFrame: number, width: number, height: number,
-  _timelineFrame?: number   // kept in IPC signature for compat; not used as cache key
+  _timelineFrame?: number   
 ) => {
   const rgba = await captureFrame(webcompId, localFrame)
   if (rgba && renderEngine) {
@@ -855,24 +1058,35 @@ ipcMain.handle('dialog:open', async (_event, opts) => {
   return result.canceled ? undefined : result.filePaths[0]
 })
 
-// Lifecycle  
+ 
 
 app.whenReady().then(() => {
-  loadRenderEngine()   // try to load native addon  
+  createSplash()
+  sendSplash('Initializing render engine…', 10)
+  loadRenderEngine()
+
+  sendSplash('Creating main window…', 20)
   createWindow()
+
+  // Dev log — auto-show in dev, available via Ctrl+Shift+L in production
+  createDevLogWindow()
+  if (isDev) {
+    sendDevLog('sys', 'Fade dev mode started')
+    sendDevLog('sys', 'Waiting for Python backend…')
+  } else {
+    sendDevLog('sys', 'Fade production build started')
+    sendDevLog('sys', 'Press Ctrl+Shift+L to toggle this log window')
+  }
+
+  sendSplash('Starting Python backend…', 30)
   startPython()
 })
 
 app.on('window-all-closed', () => {
-  appQuitting  = true
-  pyKilledByUs = true
-  pyProcess?.kill()
+  doCleanup()
   app.quit()
 })
 
 app.on('before-quit', () => {
-  appQuitting  = true
-  pyKilledByUs = true
-  destroyAll()  // Clean up all WebComp offscreen windows
-  pyProcess?.kill()
+  doCleanup()
 })

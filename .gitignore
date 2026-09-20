@@ -1,43 +1,105 @@
-# Node / Electron
-node_modules
-dist
-dist-electron
+# Dependencies
+node_modules/
+.venv/
+.venv_pkgs/
 
-# Python
-.venv
-*.pyc
-__pycache__
-
-# C++ build output
-renderer/build
-native/build
-
-# C++ precompiled dependencies  
-renderer/deps/skia/lib/
+# Build outputs
+dist/
+dist-electron/
+renderer/build/
 renderer/deps/ffmpeg/lib/
-renderer/deps/ffmpeg/bin/
+renderer/deps/skia/lib/
+backend/media/decoder/ffmpeg/
 
-# Large binary files
-*.lib
-*.dll
-*.dll.a
-*.pdb
-*.obj
-*.node
-*.pt
+# Production build output
+dist-app/
+pyinstaller-dist/
+pyinstaller-build/
 
-# Specific large files
-backend/ai/whisper_models/small.pt
+# Packaged builds & archives  
+ 
+Echo-win-x64/
+Fade-win-x64/
+*-win-x64/
+*-mac-x64/
+*-linux-x64/
 
-# Generated / scratch
-Fade_Architecture_Blueprint.pdf
-*.pdf
+# Split zip archives 
+*.zip.[0-9][0-9][0-9]
+*.zip.[0-9][0-9][0-9][0-9]
+
+# Single zip builds
+*.zip
+Echo-*.zip
+Fade-*.zip
+
+# Large compiled zips 
+Echo-win-x640*.zip
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Secrets / env
 .env
-.env.local
+.env.*
+!.env.example
 
-tools/ffmpeg/
+# Databases
+backend/chroma_db/
+*.db
+*.sqlite3
 
-Fade_Architecture_PPT_Notes.md
+# Test artefacts
+scratch/
+test.mp4
+test_*.txt
+test_render.*
+dummy.mp4
 
-# AI Models  
-AIModels/
+# Large binary / media
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.mp3
+*.wav
+
+# AI model weights & binaries
+AIModels/kokoro/
+AIModels/whisper/
+AIModels/SIH_Virality_Prototype/models/
+*.pkl
+*.onnx
+*.bin
+*.safetensors
+*.gguf
+*.pt
+*.pth
+
+# Native tools
+tools/
+
+# TypeScript build info
+tsconfig.node.tsbuildinfo
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# Misc
+virality.db
+*.bak

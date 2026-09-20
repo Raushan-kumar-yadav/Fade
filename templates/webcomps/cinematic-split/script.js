@@ -1,4 +1,4 @@
-// Cinematic Split — Fade WebComp Template
+﻿// Cinematic Split — Fade WebComp Template
 // Cormorant Garamond splits from center with a light-leak flash
 
 let p = Object.assign({
@@ -7,7 +7,7 @@ let p = Object.assign({
   eyebrow:    '2024 · OFFICIAL TRAILER',
   flashColor: '#ffffff',
   textColor:  '#e8dcc8',
-}, window.FADE_PARAMS || {});
+}, window.Fade_PARAMS || {});
 
 const scene     = document.getElementById('scene');
 const flash     = document.getElementById('flash');
@@ -91,7 +91,7 @@ window.addEventListener('fade:frame', (e) => {
   brackets.forEach(b => { b.style.opacity = bp * bpo; });
 });
 
-window.addEventListener('fade:params', (e) => {
+window.addEventListener('Fade:params', (e) => {
   Object.assign(p, e.detail);
   applyParams();
 });

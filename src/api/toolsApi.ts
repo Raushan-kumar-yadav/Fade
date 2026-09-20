@@ -1,6 +1,6 @@
- 
+﻿ 
 function port(): number {
-  return (window as any).__FADE_PORT__ ?? 8000;
+  return (window as any).__Fade_PORT__ ?? 8000;
 }
 
 const base = () => `http://127.0.0.1:${port()}`;

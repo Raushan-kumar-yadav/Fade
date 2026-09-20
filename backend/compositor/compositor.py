@@ -43,8 +43,8 @@ class Compositor:
         self.height = height
         self.fps = fps
 
-       
         self._surface: "skia.Surface | None" = None
+        self._imageCache: dict = {}
 
 
 
@@ -384,7 +384,7 @@ class Compositor:
 
         self._activeClipIds.clear()
         self._imageCache.clear()
-        self._surface = skia.Surface(self.width, self.height)
+        self._surface = self._makeSurface(self.width, self.height)
 
     #   Perf  
 

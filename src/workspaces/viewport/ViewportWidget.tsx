@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebCompSync } from './useWebCompSync';
 import {
   openPreviewSocket,
@@ -68,27 +68,27 @@ export default function ViewportWidget() {
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const loopActive = inPoint !== null && outPoint !== null;
 
-  // The canvas receives decoded  
+ 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<AudioEngine | null>(null);
 
-  // Local frame ref updated on every native frame event  
+   
   const frameNumRef = useRef<number>(0);
-  // Throttled React state update  
+ 
   const lastStateFrameRef = useRef<number>(-1);
 
-  // Native render engine 
+ 
   const [isNativeRender, setIsNativeRender] = useState(false);
   const nativeBufferRef = useRef<ArrayBuffer | null>(null);
   const nativeWidthRef  = useRef(1920);
   const nativeHeightRef = useRef(1080);
-  // Reactive canvas dimensions  
+   
   const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
 
-  // Sync WebComp offscreen windows and push frames into C++ cache
+   
   useWebCompSync();
 
-  // Check if native addon is available and cache the SharedArrayBuffer
+   
   useEffect(() => {
     const api = (window as any).electronAPI;
     if (!api?.isNativeRender) return;
@@ -101,13 +101,13 @@ export default function ViewportWidget() {
       if (stats) {
         nativeWidthRef.current  = stats.width;
         nativeHeightRef.current = stats.height;
-        // Drive canvas element size reactively so putImageData fills it correctly
+         
         setNativeDims({ w: stats.width, h: stats.height });
       }
     });
   }, []);
 
-  // Subscribe to frame-ready events  
+   
   useEffect(() => {
     if (!isNativeRender) return;
     const api = (window as any).electronAPI;
@@ -117,24 +117,35 @@ export default function ViewportWidget() {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      // Get fresh pixel buffer from native compositor 
+       
       const buf: ArrayBuffer | null = await api.getRenderBuffer();
       if (!buf) return;
 
-      const w = nativeWidthRef.current;
-      const h = nativeHeightRef.current;
+       
+      const stats = await api.getRenderStats();
+      const w = stats?.width  ?? nativeWidthRef.current;
+      const h = stats?.height ?? nativeHeightRef.current;
+      const needed = w * h * 4;
+      if (buf.byteLength < needed) return;
+
       if (canvas.width !== w)  canvas.width  = w;
       if (canvas.height !== h) canvas.height = h;
+      nativeWidthRef.current  = w;
+      nativeHeightRef.current = h;
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const rgba = new Uint8ClampedArray(buf, 0, w * h * 4);
+      const rgba = new Uint8ClampedArray(buf, 0, needed);
       ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
 
       frameNumRef.current = frameNum;
       window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
       audioRef.current?.tick(frameNum);
+      // Sync audio clock to the authoritative C++ frame number.
+      // tick() handles late-loaded buffers; syncToFrame() corrects drift
+      // when the two independent clocks (AudioContext vs C++ compositor) diverge.
+      audioRef.current?.syncToFrame(frameNum);
 
       if (frameNum !== lastStateFrameRef.current) {
         lastStateFrameRef.current = frameNum;
@@ -166,9 +177,9 @@ export default function ViewportWidget() {
       } catch { /* backend not ready */ }
     }
 
-    // Poll for valid port
+     
     const portPollId = setInterval(() => {
-      const p: number = (window as any).__FADE_PORT__ ?? 0
+      const p: number = (window as any).__Fade_PORT__ ?? 0
       if (p && p !== currentPort) {
         currentPort = p
         engine.updatePort(p)
@@ -178,69 +189,105 @@ export default function ViewportWidget() {
       }
     }, 1000)
 
-    // Also react to track changes
+    // React to track changes
     const onTracksChanged = () => loadClips(currentPort)
-    window.addEventListener('fade:tracks-changed', onTracksChanged)
-    window.addEventListener('fade:render-now', onTracksChanged)
+    window.addEventListener('Fade:tracks-changed', onTracksChanged)
+    window.addEventListener('Fade:render-now', onTracksChanged)
+
+    
+    const onAudioSeek = (e: Event) => {
+      const frame = (e as CustomEvent<number>).detail
+      engine.seek(frame)
+    }
+    const onAudioPause = () => {
+      engine.pause()
+    }
+    window.addEventListener('Fade:audio-seek', onAudioSeek)
+    window.addEventListener('Fade:audio-pause', onAudioPause)
 
     return () => {
       clearInterval(portPollId)
-      window.removeEventListener('fade:tracks-changed', onTracksChanged)
-      window.removeEventListener('fade:render-now', onTracksChanged)
+      window.removeEventListener('Fade:tracks-changed', onTracksChanged)
+      window.removeEventListener('Fade:render-now', onTracksChanged)
+      window.removeEventListener('Fade:audio-seek', onAudioSeek)
+      window.removeEventListener('Fade:audio-pause', onAudioPause)
       engine.destroy()
       audioRef.current = null
     }
   }, [])   
 
-  //   Poll playback state 
+  // ── Playback state: SSE push instead of 200ms poll ──────────────────────────
+  // The old setInterval hit /playback/state every 200ms, giving up to 200ms of
+  // stale isPlaying / fps / totalFrames state. SSE events from the backend are
+  // pushed instantly on play/pause/seek so the UI is always up-to-date.
   useEffect(() => {
-    let id: ReturnType<typeof setInterval> | null = null;
+    let es: EventSource | null = null;
+    let fallbackId: ReturnType<typeof setInterval> | null = null;
 
-    function startPolling(port: number) {
-      id = setInterval(async () => {
+    function startSSE(port: number) {
+      es = new EventSource(`http://127.0.0.1:${port}/events`);
+
+      es.addEventListener('playback', (ev: MessageEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.playing !== undefined) setIsPlaying(data.playing);
+          if (data.fps     !== undefined) setFps(data.fps);
+          if (data.totalFrames !== undefined) setTotalFrames(data.totalFrames);
+          if (data.speed   !== undefined) setSpeed(data.speed);
+          if (data.inPoint !== undefined) setInPoint(data.inPoint);
+          if (data.outPoint!== undefined) setOutPoint(data.outPoint);
+        } catch { /* malformed payload */ }
+      });
+
+      // Fallback: if SSE is not delivering events (backend too old / network blip)
+      // keep a slow 2-second poll as a safety net.
+      fallbackId = setInterval(async () => {
         try {
           const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
           if (!r.ok) return;
           const data = await r.json();
-           
           setIsPlaying(data.playing);
           setFps(data.fps);
           setTotalFrames(data.totalFrames ?? 1800);
-          if (data.speed !== undefined) setSpeed(data.speed);
+          if (data.speed    !== undefined) setSpeed(data.speed);
           if (data.inPoint  !== undefined) setInPoint(data.inPoint);
           if (data.outPoint !== undefined) setOutPoint(data.outPoint);
         } catch { /* backend restarting */ }
-      }, 200);
+      }, 2000); // 2 s — safety net only, SSE handles real-time updates
     }
 
-    const knownPort: number | null = (window as any).__FADE_PORT__;
+    const knownPort: number | null = (window as any).__Fade_PORT__;
     if (knownPort) {
-      startPolling(knownPort);
+      startSSE(knownPort);
     } else {
-      const handler = (e: Event) => startPolling((e as CustomEvent<number>).detail);
-      window.addEventListener('fade:port', handler, { once: true });
-      return () => { window.removeEventListener('fade:port', handler); };
+      const handler = (e: Event) => startSSE((e as CustomEvent<number>).detail);
+      window.addEventListener('Fade:port', handler, { once: true });
+      return () => { window.removeEventListener('Fade:port', handler); };
     }
 
-    return () => { if (id) clearInterval(id); };
+    return () => {
+      es?.close();
+      if (fallbackId) clearInterval(fallbackId);
+    };
   }, []);
 
-  // Re-render current frame when inspector changes a param
+ 
   useEffect(() => {
-    const api = (window as any).electronAPI;
     const handler = () => {
       const f = frameNumRef.current;
+      // engine.seek() notifies C++ compositor — renderSeek IPC not needed here.
       playbackSeek(f).catch(() => {});
-      if (isNativeRender) api?.renderSeek(f);
     };
-    window.addEventListener('fade:render-now', handler);
-    return () => window.removeEventListener('fade:render-now', handler);
-  }, [isNativeRender]);
+    window.addEventListener('Fade:render-now', handler);
+    return () => window.removeEventListener('Fade:render-now', handler);
+  }, []);
 
   //   Controls  
 
   const togglePlay = useCallback(async () => {
     const api = (window as any).electronAPI;
+ 
+    const liveFrame = frameNumRef.current ?? currentFrame;
     if (isPlaying) {
       await playbackPause();
       if (isNativeRender) api?.renderPause();
@@ -249,17 +296,23 @@ export default function ViewportWidget() {
     } else {
       await playbackPlay();
       if (isNativeRender) api?.renderPlay();
-      audioRef.current?.play(currentFrame);
+      audioRef.current?.play(liveFrame);
       setIsPlaying(true);
     }
   }, [isPlaying, currentFrame, isNativeRender]);
 
   const stepFrame = useCallback(async (dir: 1 | -1) => {
     const api = (window as any).electronAPI;
-    if (isPlaying) { await playbackPause(); if (isNativeRender) api?.renderPause(); audioRef.current?.pause(); setIsPlaying(false); }
+    if (isPlaying) {
+      await playbackPause();
+      if (isNativeRender) api?.renderPause();
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    }
     const next = Math.max(0, Math.min(totalFrames - 1, currentFrame + dir));
+    // playbackSeek → engine.seek() already calls pipeline.notify_seek() which
+    // tells the C++ compositor — renderSeek IPC is redundant and causes a race.
     await playbackSeek(next);
-    if (isNativeRender) api?.renderSeek(next);
     audioRef.current?.seek(next);
     setCurrentFrame(next);
   }, [isPlaying, currentFrame, totalFrames, isNativeRender]);
@@ -267,9 +320,15 @@ export default function ViewportWidget() {
   const handleScrub = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const api = (window as any).electronAPI;
     const f = parseInt(e.target.value, 10);
-    if (isPlaying) { await playbackPause(); if (isNativeRender) api?.renderPause(); audioRef.current?.pause(); setIsPlaying(false); }
+    if (isPlaying) {
+      await playbackPause();
+      if (isNativeRender) api?.renderPause();
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    }
+    // playbackSeek → engine.seek() already calls pipeline.notify_seek() which
+    // tells the C++ compositor — separate renderSeek IPC causes a double-seek race.
     await playbackSeek(f);
-    if (isNativeRender) api?.renderSeek(f);
     audioRef.current?.seek(f);
     setCurrentFrame(f);
   }, [isPlaying, isNativeRender]);
@@ -316,7 +375,7 @@ export default function ViewportWidget() {
     const next = previewFormat === 'jpeg' ? 'png' : 'jpeg';
     setPreviewFormat(next);
     try {
-      const port = (window as any).__FADE_PORT__ ?? 8000;
+      const port = (window as any).__Fade_PORT__ ?? 8000;
       await fetch(`http://127.0.0.1:${port}/preview/format`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

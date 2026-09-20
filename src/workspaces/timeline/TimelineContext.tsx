@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   createContext,
   useContext,
   useReducer,
@@ -465,7 +465,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
   // ── Sync active comp to backend whenever it changes ──────────────────────
   // Also immediately fire a fetch so tracks show without waiting for the next poll tick
   React.useEffect(() => {
-    const port: number = (window as any).__FADE_PORT__ ?? 8000;
+    const port: number = (window as any).__Fade_PORT__ ?? 8000;
     const base = `http://127.0.0.1:${port}`;
     const compId = state.activeCompId ?? 'root';
 
@@ -524,7 +524,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
 
   // Sync multi-selection to backend so AI tools can query all selected clips
   useEffect(() => {
-    const port: number = (window as any).__FADE_PORT__ ?? 8000;
+    const port: number = (window as any).__Fade_PORT__ ?? 8000;
     const selectedIds = state.tracks
       .flatMap((t) => t.clips.filter((c) => c.isSelected).map((c) => c.id));
     fetch(`http://127.0.0.1:${port}/clips/select`, {
@@ -574,7 +574,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     function startSync(port: number) {
       // Listen for track changes from viewport tools
       const onTracksChanged = () => fetchAndSetTracks(port, true);
-      window.addEventListener("fade:tracks-changed", onTracksChanged);
+      window.addEventListener("Fade:tracks-changed", onTracksChanged);
 
       // Slow background refresh (tracks rarely change except on edits)
       const trackRefreshId = setInterval(() => {
@@ -597,20 +597,20 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       return () => {
         clearInterval(trackRefreshId);
         clearInterval(playbackId);
-        window.removeEventListener("fade:tracks-changed", onTracksChanged);
+        window.removeEventListener("Fade:tracks-changed", onTracksChanged);
       };
     }
 
     let cleanupSync: (() => void) | null = null;
 
-    const knownPort: number | null = (window as any).__FADE_PORT__;
+    const knownPort: number | null = (window as any).__Fade_PORT__;
     if (knownPort) {
       cleanupSync = startSync(knownPort);
     } else {
       const handler = (e: Event) => {
         cleanupSync = startSync((e as CustomEvent<number>).detail);
       };
-      window.addEventListener("fade:port", handler, { once: true });
+      window.addEventListener("Fade:port", handler, { once: true });
     }
 
     return () => {
