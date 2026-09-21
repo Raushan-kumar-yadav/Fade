@@ -282,8 +282,9 @@ function TimelineInner() {
   const onSeek = useCallback(
     (frame: number) => {
       dispatch({ type: 'SEEK', frame });
-      // engine.seek() already notifies the C++ compositor via pipeline.notify_seek().
-      // Chain audio-seek after HTTP ack so audio and video stay in lockstep.
+      // Sync both the Python backend and the C++ native render engine so
+      // that hitting play immediately after seek starts from the right frame.
+      (window as any).electronAPI?.renderSeek?.(frame);
       playbackSeek(frame)
         .then(() => {
           window.dispatchEvent(new CustomEvent('fade:audio-seek', { detail: frame }));

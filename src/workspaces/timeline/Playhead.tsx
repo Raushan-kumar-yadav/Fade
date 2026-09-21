@@ -36,9 +36,9 @@ const Playhead = memo(function Playhead({ scrollLeft, contentLeft }: Props) {
       if (newFrame !== lastSeekFrame.current) {
         lastSeekFrame.current = newFrame;
         dispatch({ type: 'SEEK', frame: newFrame });
-        
-        
+        // Sync both the Python backend and the C++ native render engine
         playbackSeek(newFrame).catch(() => {});
+        (window as any).electronAPI?.renderSeek?.(newFrame);
       }
     };
     const onUp = () => {
@@ -46,12 +46,14 @@ const Playhead = memo(function Playhead({ scrollLeft, contentLeft }: Props) {
       window.removeEventListener('mouseup', onUp);
       
       const finalFrame = lastSeekFrame.current >= 0 ? lastSeekFrame.current : startFrame;
+      // Ensure both the Python backend AND the C++ native render engine are
+      // at the correct position before the user can hit play.
+      (window as any).electronAPI?.renderSeek?.(finalFrame);
       playbackSeek(finalFrame)
         .then(() => {
           window.dispatchEvent(new CustomEvent('fade:audio-seek', { detail: finalFrame }));
         })
         .catch(() => {
-           
           window.dispatchEvent(new CustomEvent('fade:audio-seek', { detail: finalFrame }));
         });
     };
