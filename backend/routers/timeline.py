@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -625,7 +625,7 @@ async def createWebcomp(body: dict):
     css_code = body.get("css", "")      # agent styles           
     html_body = body.get("html_body", "") # inner DOM snippet only   
     project_dir  = engine.project.filePath or ""
-    project_root = os.path.dirname(project_dir) if project_dir else str(Path.home() / ".Fade")
+    project_root = os.path.dirname(project_dir) if project_dir else str(Path.home() / ".fade")
 
     safe_name = name.lower().replace(" ", "-").replace("/", "-")
     webcomps_root = os.path.join(project_root, "webcomps")

@@ -1,11 +1,11 @@
-﻿/**
- * fade-react.js  —  Fade WebComp React Runtime  (v1.0)
+/**
+ * fade-react.js  �  Echo WebComp React Runtime  (v1.0)
  *
  * Provides Remotion-compatible hooks for writing React-based WebComp templates.
  * Load AFTER react.production.min.js and react-dom.production.min.js.
  *
  * How it works
- * ─────────────
+ * -------------
  * Electron injects per-frame globals via executeJavaScript():
  *   window.FADE_FRAME, window.FADE_TIME, window.FADE_FPS,
  *   window.FADE_WIDTH, window.FADE_HEIGHT, window.FADE_PARAMS
@@ -15,7 +15,7 @@
  * This runtime subscribes to those events and re-renders React components.
  *
  * Usage
- * ─────
+ * -----
  * <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
  * <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
  * <script src="../../_runtime/fade-react.js"></script>
@@ -29,10 +29,10 @@
   const React    = global.React;
   const ReactDOM = global.ReactDOM;
   if (!React || !ReactDOM) {
-    console.error('[fade-react] React and ReactDOM must be loaded first'); return;
+    console.error('[echo-react] React and ReactDOM must be loaded first'); return;
   }
 
-  // ── Internal state ───────────────────────────────────────────────────────
+  // -- Internal state -------------------------------------------------------
   let _frame  = global.FADE_FRAME  ?? 0;
   let _fps    = global.FADE_FPS    ?? 30;
   let _width  = global.FADE_WIDTH  ?? 1920;
@@ -53,10 +53,10 @@
     _notify();
   });
 
-  // ── VideoContext ─────────────────────────────────────────────────────────
+  // -- VideoContext ---------------------------------------------------------
   const VideoContext = React.createContext({ frame:0, fps:30, width:1920, height:1080, durationFrames:150, params:{} });
 
-  // ── <FadeComposition> ────────────────────────────────────────────────────
+  // -- <FadeComposition> ----------------------------------------------------
   function FadeComposition({ durationFrames, children }) {
     const dur = durationFrames ?? global.FADE_DURATION ?? 150;
     const [ctx, setCtx] = React.useState(() => ({
@@ -70,12 +70,12 @@
     return React.createElement(VideoContext.Provider, { value: ctx }, children);
   }
 
-  // ── Hooks ────────────────────────────────────────────────────────────────
+  // -- Hooks ----------------------------------------------------------------
   function useCurrentFrame()  { return React.useContext(VideoContext).frame; }
   function useVideoConfig()   { const { frame, params, ...c } = React.useContext(VideoContext); return c; }
   function useParams()        { return React.useContext(VideoContext).params; }
 
-  // ── interpolate ─────────────────────────────────────────────────────────
+  // -- interpolate ---------------------------------------------------------
   function interpolate(value, inputRange, outputRange, options = {}) {
     const [inMin, inMax] = inputRange;
     const [outMin, outMax] = outputRange;
@@ -86,7 +86,7 @@
     return outMin + easedT * (outMax - outMin);
   }
 
-  // ── spring ───────────────────────────────────────────────────────────────
+  // -- spring ---------------------------------------------------------------
   function spring({ frame = 0, fps = 30, config = {}, delay = 0, from = 0, to = 1 } = {}) {
     const { mass = 1, damping = 10, stiffness = 100 } = config;
     const f = Math.max(0, frame - delay);
@@ -102,7 +102,7 @@
     return from + (to - from) * Math.min(1, (f / fps) / 0.5);
   }
 
-  // ── Easing ───────────────────────────────────────────────────────────────
+  // -- Easing ---------------------------------------------------------------
   const Easing = {
     linear:  t => t,
     ease:    t => t < 0.5 ? 2*t*t : -1+(4-2*t)*t,
@@ -121,7 +121,7 @@
     },
   };
 
-  // ── mount helper ─────────────────────────────────────────────────────────
+  // -- mount helper ---------------------------------------------------------
   function mount(element, container) {
     const el = container ?? document.getElementById('root') ?? (() => {
       const d = document.createElement('div'); document.body.appendChild(d); return d;
@@ -131,7 +131,7 @@
     return root;
   }
 
-  // ── Export ───────────────────────────────────────────────────────────────
+  // -- Export ---------------------------------------------------------------
   global.FadeReact = {
     FadeComposition, VideoContext,
     useCurrentFrame, useVideoConfig, useParams,
@@ -139,5 +139,5 @@
     mount,
     React, ReactDOM,
   };
-  console.log('[fade-react] Runtime v1.0 ready');
+  console.log('[echo-react] Runtime v1.0 ready');
 })(window);

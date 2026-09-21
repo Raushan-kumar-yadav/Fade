@@ -1,4 +1,4 @@
-﻿import { BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
 
 interface WebCompInstance {
   win: BrowserWindow
@@ -10,7 +10,7 @@ interface WebCompInstance {
   ready: boolean
   readyPromise: Promise<void>
   // Serializes concurrent captures: only one executeJavaScript+capturePage
-  // runs at a time per instance, preventing Fade_FRAME races.
+  // runs at a time per instance, preventing FADE_FRAME races.
   captureQueue: Promise<Buffer | null>
 }
 
@@ -94,8 +94,8 @@ export async function captureFrame(
 
   // ── Serialize captures through a per-instance queue ─────────────────────
   // Only ONE executeJavaScript+capturePage sequence runs at a time.
-  // Without this, concurrent callers can race on window.Fade_FRAME:
-  //   caller A sets Fade_FRAME=5, caller B immediately sets Fade_FRAME=10,
+  // Without this, concurrent callers can race on window.FADE_FRAME:
+  //   caller A sets FADE_FRAME=5, caller B immediately sets FADE_FRAME=10,
   //   caller A's capturePage() gets frame 10 — silently wrong pixels.
   const doCapture = async (): Promise<Buffer | null> => {
     // Re-check cache inside the queue (another caller may have captured it)
@@ -105,11 +105,11 @@ export async function captureFrame(
     try {
       // Inject frame number into the page
       await inst.win.webContents.executeJavaScript(`
-        window.Fade_FRAME = ${frame};
-        window.Fade_TIME = ${frame / inst.fps};
-        window.Fade_FPS = ${inst.fps};
-        window.Fade_WIDTH = ${inst.width};
-        window.Fade_HEIGHT = ${inst.height};
+        window.FADE_FRAME = ${frame};
+        window.FADE_TIME = ${frame / inst.fps};
+        window.FADE_FPS = ${inst.fps};
+        window.FADE_WIDTH = ${inst.width};
+        window.FADE_HEIGHT = ${inst.height};
         window.dispatchEvent(new CustomEvent('fade:frame', {
           detail: { frame: ${frame}, time: ${frame / inst.fps} }
         }));
@@ -171,8 +171,8 @@ export function updateParams(
   /* Clear cached frames  */
   inst.frameCache.clear()
   inst.win.webContents.executeJavaScript(`
-    window.Fade_PARAMS = ${JSON.stringify(params)};
-    window.dispatchEvent(new CustomEvent('Fade:params', {
+    window.FADE_PARAMS = ${JSON.stringify(params)};
+    window.dispatchEvent(new CustomEvent('fade:params', {
       detail: ${JSON.stringify(params)}
     }));
   `).catch(() => {})

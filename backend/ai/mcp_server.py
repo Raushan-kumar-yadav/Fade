@@ -184,14 +184,14 @@ def _lc_to_mcp_tool(lc_tool) -> Tool | None:
 
 # ── Build tool list ────────────────────────────────────────────────────────────
 def _ping_fade() -> str:
-    """Check that the Fade Backend is reachable. Call this first if unsure the editor is running."""
+    """Check that the Fade backend is reachable. Call this first if unsure the editor is running."""
     import httpx
     try:
         r = httpx.get(f"http://127.0.0.1:{_BACKEND_PORT}/health", timeout=5)
         return f"pong — Fade is running on port {_BACKEND_PORT} (HTTP {r.status_code})"
     except Exception as exc:
         return (
-            f"Fade Backend NOT reachable at port {_BACKEND_PORT}. "
+            f"Fade backend NOT reachable at port {_BACKEND_PORT}. "
             f"Open Fade first, then retry. Detail: {exc}"
         )
 

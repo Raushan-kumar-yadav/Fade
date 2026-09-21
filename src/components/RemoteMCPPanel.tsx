@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import './RemoteMCPPanel.css';
 
 // Types
@@ -29,7 +29,7 @@ interface Status {
 // Helpers
 
 function getPort(): number {
-  return (window as any).__Fade_PORT__ ?? 8000;
+  return (window as any).__FADE_PORT__ ?? 8000;
 }
 function api(path: string) {
   return `http://127.0.0.1:${getPort()}${path}`;

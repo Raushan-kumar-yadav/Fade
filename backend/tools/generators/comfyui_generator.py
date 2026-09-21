@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import uuid
 import time
@@ -80,7 +80,7 @@ def _build_workflow(
         },
         "9": {
             "inputs": {
-                "filename_prefix": "Fade_gen",
+                "filename_prefix": "fade_gen",
                 "images": ["8", 0],
             },
             "class_type": "SaveImage",
@@ -210,7 +210,7 @@ class ComfyUIImageGenerator:
         import requests
 
         if not output_dir:
-            output_dir = str(Path.home() / ".Fade" / "generations")
+            output_dir = str(Path.home() / ".fade" / "generations")
         os.makedirs(output_dir, exist_ok=True)
 
         if not self._is_running():

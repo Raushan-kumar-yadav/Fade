@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import os
 import json
@@ -198,7 +198,7 @@ def _build_llm():
             temperature=0,
             api_key=key,
             base_url=base_url,
-            default_headers={"HTTP-Referer": "https://fade-editor.app", "X-Title": "Fade Editor"},
+            default_headers={"HTTP-Referer": "https://fade-editor.app", "X-Title": "Echo Editor"},
             timeout=60,
         )
 
@@ -579,7 +579,7 @@ TOOLS:
 - cancel_job(job_id)               â†’ abort any running/pending job
 
 VOICE QUICK REFERENCE (most popular first):
-  American English  : af_heartâ˜… (warm), af_bella, af_nicole, am_Fade, am_michael, am_puck
+  American English  : af_heartâ˜… (warm), af_bella, af_nicole, am_echo, am_michael, am_puck
   British English   : bf_emma, bf_alice, bm_george, bm_daniel
   Japanese          : jf_nezuko, jm_kumo
   Korean/Chinese    : zf_xiaoxiao, zm_yunxi

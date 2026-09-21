@@ -1,4 +1,4 @@
-﻿import React from 'react'
+import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
@@ -9,12 +9,12 @@ import './index.css'
 //  2. getPort() (pull)      — renderer polls main process after load (catches race)
 //  3. HTTP probe fallback   — plain browser dev without Electron
 
-;(window as any).__Fade_PORT__ = null
+;(window as any).__FADE_PORT__ = null
 
 function broadcastPort(port: number) {
-  if ((window as any).__Fade_PORT__ === port) return   // already known
-  ;(window as any).__Fade_PORT__ = port
-  window.dispatchEvent(new CustomEvent('Fade:port', { detail: port }))
+  if ((window as any).__FADE_PORT__ === port) return   // already known
+  ;(window as any).__FADE_PORT__ = port
+  window.dispatchEvent(new CustomEvent('fade:port', { detail: port }))
   console.log('[Fade] Backend port:', port)
 }
 
@@ -28,7 +28,7 @@ if (eAPI?.onBackendPort) {
   // Polls every 500 ms for up to 30 seconds (60 attempts)
   let pollAttempts = 0
   const poll = async () => {
-    if ((window as any).__Fade_PORT__) return   // already known via push
+    if ((window as any).__FADE_PORT__) return   // already known via push
     if (pollAttempts++ > 60) return             // give up after 30 s — push path still active
     try {
       const port: number | null = await eAPI.getPort()
@@ -42,7 +42,7 @@ if (eAPI?.onBackendPort) {
 
   // Layer 3 — recovery: if window gets focus and we still have no port, retry immediately
   window.addEventListener('focus', () => {
-    if (!(window as any).__Fade_PORT__) {
+    if (!(window as any).__FADE_PORT__) {
       pollAttempts = 0
       poll()
     }

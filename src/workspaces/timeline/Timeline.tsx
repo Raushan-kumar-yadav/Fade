@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   TimelineProvider,
   useTimeline,
@@ -286,10 +286,10 @@ function TimelineInner() {
       // Chain audio-seek after HTTP ack so audio and video stay in lockstep.
       playbackSeek(frame)
         .then(() => {
-          window.dispatchEvent(new CustomEvent('Fade:audio-seek', { detail: frame }));
+          window.dispatchEvent(new CustomEvent('fade:audio-seek', { detail: frame }));
         })
         .catch(() => {
-          window.dispatchEvent(new CustomEvent('Fade:audio-seek', { detail: frame }));
+          window.dispatchEvent(new CustomEvent('fade:audio-seek', { detail: frame }));
         });
     },
     [dispatch],

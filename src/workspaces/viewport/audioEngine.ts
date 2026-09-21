@@ -131,12 +131,11 @@ export class AudioEngine {
 
   seek(frame: number) {
     const ctx = this._getCtx()
-    // Always update the play-clock reference so that play() after a scrub
-    // starts from the correct position even when paused
+    
     this._playStartCtxTime = ctx.currentTime
     this._playStartFrame   = frame
     if (this._playing) {
-      // Reposition all active sources immediately
+       
       for (const [, node] of this.nodes) {
         this._stopSource(node)
         this._startSource(node, frame)
@@ -167,16 +166,14 @@ export class AudioEngine {
   tick(_frame: number) {
     if (!this._playing) return
     for (const [, node] of this.nodes) {
-      // If buffer just finished loading and source not started yet, start it
+       
       if (node.buffer && !node.source && !node.dead) {
         this._startSource(node, this._currentFrame())
       }
     }
   }
 
-  // syncToFrame() — called with the authoritative frame number from the C++ compositor.
-  // If the AudioContext-based clock has drifted by more than 1 frame, we rebase the
-  // play-clock reference so audio stays locked to video over long playback sessions.
+ 
   syncToFrame(authoritative: number) {
     if (!this._playing) return
     const drift = Math.abs(this._currentFrame() - authoritative)
@@ -184,7 +181,7 @@ export class AudioEngine {
       const ctx = this._getCtx()
       this._playStartCtxTime = ctx.currentTime
       this._playStartFrame   = authoritative
-      // Restart all active sources from the corrected position
+       
       for (const [, node] of this.nodes) {
         this._stopSource(node)
         this._startSource(node, authoritative)
@@ -227,8 +224,7 @@ export class AudioEngine {
     src.playbackRate.value = this._rate
     src.connect(node.gainNode)
 
-    // duration param to start() is in BUFFER-TIME (audio seconds), not real time.
-    // Do NOT divide by _rate here — playbackRate already handles real-time speed.
+ 
     const clipDurSec  = (clip.duration - Math.max(0, clipRelFrame)) / this.fps
     const bufRemainSec = node.buffer.duration - offsetSec
     const playDurSec  = Math.max(0, Math.min(clipDurSec, bufRemainSec))

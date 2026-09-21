@@ -33,7 +33,7 @@
 }
 @keyframes sp-slide-in {
   from { transform: translateY(-16px) scale(0.97); opacity: 0; }
-  to { transform: translateY(0) scale(1); opacity: 1; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 /*   Header    */

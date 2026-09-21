@@ -1,4 +1,4 @@
-/* ── Model detect row   */
+ /*   Model detect row   */
 
 .rmc-model-row { align-items: flex-start; }
 
@@ -53,7 +53,7 @@
   margin: 0 -2px;
 }
 
-/* ── Model detect row end ─────────────────────────────────────────────── */
+/*   Model detect row end   */
 
 
 .rmc-panel {
@@ -68,7 +68,7 @@
   overflow: hidden;
 }
 
-/* ── Header ──────────────────────────────────────────────────────────────── */
+/*   Header   */
 
 .rmc-header {
   display: flex;
@@ -117,7 +117,7 @@
   gap: 6px;
 }
 
-/* ── Buttons ─────────────────────────────────────────────────────────────── */
+/*   Buttons   */
 
 .rmc-btn {
   border: none;
@@ -184,7 +184,7 @@
   padding: 8px 14px;
 }
 
-/* ── Config panel ────────────────────────────────────────────────────────── */
+/*   Config panel   */
 
 .rmc-config {
   padding: 12px 14px;
@@ -260,7 +260,7 @@
   font-size: 10px;
 }
 
-/* ── Chat messages ───────────────────────────────────────────────────────── */
+/*   Chat messages   */
 
 .rmc-messages {
   flex: 1;
@@ -293,7 +293,7 @@
 .rmc-empty p { margin: 0; font-size: 13px; color: #4b5563; }
 .rmc-empty-sub { font-size: 12px !important; color: #374151 !important; }
 
-/* ── Message bubbles ─────────────────────────────────────────────────────── */
+/*   Message bubbles   */
 
 .rmc-msg {
   display: flex;
@@ -417,7 +417,7 @@
   50%       { opacity: 0; }
 }
 
-/* ── Input bar ───────────────────────────────────────────────────────────── */
+/*   Input bar   */
 
 .rmc-input-bar {
   display: flex;
@@ -458,7 +458,7 @@
 
 .rmc-input::placeholder { color: #374151; }
 
-/* ── Advanced section ───────────────────────────────────────────────────── */
+/*   Advanced section   */
 
 .rmc-advanced-toggle {
   background: transparent;

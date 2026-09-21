@@ -1,7 +1,7 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import './HomeWorkspace.css'
 
-const PORT = () => (window as any).__Fade_PORT__ ?? 8000
+const PORT = () => (window as any).__FADE_PORT__ ?? 8000
 const api = (path: string, opts?: RequestInit) =>
   fetch(`http://127.0.0.1:${PORT()}${path}`, opts)
 

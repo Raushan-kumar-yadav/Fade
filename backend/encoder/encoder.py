@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import os
 import sys
 import subprocess
@@ -139,7 +139,7 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
     out_dir = os.path.dirname(os.path.abspath(out))
     os.makedirs(out_dir, exist_ok=True)
 
-    tmp_video = os.path.join(out_dir, f".Fade_tmp_{uuid.uuid4().hex[:8]}.mp4")
+    tmp_video = os.path.join(out_dir, f".fade_tmp_{uuid.uuid4().hex[:8]}.mp4")
 
     # Build FFmpeg video encode command
     ffmpeg = _ffmpeg_exe()

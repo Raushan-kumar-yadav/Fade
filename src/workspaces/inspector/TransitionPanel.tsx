@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   transitionApi,
   type TransitionInfo,
@@ -6,7 +6,7 @@ import {
 } from '../../api/toolsApi';
 import './TransitionPanel.css';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// -- Types ---------------------------------------------------------------------
 
 interface Props {
   /** If provided, show the editor for an existing transition */
@@ -14,7 +14,7 @@ interface Props {
   onSelect?: (tr: TransitionInfo | null) => void;
 }
 
-// ── Catalog card ──────────────────────────────────────────────────────────────
+// -- Catalog card --------------------------------------------------------------
 
 function CatalogCard({ entry, onDragStart }: {
   entry: TransitionCatalogEntry;
@@ -33,7 +33,7 @@ function CatalogCard({ entry, onDragStart }: {
   );
 }
 
-// ── Main panel ────────────────────────────────────────────────────────────────
+// -- Main panel ----------------------------------------------------------------
 
 export default function TransitionPanel({ selected, onSelect }: Props) {
   const [catalog, setCatalog] = useState<TransitionCatalogEntry[]>([]);
@@ -53,7 +53,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
   }, [tr, catalog]);
 
   const onDragStart = useCallback((e: React.DragEvent, typeId: string) => {
-    e.dataTransfer.setData('application/Fade-transition', typeId);
+    e.dataTransfer.setData('application/fade-transition', typeId);
     e.dataTransfer.effectAllowed = 'copy';
   }, []);
 
@@ -62,7 +62,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
     const updated = await transitionApi.patch(tr.transId, { params: { [key]: val } });
     setTr(updated);
     onSelect?.(updated);
-    window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
+    window.dispatchEvent(new CustomEvent('fade:transition-changed'));
   }, [tr, onSelect]);
 
   const patchDuration = useCallback(async (dur: number) => {
@@ -70,7 +70,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
     const updated = await transitionApi.patch(tr.transId, { duration: Math.max(1, dur) });
     setTr(updated);
     onSelect?.(updated);
-    window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
+    window.dispatchEvent(new CustomEvent('fade:transition-changed'));
   }, [tr, onSelect]);
 
   const patchType = useCallback(async (typeId: string) => {
@@ -78,7 +78,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
     const updated = await transitionApi.patch(tr.transId, { typeId });
     setTr(updated);
     onSelect?.(updated);
-    window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
+    window.dispatchEvent(new CustomEvent('fade:transition-changed'));
   }, [tr, onSelect]);
 
   const removeTr = useCallback(async () => {
@@ -86,7 +86,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
     await transitionApi.remove(tr.transId);
     setTr(null);
     onSelect?.(null);
-    window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
+    window.dispatchEvent(new CustomEvent('fade:transition-changed'));
   }, [tr, onSelect]);
 
   // Group catalog by category
@@ -100,7 +100,7 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
       {/* Catalog */}
       <div className="tr-panel__catalog">
         <div className="tr-panel__catalog-title">Transitions</div>
-        <div className="tr-panel__hint">Drag onto clip junction • or click a junction on the timeline</div>
+        <div className="tr-panel__hint">Drag onto clip junction � or click a junction on the timeline</div>
         {Object.entries(grouped).map(([cat, entries]) => (
           <div key={cat}>
             <div className="tr-panel__cat-label">{cat}</div>
@@ -113,14 +113,14 @@ export default function TransitionPanel({ selected, onSelect }: Props) {
         ))}
       </div>
 
-      {/* Editor — shown when a transition is selected */}
+      {/* Editor � shown when a transition is selected */}
       {tr && (
         <div className="tr-panel__editor">
           <div className="tr-panel__editor-header">
             <span className="tr-panel__editor-title">
               {catalog.find(c => c.typeId === tr.typeId)?.name ?? tr.typeId}
             </span>
-            <button className="tr-panel__del" onClick={removeTr} title="Remove transition">✕</button>
+            <button className="tr-panel__del" onClick={removeTr} title="Remove transition">?</button>
           </div>
 
           {/* Type selector */}

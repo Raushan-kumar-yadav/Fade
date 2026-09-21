@@ -1,4 +1,4 @@
-ï»¿import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, type Clip, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import TimelineClip from './TimelineClip';
@@ -51,12 +51,12 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     transitionApi.listAll().then(r => {
       setTransitions(r.transitions.filter(tr => clipIdsRef.current.has(tr.clipA_id)));
     }).catch(() => {});
-  }, []); // no deps â€” always reads from ref
+  }, []); // no deps — always reads from ref
 
   React.useEffect(() => {
     fetchTransitions();
-    window.addEventListener('Fade:transition-changed', fetchTransitions);
-    return () => window.removeEventListener('Fade:transition-changed', fetchTransitions);
+    window.addEventListener('fade:transition-changed', fetchTransitions);
+    return () => window.removeEventListener('fade:transition-changed', fetchTransitions);
   }, [fetchTransitions]);
 
   
@@ -179,12 +179,12 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
 
   // Drag-from-library or transitions  
   const onDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    if (e.dataTransfer.types.includes('application/Fade-asset') ||
-        e.dataTransfer.types.includes('application/Fade-transition') ||
-        e.dataTransfer.types.includes('application/Fade-comp') ||
-        e.dataTransfer.types.includes('application/Fade-webcomp') ||
-        e.dataTransfer.types.includes('application/Fade-scene-hit') ||
-        e.dataTransfer.types.includes('text/Fade-scene-hit')) {
+    if (e.dataTransfer.types.includes('application/fade-asset') ||
+        e.dataTransfer.types.includes('application/fade-transition') ||
+        e.dataTransfer.types.includes('application/fade-comp') ||
+        e.dataTransfer.types.includes('application/fade-webcomp') ||
+        e.dataTransfer.types.includes('application/fade-scene-hit') ||
+        e.dataTransfer.types.includes('text/fade-scene-hit')) {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'copy';
       setDropOver(true);
@@ -206,7 +206,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     const frame = Math.max(0, Math.round((localX + scrollLeft) / state.zoomX));
 
     //   Handle Transition Drop  
-    const transTypeId = e.dataTransfer.getData('application/Fade-transition');
+    const transTypeId = e.dataTransfer.getData('application/fade-transition');
     if (transTypeId) {
       // Gather ALL clips across ALL tracks  
       const allClips: Array<Clip & { _trackId: string }> = [];
@@ -249,8 +249,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
             trackId:  bestA._trackId,
           });
           // Dispatch both events so the transition list  
-          window.dispatchEvent(new CustomEvent('Fade:transition-changed'));
-          window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
+          window.dispatchEvent(new CustomEvent('fade:transition-changed'));
+          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } catch (err) {
           console.error('[TrackRow] Add transition error:', err);
         }
@@ -261,7 +261,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     }
 
     // Handle Comp Drop  
-    const rawComp = e.dataTransfer.getData('application/Fade-comp');
+    const rawComp = e.dataTransfer.getData('application/fade-comp');
     if (rawComp) {
       let compMeta;
       try { compMeta = JSON.parse(rawComp); }
@@ -301,7 +301,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     }
 
     // Handle WebComp Drop
-    const rawWebComp = e.dataTransfer.getData('application/Fade-webcomp');
+    const rawWebComp = e.dataTransfer.getData('application/fade-webcomp');
     if (rawWebComp) {
       let wcMeta: { assetId: string; name: string; durationFrames?: number };
       try { wcMeta = JSON.parse(rawWebComp); }
@@ -332,7 +332,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
           dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
           // Signal useWebCompSync to create  
-          window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
+          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } else {
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
         }
@@ -346,8 +346,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
      
     //   Handle Scene-Hit Drop  
     const rawSceneHit =
-      e.dataTransfer.getData('application/Fade-scene-hit') ||
-      e.dataTransfer.getData('text/Fade-scene-hit');  // Electron fallback
+      e.dataTransfer.getData('application/fade-scene-hit') ||
+      e.dataTransfer.getData('text/fade-scene-hit');  // Electron fallback
     if (rawSceneHit) {
       let hit: { assetId: string; filename: string; type: string; inFrames: number; duration: number };
       try { hit = JSON.parse(rawSceneHit); }
@@ -378,9 +378,9 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
             type: optimisticClip.type,
             isSelected: false,
           }});
-          window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
+          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } else {
-          // API returned null â€” rollback
+          // API returned null — rollback
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
           console.warn('[TrackRow] addClipToTimeline returned null for scene hit', hit.assetId);
         }
@@ -392,7 +392,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     }
 
     // Handle Asset Drop
-    const rawAsset = e.dataTransfer.getData('application/Fade-asset');
+    const rawAsset = e.dataTransfer.getData('application/fade-asset');
     if (!rawAsset) return;
 
     let asset: AssetItem;
@@ -434,7 +434,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
       }
       // Always notify so AudioEngine reloads its clip list 
-      window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
     } catch (err) {
       console.error('[TrackRow] addClipToTimeline failed:', err);
       dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
@@ -526,7 +526,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       )}
 
       {placing && (
-        <div className="tl-track-row__placing-hint">Addingâ€¦</div>
+        <div className="tl-track-row__placing-hint">Adding…</div>
       )}
 
       {/* Resize handle */}

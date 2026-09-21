@@ -1,13 +1,13 @@
-﻿ 
+ 
 from __future__ import annotations
 import json
 import threading
 from pathlib import Path
 
-# Store user config in ~/.Fade/ so it survives PyInstaller rebuilds and upgrades.
+# Store user config in ~/.fade/ so it survives PyInstaller rebuilds and upgrades.
 # The old location (alongside the .py file inside _internal/) gets wiped by
 # robocopy /MIR every time a new build is deployed.
-_CONFIG_PATH = Path.home() / ".Fade" / "config.json"
+_CONFIG_PATH = Path.home() / ".fade" / "config.json"
 
 _DEFAULTS: dict = {
     "ai": {

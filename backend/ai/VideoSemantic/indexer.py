@@ -1,4 +1,4 @@
-﻿import chromadb
+import chromadb
 import hashlib
 import math
 from pathlib import Path
@@ -81,7 +81,7 @@ def _query(col, query: str, n_results: int) -> dict:
 
 
 # Scratch DB — used when no project is saved yet
-_SCRATCH_DB_PATH = str(Path.home() / ".Fade" / "chroma_db")
+_SCRATCH_DB_PATH = str(Path.home() / ".fade" / "chroma_db")
 _DEFAULT_DB_PATH = _SCRATCH_DB_PATH
 
 # Active clients

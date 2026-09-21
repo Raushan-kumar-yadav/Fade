@@ -1,4 +1,4 @@
-﻿"""
+"""
 Fade MCP Remote Client
 ======================
 Connects to Fade's MCP SSE server and drives it with a configurable

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import './SettingsPanel.css';
 
 // Env key info from backend
@@ -77,7 +77,7 @@ interface GeneratorSettings {
 }
 
 function getPort(): number | null {
-  return (window as any).__Fade_PORT__ ?? null;
+  return (window as any).__FADE_PORT__ ?? null;
 }
 
 async function fetchSettings(): Promise<Settings | null> {
@@ -206,7 +206,7 @@ const VOICE_DESCRIPTIONS: Record<string, string> = {
 const KOKORO_VOICES = [
   'af_heart', 'af_alloy', 'af_aoede', 'af_bella', 'af_jessica', 'af_kore', 
   'af_nicole', 'af_nova', 'af_river', 'af_sarah', 'af_sky', 
-  'am_adam', 'am_Fade', 'am_eric', 'am_fenrir', 'am_liam', 'am_michael', 
+  'am_adam', 'am_echo', 'am_eric', 'am_fenrir', 'am_liam', 'am_michael', 
   'am_onyx', 'am_puck', 'am_santa', 'bf_alice', 'bf_emma', 'bf_isabella', 
   'bf_lily', 'bm_daniel', 'bm_fable', 'bm_george', 'bm_lewis'
 ];

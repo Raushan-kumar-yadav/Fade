@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import './ExportProgressOverlay.css'
 
 interface ExportProgress {
@@ -12,7 +12,7 @@ interface ExportProgress {
   status?: string
 }
 
-const PORT = () => (window as any).__Fade_PORT__ ?? 8000
+const PORT = () => (window as any).__FADE_PORT__ ?? 8000
 
 export default function ExportProgressOverlay() {
   const [jobId, setJobId] = useState<string | null>(null)
@@ -96,9 +96,9 @@ export default function ExportProgressOverlay() {
       }, 500)
     }
 
-    window.addEventListener('Fade:export-started', handler)
+    window.addEventListener('fade:export-started', handler)
     return () => {
-      window.removeEventListener('Fade:export-started', handler)
+      window.removeEventListener('fade:export-started', handler)
       stopPoll()
       if (dismissRef.current) clearTimeout(dismissRef.current)
     }
@@ -115,13 +115,13 @@ export default function ExportProgressOverlay() {
       {/* Header row */}
       <div className="exp-ov__header">
         <span className="exp-ov__icon">
-          {hasError ? '❌' : done ? '✅' : '📤'}
+          {hasError ? '?' : done ? '?' : '??'}
         </span>
         <span className="exp-ov__title">
-          {hasError ? 'Export failed' : done ? 'Export complete' : 'Exporting…'}
+          {hasError ? 'Export failed' : done ? 'Export complete' : 'Exporting�'}
         </span>
         {(done || hasError) && (
-          <button className="exp-ov__close" onClick={dismiss} aria-label="Close">✕</button>
+          <button className="exp-ov__close" onClick={dismiss} aria-label="Close">?</button>
         )}
       </div>
 
@@ -138,7 +138,7 @@ export default function ExportProgressOverlay() {
           <span className="exp-ov__error-msg">{progress?.error}</span>
         ) : done ? (
           <span className="exp-ov__done-msg">
-            Saved successfully · closing in 4 s
+            Saved successfully � closing in 4 s
             {progress?.path && <><br /><code className="exp-ov__path">{progress.path}</code></>}
           </span>
         ) : (

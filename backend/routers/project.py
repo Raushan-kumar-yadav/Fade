@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter
+from fastapi import APIRouter
 from backend.state import engine, _library, _clipTrackMap
 from backend.worker.worker_bus import bus as _worker_bus
 from backend.media.asset.mediaAsset import MediaAsset
@@ -63,7 +63,7 @@ def _project_folder(req: SaveRequest) -> "Path":
         return Path(req.folderPath)
     # Legacy: derive folder from filepath stem
     p = Path(req.filepath)
-    if p.suffix == ".Fade":
+    if p.suffix == ".fade":
         return p.parent / p.stem
     return p
 
@@ -165,7 +165,7 @@ def saveProject(req: SaveRequest):
 
     proj_folder = _project_folder(req)
     proj_folder.mkdir(parents=True, exist_ok=True)
-    anchor_path = proj_folder / "project.Fade"
+    anchor_path = proj_folder / "project.fade"
 
     tl = engine.activeTimeline
     proj_dict = engine.project.toDict()
@@ -315,7 +315,7 @@ def loadProject(req: LoadRequest):
 
     # Accept either a folder  
     if given.is_dir():
-        anchor_path = given / "project.Fade"
+        anchor_path = given / "project.fade"
     else:
         anchor_path = given
 

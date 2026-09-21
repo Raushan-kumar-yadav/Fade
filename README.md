@@ -1,6 +1,6 @@
-﻿# Fade — AI-Powered Video Editor 🎬✨
+# Echo — AI-Powered Video Editor 🎬✨
 
-Fade is a next-generation, AI-first video editing platform that fuses traditional non-linear editing (NLE) with an intelligent **AI Director**. Built on a highly optimized stack of Electron, React, Python, and C++/Vulkan, Fade automates complex editing tasks, understands video semantics via vision models, and generates dynamic motion graphics on the fly.
+Echo is a next-generation, AI-first video editing platform that fuses traditional non-linear editing (NLE) with an intelligent **AI Director**. Built on a highly optimized stack of Electron, React, Python, and C++/Vulkan, Echo automates complex editing tasks, understands video semantics via vision models, and generates dynamic motion graphics on the fly.
 
 ![Electron](https://img.shields.io/badge/Electron-191970?style=for-the-badge&logo=Electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
@@ -17,13 +17,13 @@ Fade is a next-generation, AI-first video editing platform that fuses traditiona
 
 ### 📦 [Download from Google Drive](https://drive.google.com/drive/folders/1ga8dbEF9xsMm5zsoMSc6cOVBdDtnOnT4?usp=sharing)
 
-The Google Drive folder contains the complete `Fade-v1.0.0-win-x64.zip` distribution.
+The Google Drive folder contains the complete `Echo-v1.0.0-win-x64.zip` distribution.
 
 ### Steps to run:
 
-1. **Download** `Fade-v1.0.0-win-x64.zip` from the Google Drive link above
-2. **Extract** the zip to any folder (e.g. `C:\Fade\`)
-3. **Double-click** `Fade.exe` inside the extracted folder
+1. **Download** `Echo-v1.0.0-win-x64.zip` from the Google Drive link above
+2. **Extract** the zip to any folder (e.g. `C:\Echo\`)
+3. **Double-click** `Echo.exe` inside the extracted folder
 4. The app will launch — no installation, no dependencies needed
 
 > ⚠️ **Windows SmartScreen:** If Windows shows a security warning, click **"More info" → "Run anyway"**. The app is safe — it's just unsigned.
@@ -36,7 +36,7 @@ The Google Drive folder contains the complete `Fade-v1.0.0-win-x64.zip` distribu
 
 ### 🤖 AI Director (LangGraph + LangChain)
 
-The core of Fade is the AI Director — an intelligent agent running on a stateful graph (LangGraph). Instead of basic chat, the agent:
+The core of Echo is the AI Director — an intelligent agent running on a stateful graph (LangGraph). Instead of basic chat, the agent:
 
 - Acts autonomously with access to dozens of timeline-manipulating tools (`split_clip`, `add_text_clip`, `apply_effect`, `add_transition`, and more).
 - Reads live timeline state before making decisions, ensuring precise edits.
@@ -45,7 +45,7 @@ The core of Fade is the AI Director — an intelligent agent running on a statef
 
 ### 🧠 Semantic Video Understanding
 
-Fade doesn't just edit video — it _understands_ it using a multi-modal AI pipeline:
+Echo doesn't just edit video — it _understands_ it using a multi-modal AI pipeline:
 
 - **Vision Indexing (Ollama):** Extracts frames and runs local Ollama vision models (`moondream`, `llava`) to describe scenes in natural language — fully offline, no GPU cloud required.
 - **Whisper Speech-to-Text:** Generates highly accurate, timestamped transcripts from audio tracks (bundled `small.pt` model, 461 MB).
@@ -98,7 +98,7 @@ Fade uses a highly decoupled, multi-process architecture:
 ## 🗺️ Project Structure
 
 ```text
-Fade/
+Echo/
 ├── backend/               # Python FastAPI, AI Agent (LangGraph), ChromaDB, PyAV
 │   ├── ai/                # Agent, tools, video pipeline, web search
 │   │   └── VideoSemantic/ # Frame-to-text indexing (Ollama vision models)
@@ -129,8 +129,8 @@ Fade/
 ### 1. Clone & install
 
 ```bash
-git clone https://github.com/Raushan-kumar-yadav/Fade.git
-cd Fade
+git clone https://github.com/Raushan-kumar-yadav/Echo.git
+cd Echo
 npm install
 python -m venv .venv
 .venv\Scripts\activate      # Windows
@@ -167,7 +167,7 @@ npx electron-builder build --win --publish never
 
 ## 🤖 AI Provider Setup
 
-Fade supports multiple LLM providers for the AI Director.
+Echo supports multiple LLM providers for the AI Director.
 
 > 💡 **Using the built `.exe`?** You don't need to edit `.env` manually.
 > Open the app → click the **Settings ⚙️** icon (top-right) → **API Keys** tab.
@@ -210,9 +210,9 @@ Run models entirely on your machine — no API key, no internet after model down
 3. Add to `.env`:
    ```env
    FADE_AI_PROVIDER=ollama
-   # FADE_AI_MODEL=llama3.2   # optional — Fade auto-detects your best installed model
+   # FADE_AI_MODEL=llama3.2   # optional — Echo auto-detects your best installed model
    ```
-4. Fade automatically queries `http://localhost:11434` for available models and picks the best tool-capable one. No config needed if Ollama is running.
+4. Echo automatically queries `http://localhost:11434` for available models and picks the best tool-capable one. No config needed if Ollama is running.
 
 ### 🌐 Other Cloud Providers
 
@@ -228,7 +228,7 @@ Run models entirely on your machine — no API key, no internet after model down
 
 ## 🖼️ Image Generation Setup (Stability AI)
 
-Fade uses **Stability AI** for AI image generation inside the editor. The AI Director can call `generate_image("prompt")` and the image lands directly in your library.
+Echo uses **Stability AI** for AI image generation inside the editor. The AI Director can call `generate_image("prompt")` and the image lands directly in your library.
 
 > 💡 **Using the built `.exe`?** Go to **Settings ⚙️ → Image Generation** tab — enter your Stability AI key and pick the model/style there. No `.env` file needed.
 
@@ -259,7 +259,7 @@ The AI Director will automatically use Stability AI when you ask it to generate 
 
 ## 🔍 Video Indexing Setup (Ollama Frame-to-Text)
 
-Fade's **Semantic Video Understanding** extracts frames from imported videos and uses a local Ollama vision model to describe each scene in natural language. These descriptions are stored in ChromaDB and become searchable.
+Echo's **Semantic Video Understanding** extracts frames from imported videos and uses a local Ollama vision model to describe each scene in natural language. These descriptions are stored in ChromaDB and become searchable.
 
 ### How it works
 
@@ -279,7 +279,7 @@ Video file → extract frames (every 2 sec) → Ollama vision model → text des
    ollama pull llava              # alternative — larger, slower, more detailed
    ollama pull llava-phi3         # lightweight alternative
    ```
-3. That's it — **no `.env` changes needed**. Fade auto-detects available vision models in priority order: `moondream → llava → llava-phi3`.
+3. That's it — **no `.env` changes needed**. Echo auto-detects available vision models in priority order: `moondream → llava → llava-phi3`.
 
 ### Optional: Use Gemini instead of Ollama for indexing
 

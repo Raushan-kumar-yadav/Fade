@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
@@ -127,10 +127,10 @@ export default function VideoWorkspace() {
         {/* AI Director toggle button */}
         <button
           className="video-ws__ai-btn"
-          onClick={() => window.dispatchEvent(new CustomEvent('Fade:ai-toggle'))}
+          onClick={() => window.dispatchEvent(new CustomEvent('fade:ai-toggle'))}
           title="Toggle AI Director"
         >
-          🤖
+          ??
         </button>
 
         <FlexLayout.Layout model={model} factory={factory} realtimeResize />

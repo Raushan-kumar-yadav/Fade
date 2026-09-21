@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import json
 import os
@@ -53,16 +53,7 @@ def set_port(port: int) -> None:
  
 @tool
 def get_timeline_state() -> str:
-    """Return a COMPACT timeline summary for the AI agent.
-
-    Returns only the fields needed to operate on clips:
-      - fps, totalFrames
-      - tracks[]: index, clips[]: clipId, type, startFrame, durationFrames, endFrame,
-        assetId (video/image/audio), name/text (text clips), trackIndex
-
-    Use search_library() to find sceneChunks/transcripts. Use get_library_assets()
-    for full asset metadata. This tool is intentionally compact to avoid overloading context.
-    """
+     
     import requests, json
     data = requests.get("http://127.0.0.1:8000/timeline/state").json()
     fps = data.get("fps", 30)
@@ -73,26 +64,26 @@ def get_timeline_state() -> str:
         compact_clips = []
         for clip in track.get("clips", []):
             c: dict = {
-                "clipId":         clip.get("clipId"),
-                "type":           clip.get("type"),
-                "startFrame":     clip.get("startFrame"),
+                "clipId": clip.get("clipId"),
+                "type": clip.get("type"),
+                "startFrame": clip.get("startFrame"),
                 "durationFrames": clip.get("durationFrames"),
-                "endFrame":       (clip.get("startFrame", 0) + clip.get("durationFrames", 0)),
-                "trackIndex":     t_idx,
+                "endFrame": (clip.get("startFrame", 0) + clip.get("durationFrames", 0)),
+                "trackIndex": t_idx,
             }
             # video/image/audio clips
             if clip.get("assetId"):
                 c["assetId"] = clip["assetId"]
             # text clips
             if clip.get("text") is not None:
-                c["text"] = clip["text"][:60]  # truncate long text
+                c["text"] = clip["text"][:60]  
             if clip.get("name"):
                 c["name"] = clip["name"]
             compact_clips.append(c)
         compact_tracks.append({
             "trackIndex": t_idx,
-            "kind":       track.get("kind", "video"),
-            "clips":      compact_clips,
+            "kind": track.get("kind", "video"),
+            "clips": compact_clips,
         })
 
     return json.dumps({
@@ -1659,7 +1650,7 @@ def create_webcomp(
 
     HOW FILES ARE SAVED (you never need to worry about paths):
       - Project saved → <project-folder>/webcomps/<name>/   (travels with the project)
-      - No project    → C:/Users/<user>/.Fade/webcomps/<name>/  (global fallback)
+      - No project    → C:/Users/<user>/.fade/webcomps/<name>/  (global fallback)
     The backend handles this automatically.
 
     WHAT THE BACKEND GENERATES FOR YOU:
@@ -2661,7 +2652,7 @@ def list_kokoro_voices(lang: str = "") -> str:
               'zh', 'es', 'fr', 'hi', 'it', 'pt'. Leave empty to list all.
 
     Returns a JSON map of language → [voice_ids].
-    Popular voices: af_heart (warm female), bf_emma (British), am_Fade (male).
+    Popular voices: af_heart (warm female), bf_emma (British), am_echo (male).
     """
     import json
     params = {}
@@ -2696,7 +2687,7 @@ def generate_tts(
     Args:
         text:  The text to speak. Can be multiple sentences / paragraphs.
         voice: Voice ID (default 'af_heart' — warm American female).
-               Kokoro voices: af_heart, af_bella, af_nicole, am_Fade, am_michael,
+               Kokoro voices: af_heart, af_bella, af_nicole, am_echo, am_michael,
                               bf_emma, bf_alice, bm_george, bm_daniel + 40 more.
                Gemini voices: Kore, Zephyr, Puck, Charon, Fenrir, Aoede, etc.
                Call list_kokoro_voices() to browse all options.
@@ -2962,7 +2953,7 @@ def export_video(
     if not output_path:
         from backend.state import engine
         import os
-        base_name = f"Fade_export.{ext}"
+        base_name = f"fade_export.{ext}"
         if engine.project and engine.project.filePath:
             proj_dir = os.path.dirname(engine.project.filePath)
             output_path = os.path.join(proj_dir, base_name)

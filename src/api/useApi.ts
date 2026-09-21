@@ -1,12 +1,12 @@
-﻿ 
+ 
 
 function base(): string {
-  const port = (window as any).__Fade_PORT__ ?? 8000;
+  const port = (window as any).__FADE_PORT__ ?? 8000;
   return `http://127.0.0.1:${port}`;
 }
 
 function wsBase(): string {
-  const port = (window as any).__Fade_PORT__ ?? 8000;
+  const port = (window as any).__FADE_PORT__ ?? 8000;
   return `ws://127.0.0.1:${port}`;
 }
 

@@ -1,4 +1,4 @@
-﻿import React, {
+import React, {
   useState, useEffect, useCallback, useRef, useLayoutEffect,
 } from 'react';
 import ReactDOM from 'react-dom';
@@ -32,8 +32,8 @@ interface MediaJob {
   status: 'pending' | 'running' | 'done' | 'error';
   progress: number;
   message: string;
-  assetIds: string[];   // for download/generate jobs — the resulting assetIds
-  assetId?: string | null;  // for asset-bound jobs — the specific asset being processed
+  assetIds: string[];   // for download/generate jobs � the resulting assetIds
+  assetId?: string | null;  // for asset-bound jobs � the specific asset being processed
   error?: string | null;
 }
 
@@ -45,7 +45,7 @@ const PRESETS = [
   { label: '9:16',  w: 1080, h: 1920 }, { label: '4:3',   w: 1440, h: 1080 },
 ];
 const FPS_OPTIONS = [23.976, 24, 25, 29.97, 30, 50, 59.94, 60];
-function base() { return `http://127.0.0.1:${(window as any).__Fade_PORT__ ?? 8000}`; }
+function base() { return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`; }
 
 //   Type thumbnails
 
@@ -122,7 +122,7 @@ function CardThumb({ type }: { type: string }) {
           <rect x="26" y="4" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.5"/>
           <rect x="4" y="26" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.5"/>
           <rect x="26" y="26" width="18" height="18" rx="3" fill="#a78bfa" opacity="0.3"/>
-          <text x="24" y="30" textAnchor="middle" fontSize="10" fill="#a78bfa" fontFamily="monospace" opacity="0.9">⌨</text>
+          <text x="24" y="30" textAnchor="middle" fontSize="10" fill="#a78bfa" fontFamily="monospace" opacity="0.9">?</text>
         </svg>
       );
       break;
@@ -149,9 +149,9 @@ function CardThumb({ type }: { type: string }) {
 function PlaceholderCard({ job, onDismiss }: { job: MediaJob; onDismiss: () => void }) {
   const isError = job.status === 'error';
   const isDone  = job.status === 'done';
-  const icon = job.type === 'video_download' ? '🎬'
-              : job.type === 'image_download' ? '🖼'
-              : '✨';
+  const icon = job.type === 'video_download' ? '??'
+              : job.type === 'image_download' ? '??'
+              : '?';
   const pct = Math.round(job.progress * 100);
 
   if (isDone) return null; 
@@ -161,7 +161,7 @@ function PlaceholderCard({ job, onDismiss }: { job: MediaJob; onDismiss: () => v
       {/* Full card overlay while loading */}
       <div className="lib-placeholder-card__overlay">
         {isError ? (
-          <span className="lib-placeholder-card__err">⚠</span>
+          <span className="lib-placeholder-card__err">?</span>
         ) : (
           <span className="lib-placeholder-card__spinner" />
         )}
@@ -190,7 +190,7 @@ function PlaceholderCard({ job, onDismiss }: { job: MediaJob; onDismiss: () => v
 
       {/* Dismiss on error */}
       {isError && (
-        <button className="lib-placeholder-card__dismiss" onClick={onDismiss} title="Dismiss">✕</button>
+        <button className="lib-placeholder-card__dismiss" onClick={onDismiss} title="Dismiss">?</button>
       )}
     </div>
   );
@@ -220,9 +220,9 @@ function AssetTaskOverlay({
   if (active.length === 0 && done.length === 0 && error.length === 0 && !pollActive) return null;
 
   const getIcon = (type: string) =>
-    type === 'transcription' ? '💬'
-    : type === 'video_index' || type === 'image_index' ? '🔍'
-    : '⚙️';
+    type === 'transcription' ? '??'
+    : type === 'video_index' || type === 'image_index' ? '??'
+    : '??';
 
   /** Fire the cancel request and let the parent dismiss the overlay */
   const handleStop = async (e: React.MouseEvent) => {
@@ -239,8 +239,8 @@ function AssetTaskOverlay({
 
   if (pollActive) {
     // Overlay driven purely by poll status  
-    const icon = assetType === 'image' ? '🔍' : '🔍';
-    const msg  = assetType === 'image' ? 'Describing image…' : 'Indexing: Vision + Whisper…';
+    const icon = assetType === 'image' ? '??' : '??';
+    const msg  = assetType === 'image' ? 'Describing image�' : 'Indexing: Vision + Whisper�';
     return (
       <div className="lib-asset-overlay lib-asset-overlay--active">
         <span className="lib-asset-overlay__icon">{icon}</span>
@@ -253,7 +253,7 @@ function AssetTaskOverlay({
             title="Stop indexing"
             aria-label="Stop indexing"
           >
-            ✕
+            ?
           </button>
         )}
       </div>
@@ -272,8 +272,8 @@ function AssetTaskOverlay({
       <span className="lib-asset-overlay__icon">{getIcon(show.type)}</span>
       <span className="lib-asset-overlay__text">
         {isActive ? show.message || show.label
-         : isErr  ? '⚠ ' + (show.error ?? 'Failed')
-         : '✓ Indexed'}
+         : isErr  ? '? ' + (show.error ?? 'Failed')
+         : '? Indexed'}
       </span>
       {isActive && <span className="lib-asset-overlay__spin" />}
       {canStop && (
@@ -283,7 +283,7 @@ function AssetTaskOverlay({
           title="Stop indexing"
           aria-label="Stop indexing"
         >
-          ✕
+          ?
         </button>
       )}
     </div>
@@ -348,12 +348,12 @@ async function apiAddWebCompClip(assetId: string, startFrame: number, duration: 
 
 //   Template icons by id  
 const TEMPLATE_ICONS: Record<string, string> = {
-  'blank': '◻',
-  'lower-third': '▬',
-  'kinetic-title': '⚡',
-  'word-reveal': '✦',
-  'neon-headline': '⬡',
-  'cinematic-split': '◈',
+  'blank': '?',
+  'lower-third': '?',
+  'kinetic-title': '?',
+  'word-reveal': '?',
+  'neon-headline': '?',
+  'cinematic-split': '?',
 };
 
 const TEMPLATE_HINTS: Record<string, string> = {
@@ -436,26 +436,26 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
     <div className="lib-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
       <form className="lib-modal" onSubmit={handleSubmit} style={{ width: 480, maxHeight: '80vh' }}>
         <div className="lib-modal__header">
-          <span className="lib-modal__title" style={{ color: '#a78bfa' }}>⊞ New WebComp</span>
-          <button type="button" className="lib-modal__close" onClick={onCancel}>✕</button>
+          <span className="lib-modal__title" style={{ color: '#a78bfa' }}>? New WebComp</span>
+          <button type="button" className="lib-modal__close" onClick={onCancel}>?</button>
         </div>
         <div className="lib-modal__body" style={{ overflowY: 'auto', maxHeight: 'calc(80vh - 120px)' }}>
           <label className="lib-comp-cfg__label">NAME</label>
           <input ref={nameRef} className="lib-comp-cfg__input" value={name}
             onChange={e => { setName(e.target.value); autoNamed.current = false; }}
-            placeholder="WebComp name…" />
+            placeholder="WebComp name�" />
 
           <label className="lib-comp-cfg__label" style={{ marginTop: 16 }}>TEMPLATE</label>
 
           {loading ? (
             <div style={{ padding: '20px 0', textAlign: 'center', color: '#5a5a74', fontSize: 12 }}>
-              Loading templates…
+              Loading templates�
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
               {templates.map(t => {
                 const active = template === t.id;
-                const icon   = TEMPLATE_ICONS[t.id] ?? '◈';
+                const icon   = TEMPLATE_ICONS[t.id] ?? '?';
                 const hint   = TEMPLATE_HINTS[t.id] ?? t.description ?? '';
                 return (
                   <label key={t.id} onClick={() => selectTemplate(t)}
@@ -486,7 +486,7 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
                       )}
                       {t.width && (
                         <span style={{ fontSize: 9, color: '#6b7280', background: 'rgba(255,255,255,0.05)',
-                          borderRadius: 4, padding: '1px 5px' }}>{t.width}×{t.height}</span>
+                          borderRadius: 4, padding: '1px 5px' }}>{t.width}�{t.height}</span>
                       )}
                     </div>
                   </label>
@@ -495,14 +495,14 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
             </div>
           )}
 
-          {error && <div className="lib-comp-cfg__error" style={{ marginTop: 10 }}>⚠ {error}</div>}
+          {error && <div className="lib-comp-cfg__error" style={{ marginTop: 10 }}>? {error}</div>}
         </div>
         <div className="lib-modal__footer">
           <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
           <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create"
             style={{ background: '#7c3aed' }}
             disabled={creating || !name.trim() || loading}>
-            {creating ? 'Creating…' : '✓ Create WebComp'}
+            {creating ? 'Creating�' : '? Create WebComp'}
           </button>
         </div>
       </form>
@@ -577,13 +577,13 @@ function CompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) =
     <div className="lib-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
       <form className="lib-modal" onSubmit={handleSubmit}>
         <div className="lib-modal__header">
-          <span className="lib-modal__title">⊞ New Composition</span>
-          <button type="button" className="lib-modal__close" onClick={onCancel}>✕</button>
+          <span className="lib-modal__title">? New Composition</span>
+          <button type="button" className="lib-modal__close" onClick={onCancel}>?</button>
         </div>
         <div className="lib-modal__body">
           <label className="lib-comp-cfg__label">Name</label>
           <input ref={nameRef} className="lib-comp-cfg__input" value={name}
-            onChange={e => setName(e.target.value)} placeholder="Composition name…" />
+            onChange={e => setName(e.target.value)} placeholder="Composition name�" />
 
           <label className="lib-comp-cfg__label" style={{ marginTop: 8 }}>Resolution Preset</label>
           <div className="lib-comp-cfg__presets">
@@ -621,13 +621,13 @@ function CompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) =
             </div>
           </div>
           <div className="lib-comp-cfg__hint" style={{ marginTop: 4 }}>
-            {durationSec}s · {width}×{height} · {fps}fps
+            {durationSec}s � {width}�{height} � {fps}fps
           </div>
         </div>
         <div className="lib-modal__footer">
           <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
           <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create" disabled={creating || !name.trim()}>
-            {creating ? 'Creating…' : '✓ Create'}
+            {creating ? 'Creating�' : '? Create'}
           </button>
         </div>
       </form>
@@ -699,7 +699,7 @@ function LibCard({
         {subtitle && <span className="lib-card__subtitle">{subtitle}</span>}
       </div>
       {onDelete && (
-        <button className="lib-card__del" title="Remove" onClick={e => { e.stopPropagation(); onDelete(); }}>✕</button>
+        <button className="lib-card__del" title="Remove" onClick={e => { e.stopPropagation(); onDelete(); }}>?</button>
       )}
     </div>
   );
@@ -735,8 +735,8 @@ export default function LibraryPanel({ onAddToTimeline }: {
   // Semantic search state
   const [semanticResults, setSemanticResults] = useState<any[] | null>(null);
   const [semanticLoading, setSemanticLoading] = useState(false);
-  const [indexStatuses, setIndexStatuses] = useState<Record<string, string>>({}); // assetId → status (video)
-  const [transcriptStatuses, setTranscriptStatuses] = useState<Record<string, string>>({}); // assetId → status (audio)
+  const [indexStatuses, setIndexStatuses] = useState<Record<string, string>>({}); // assetId ? status (video)
+  const [transcriptStatuses, setTranscriptStatuses] = useState<Record<string, string>>({}); // assetId ? status (audio)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [comps, setComps] = useState<CompMeta[]>([]);
@@ -764,13 +764,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
   }, []);
 
   useEffect(() => {
-    if ((window as any).__Fade_PORT__) refreshAssets();
-    else { const h = () => refreshAssets(); window.addEventListener('Fade:port', h, { once: true }); return () => window.removeEventListener('Fade:port', h); }
+    if ((window as any).__FADE_PORT__) refreshAssets();
+    else { const h = () => refreshAssets(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
   }, [refreshAssets]);
   useEffect(() => {
     const h = () => refreshAssets();
-    window.addEventListener('Fade:library-changed', h);
-    return () => window.removeEventListener('Fade:library-changed', h);
+    window.addEventListener('fade:library-changed', h);
+    return () => window.removeEventListener('fade:library-changed', h);
   }, [refreshAssets]);
 
   // Subscribe to job SSE events  
@@ -785,8 +785,8 @@ export default function LibraryPanel({ onAddToTimeline }: {
       });
       if (job.status === 'done') refreshAssets();
     };
-    window.addEventListener('Fade:job-update', handleJob);
-    return () => window.removeEventListener('Fade:job-update', handleJob);
+    window.addEventListener('fade:job-update', handleJob);
+    return () => window.removeEventListener('fade:job-update', handleJob);
   }, [refreshAssets]);
 
   const dismissJob = useCallback((jobId: string) => {
@@ -875,13 +875,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
     try { setComps(await fetchComps()); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
-    if ((window as any).__Fade_PORT__) refreshComps();
-    else { const h = () => refreshComps(); window.addEventListener('Fade:port', h, { once: true }); return () => window.removeEventListener('Fade:port', h); }
+    if ((window as any).__FADE_PORT__) refreshComps();
+    else { const h = () => refreshComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
   }, [refreshComps]);
   useEffect(() => {
     const h = () => refreshComps();
-    window.addEventListener('Fade:comps-changed', h);
-    return () => window.removeEventListener('Fade:comps-changed', h);
+    window.addEventListener('fade:comps-changed', h);
+    return () => window.removeEventListener('fade:comps-changed', h);
   }, [refreshComps]);
 
   //   Load webcomps
@@ -889,13 +889,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
     try { setWebcomps(await fetchWebComps()); } catch { /* ignore */ }
   }, []);
   useEffect(() => {
-    if ((window as any).__Fade_PORT__) refreshWebComps();
-    else { const h = () => refreshWebComps(); window.addEventListener('Fade:port', h, { once: true }); return () => window.removeEventListener('Fade:port', h); }
+    if ((window as any).__FADE_PORT__) refreshWebComps();
+    else { const h = () => refreshWebComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
   }, [refreshWebComps]);
   useEffect(() => {
     const h = () => refreshWebComps();
-    window.addEventListener('Fade:webcomps-changed', h);
-    return () => window.removeEventListener('Fade:webcomps-changed', h);
+    window.addEventListener('fade:webcomps-changed', h);
+    return () => window.removeEventListener('fade:webcomps-changed', h);
   }, [refreshWebComps]);
 
   //   Asset handlers  
@@ -961,31 +961,31 @@ export default function LibraryPanel({ onAddToTimeline }: {
   //   Context menus  
   const assetCtx = useCallback((e: React.MouseEvent, asset: AssetItem) => {
     openCtx(e, [
-      { icon: '↓', label: 'Add to Timeline', onClick: () => onAddToTimeline?.(asset, 0) },
+      { icon: '?', label: 'Add to Timeline', onClick: () => onAddToTimeline?.(asset, 0) },
       { icon: '', label: '', sep: true, onClick: () => {} },
-      { icon: '✕', label: 'Remove', danger: true, onClick: async () => { await removeAsset(asset.assetId); setAssets(p => p.filter(a => a.assetId !== asset.assetId)); } },
+      { icon: '?', label: 'Remove', danger: true, onClick: async () => { await removeAsset(asset.assetId); setAssets(p => p.filter(a => a.assetId !== asset.assetId)); } },
     ]);
   }, [openCtx, onAddToTimeline]);
 
   const compCtx = useCallback((e: React.MouseEvent, comp: CompMeta) => {
     const items: CtxItem[] = [
-      { icon: '✎', label: 'Open',                         onClick: () => handleEnterComp(comp) },
-      { icon: '↓', label: 'Add to Timeline at Playhead',  onClick: () => handleAddCompToTimeline(comp) },
+      { icon: '?', label: 'Open',                         onClick: () => handleEnterComp(comp) },
+      { icon: '?', label: 'Add to Timeline at Playhead',  onClick: () => handleAddCompToTimeline(comp) },
       { icon: '', label: '', sep: true, onClick: () => {} },
-      { icon: '✏', label: 'Rename',                       onClick: () => setRenamingId(comp.compId) },
+      { icon: '?', label: 'Rename',                       onClick: () => setRenamingId(comp.compId) },
     ];
-    if (!comp.isRoot) items.push({ icon: '🗑', label: 'Delete', danger: true, onClick: () => handleDeleteComp(comp) });
+    if (!comp.isRoot) items.push({ icon: '??', label: 'Delete', danger: true, onClick: () => handleDeleteComp(comp) });
     openCtx(e, items);
   }, [openCtx, handleEnterComp, handleAddCompToTimeline, handleDeleteComp]);
 
   const bgCtx = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.lib-card,.lib-modal-overlay')) return;
     openCtx(e, [
-      { icon: '⊞', label: 'New Composition',  onClick: () => setShowCfg(true) },
-      { icon: '⌨', label: 'New WebComp',      onClick: () => setShowWcCfg(true) },
-      { icon: '+', label: 'Import Media…',    onClick: () => fileInputRef.current?.click() },
+      { icon: '?', label: 'New Composition',  onClick: () => setShowCfg(true) },
+      { icon: '?', label: 'New WebComp',      onClick: () => setShowWcCfg(true) },
+      { icon: '+', label: 'Import Media�',    onClick: () => fileInputRef.current?.click() },
       { icon: '', label: '', sep: true, onClick: () => {} },
-      { icon: '↺', label: 'Refresh',          onClick: () => { refreshAssets(); refreshComps(); refreshWebComps(); } },
+      { icon: '?', label: 'Refresh',          onClick: () => { refreshAssets(); refreshComps(); refreshWebComps(); } },
     ]);
   }, [openCtx, refreshAssets, refreshComps, refreshWebComps]);
 
@@ -1014,23 +1014,23 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
       {/* Search bar */}
       <div className="lib__search">
-        <span className="lib__search-icon">{semanticLoading ? '⟳' : isSemanticMode ? '✦' : '⌕'}</span>
+        <span className="lib__search-icon">{semanticLoading ? '?' : isSemanticMode ? '?' : '?'}</span>
         <input
           className="lib__search-input"
-          placeholder="Search files or describe a scene…"
+          placeholder="Search files or describe a scene�"
           value={query}
           onChange={e => setQuery(e.target.value)}
         />
-        {query && <button className="lib__search-clear" onClick={() => { setQuery(''); setSemanticResults(null); }} title="Clear">✕</button>}
+        {query && <button className="lib__search-clear" onClick={() => { setQuery(''); setSemanticResults(null); }} title="Clear">?</button>}
         <button className="lib__import-btn" title="Import" onClick={() => fileInputRef.current?.click()}>+</button>
         <input ref={fileInputRef} type="file" hidden multiple accept="video/*,image/*,audio/*,.svg" onChange={handleFileSelect} />
       </div>
 
       {compError && (
-        <div className="lib-comp-cfg__error" onClick={() => setCompError(null)}>⚠ {compError}</div>
+        <div className="lib-comp-cfg__error" onClick={() => setCompError(null)}>? {compError}</div>
       )}
       {wcError && (
-        <div className="lib-comp-cfg__error" style={{ borderColor: '#a78bfa' }} onClick={() => setWcError(null)}>⚠ {wcError}</div>
+        <div className="lib-comp-cfg__error" style={{ borderColor: '#a78bfa' }} onClick={() => setWcError(null)}>? {wcError}</div>
       )}
 
       {/* GRID */}
@@ -1041,13 +1041,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
             {semanticLoading && (
               <div className="lib__semantic-searching">
                 <span className="lib__spinner" style={{ display: 'inline-block', width: 14, height: 14, marginRight: 8 }} />
-                Searching scenes…
+                Searching scenes�
               </div>
             )}
 
             {!semanticLoading && semanticResults && semanticResults.length > 0 && (
               <>
-                <div className="lib__semantic-label">✦ Scene matches for "{query}"</div>
+                <div className="lib__semantic-label">? Scene matches for "{query}"</div>
                 {semanticResults.map((hit, i) => {
                   const asset = assets.find(a => a.assetId === hit.assetId);
                   const startS = Math.round(hit.start_sec);
@@ -1072,22 +1072,22 @@ export default function LibraryPanel({ onAddToTimeline }: {
                           outFrames,
                           duration:   dur,
                         });
-                        e.dataTransfer.setData('application/Fade-scene-hit', payload);
-                        e.dataTransfer.setData('text/Fade-scene-hit', payload); // Electron fallback
+                        e.dataTransfer.setData('application/fade-scene-hit', payload);
+                        e.dataTransfer.setData('text/fade-scene-hit', payload); // Electron fallback
                       }}
                       onClick={async () => {
                         if (!asset) return;
                         const frame = state.currentFrame ?? 0;
                         await addClipToTimeline(hit.assetId, 0, frame, dur, inFrames);
-                        window.dispatchEvent(new CustomEvent('Fade:tracks-changed'));
+                        window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
                       }}
                       title={hit.text}
                     >
                       <div className="lib__semantic-hit-score">{score}%</div>
                       <div className="lib__semantic-hit-info">
                         <div className="lib__semantic-hit-name">{asset?.filename ?? hit.assetId.slice(0,8)}</div>
-                        <div className="lib__semantic-hit-time">{startS}s – {endS}s</div>
-                        <div className="lib__semantic-hit-desc">{hit.text.slice(0, 120)}{hit.text.length > 120 ? '…' : ''}</div>
+                        <div className="lib__semantic-hit-time">{startS}s � {endS}s</div>
+                        <div className="lib__semantic-hit-desc">{hit.text.slice(0, 120)}{hit.text.length > 120 ? '�' : ''}</div>
                       </div>
                     </div>
                   );
@@ -1098,10 +1098,10 @@ export default function LibraryPanel({ onAddToTimeline }: {
             {!semanticLoading && semanticResults && semanticResults.length === 0 && (
               <div className="lib__semantic-empty">
                 {allIndexed
-                  ? <><span>🔍</span><p>No matching scenes found</p><small>All {videoAssets.length} video{videoAssets.length !== 1 ? 's' : ''} indexed</small></>
+                  ? <><span>??</span><p>No matching scenes found</p><small>All {videoAssets.length} video{videoAssets.length !== 1 ? 's' : ''} indexed</small></>
                   : indexingCount > 0
-                    ? <><span>⏳</span><p>No results yet</p><small>Still indexing {indexingCount} video{indexingCount !== 1 ? 's' : ''}… try again soon</small></>
-                    : <><span>🔍</span><p>No matching scenes found</p></>}
+                    ? <><span>?</span><p>No results yet</p><small>Still indexing {indexingCount} video{indexingCount !== 1 ? 's' : ''}� try again soon</small></>
+                    : <><span>??</span><p>No matching scenes found</p></>}
               </div>
             )}
           </div>
@@ -1125,20 +1125,20 @@ export default function LibraryPanel({ onAddToTimeline }: {
                   type="webcomp"
                   title={wc.name}
                   badge="WC"
-                  subtitle={`${wc.width}×${wc.height} · ${wc.fps}fps`}
+                  subtitle={`${wc.width}�${wc.height} � ${wc.fps}fps`}
                   isDragging={dragging === wc.assetId}
                   onDragStart={e => {
                     setDragging(wc.assetId);
-                    e.dataTransfer.setData('application/Fade-webcomp', JSON.stringify(wc));
+                    e.dataTransfer.setData('application/fade-webcomp', JSON.stringify(wc));
                     e.dataTransfer.effectAllowed = 'copy';
                   }}
                   onDragEnd={() => setDragging(null)}
                   onDoubleClick={() => handleAddWebCompToTimeline(wc)}
                   onContextMenu={e => openCtx(e, [
-                    { icon: '↓', label: 'Add to Timeline', onClick: () => handleAddWebCompToTimeline(wc) },
-                    { icon: '📁', label: 'Open Folder', onClick: () => (window as any).electronAPI?.shellOpenPath?.(wc.folderPath) },
+                    { icon: '?', label: 'Add to Timeline', onClick: () => handleAddWebCompToTimeline(wc) },
+                    { icon: '??', label: 'Open Folder', onClick: () => (window as any).electronAPI?.shellOpenPath?.(wc.folderPath) },
                     { icon: '', label: '', sep: true, onClick: () => {} },
-                    { icon: '✕', label: 'Delete', danger: true, onClick: async () => {
+                    { icon: '?', label: 'Delete', danger: true, onClick: async () => {
                       if (!window.confirm(`Delete WebComp "${wc.name}"?`)) return;
                       await fetch(`${base()}/timeline/webcomp/${wc.assetId}`, { method: 'DELETE' });
                       setWebcomps(p => p.filter(w => w.assetId !== wc.assetId));
@@ -1161,14 +1161,14 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     onDragStart={e => {
                       if (comp.isRoot) return;
                       setDragging(comp.compId);
-                      e.dataTransfer.setData('application/Fade-comp', JSON.stringify(comp));
+                      e.dataTransfer.setData('application/fade-comp', JSON.stringify(comp));
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={() => setDragging(null)}
                     renaming={renamingId === comp.compId}
                     onRenameCommit={v => handleRenameComp(comp.compId, v)}
                     onRenameCancel={() => setRenamingId(null)}
-                    subtitle={`${comp.width}×${comp.height} · ${comp.fps}fps`}
+                    subtitle={`${comp.width}�${comp.height} � ${comp.fps}fps`}
                     onDoubleClick={() => handleEnterComp(comp)}
                     onContextMenu={e => compCtx(e, comp)}
                   />
@@ -1192,7 +1192,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     isDragging={dragging === asset.assetId}
                     onDragStart={e => {
                       setDragging(asset.assetId);
-                      e.dataTransfer.setData('application/Fade-asset', JSON.stringify(asset));
+                      e.dataTransfer.setData('application/fade-asset', JSON.stringify(asset));
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onDragEnd={() => setDragging(null)}
@@ -1225,7 +1225,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
             {!loading && filtered.length === 0 && comps.length === 0 && (
               <div className="lib__empty" style={{ gridColumn: '1/-1' }}>
-                <div className="lib__empty-icon">📂</div>
+                <div className="lib__empty-icon">??</div>
                 <p className="lib__empty-hint">Drop files here or click <strong>+</strong></p>
               </div>
             )}

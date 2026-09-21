@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSelection } from '../../context/selectionContext';
 import { inspectorApi, type ParamRow, type ClipParams, type KFDef } from '../../api/inspectorApi';
 import { maskApi, effectsApi, type MaskInfo, type EffectInfo, type EffectParamDef } from '../../api/toolsApi';
@@ -72,7 +72,7 @@ interface KeyframeBtnProps {
 function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBtnProps) {
   return (
     <div className="insp-kf-group">
-      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onPrev} title="Previous keyframe">‹</button>
+      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onPrev} title="Previous keyframe">�</button>
       <button
         className={`insp-kf-diamond${hasKf ? ' insp-kf-diamond--active' : ''}${isAnimated ? ' insp-kf-diamond--animated' : ''}`}
         onClick={onToggle}
@@ -87,7 +87,7 @@ function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBt
           />
         </svg>
       </button>
-      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onNext} title="Next keyframe">›</button>
+      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onNext} title="Next keyframe">�</button>
     </div>
   );
 }
@@ -247,7 +247,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     onRefresh(); load();
   }, [kfData, clipId, paramId, onRefresh, load]);
 
-  if (loading) return <div className="insp-kftrack-loading">Loading…</div>;
+  if (loading) return <div className="insp-kftrack-loading">Loading�</div>;
 
   // Render  
   const playX = frameToX(currentFrame);
@@ -256,9 +256,9 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     <div className="insp-kftrack" onClick={e => e.stopPropagation()}>
       {/* Header */}
       <div className="insp-kftrack-header">
-        <span className="insp-kftrack-title">Keyframes — {label}</span>
+        <span className="insp-kftrack-title">Keyframes � {label}</span>
         <span className="insp-kftrack-count">{kfData.length} kf</span>
-        <button className="insp-kftrack-zoom-btn" onClick={() => { setTlZoom(1); setTlPan(0); }} title="Reset zoom">⊡</button>
+        <button className="insp-kftrack-zoom-btn" onClick={() => { setTlZoom(1); setTlPan(0); }} title="Reset zoom">?</button>
       </div>
 
       {/* SVG Timeline */}
@@ -314,7 +314,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
                    if (s.has(kf.frame)) s.delete(kf.frame); else s.add(kf.frame);
                    return s;
                  });
-                 window.dispatchEvent(new CustomEvent('Fade:seek', { detail: kf.frame }));
+                 window.dispatchEvent(new CustomEvent('fade:seek', { detail: kf.frame }));
                }}
                onContextMenu={e => {
                  e.preventDefault(); e.stopPropagation();
@@ -326,7 +326,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
                 fill={col} stroke={isSel ? '#fff' : 'rgba(255,255,255,0.5)'}
                 strokeWidth={isSel ? 1.5 : 1}
               />
-              <title>Frame {kf.frame} · {kf.interp} · {kf.value.toFixed(3)}</title>
+              <title>Frame {kf.frame} � {kf.interp} � {kf.value.toFixed(3)}</title>
             </g>
           );
         })}
@@ -351,13 +351,13 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
               ))}
             </select>
             <button className="insp-kftrack-copy" title="Copy to current frame"
-                    onClick={e => { e.stopPropagation(); copyKf(kf.frame); }}>⧉</button>
+                    onClick={e => { e.stopPropagation(); copyKf(kf.frame); }}>?</button>
             <button className="insp-kftrack-del" title="Delete keyframe"
-                    onClick={e => { e.stopPropagation(); deleteKf(kf.frame); }}>✕</button>
+                    onClick={e => { e.stopPropagation(); deleteKf(kf.frame); }}>?</button>
           </div>
         ))}
         {kfData.length === 0 && (
-          <div className="insp-kftrack-empty">No keyframes yet. Click the ◇ diamond to add one.</div>
+          <div className="insp-kftrack-empty">No keyframes yet. Click the ? diamond to add one.</div>
         )}
       </div>
 
@@ -421,7 +421,7 @@ function BlendModeSelector({ param, clipId, onChange }: {
             <option key={m.value} value={m.value}>{m.label}</option>
           ))}
         </select>
-        <span className="insp-blend-arrow">▾</span>
+        <span className="insp-blend-arrow">?</span>
       </div>
     </div>
   );
@@ -492,10 +492,10 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
     if (!frames.length) return;
     if (dir === 'prev') {
       const prev = [...frames].filter(f => f < currentFrame).pop();
-      if (prev != null) window.dispatchEvent(new CustomEvent('Fade:seek', { detail: prev }));
+      if (prev != null) window.dispatchEvent(new CustomEvent('fade:seek', { detail: prev }));
     } else {
       const next = frames.find(f => f > currentFrame);
-      if (next != null) window.dispatchEvent(new CustomEvent('Fade:seek', { detail: next }));
+      if (next != null) window.dispatchEvent(new CustomEvent('fade:seek', { detail: next }));
     }
   }, [param.keyframes, currentFrame]);
 
@@ -598,7 +598,7 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
 function GroupHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
     <button className="insp-group-header" onClick={onToggle}>
-      <span className={`insp-group-header__arrow${open ? ' open' : ''}`}>▶</span>
+      <span className={`insp-group-header__arrow${open ? ' open' : ''}`}>?</span>
       {label}
     </button>
   );
@@ -625,8 +625,8 @@ function MasksPanel({ clipId }: { clipId: string }) {
       const targetId = (e as CustomEvent<string>).detail;
       if (!targetId || targetId === clipId) load();
     };
-    window.addEventListener('Fade:masks-changed', handler);
-    return () => window.removeEventListener('Fade:masks-changed', handler);
+    window.addEventListener('fade:masks-changed', handler);
+    return () => window.removeEventListener('fade:masks-changed', handler);
   }, [clipId, load]);
 
   if (masks.length === 0) return null;
@@ -638,7 +638,7 @@ function MasksPanel({ clipId }: { clipId: string }) {
         <div className="insp-group__body">
           {masks.map(m => (
             <div key={m.maskId} className="insp-mask-row">
-              <span className="insp-mask-row__icon">⊖</span>
+              <span className="insp-mask-row__icon">?</span>
               <span className="insp-mask-row__name">{m.name}</span>
               <span className="insp-mask-row__shape">{m.shape}</span>
               <span className="insp-mask-row__mode">{m.mode}</span>
@@ -650,7 +650,7 @@ function MasksPanel({ clipId }: { clipId: string }) {
                   await maskApi.remove(clipId, m.maskId);
                   load();
                 }}
-              >✕</button>
+              >?</button>
             </div>
           ))}
         </div>
@@ -695,11 +695,11 @@ export default function InspectorPanel() {
       timer = setTimeout(() => setCF(frame), 200);
     };
     window.addEventListener('fade:frame', handler);
-    window.addEventListener('Fade:seek',  handler);
+    window.addEventListener('fade:seek',  handler);
     return () => {
       if (timer) clearTimeout(timer);
       window.removeEventListener('fade:frame', handler);
-      window.removeEventListener('Fade:seek',  handler);
+      window.removeEventListener('fade:seek',  handler);
     };
   }, []);
 
@@ -733,8 +733,8 @@ export default function InspectorPanel() {
 
   // Refresh when a mask is added from OverlayCanvas
   useEffect(() => {
-    window.addEventListener('Fade:masks-changed', refresh as EventListener);
-    return () => window.removeEventListener('Fade:masks-changed', refresh as EventListener);
+    window.addEventListener('fade:masks-changed', refresh as EventListener);
+    return () => window.removeEventListener('fade:masks-changed', refresh as EventListener);
   }, [refresh]);
 
   const handleParamChange = useCallback((_id: string, _val: number) => {
@@ -771,7 +771,7 @@ export default function InspectorPanel() {
   if (!selected) {
     return (
       <div className="insp-empty">
-        <div className="insp-empty__icon">⬚</div>
+        <div className="insp-empty__icon">?</div>
         <div className="insp-empty__text">Select a clip or transition to inspect</div>
       </div>
     );
@@ -785,14 +785,14 @@ export default function InspectorPanel() {
     return (
       <div className="insp-empty">
         <div className="insp-empty__spinner" />
-        <div className="insp-empty__text">Loading…</div>
+        <div className="insp-empty__text">Loading�</div>
       </div>
     );
   }
 
   if (!data) return null;
 
-  // Text clips → dedicated text inspector
+  // Text clips ? dedicated text inspector
   const isText = data.clipType === 'TextClip'
     || (selected.type === 'clip' && selected.clipType === 'text');
 
@@ -806,7 +806,7 @@ export default function InspectorPanel() {
     );
   }
 
-  // WebComp clips → generic params  
+  // WebComp clips ? generic params  
   const isWebComp = data.clipType === 'WebCompClip'
     || (selected.type === 'clip' && (selected as any).clipType === 'webcomp')
     || data.clipType.toLowerCase().includes('webcomp');
@@ -818,7 +818,7 @@ export default function InspectorPanel() {
         <div className="insp-clip-header__badge">{data.clipType.replace('Clip', '')}</div>
         <div className="insp-clip-header__name">{selected.clipName}</div>
         <div className="insp-clip-header__meta">
-          {data.duration} fr · start {data.startFrame} · track {selected.trackIndex + 1}
+          {data.duration} fr � start {data.startFrame} � track {selected.trackIndex + 1}
         </div>
       </div>
 
@@ -900,8 +900,8 @@ function InspectorEffectsPanel({ clipId }: { clipId: string }) {
       const targetId = (e as CustomEvent<string>).detail;
       if (!targetId || targetId === clipId) load();
     };
-    window.addEventListener('Fade:effects-changed', handler);
-    return () => window.removeEventListener('Fade:effects-changed', handler);
+    window.addEventListener('fade:effects-changed', handler);
+    return () => window.removeEventListener('fade:effects-changed', handler);
   }, [clipId, load]);
 
   if (effects.length === 0) return null;
@@ -932,7 +932,7 @@ function InspectorEffectsPanel({ clipId }: { clipId: string }) {
                   className="insp-effect__del"
                   onClick={async () => { await effectsApi.remove(clipId, eff.effectId); load(); }}
                   title="Remove effect"
-                >✕</button>
+                >?</button>
               </div>
               <div className="insp-effect__params">
                 {Object.entries(eff.params)

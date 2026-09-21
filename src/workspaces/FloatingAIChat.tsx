@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import './FloatingAIChat.css'
 
 // Types
@@ -38,47 +38,47 @@ let _persistedInput: string                             = ''
 // Tool icon map  
 
 const TOOL_ICONS: Record<string, string> = {
-  get_timeline_state: '🎬',
-  get_library: '📚',
-  get_library_assets: '📚',
-  place_clip: '📌',
-  add_text_clip: '✍️',
-  add_shape_clip: '🔷',
-  split_clip: '✂️',
-  trim_clip: '✂️',
-  move_clip: '↔️',
-  delete_clip: '🗑️',
-  add_transition: '🌊',
-  add_transitions_between_all_clips: '🌊',
-  apply_effect_to_clip: '✨',
-  download_videos: '⬇️',
-  download_images: '🖼️',
-  schedule_download: '⏳',
-  generate_image: '🎨',
-  search_video_scenes: '🔍',
-  get_asset_context: '🔍',
-  get_clip_context: '🔍',
-  describe_clip: '🔍',
-  describe_selected_clip: '🔍',
-  get_timeline_context: '📋',
-  create_news_video: '📰',
-  create_webcomp: '🌐',
-  generate_tts: '🎙️',
-  check_job_status: '⏱️',
-  animate_property: '🎭',
-  apply_curve_preset: '📈',
-  search_news: '📡',
-  find_free_overlay_track: '🎞️',
-  add_track: '➕',
-  remove_silence: '🔇',
-  generate_captions: '💬',
-  undo: '↩️',
-  redo: '↪️',
-  export_video: '📤',
-  stop_indexing: '⏹️',
-  set_clip_volume: '🔉',
-  mute_clip: '🔇',
-  get_clip_volume: '🔊',
+  get_timeline_state: '??',
+  get_library: '??',
+  get_library_assets: '??',
+  place_clip: '??',
+  add_text_clip: '??',
+  add_shape_clip: '??',
+  split_clip: '??',
+  trim_clip: '??',
+  move_clip: '??',
+  delete_clip: '???',
+  add_transition: '??',
+  add_transitions_between_all_clips: '??',
+  apply_effect_to_clip: '?',
+  download_videos: '??',
+  download_images: '???',
+  schedule_download: '?',
+  generate_image: '??',
+  search_video_scenes: '??',
+  get_asset_context: '??',
+  get_clip_context: '??',
+  describe_clip: '??',
+  describe_selected_clip: '??',
+  get_timeline_context: '??',
+  create_news_video: '??',
+  create_webcomp: '??',
+  generate_tts: '???',
+  check_job_status: '??',
+  animate_property: '??',
+  apply_curve_preset: '??',
+  search_news: '??',
+  find_free_overlay_track: '???',
+  add_track: '?',
+  remove_silence: '??',
+  generate_captions: '??',
+  undo: '??',
+  redo: '??',
+  export_video: '??',
+  stop_indexing: '??',
+  set_clip_volume: '??',
+  mute_clip: '??',
+  get_clip_volume: '??',
 }
 
 const TIMELINE_TOOLS = new Set([
@@ -95,11 +95,11 @@ const LIBRARY_TOOLS = new Set([
 // Port hook
 
 function usePort(): number {
-  const [port, setPort] = useState<number>((window as any).__Fade_PORT__ ?? 8000)
+  const [port, setPort] = useState<number>((window as any).__FADE_PORT__ ?? 8000)
   useEffect(() => {
     const h = (e: Event) => setPort((e as CustomEvent<number>).detail)
-    window.addEventListener('Fade:port', h, { once: true })
-    return () => window.removeEventListener('Fade:port', h)
+    window.addEventListener('fade:port', h, { once: true })
+    return () => window.removeEventListener('fade:port', h)
   }, [])
   return port
 }
@@ -113,19 +113,19 @@ function SelectedClipBadge() {
       const d = (e as CustomEvent).detail
       setClip(d?.clipId ? d : null)
     }
-    window.addEventListener('Fade:clip-selected', h)
-    return () => window.removeEventListener('Fade:clip-selected', h)
+    window.addEventListener('fade:clip-selected', h)
+    return () => window.removeEventListener('fade:clip-selected', h)
   }, [])
   if (!clip) return null
   return (
     <div className="fchat__clip-badge">
       <span className="fchat__clip-dot" />
-      Clip on track {clip.trackIndex} — AI can apply effects
+      Clip on track {clip.trackIndex} � AI can apply effects
     </div>
   )
 }
 
-// Single status bar — the ONLY status indicator in the whole widget
+// Single status bar � the ONLY status indicator in the whole widget
 
 function StatusBar({ status }: { status: AgentStatus }) {
   if (status.phase === 'idle') return null
@@ -143,7 +143,7 @@ function Bubble({ msg }: { msg: Message }) {
   const [expanded, setExpanded] = useState(false)
 
   if (msg.role === 'tool_call') {
-    const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '⚙️'
+    const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '??'
     const hasArgs = msg.toolArgs && Object.keys(msg.toolArgs).length > 0
     const argsStr = hasArgs ? JSON.stringify(msg.toolArgs, null, 2) : ''
     return (
@@ -157,7 +157,7 @@ function Bubble({ msg }: { msg: Message }) {
                 className="fchat__tool-expand"
                 onClick={() => setExpanded(v => !v)}
               >
-                {expanded ? '▲ hide args' : '▼ show args'}
+                {expanded ? '? hide args' : '? show args'}
               </button>
               {expanded && (
                 <pre className="fchat__tool-args">{argsStr}</pre>
@@ -171,9 +171,9 @@ function Bubble({ msg }: { msg: Message }) {
   }
 
   if (msg.role === 'tool_result') {
-    const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '✓'
+    const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '?'
     const MAX = 200
-    const preview = msg.text.length > MAX ? msg.text.slice(0, MAX) + '…' : msg.text
+    const preview = msg.text.length > MAX ? msg.text.slice(0, MAX) + '�' : msg.text
     const truncated = msg.text.length > MAX
     return (
       <div className="fchat__tool-card fchat__tool-card--result">
@@ -183,11 +183,11 @@ function Bubble({ msg }: { msg: Message }) {
           <div className="fchat__tool-summary">{expanded ? msg.text : preview}</div>
           {truncated && (
             <button className="fchat__tool-expand" onClick={() => setExpanded(v => !v)}>
-              {expanded ? '▲ less' : '▼ more'}
+              {expanded ? '? less' : '? more'}
             </button>
           )}
         </div>
-        <span className="fchat__tool-badge fchat__tool-badge--done">✓</span>
+        <span className="fchat__tool-badge fchat__tool-badge--done">?</span>
       </div>
     )
   }
@@ -198,7 +198,7 @@ function Bubble({ msg }: { msg: Message }) {
         <div className={`fchat__avatar ${msg.streaming ? 'fchat__avatar--pulse' : ''}`}>AI</div>
       )}
       <div className="fchat__bubble">
-        {msg.text || (msg.streaming ? <span className="fchat__cursor">▋</span> : null)}
+        {msg.text || (msg.streaming ? <span className="fchat__cursor">?</span> : null)}
       </div>
     </div>
   )
@@ -251,11 +251,11 @@ export default function FloatingAIChat({ onClose }: Props) {
 
   const dispatchToolEvents = useCallback((toolName: string) => {
     if (TIMELINE_TOOLS.has(toolName))
-      window.dispatchEvent(new CustomEvent('Fade:tracks-changed'))
+      window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
     if (LIBRARY_TOOLS.has(toolName))
-      window.dispatchEvent(new CustomEvent('Fade:library-changed'))
+      window.dispatchEvent(new CustomEvent('fade:library-changed'))
     if (toolName.includes('effect'))
-      window.dispatchEvent(new CustomEvent('Fade:effects-changed'))
+      window.dispatchEvent(new CustomEvent('fade:effects-changed'))
   }, [])
 
   async function send() {
@@ -263,7 +263,7 @@ export default function FloatingAIChat({ onClose }: Props) {
     if (!text || busy) return
     setInput(''); _persistedInput = ''
     setBusy(true)
-    setStatus({ phase: 'thinking', label: 'Thinking…' })
+    setStatus({ phase: 'thinking', label: 'Thinking�' })
 
     appendMsg({ id: uid(), role: 'user', text })
     historyRef.current = [...historyRef.current, { role: 'user', text }]
@@ -293,7 +293,7 @@ export default function FloatingAIChat({ onClose }: Props) {
             const evt = JSON.parse(line.slice(6))
 
             if (evt.type === 'status') {
-              // Label comes directly from backend — never hardcoded here
+              // Label comes directly from backend � never hardcoded here
               setStatus({ phase: evt.phase as Phase, label: evt.label, tool: evt.tool })
 
             } else if (evt.type === 'token') {
@@ -316,11 +316,11 @@ export default function FloatingAIChat({ onClose }: Props) {
               appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
               aiText = ''
               dispatchToolEvents(evt.name)
-              // Export tool — dispatch overlay event
+              // Export tool � dispatch overlay event
               if (evt.name === 'export_video' && typeof evt.content === 'string') {
                 const m = evt.content.match(/EXPORT_JOB_ID:([\w-]+)/)
                 if (m) {
-                  window.dispatchEvent(new CustomEvent('Fade:export-started', { detail: { jobId: m[1] } }))
+                  window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: m[1] } }))
                 }
               }
 
@@ -332,14 +332,14 @@ export default function FloatingAIChat({ onClose }: Props) {
               })
 
             } else if (evt.type === 'error') {
-              patchLast({ text: `⚠ ${evt.message}`, streaming: false, role: 'error' })
+              patchLast({ text: `? ${evt.message}`, streaming: false, role: 'error' })
             }
           } catch { /* ignore parse errors */ }
         }
       }
     } catch (err: any) {
       if (err.name !== 'AbortError')
-        patchLast({ text: `⚠ ${err.message}`, streaming: false, role: 'error' })
+        patchLast({ text: `? ${err.message}`, streaming: false, role: 'error' })
     }
 
     historyRef.current = [...historyRef.current, { role: 'ai', text: aiText }]
@@ -354,7 +354,7 @@ export default function FloatingAIChat({ onClose }: Props) {
     setBusy(false)
   }
 
-  // ── Drag to move ────────────────────────────────────────────────────────────
+  // -- Drag to move ------------------------------------------------------------
 
   function onHeaderMouseDown(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest('.fchat__close')) return
@@ -376,7 +376,7 @@ export default function FloatingAIChat({ onClose }: Props) {
     window.addEventListener('mouseup', onUp)
   }
 
-  // ── Drag to resize (bottom-right handle) ────────────────────────────────────
+  // -- Drag to resize (bottom-right handle) ------------------------------------
 
   function onResizeMouseDown(e: React.MouseEvent) {
     e.preventDefault()
@@ -409,17 +409,17 @@ export default function FloatingAIChat({ onClose }: Props) {
       className={`fchat ${busy ? 'fchat--busy' : ''}`}
       style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
     >
-      {/* Header — drag to move */}
+      {/* Header � drag to move */}
       <div className="fchat__header" onMouseDown={onHeaderMouseDown}>
         <span className="fchat__title">
-          {/* Single static green online dot — no animation, no phase colour */}
+          {/* Single static green online dot � no animation, no phase colour */}
           <span className="fchat__online-dot" />
           AI Director
         </span>
-        <button className="fchat__close" onClick={onClose} title="Close">✕</button>
+        <button className="fchat__close" onClick={onClose} title="Close">?</button>
       </div>
 
-      {/* ONE status indicator — shown only while busy, labels from backend */}
+      {/* ONE status indicator � shown only while busy, labels from backend */}
       <StatusBar status={status} />
 
       <SelectedClipBadge />
@@ -436,7 +436,7 @@ export default function FloatingAIChat({ onClose }: Props) {
           <textarea
             ref={inputRef}
             className="fchat__input"
-            placeholder={busy ? 'AI is working…' : 'Ask AI to edit, download media, create videos…'}
+            placeholder={busy ? 'AI is working�' : 'Ask AI to edit, download media, create videos�'}
             value={input}
             rows={2}
             onChange={e => setInput(e.target.value)}
@@ -445,12 +445,12 @@ export default function FloatingAIChat({ onClose }: Props) {
           />
         </div>
         {busy
-          ? <button className="fchat__send fchat__send--stop" onClick={stop} title="Stop">■</button>
-          : <button className="fchat__send" onClick={send} title="Send (Enter)">↑</button>
+          ? <button className="fchat__send fchat__send--stop" onClick={stop} title="Stop">�</button>
+          : <button className="fchat__send" onClick={send} title="Send (Enter)">?</button>
         }
       </div>
 
-      {/* Resize handle — bottom-right corner */}
+      {/* Resize handle � bottom-right corner */}
       <div className="fchat__resize-handle" onMouseDown={onResizeMouseDown} />
     </div>
   )

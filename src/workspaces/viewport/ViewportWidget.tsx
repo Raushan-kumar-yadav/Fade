@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebCompSync } from './useWebCompSync';
 import {
   openPreviewSocket,
@@ -179,7 +179,7 @@ export default function ViewportWidget() {
 
      
     const portPollId = setInterval(() => {
-      const p: number = (window as any).__Fade_PORT__ ?? 0
+      const p: number = (window as any).__FADE_PORT__ ?? 0
       if (p && p !== currentPort) {
         currentPort = p
         engine.updatePort(p)
@@ -191,8 +191,8 @@ export default function ViewportWidget() {
 
     // React to track changes
     const onTracksChanged = () => loadClips(currentPort)
-    window.addEventListener('Fade:tracks-changed', onTracksChanged)
-    window.addEventListener('Fade:render-now', onTracksChanged)
+    window.addEventListener('fade:tracks-changed', onTracksChanged)
+    window.addEventListener('fade:render-now', onTracksChanged)
 
     
     const onAudioSeek = (e: Event) => {
@@ -202,24 +202,21 @@ export default function ViewportWidget() {
     const onAudioPause = () => {
       engine.pause()
     }
-    window.addEventListener('Fade:audio-seek', onAudioSeek)
-    window.addEventListener('Fade:audio-pause', onAudioPause)
+    window.addEventListener('fade:audio-seek', onAudioSeek)
+    window.addEventListener('fade:audio-pause', onAudioPause)
 
     return () => {
       clearInterval(portPollId)
-      window.removeEventListener('Fade:tracks-changed', onTracksChanged)
-      window.removeEventListener('Fade:render-now', onTracksChanged)
-      window.removeEventListener('Fade:audio-seek', onAudioSeek)
-      window.removeEventListener('Fade:audio-pause', onAudioPause)
+      window.removeEventListener('fade:tracks-changed', onTracksChanged)
+      window.removeEventListener('fade:render-now', onTracksChanged)
+      window.removeEventListener('fade:audio-seek', onAudioSeek)
+      window.removeEventListener('fade:audio-pause', onAudioPause)
       engine.destroy()
       audioRef.current = null
     }
   }, [])   
 
-  // ── Playback state: SSE push instead of 200ms poll ──────────────────────────
-  // The old setInterval hit /playback/state every 200ms, giving up to 200ms of
-  // stale isPlaying / fps / totalFrames state. SSE events from the backend are
-  // pushed instantly on play/pause/seek so the UI is always up-to-date.
+ 
   useEffect(() => {
     let es: EventSource | null = null;
     let fallbackId: ReturnType<typeof setInterval> | null = null;
@@ -239,8 +236,7 @@ export default function ViewportWidget() {
         } catch { /* malformed payload */ }
       });
 
-      // Fallback: if SSE is not delivering events (backend too old / network blip)
-      // keep a slow 2-second poll as a safety net.
+ 
       fallbackId = setInterval(async () => {
         try {
           const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
@@ -253,16 +249,16 @@ export default function ViewportWidget() {
           if (data.inPoint  !== undefined) setInPoint(data.inPoint);
           if (data.outPoint !== undefined) setOutPoint(data.outPoint);
         } catch { /* backend restarting */ }
-      }, 2000); // 2 s — safety net only, SSE handles real-time updates
+      }, 2000); 
     }
 
-    const knownPort: number | null = (window as any).__Fade_PORT__;
+    const knownPort: number | null = (window as any).__FADE_PORT__;
     if (knownPort) {
       startSSE(knownPort);
     } else {
       const handler = (e: Event) => startSSE((e as CustomEvent<number>).detail);
-      window.addEventListener('Fade:port', handler, { once: true });
-      return () => { window.removeEventListener('Fade:port', handler); };
+      window.addEventListener('fade:port', handler, { once: true });
+      return () => { window.removeEventListener('fade:port', handler); };
     }
 
     return () => {
@@ -275,11 +271,11 @@ export default function ViewportWidget() {
   useEffect(() => {
     const handler = () => {
       const f = frameNumRef.current;
-      // engine.seek() notifies C++ compositor — renderSeek IPC not needed here.
+       
       playbackSeek(f).catch(() => {});
     };
-    window.addEventListener('Fade:render-now', handler);
-    return () => window.removeEventListener('Fade:render-now', handler);
+    window.addEventListener('fade:render-now', handler);
+    return () => window.removeEventListener('fade:render-now', handler);
   }, []);
 
   //   Controls  
@@ -310,8 +306,7 @@ export default function ViewportWidget() {
       setIsPlaying(false);
     }
     const next = Math.max(0, Math.min(totalFrames - 1, currentFrame + dir));
-    // playbackSeek → engine.seek() already calls pipeline.notify_seek() which
-    // tells the C++ compositor — renderSeek IPC is redundant and causes a race.
+ 
     await playbackSeek(next);
     audioRef.current?.seek(next);
     setCurrentFrame(next);
@@ -326,8 +321,7 @@ export default function ViewportWidget() {
       audioRef.current?.pause();
       setIsPlaying(false);
     }
-    // playbackSeek → engine.seek() already calls pipeline.notify_seek() which
-    // tells the C++ compositor — separate renderSeek IPC causes a double-seek race.
+ 
     await playbackSeek(f);
     audioRef.current?.seek(f);
     setCurrentFrame(f);
@@ -375,7 +369,7 @@ export default function ViewportWidget() {
     const next = previewFormat === 'jpeg' ? 'png' : 'jpeg';
     setPreviewFormat(next);
     try {
-      const port = (window as any).__Fade_PORT__ ?? 8000;
+      const port = (window as any).__FADE_PORT__ ?? 8000;
       await fetch(`http://127.0.0.1:${port}/preview/format`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

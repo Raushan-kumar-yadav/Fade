@@ -1,33 +1,33 @@
-﻿/**
+/**
  * EffectsPanel.tsx
  * Left: Effect browser with drag support (draggable onto timeline clips or the applied-effects panel).
  * Right: Applied effects on the selected clip with full param editing:
- *   - FloatSlider / ToggleBool / IntSlider → custom range slider
- *   - Vec2Input → two linked sliders (x, y)
- *   - Vec4Input → RGBA color picker + individual sliders
+ *   - FloatSlider / ToggleBool / IntSlider ? custom range slider
+ *   - Vec2Input ? two linked sliders (x, y)
+ *   - Vec4Input ? RGBA color picker + individual sliders
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { effectsApi, type EffectInfo, type EffectParamDef } from '../../api/toolsApi'
 import { useSelection } from '../../context/selectionContext'
 import './EffectsPanel.css'
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// -- Types --------------------------------------------------------------------
 
 interface CatalogEntry {
   type: string; name: string; icon: string; category: string; desc: string;
 }
 
 const FALLBACK_CATALOG: CatalogEntry[] = [
-  { type: 'blur',                name: 'Blur',               icon: '⬡', category: 'Stylize',   desc: 'Gaussian blur' },
-  { type: 'brightness_contrast', name: 'Brightness/Contrast',icon: '◑', category: 'Color',     desc: 'Adjust luminance & contrast' },
-  { type: 'hsl',                 name: 'HSL',                icon: '◐', category: 'Color',     desc: 'Hue / Saturation / Lightness' },
-  { type: 'color_grade',         name: 'Color Grade',        icon: '◧', category: 'Color',     desc: 'Temperature & tint' },
-  { type: 'sharpen',             name: 'Sharpen',            icon: '◇', category: 'Stylize',   desc: 'Unsharp mask' },
-  { type: 'vignette',            name: 'Vignette',           icon: '◉', category: 'Cinematic', desc: 'Dark edge falloff' },
-  { type: 'chroma_key',          name: 'Chroma Key',         icon: '◫', category: 'Keying',    desc: 'Green-screen removal' },
+  { type: 'blur',                name: 'Blur',               icon: '?', category: 'Stylize',   desc: 'Gaussian blur' },
+  { type: 'brightness_contrast', name: 'Brightness/Contrast',icon: '?', category: 'Color',     desc: 'Adjust luminance & contrast' },
+  { type: 'hsl',                 name: 'HSL',                icon: '?', category: 'Color',     desc: 'Hue / Saturation / Lightness' },
+  { type: 'color_grade',         name: 'Color Grade',        icon: '?', category: 'Color',     desc: 'Temperature & tint' },
+  { type: 'sharpen',             name: 'Sharpen',            icon: '?', category: 'Stylize',   desc: 'Unsharp mask' },
+  { type: 'vignette',            name: 'Vignette',           icon: '?', category: 'Cinematic', desc: 'Dark edge falloff' },
+  { type: 'chroma_key',          name: 'Chroma Key',         icon: '?', category: 'Keying',    desc: 'Green-screen removal' },
 ]
 
-// ── Param Controls ───────────────────────────────────────────────────────────
+// -- Param Controls -----------------------------------------------------------
 
 function ScalarSlider({ id, def, onChange }: {
   id: string; def: EffectParamDef
@@ -181,7 +181,7 @@ function EffectParamControl({ id, def, onCommit }: {
   }
 }
 
-// ── Effect Card (browser) ────────────────────────────────────────────────────
+// -- Effect Card (browser) ----------------------------------------------------
 
 function EffectCard({ entry, onApply, onDragStart }: {
   entry: CatalogEntry
@@ -205,12 +205,12 @@ function EffectCard({ entry, onApply, onDragStart }: {
         className="efx-card__add"
         onClick={e => { e.stopPropagation(); onApply(entry.type) }}
         title="Apply to selected clip"
-      >＋</button>
+      >+</button>
     </div>
   )
 }
 
-// ── Applied Effect Row ───────────────────────────────────────────────────────
+// -- Applied Effect Row -------------------------------------------------------
 
 function AppliedEffect({ eff, clipId, onRefresh }: {
   eff: EffectInfo; clipId: string; onRefresh: () => void
@@ -238,7 +238,7 @@ function AppliedEffect({ eff, clipId, onRefresh }: {
           title={localEff.enabled ? 'Disable effect' : 'Enable effect'}
         />
         <span className="efx-applied__name" onClick={() => setOpen(o => !o)}>
-          <span className="efx-applied__arrow">{open ? '▾' : '▸'}</span>
+          <span className="efx-applied__arrow">{open ? '?' : '?'}</span>
           {localEff.name}
         </span>
         <span className="efx-applied__type-badge">{localEff.type}</span>
@@ -246,7 +246,7 @@ function AppliedEffect({ eff, clipId, onRefresh }: {
           className="efx-applied__del"
           title="Remove effect"
           onClick={async () => { await effectsApi.remove(clipId, eff.effectId); onRefresh() }}
-        >✕</button>
+        >?</button>
       </div>
 
       {open && (
@@ -268,7 +268,7 @@ function AppliedEffect({ eff, clipId, onRefresh }: {
   )
 }
 
-// ── Main EffectsPanel ────────────────────────────────────────────────────────
+// -- Main EffectsPanel --------------------------------------------------------
 
 export default function EffectsPanel() {
   const { selected } = useSelection()
@@ -284,7 +284,7 @@ export default function EffectsPanel() {
 
   // Load catalog from backend
   useEffect(() => {
-    const port = (window as any).__Fade_PORT__ ?? 8000
+    const port = (window as any).__FADE_PORT__ ?? 8000
     fetch(`http://127.0.0.1:${port}/effects/catalog`)
       .then(r => r.json())
       .then(d => { if (d.effects) setCatalog(d.effects) })
@@ -307,15 +307,15 @@ export default function EffectsPanel() {
       const targetId = (e as CustomEvent<string>).detail
       if (!targetId || targetId === clipId) loadApplied()
     }
-    window.addEventListener('Fade:effects-changed', handler)
-    return () => window.removeEventListener('Fade:effects-changed', handler)
+    window.addEventListener('fade:effects-changed', handler)
+    return () => window.removeEventListener('fade:effects-changed', handler)
   }, [clipId, loadApplied])
 
   async function applyEffect(effectType: string) {
     if (!clipId) return
     await effectsApi.add(clipId, effectType)
     loadApplied()
-    window.dispatchEvent(new CustomEvent('Fade:effects-changed', { detail: clipId }))
+    window.dispatchEvent(new CustomEvent('fade:effects-changed', { detail: clipId }))
   }
 
   const categories = useMemo(
@@ -333,23 +333,23 @@ export default function EffectsPanel() {
   const handleDragStart = (type: string, e: React.DragEvent) => {
     dragTypeRef.current = type
     // MIME type used by TimelineClip to detect effect drags
-    e.dataTransfer.setData('application/Fade-effect', type)
+    e.dataTransfer.setData('application/fade-effect', type)
     e.dataTransfer.effectAllowed = 'copy'
   }
 
   return (
     <div className="efx-panel">
 
-      {/* ── Left: Effect Browser ── */}
+      {/* -- Left: Effect Browser -- */}
       <div className="efx-browser">
         <div className="efx-browser__header">
           <span className="efx-browser__title">Effect Library</span>
-          <span className="efx-browser__hint-icon" title="Drag onto a clip or double-click">⋮⋮</span>
+          <span className="efx-browser__hint-icon" title="Drag onto a clip or double-click">??</span>
         </div>
 
         <input
           className="efx-browser__search"
-          placeholder="🔍 Search effects…"
+          placeholder="?? Search effects�"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -383,18 +383,18 @@ export default function EffectsPanel() {
         </div>
       </div>
 
-      {/* ── Right: Applied Effects ── */}
+      {/* -- Right: Applied Effects -- */}
       <div
         className={`efx-applied-panel${dropping ? ' efx-applied-panel--drop' : ''}`}
         onDragOver={e => {
-          if (e.dataTransfer.types.includes('application/Fade-effect')) {
+          if (e.dataTransfer.types.includes('application/fade-effect')) {
             e.preventDefault(); setDropping(true)
           }
         }}
         onDragLeave={() => setDropping(false)}
         onDrop={async e => {
           e.preventDefault(); setDropping(false)
-          const type = e.dataTransfer.getData('application/Fade-effect') || dragTypeRef.current
+          const type = e.dataTransfer.getData('application/fade-effect') || dragTypeRef.current
           if (type) await applyEffect(type)
           dragTypeRef.current = null
         }}
@@ -410,21 +410,21 @@ export default function EffectsPanel() {
 
         {!clipId && (
           <div className="efx-empty">
-            <div className="efx-empty__icon">🎬</div>
+            <div className="efx-empty__icon">??</div>
             <div>Select a clip on the timeline<br/>to apply and edit effects</div>
           </div>
         )}
 
         {clipId && applied.length === 0 && !dropping && (
           <div className="efx-empty">
-            <div className="efx-empty__icon">✦</div>
+            <div className="efx-empty__icon">?</div>
             <div>Drop an effect here or<br/>double-click one from the library</div>
           </div>
         )}
 
         {dropping && (
           <div className="efx-empty efx-empty--drop">
-            <div className="efx-empty__icon">⊕</div>
+            <div className="efx-empty__icon">?</div>
             <div>Release to apply effect</div>
           </div>
         )}

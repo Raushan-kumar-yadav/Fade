@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -52,7 +52,7 @@ def _resolve_download_dir(subdir: str = "") -> str:
     proj = engine.project
     base = proj.settings.mediaDownloadPath if (proj and proj.settings.mediaDownloadPath) else ""
     if not base:
-        base = str(Path.home() / ".Fade" / "downloads")
+        base = str(Path.home() / ".fade" / "downloads")
     path = os.path.join(base, subdir) if subdir else base
     os.makedirs(path, exist_ok=True)
     return path

@@ -1,6 +1,6 @@
-﻿ 
+ 
 function port(): number {
-  return (window as any).__Fade_PORT__ ?? 8000;
+  return (window as any).__FADE_PORT__ ?? 8000;
 }
 
 const base = () => `http://127.0.0.1:${port()}`;
@@ -211,7 +211,7 @@ export interface ExportSettings {
   codec?: string;
   videoBitrate?: string;
   crf?: number;      // -1 = bitrate mode; 18-51 = CRF mode
-  preset?: string;     // ultrafast → veryslow
+  preset?: string;     // ultrafast ? veryslow
   audioBitrate?: string;
   audioSampleRate?: number;
   audioChannels?:   number;
@@ -227,7 +227,7 @@ export interface ExportProgress {
   done: boolean;
   error: string | null;
   path: string | null;
-  status?: string;  // 'video' | 'audio' | undefined — used to show mux phase label
+  status?: string;  // 'video' | 'audio' | undefined � used to show mux phase label
 }
 
 export const exportApi = {
@@ -250,7 +250,7 @@ async function _pollWaveform(
   if (r.ok || r.status === 202) {
     const d = await r.json();
     if (d.status === 'done') return { peaks: d.peaks, bins: d.bins };
-    // pending — retry with exponential backoff, up to ~60s total
+    // pending � retry with exponential backoff, up to ~60s total
     if (attempts > 20) throw new Error('waveform timeout');
     const delay = Math.min(300 * Math.pow(1.5, attempts), 6000);
     await new Promise(res => setTimeout(res, delay));

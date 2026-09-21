@@ -1,6 +1,6 @@
-﻿ 
+ 
 function base(): string {
-  const port = (window as any).__Fade_PORT__ ?? 8000
+  const port = (window as any).__FADE_PORT__ ?? 8000
   return `http://127.0.0.1:${port}`
 }
 
@@ -33,7 +33,7 @@ export async function saveProject(defaultName = 'My Project'): Promise<string | 
   })
   if (!r.ok) { console.error('[Project] Save failed', await r.text()); return null }
   const res = await r.json()
-  console.log('[Project] Saved →', res.filepath,
+  console.log('[Project] Saved ?', res.filepath,
     `| clips:${res.clips} media:${res.mediaAssets} webcomps:${res.webcomps} chroma:${res.chromaDbChunks}`)
   return res.filepath as string
 }
@@ -41,9 +41,9 @@ export async function saveProject(defaultName = 'My Project'): Promise<string | 
 // Save to a known folder  
 
 export async function saveProjectTo(filepath: string): Promise<boolean> {
-  // filepath may be the anchor .Fade file  
-  const folderPath = filepath.endsWith('project.Fade')
-    ? filepath.replace(/[\\/]project\.Fade$/, '')
+  // filepath may be the anchor .fade file  
+  const folderPath = filepath.endsWith('project.fade')
+    ? filepath.replace(/[\\/]project\.fade$/, '')
     : filepath
 
   const r = await fetch(`${base()}/project/save`, {
@@ -53,7 +53,7 @@ export async function saveProjectTo(filepath: string): Promise<boolean> {
   })
   if (!r.ok) { console.error('[Project] Save failed', await r.text()); return false }
   const res = await r.json()
-  console.log('[Project] Saved →', res.filepath,
+  console.log('[Project] Saved ?', res.filepath,
     `| clips:${res.clips} media:${res.mediaAssets} webcomps:${res.webcomps} chroma:${res.chromaDbChunks}`)
   return true
 }
@@ -72,17 +72,17 @@ export interface LoadResult {
 export async function loadProject(): Promise<LoadResult | null> {
   const el = (window as any).electronAPI
 
-  // Try folder picker first; fall back to .Fade file picker
+  // Try folder picker first; fall back to .fade file picker
   let filepath: string | undefined = await el?.showOpenDialog({
     title: 'Open Project',
     properties: ['openDirectory'],
     buttonLabel: 'Open Project',
   })
 
-  // If the user picked nothing or the dialog doesn't support folders, try .Fade
+  // If the user picked nothing or the dialog doesn't support folders, try .echo
   if (!filepath) {
     filepath = await el?.showOpenDialog({
-      filters: [{ name: 'Fade Project', extensions: ['Fade'] }],
+      filters: [{ name: 'Fade Project', extensions: ['fade'] }],
     })
   }
   if (!filepath) return null
@@ -94,7 +94,7 @@ export async function loadProject(): Promise<LoadResult | null> {
   })
   if (!r.ok) { console.error('[Project] Load failed', await r.text()); return null }
   const res = await r.json() as LoadResult
-  console.log('[Project] Loaded ←', filepath,
+  console.log('[Project] Loaded ?', filepath,
     `| clips:${res.clips} effects:${res.effects} chroma:${res.chromaDbBundled ? 'bundled' : 'global'}`)
   return res
 }

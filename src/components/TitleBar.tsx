@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActiveTool } from '../context/toolContext';
 import WorkerProgress from '../workspaces/worker/WorkerProgress';
 import { saveProject, saveProjectTo, loadProject, newProject } from '../api/projectApi';
@@ -123,7 +123,7 @@ export default function TitleBar({
       const fp = await saveProject(projectName);
       if (fp) {
         savedPathRef.current = fp;
-        const name = fp.split(/[\\/]/).pop()?.replace(/\.Fade$/, '') ?? projectName;
+        const name = fp.split(/[\\/]/).pop()?.replace(/\.fade$/, '') ?? projectName;
         setProjectName(name);
       }
     }
@@ -133,7 +133,7 @@ export default function TitleBar({
     const fp = await saveProject(projectName);
     if (fp) {
       savedPathRef.current = fp;
-      const name = fp.split(/[\\/]/).pop()?.replace(/\.Fade$/, '') ?? projectName;
+      const name = fp.split(/[\\/]/).pop()?.replace(/\.fade$/, '') ?? projectName;
       setProjectName(name);
     }
   }, [projectName]);
@@ -148,18 +148,18 @@ export default function TitleBar({
       buttonLabel: 'Open Project',
     });
 
-    // Fall back to .Fade file picker (legacy single-file format)
+    // Fall back to .fade file picker (legacy single-file format)
     if (!filepath) {
       filepath = await el?.showOpenDialog({
         title: 'Open Project File',
-        filters: [{ name: 'Fade Project', extensions: ['Fade'] }],
+        filters: [{ name: 'Fade Project', extensions: ['fade'] }],
       });
     }
     if (!filepath) return;
 
     onLoadStart?.('Loading project…');
     try {
-      const port = (window as any).__Fade_PORT__ ?? 8000;
+      const port = (window as any).__FADE_PORT__ ?? 8000;
       const r = await fetch(`http://127.0.0.1:${port}/project/load`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -246,7 +246,7 @@ export default function TitleBar({
       <div className="titlebar__left">
         <div className="titlebar__logo">
           <div className="titlebar__logo-dot" />
-          <span>Fade</span>
+          <span>FADE</span>
         </div>
         <div className="titlebar__menus">
           <MenuButton label="File"     items={fileItems} />

@@ -1,5 +1,5 @@
-﻿E:\Editor_SIH\Fade\node_modules\.bin\cmake-js:2
-basedir=$(dirname "$(Fade "$0" | sed -e 's,\\,/,g')")
+E:\Editor_SIH\Fade\node_modules\.bin\cmake-js:2
+basedir=$(dirname "$(echo "$0" | sed -e 's,\\,/,g')")
           ^^^^^^^
 
 SyntaxError: missing ) after argument list

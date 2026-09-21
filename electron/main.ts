@@ -1,4 +1,4 @@
-﻿import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import fs from 'fs'
@@ -66,7 +66,7 @@ function createDevLogWindow(): void {
   devLogWindow = new BrowserWindow({
     width: 720,
     height: 700,
-    title: 'Fade — Backend Logs',
+    title: 'Echo — Backend Logs',
     frame: false,
     backgroundColor: '#0d0d0f',
     webPreferences: {

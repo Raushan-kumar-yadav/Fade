@@ -1,4 +1,4 @@
-﻿"""
+"""
 Video Generator — supports Google Veo (cloud) and local Ollama video models.
 
 Provider selection is driven by global_config generators.video_provider:
@@ -62,7 +62,7 @@ class GeminiVideoGenerator:
             )
 
         if not output_dir:
-            output_dir = str(Path.home() / ".Fade" / "generations" / "video")
+            output_dir = str(Path.home() / ".fade" / "generations" / "video")
         os.makedirs(output_dir, exist_ok=True)
 
         duration_seconds = max(1, min(30, duration_seconds))
@@ -186,7 +186,7 @@ class LocalVideoGenerator:
         import requests
 
         if not output_dir:
-            output_dir = str(Path.home() / ".Fade" / "generations" / "video")
+            output_dir = str(Path.home() / ".fade" / "generations" / "video")
         os.makedirs(output_dir, exist_ok=True)
 
         print(f"[LocalVideo] Generating via Ollama model={model}, prompt: {prompt[:60]}…")

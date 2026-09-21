@@ -1,4 +1,4 @@
-﻿ 
+ 
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './WebCompInspectorPanel.css';
@@ -22,7 +22,7 @@ interface WebCompClipInfo {
 
 /* API */
 
-function base() { return `http://127.0.0.1:${(window as any).__Fade_PORT__ ?? 8000}`; }
+function base() { return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`; }
 
 async function fetchInfo(clipId: string): Promise<WebCompClipInfo | null> {
   try {
@@ -33,7 +33,7 @@ async function fetchInfo(clipId: string): Promise<WebCompClipInfo | null> {
 
 async function patchParams(clipId: string, webcompId: string, params: Record<string, any>) {
   // Signal the prefetch loop to pause and discard in-flight captures
-  window.dispatchEvent(new CustomEvent('Fade:webcomp-params-changed', {
+  window.dispatchEvent(new CustomEvent('fade:webcomp-params-changed', {
     detail: { webcompId },
   }));
 
@@ -50,7 +50,7 @@ async function patchParams(clipId: string, webcompId: string, params: Record<str
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
     <button className="wci-section-hdr" onClick={onToggle}>
-      <span className="wci-section-hdr__arrow">{open ? '▾' : '▸'}</span>
+      <span className="wci-section-hdr__arrow">{open ? '?' : '?'}</span>
       <span className="wci-section-hdr__label">{label}</span>
     </button>
   );
@@ -130,7 +130,7 @@ export default function WebCompInspectorPanel({
 
   useEffect(() => { load(); }, [load]);
 
-  /* Param change — debounce 500ms */
+  /* Param change � debounce 500ms */
   const handleParamChange = useCallback((id: string, val: any) => {
     setParams(p => {
       const next = { ...p, [id]: val };
@@ -155,7 +155,7 @@ export default function WebCompInspectorPanel({
       (window as any).electronAPI?.shellOpenPath?.(info.meta.folderPath);
   }, [info?.meta?.folderPath]);
 
-  /* ── Render ── */
+  /* -- Render -- */
   if (loading) return <div className="wci-root"><div className="wci-spinner" /></div>;
   if (!info)   return <div className="wci-root"><div className="wci-empty">WebComp not found</div></div>;
 
@@ -177,16 +177,16 @@ export default function WebCompInspectorPanel({
         </div>
         <div className="wci-header__name" title={clipName}>{clipName || meta?.name || 'Untitled'}</div>
         <div className="wci-header__meta">
-          {duration} fr · start {startFrame} · track {trackIndex + 1}
+          {duration} fr � start {startFrame} � track {trackIndex + 1}
         </div>
       </div>
 
       {/* Actions */}
       <div className="wci-actions">
-        <button className="wci-action-btn" onClick={handleReload} title="Reload offscreen window">↺ Reload</button>
-        <button className="wci-action-btn" onClick={handleOpenFolder} title="Open folder">📁 Folder</button>
-        {saving && <span className="wci-saving">Saving…</span>}
-        {!saving && dirty && <span className="wci-dirty">●</span>}
+        <button className="wci-action-btn" onClick={handleReload} title="Reload offscreen window">? Reload</button>
+        <button className="wci-action-btn" onClick={handleOpenFolder} title="Open folder">?? Folder</button>
+        {saving && <span className="wci-saving">Saving�</span>}
+        {!saving && dirty && <span className="wci-dirty">?</span>}
       </div>
 
       {/* Note: Transform (position/scale/rotation/opacity/blend) params are rendered
@@ -241,12 +241,12 @@ export default function WebCompInspectorPanel({
           <div className="wci-kv">
             <span className="wci-kv__key">Folder</span>
             <span className="wci-kv__val wci-kv__val--mono" title={meta?.folderPath}>
-              {meta?.folderPath ? meta.folderPath.split(/[\\/]/).slice(-2).join('/') : '—'}
+              {meta?.folderPath ? meta.folderPath.split(/[\\/]/).slice(-2).join('/') : '�'}
             </span>
           </div>
           <div className="wci-kv">
             <span className="wci-kv__key">Resolution</span>
-            <span className="wci-kv__val">{meta?.width ?? 1920} × {meta?.height ?? 1080}</span>
+            <span className="wci-kv__val">{meta?.width ?? 1920} � {meta?.height ?? 1080}</span>
           </div>
           <div className="wci-kv">
             <span className="wci-kv__key">FPS</span>
@@ -254,7 +254,7 @@ export default function WebCompInspectorPanel({
           </div>
           <div className="wci-kv">
             <span className="wci-kv__key">Native Dur.</span>
-            <span className="wci-kv__val">{meta?.durationFrames ?? '—'} fr</span>
+            <span className="wci-kv__val">{meta?.durationFrames ?? '�'} fr</span>
           </div>
           <div className="wci-kv">
             <span className="wci-kv__key">Offset</span>

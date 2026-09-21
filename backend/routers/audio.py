@@ -1,4 +1,4 @@
-﻿import os
+import os
 import tempfile
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
@@ -73,7 +73,7 @@ def _stream_file(path: str, media_type: str, request: Request):
         },
     )
 
-_audio_cache_dir = os.path.join(tempfile.gettempdir(), "Fade_audio_cache")
+_audio_cache_dir = os.path.join(tempfile.gettempdir(), "fade_audio_cache")
 os.makedirs(_audio_cache_dir, exist_ok=True)
 
 

@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import os
 import uuid
@@ -62,7 +62,7 @@ class GeminiTTSGenerator:
             )
 
         if not output_dir:
-            output_dir = str(Path.home() / ".Fade" / "tts")
+            output_dir = str(Path.home() / ".fade" / "tts")
         os.makedirs(output_dir, exist_ok=True)
 
         if voice not in GEMINI_VOICES:
@@ -127,7 +127,7 @@ KOKORO_VOICES: dict[str, list[str]] = {
         "af_sarah",
         "af_sky",
         "am_adam",
-        "am_Fade",
+        "am_echo",
         "am_eric",
         "am_fenrir",
         "am_liam",
@@ -348,7 +348,7 @@ class KokoroTTSGenerator:
             voice = "af_heart"
 
         if not output_dir:
-            output_dir = str(Path.home() / ".Fade" / "tts")
+            output_dir = str(Path.home() / ".fade" / "tts")
         os.makedirs(output_dir, exist_ok=True)
 
         kokoro = self._get_kokoro()
@@ -412,7 +412,7 @@ class LocalTTSGenerator:
         import requests
 
         if not output_dir:
-            output_dir = str(Path.home() / ".Fade" / "tts")
+            output_dir = str(Path.home() / ".fade" / "tts")
         os.makedirs(output_dir, exist_ok=True)
 
         print(f"[LocalTTS] Ollama model={model}, text: {text[:60]}…")

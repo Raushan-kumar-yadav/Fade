@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<title>React Counter â€” Fade WebComp</title>
+<title>React Counter — Fade WebComp</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
@@ -16,10 +16,12 @@
 <body>
 <div id="root"></div>
 
- 
-<script src="file:///E:/Fade/templates/webcomps/_runtime/fade-react.js"></script>
+<!-- 1. React from CDN (no build step needed) -->
+<!-- 2. Babel for in-browser JSX transform (dev convenience — swap for pre-built in prod) -->
+<!-- 3. Fade React Runtime — provides useCurrentFrame, interpolate, spring, etc. -->
+<script src="file:///E:/Editor_SIH/Fade/templates/webcomps/_runtime/fade-react.js"></script>
 
- 
+<!-- 4. Your composition — written exactly like a Remotion component -->
 <script type="text/babel">
 const {
   FadeComposition,
@@ -32,7 +34,7 @@ const {
   mount,
 } = window.FadeReact;
 
- 
+// ── Sub-components (pure React, no Fade-specific imports needed) ──────────
 
 function Background({ accent }) {
   const frame = useCurrentFrame();
@@ -108,7 +110,7 @@ function Label({ text, delay = 0 }) {
   );
 }
 
-// â”€â”€ Root Composition â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Root Composition ──────────────────────────────────────────────────────
 function Composition() {
   const frame = useCurrentFrame();
   const { fps, durationFrames } = useVideoConfig();
@@ -175,13 +177,13 @@ function Composition() {
         fontWeight: 300,
         letterSpacing: '0.1em',
       }}>
-        {frame} / {durationFrames} &nbsp;Â·&nbsp; {(frame / fps).toFixed(2)}s
+        {frame} / {durationFrames} &nbsp;·&nbsp; {(frame / fps).toFixed(2)}s
       </div>
     </div>
   );
 }
 
-// â”€â”€ Mount â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Mount ────────────────────────────────────────────────────────────────
 mount(
   <FadeComposition durationFrames={150}>
     <Composition />

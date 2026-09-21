@@ -1,9 +1,9 @@
-# Dependencies
+# Dependencies  
 node_modules/
 .venv/
 .venv_pkgs/
 
-# Build outputs
+ 
 dist/
 dist-electron/
 renderer/build/
@@ -15,52 +15,36 @@ backend/media/decoder/ffmpeg/
 dist-app/
 pyinstaller-dist/
 pyinstaller-build/
-
-# Packaged builds & archives  
- 
-Echo-win-x64/
-Fade-win-x64/
-*-win-x64/
-*-mac-x64/
-*-linux-x64/
-
-# Split zip archives 
-*.zip.[0-9][0-9][0-9]
-*.zip.[0-9][0-9][0-9][0-9]
-
-# Single zip builds
-*.zip
 Echo-*.zip
-Fade-*.zip
+Echo-win-x64/
+Echo-win-x64*/
+Fade-win-x64/
+Fade-win-x64*/
+*.zip.[0-9][0-9][0-9]
 
-# Large compiled zips 
-Echo-win-x640*.zip
-
-# Python cache
+ 
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 .Python
 
-# Secrets / env
+ 
 .env
 .env.*
 !.env.example
 
-# Databases
-backend/chroma_db/
+ backend/chroma_db/
 *.db
 *.sqlite3
 
-# Test artefacts
 scratch/
 test.mp4
 test_*.txt
 test_render.*
 dummy.mp4
 
-# Large binary / media
+# Large binary / media  
 *.mp4
 *.mov
 *.avi
@@ -68,38 +52,26 @@ dummy.mp4
 *.webm
 *.mp3
 *.wav
-
-# AI model weights & binaries
 AIModels/kokoro/
 AIModels/whisper/
-AIModels/SIH_Virality_Prototype/models/
-*.pkl
-*.onnx
-*.bin
-*.safetensors
-*.gguf
-*.pt
-*.pth
-
-# Native tools
 tools/
 
-# TypeScript build info
+#   TypeScript build info  
 tsconfig.node.tsbuildinfo
 *.tsbuildinfo
 
-# Logs
+#    Logs  
 *.log
 npm-debug.log*
-
-# OS
+ 
+#   OS    
 .DS_Store
 Thumbs.db
 
-# Editor
+#   Editor  
 .vscode/settings.json
 .idea/
 
-# Misc
+#   Misc  
 virality.db
 *.bak

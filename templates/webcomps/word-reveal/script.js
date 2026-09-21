@@ -1,4 +1,4 @@
-﻿// Word Reveal — Fade WebComp Template
+// Word Reveal � Fade WebComp Template
 // Each word blurs/slides in with a staggered offset
 
 const DUR = 210;
@@ -9,9 +9,9 @@ let p = Object.assign({
   caption: 'A New Chapter',
   accent:  '#6c63ff',
   stagger: 8,
-}, window.Fade_PARAMS || {});
+}, window.FADE_PARAMS || {});
 
-// ── DOM refs ──────────────────────────────────────────────────────────────────
+// -- DOM refs ------------------------------------------------------------------
 const line1El     = document.getElementById('line1');
 const line2El     = document.getElementById('line2');
 const captionEl   = document.getElementById('caption');
@@ -20,7 +20,7 @@ const orb1        = document.getElementById('orb1');
 const orb2        = document.getElementById('orb2');
 const orb3        = document.getElementById('orb3');
 
-// ── Build word spans ───────────────────────────────────────────────────────────
+// -- Build word spans -----------------------------------------------------------
 /**
  * @param {HTMLElement} el
  * @param {string} text
@@ -48,7 +48,7 @@ function rebuild() {
 }
 rebuild();
 
-// ── Easing ─────────────────────────────────────────────────────────────────────
+// -- Easing ---------------------------------------------------------------------
 function easeOutExpo(t)  { return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t); }
 function easeOutBack(t)  {
   const c1 = 1.70158, c3 = c1 + 1;
@@ -59,10 +59,10 @@ function clamp(t, a, b)  { return Math.max(a, Math.min(b, t)); }
 function clamp01(t)      { return clamp(t, 0, 1); }
 function lerp(a, b, t)   { return a + (b - a) * t; }
 
-// ── Animation timing ───────────────────────────────────────────────────────────
+// -- Animation timing -----------------------------------------------------------
 // Timeline:
-// 0–10   : orbs fade in
-// 10–80  : words line1 staggered in
+// 0�10   : orbs fade in
+// 10�80  : words line1 staggered in
 // stagger: words line2 staggered after line1 ends
 // ...    : caption in
 // 155+   : orbs + words fade out
@@ -121,7 +121,7 @@ window.addEventListener('fade:frame', (e) => {
   animateWordIn(wordsC, capStart, 5, f, 168);
 });
 
-window.addEventListener('Fade:params', (e) => {
+window.addEventListener('fade:params', (e) => {
   Object.assign(p, e.detail);
   rebuild();
 });

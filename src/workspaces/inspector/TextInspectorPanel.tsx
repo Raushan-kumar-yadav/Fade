@@ -1,7 +1,7 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import './TextInspectorPanel.css';
 
-function port(): number { return (window as any).__Fade_PORT__ ?? 8000; }
+function port(): number { return (window as any).__FADE_PORT__ ?? 8000; }
 const base = () => `http://127.0.0.1:${port()}`;
 
 async function patchTextStyle(clipId: string, style: Record<string, unknown>) {
@@ -13,14 +13,14 @@ async function patchTextStyle(clipId: string, style: Record<string, unknown>) {
     });
     if (r.ok) {
       // Only trigger re-render after the server has confirmed the update
-      window.dispatchEvent(new CustomEvent('Fade:render-now'));
+      window.dispatchEvent(new CustomEvent('fade:render-now'));
     }
   } catch {
     // backend not ready
   }
 }
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// -- Types ---------------------------------------------------------------------
 
 interface TextStyle {
   text: string;
@@ -79,7 +79,7 @@ const COMMON_FONTS = [
   'Segoe UI', 'Calibri', 'Cambria',
 ];
 
-// ── Util ──────────────────────────────────────────────────────────────────────
+// -- Util ----------------------------------------------------------------------
 
 function vecToHex([r, g, b]: [number, number, number, number]): string {
   const h = (v: number) => Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16).padStart(2, '0');
@@ -93,7 +93,7 @@ function hexToVec(hex: string, a: number): [number, number, number, number] {
   return [r, g, b, a];
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// -- Sub-components ------------------------------------------------------------
 
 interface ColorRowProps {
   label: string;
@@ -174,13 +174,13 @@ function NumberRow({ label, value, min = 0, max = 400, step = 1, onChange }: Num
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
     <button className="ti-section-hdr" onClick={onToggle}>
-      <span className={`ti-arrow${open ? ' open' : ''}`}>▶</span>
+      <span className={`ti-arrow${open ? ' open' : ''}`}>?</span>
       {label}
     </button>
   );
 }
 
-// ── Text Animator ─────────────────────────────────────────────────────────────
+// -- Text Animator -------------------------------------------------------------
 // Simple per-character animation: offset, scale, opacity with easing controls
 
 interface AnimatorState {
@@ -306,7 +306,7 @@ function TextAnimator({ clipId, animator, onChange }: TextAnimatorProps) {
   );
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+// -- Main Component ------------------------------------------------------------
 
 interface Props {
   clipId: string;
@@ -344,7 +344,7 @@ export default function TextInspectorPanel({ clipId, clipName, trackIndex }: Pro
       .finally(() => setLoading(false));
   }, [clipId]);
 
-  // Debounced patch — avoids hammering the server while dragging sliders
+  // Debounced patch � avoids hammering the server while dragging sliders
   const patch = useCallback((patch: Partial<TextStyle>) => {
     setStyle(prev => {
       const next = { ...prev, ...patch };
@@ -357,7 +357,7 @@ export default function TextInspectorPanel({ clipId, clipName, trackIndex }: Pro
   if (loading) {
     return (
       <div className="ti-root">
-        <div className="ti-loading"><span className="ti-spinner" />Loading text…</div>
+        <div className="ti-loading"><span className="ti-spinner" />Loading text�</div>
       </div>
     );
   }
@@ -383,7 +383,7 @@ export default function TextInspectorPanel({ clipId, clipName, trackIndex }: Pro
                 value={style.text}
                 rows={3}
                 onChange={e => patch({ text: e.target.value })}
-                placeholder="Type your text…"
+                placeholder="Type your text�"
               />
             </div>
           )}
@@ -441,7 +441,7 @@ export default function TextInspectorPanel({ clipId, clipName, trackIndex }: Pro
                       title={a}
                       onClick={() => patch({ alignment: a })}
                     >
-                      {a === 'left' ? '⬛◻◻' : a === 'center' ? '◻⬛◻' : '◻◻⬛'}
+                      {a === 'left' ? '???' : a === 'center' ? '???' : '???'}
                     </button>
                   ))}
                 </div>

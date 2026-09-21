@@ -1,13 +1,13 @@
-﻿// Cinematic Split — Fade WebComp Template
+// Cinematic Split � Fade WebComp Template
 // Cormorant Garamond splits from center with a light-leak flash
 
 let p = Object.assign({
   topWord:    'CINEMATIC',
   bottomWord: 'UNIVERSE',
-  eyebrow:    '2024 · OFFICIAL TRAILER',
+  eyebrow:    '2024 � OFFICIAL TRAILER',
   flashColor: '#ffffff',
   textColor:  '#e8dcc8',
-}, window.Fade_PARAMS || {});
+}, window.FADE_PARAMS || {});
 
 const scene     = document.getElementById('scene');
 const flash     = document.getElementById('flash');
@@ -22,7 +22,7 @@ const brackets  = [1,2,3,4].map(i => document.getElementById('br'+i));
 function applyParams() {
   wordTop.textContent = p.topWord    || 'CINEMATIC';
   wordBot.textContent = p.bottomWord || 'UNIVERSE';
-  eyebrow.textContent = p.eyebrow    || '2024 · OFFICIAL TRAILER';
+  eyebrow.textContent = p.eyebrow    || '2024 � OFFICIAL TRAILER';
   const tc = p.textColor || '#e8dcc8';
   wordTop.style.color  = tc;
   wordBot.style.color  = tc;
@@ -32,7 +32,7 @@ function applyParams() {
 }
 applyParams();
 
-// ── Easing ─────────────────────────────────────────────────────────────────────
+// -- Easing ---------------------------------------------------------------------
 function easeOutExpo(t)  { return t>=1?1:1-Math.pow(2,-10*t); }
 function easeOutCubic(t) { return 1-Math.pow(1-t,3); }
 function easeInCubic(t)  { return t*t*t; }
@@ -50,11 +50,11 @@ const LETTERBOX_H = 120;
 window.addEventListener('fade:frame', (e) => {
   const f = e.detail.frame ?? e.detail ?? 0;
 
-  // ── Light-leak flash (frame 0–10) ──────────────────────────────────────────
+  // -- Light-leak flash (frame 0�10) ------------------------------------------
   const fp = prog(f, 0, 10);
   flash.style.opacity = Math.sin(fp * Math.PI) * 0.65;
 
-  // ── Letterbox bars ─────────────────────────────────────────────────────────
+  // -- Letterbox bars ---------------------------------------------------------
   // Start tall, shrink to reveal, grow back at end
   const barReveal  = easeOutExpo(prog(f, 5, 30));
   const barHide    = easeInCubic(prog(f, 165, 185));
@@ -62,13 +62,13 @@ window.addEventListener('fade:frame', (e) => {
   barTop.style.height = barH + 'px';
   barBot.style.height = barH + 'px';
 
-  // ── Divider ────────────────────────────────────────────────────────────────
+  // -- Divider ----------------------------------------------------------------
   const dp  = easeOutExpo(prog(f, 12, 28));
   const dpo = 1 - easeInCubic(prog(f, 162, 178));
   divider.style.transform = `scaleX(${dp * dpo})`;
   divider.style.opacity   = dp * dpo;
 
-  // ── Words split apart from center ─────────────────────────────────────────
+  // -- Words split apart from center -----------------------------------------
   // Top word slides UP from center
   const wp  = easeOutBack(clamp01(prog(f, 10, 35)));
   const wpo = easeInCubic(prog(f, 158, 178));
@@ -79,19 +79,19 @@ window.addEventListener('fade:frame', (e) => {
   wordBot.style.transform = `translateY(${lerp(100, 0, wp) + wpo * 100}%)`;
   wordBot.style.opacity   = wordTop.style.opacity;
 
-  // ── Eyebrow ────────────────────────────────────────────────────────────────
+  // -- Eyebrow ----------------------------------------------------------------
   const ep  = easeOutCubic(prog(f, 38, 56));
   const epo = 1 - easeInCubic(prog(f, 162, 178));
   eyebrow.style.opacity   = ep * epo;
   eyebrow.style.transform = `translateY(${lerp(10, 0, ep)}px)`;
 
-  // ── Corner brackets ────────────────────────────────────────────────────────
+  // -- Corner brackets --------------------------------------------------------
   const bp  = easeOutExpo(prog(f, 18, 36));
   const bpo = 1 - easeInCubic(prog(f, 160, 178));
   brackets.forEach(b => { b.style.opacity = bp * bpo; });
 });
 
-window.addEventListener('Fade:params', (e) => {
+window.addEventListener('fade:params', (e) => {
   Object.assign(p, e.detail);
   applyParams();
 });

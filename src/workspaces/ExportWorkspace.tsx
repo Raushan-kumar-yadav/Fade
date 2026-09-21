@@ -1,17 +1,17 @@
-﻿import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import './ExportWorkspace.css'
 import { exportApi, type ExportProgress } from '../api/toolsApi'
 
 interface Format { id: string; label: string; icon: string; desc: string; w: number; h: number; ext: string }
 
 const FORMATS: Format[] = [
-  { id: 'mp4-1080',  label: 'MP4 1080p',   icon: '▶', desc: 'H.264, AAC · 1920×1080', w: 1920, h: 1080, ext: 'mp4' },
-  { id: 'mp4-4k',    label: 'MP4 4K',      icon: '▶', desc: 'H.264 · 3840×2160',      w: 3840, h: 2160, ext: 'mp4' },
-  { id: 'mp4-720',   label: 'MP4 720p',    icon: '▷', desc: 'H.264 · 1280×720',       w: 1280, h:  720, ext: 'mp4' },
-  { id: 'shorts',    label: 'YT Shorts',   icon: '↕', desc: '1080×1920, 60s max',     w: 1080, h: 1920, ext: 'mp4' },
-  { id: 'reels',     label: 'IG Reels',    icon: '◈', desc: '1080×1920, AAC',         w: 1080, h: 1920, ext: 'mp4' },
-  { id: 'webm',      label: 'WebM VP9',    icon: '▸', desc: 'Open format · 1920×1080',w: 1920, h: 1080, ext: 'webm' },
-  { id: 'gif',       label: 'GIF',         icon: '◉', desc: 'Animated · 854×480',     w:  854, h:  480, ext: 'gif' },
+  { id: 'mp4-1080',  label: 'MP4 1080p',   icon: '?', desc: 'H.264, AAC � 1920�1080', w: 1920, h: 1080, ext: 'mp4' },
+  { id: 'mp4-4k',    label: 'MP4 4K',      icon: '?', desc: 'H.264 � 3840�2160',      w: 3840, h: 2160, ext: 'mp4' },
+  { id: 'mp4-720',   label: 'MP4 720p',    icon: '?', desc: 'H.264 � 1280�720',       w: 1280, h:  720, ext: 'mp4' },
+  { id: 'shorts',    label: 'YT Shorts',   icon: '?', desc: '1080�1920, 60s max',     w: 1080, h: 1920, ext: 'mp4' },
+  { id: 'reels',     label: 'IG Reels',    icon: '?', desc: '1080�1920, AAC',         w: 1080, h: 1920, ext: 'mp4' },
+  { id: 'webm',      label: 'WebM VP9',    icon: '?', desc: 'Open format � 1920�1080',w: 1920, h: 1080, ext: 'webm' },
+  { id: 'gif',       label: 'GIF',         icon: '?', desc: 'Animated � 854�480',     w:  854, h:  480, ext: 'gif' },
 ]
 
 const FPS_OPTIONS   = ['24', '25', '30', '50', '60']
@@ -28,7 +28,7 @@ function estimatedMB(w: number, h: number, fpsVal: number, durSec: number, kbps:
 export default function ExportWorkspace() {
   const [selected,    setSelected]    = useState<string>('mp4-1080')
   const [fps,         setFps]         = useState<string>('30')
-  const [outputPath,  setOutputPath]  = useState<string>('Fade_export.mp4')
+  const [outputPath,  setOutputPath]  = useState<string>('fade_export.mp4')
   const [jobId,       setJobId]       = useState<string | null>(null)
   const [progress,    setProgress]    = useState<ExportProgress | null>(null)
   const [webcompPhase, setWebcompPhase] = useState<{ active: boolean; done: number; total: number } | null>(null)
@@ -62,7 +62,7 @@ export default function ExportWorkspace() {
     api.getAppPath('videos').then((videosDir: string | null) => {
       const sep = videosDir?.includes('/') ? '/' : '\\'
       const dir = videosDir ?? ''
-      setOutputPath(dir ? `${dir}${sep}Fade_export.${fmt.ext}` : `Fade_export.${fmt.ext}`)
+      setOutputPath(dir ? `${dir}${sep}fade_export.${fmt.ext}` : `fade_export.${fmt.ext}`)
     }).catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -93,7 +93,7 @@ export default function ExportWorkspace() {
   async function startExport() {
     const api = (window as any).electronAPI
 
-    // ── Native GPU export path ────────────────────────────────────────────────
+    // -- Native GPU export path ------------------------------------------------
     if (api?.startExport && api?.onExportProgress) {
       setJobId('native')
       setProgress({ jobId: 'native', frame: 0, total: 0, percent: 0, done: false, error: null, path: null })
@@ -145,7 +145,7 @@ export default function ExportWorkspace() {
       return
     }
 
-    // ── Python software-render fallback ───────────────────────────────────────
+    // -- Python software-render fallback ---------------------------------------
     try {
       const res = await exportApi.start({
         outputPath,
@@ -205,7 +205,7 @@ export default function ExportWorkspace() {
 
   return (
     <div className="export-ws">
-      {/* ── Left: Format selector ─────────────────────────────────────── */}
+      {/* -- Left: Format selector --------------------------------------- */}
       <div className="export-ws__left">
         <h2>Output Format</h2>
         <div className="export-formats">
@@ -218,13 +218,13 @@ export default function ExportWorkspace() {
                 <div className="export-fmt__label">{f.label}</div>
                 <div className="export-fmt__desc">{f.desc}</div>
               </div>
-              {selected === f.id && <span className="export-fmt__check">✓</span>}
+              {selected === f.id && <span className="export-fmt__check">?</span>}
             </div>
           ))}
         </div>
       </div>
 
-      {/* ── Right: Settings + Progress ────────────────────────────────── */}
+      {/* -- Right: Settings + Progress ---------------------------------- */}
       <div className="export-ws__right">
         <h2>Export Settings</h2>
         <div className="export-props">
@@ -233,7 +233,7 @@ export default function ExportWorkspace() {
           <div className="export-prop-row">
             <div className="export-prop">
               <label>Resolution</label>
-              <div className="export-prop__value">{fmt.w} × {fmt.h}</div>
+              <div className="export-prop__value">{fmt.w} � {fmt.h}</div>
             </div>
             <div className="export-prop">
               <label>Frame Rate</label>
@@ -261,14 +261,14 @@ export default function ExportWorkspace() {
 
             {qualityMode === 'crf' ? (
               <div className="export-prop">
-                <label>Quality — CRF {crf} {crf <= 18 ? '(Lossless)' : crf <= 23 ? '(High)' : crf <= 28 ? '(Medium)' : '(Low)'}</label>
+                <label>Quality � CRF {crf} {crf <= 18 ? '(Lossless)' : crf <= 23 ? '(High)' : crf <= 28 ? '(Medium)' : '(Low)'}</label>
                 <input type="range" min={12} max={35} value={crf}
                   onChange={e => setCrf(parseInt(e.target.value))} disabled={exporting} />
                 <div className="export-slider-labels"><span>Best</span><span>Fastest</span></div>
               </div>
             ) : (
               <div className="export-prop">
-                <label>Video Bitrate — {videoBr} Mbps</label>
+                <label>Video Bitrate � {videoBr} Mbps</label>
                 <input type="range" min={2} max={40} value={parseFloat(videoBr)}
                   onChange={e => setVideoBr(e.target.value)} disabled={exporting} />
                 <div className="export-slider-labels"><span>2 Mbps</span><span>40 Mbps</span></div>
@@ -316,7 +316,7 @@ export default function ExportWorkspace() {
                 value={outputPath}
                 onChange={e => setOutputPath(e.target.value)}
                 disabled={exporting}
-                placeholder="Select output path…"
+                placeholder="Select output path�"
               />
               <button onClick={browseOutput} disabled={exporting}>Browse</button>
             </div>
@@ -326,15 +326,15 @@ export default function ExportWorkspace() {
           <div className="export-estimate">
             <span>Estimated size:</span>
             <strong>{estSize}</strong>
-            <span>· ~{Math.round(durSec)}s at {fps} fps</span>
+            <span>� ~{Math.round(durSec)}s at {fps} fps</span>
           </div>
         </div>
 
-        {/* ── Progress ─────────────────────────────────────────────── */}
+        {/* -- Progress ----------------------------------------------- */}
         {webcompPhase && webcompPhase.total > 0 && (
           <div className="export-progress export-progress--phase">
             <div className="export-progress__label">
-              <span className="export-phase-badge">Preparing overlays…</span>
+              <span className="export-phase-badge">Preparing overlays�</span>
               <span>{wcPct}% ({webcompPhase.done}/{webcompPhase.total} frames)</span>
             </div>
             <div className="export-progress__bar">
@@ -349,12 +349,12 @@ export default function ExportWorkspace() {
             {!webcompPhase?.active && (
               <div className="export-progress__label">
                 {progress.done && !progress.error
-                  ? <span className="export-done">✓ Export complete</span>
+                  ? <span className="export-done">? Export complete</span>
                   : progress.error
-                    ? <span className="export-error">✗ {progress.error}</span>
+                    ? <span className="export-error">? {progress.error}</span>
                     : progress.status === 'audio'
-                      ? <span className="export-phase-badge export-phase-badge--audio">🎵 Muxing audio…</span>
-                      : <span>Encoding… {pct}% — frame {progress.frame} / {progress.total}</span>
+                      ? <span className="export-phase-badge export-phase-badge--audio">?? Muxing audio�</span>
+                      : <span>Encoding� {pct}% � frame {progress.frame} / {progress.total}</span>
                 }
               </div>
             )}
@@ -362,15 +362,15 @@ export default function ExportWorkspace() {
               <div className="export-progress__fill" style={{ width: `${pct}%` }} />
             </div>
             {progress.done && !progress.error && progress.path && (
-              <div className="export-done-path">📁 {progress.path}</div>
+              <div className="export-done-path">?? {progress.path}</div>
             )}
           </div>
         )}
 
         <div className="export-actions">
           {exporting
-            ? <button className="export-btn export-btn--cancel" onClick={cancelExport}>✕ Cancel</button>
-            : <button className="export-btn export-btn--primary" onClick={startExport}>⬇ Export Video</button>
+            ? <button className="export-btn export-btn--cancel" onClick={cancelExport}>? Cancel</button>
+            : <button className="export-btn export-btn--primary" onClick={startExport}>? Export Video</button>
           }
         </div>
       </div>

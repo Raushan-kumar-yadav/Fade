@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import shutil
 from pathlib import Path
@@ -33,7 +33,7 @@ class YtdlpDownloader:
     ) -> list[dict]:
         
         if not output_dir:
-            output_dir = str(Path.home() / ".Fade" / "downloads")
+            output_dir = str(Path.home() / ".fade" / "downloads")
         
         os.makedirs(output_dir, exist_ok=True)
         

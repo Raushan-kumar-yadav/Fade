@@ -1,12 +1,12 @@
-﻿@Fade off
-Fade Stitching Fade parts together...
-Fade.
-if not exist "Fade-win-x64.zip.001" (
-    Fade Error: Missing Fade-win-x64.zip.001
+@echo off
+echo Stitching Echo parts together...
+echo.
+if not exist "Echo-win-x64.zip.001" (
+    echo Error: Missing Echo-win-x64.zip.001
     pause
     exit /b
 )
-copy /b Fade-win-x64.zip.001 + Fade-win-x64.zip.002 + Fade-win-x64.zip.003 Fade-win-x64.zip
-Fade.
-Fade Success! You can now extract the large Fade-win-x64.zip file.
+copy /b Echo-win-x64.zip.001 + Echo-win-x64.zip.002 + Echo-win-x64.zip.003 Echo-win-x64.zip
+echo.
+echo Success! You can now extract the large Echo-win-x64.zip file.
 pause

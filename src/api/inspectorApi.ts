@@ -1,6 +1,6 @@
-﻿/** inspectorApi.ts — typed client for Inspector param + keyframe routes */
+/** inspectorApi.ts � typed client for Inspector param + keyframe routes */
 
-function port(): number { return (window as any).__Fade_PORT__ ?? 8000; }
+function port(): number { return (window as any).__FADE_PORT__ ?? 8000; }
 const base = () => `http://127.0.0.1:${port()}`;
 
 async function get<T>(path: string): Promise<T> {
