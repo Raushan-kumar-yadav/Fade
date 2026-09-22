@@ -3,7 +3,6 @@ import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
 import Timeline from './timeline/Timeline'
-import ImageLayersPanel from './timeline/ImageLayersPanel'
 import { TimelineProvider, useTimeline } from './timeline/TimelineContext'
 import ViewportWidget from './viewport/ViewportWidget'
 import LibraryPanel from './library/LibraryPanel'
@@ -97,46 +96,9 @@ function getModel(): FlexLayout.Model {
   return _model
 }
 
-// TimelineOrLayers  
-function TimelineOrLayers() {
-  const { state } = useTimeline()
-  if (state.activeCompKind === 'image' && state.activeCompId) {
-    return (
-      <div className="vp vp--timeline" style={{ overflow: 'hidden' }}>
-        <ImageLayersPanel compId={state.activeCompId} />
-      </div>
-    )
-  }
-  return (
-    <div className="vp vp--timeline">
-      <Timeline />
-    </div>
-  )
-}
-
 // VideoWorkspace  
-
 export default function VideoWorkspace() {
   const model = getModel()
-
-  const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
-    await addClipToTimeline(asset.assetId, trackIndex, 0, 300)
-  }, [])
-
-  const factory = (node: FlexLayout.TabNode) => {
-    switch (node.getComponent()) {
-      case 'library': return <LibraryPanel onAddToTimeline={handleAddToTimeline} />
-      case 'viewport': return <ViewportWidget />
-      case 'timeline': return <TimelineOrLayers />
-      case 'inspector': return <InspectorPanel />
-      case 'effects': return <EffectsPanel />
-      case 'transitions': return <TransitionPanel />
-      case 'tools': return <ToolPanel />
-      case 'compositions': return <CompositionsPanel />
-      default: return <div className="vp" />
-    }
-  }
-
   return (
     <TimelineProvider>
       <div className="video-ws">
@@ -146,11 +108,39 @@ export default function VideoWorkspace() {
           onClick={() => window.dispatchEvent(new CustomEvent('fade:ai-toggle'))}
           title="Toggle AI Director"
         >
-          ??
+          🤖
         </button>
 
-        <FlexLayout.Layout model={model} factory={factory} realtimeResize />
+        <WorkspaceInner model={model} />
       </div>
     </TimelineProvider>
   )
+}
+
+// Inner component — has access to useTimeline so factory can read activeCompId
+function WorkspaceInner({ model }: { model: FlexLayout.Model }) {
+  const { state } = useTimeline()
+
+  const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
+    // Always send the currently-open comp so clips land in the right timeline
+    await addClipToTimeline(asset.assetId, trackIndex, 0, 300, 0, state.activeCompId)
+  }, [state.activeCompId])
+
+  const factory = (node: FlexLayout.TabNode) => {
+    switch (node.getComponent()) {
+      case 'library': return <LibraryPanel onAddToTimeline={handleAddToTimeline} />
+      case 'viewport': return <ViewportWidget />
+      case 'timeline': return (
+        <div className="vp vp--timeline"><Timeline /></div>
+      )
+      case 'inspector': return <InspectorPanel />
+      case 'effects': return <EffectsPanel />
+      case 'transitions': return <TransitionPanel />
+      case 'tools': return <ToolPanel />
+      case 'compositions': return <CompositionsPanel />
+      default: return <div className="vp" />
+    }
+  }
+
+  return <FlexLayout.Layout model={model} factory={factory} realtimeResize />
 }

@@ -241,7 +241,7 @@ class UpdateLayerRequest(BaseModel):
     locked : bool | None = None 
     opacity : float | None = None
     blendMode : str | None = None
-    z_index : strt | None = None
+    z_index : int | None = None
     element : dict | None = None
 
 

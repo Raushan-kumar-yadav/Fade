@@ -77,7 +77,9 @@ def addClip(req: AddClipRequest):
         if tl is None:
             raise HTTPException(404, f"Comp timeline {req.compId!r} not found")
     else:
-        tl = engine.rootTimeline
+        # Use the currently-active timeline (whichever comp tab is open in the UI).
+        # Fall back to root only if nothing is active.
+        tl = engine.activeTimeline or engine.rootTimeline
         if tl is None:
             raise HTTPException(400, "No active timeline")
     asset = _library.get(req.assetId)

@@ -9,7 +9,7 @@ import './LibraryPanel.css';
 //   Types  
 
 interface CompMeta {
-  compId: string; name: string; isRoot: boolean;
+  compId: string; name: string; isRoot: boolean; kind: 'video' | 'image';
   width: number; height: number; fps: number;
   totalFrames: number; trackCount: number; clipCount: number;
 }
@@ -32,8 +32,8 @@ interface MediaJob {
   status: 'pending' | 'running' | 'done' | 'error';
   progress: number;
   message: string;
-  assetIds: string[];   // for download/generate jobs — the resulting assetIds
-  assetId?: string | null;  // for asset-bound jobs — the specific asset being processed
+  assetIds: string[];   // for download/generate jobs ï¿½ the resulting assetIds
+  assetId?: string | null;  // for asset-bound jobs ï¿½ the specific asset being processed
   error?: string | null;
 }
 
@@ -240,7 +240,7 @@ function AssetTaskOverlay({
   if (pollActive) {
     // Overlay driven purely by poll status  
     const icon = assetType === 'image' ? '??' : '??';
-    const msg  = assetType === 'image' ? 'Describing image…' : 'Indexing: Vision + Whisper…';
+    const msg  = assetType === 'image' ? 'Describing imageï¿½' : 'Indexing: Vision + Whisperï¿½';
     return (
       <div className="lib-asset-overlay lib-asset-overlay--active">
         <span className="lib-asset-overlay__icon">{icon}</span>
@@ -294,10 +294,10 @@ function AssetTaskOverlay({
 async function fetchComps(): Promise<CompMeta[]> {
   const r = await fetch(`${base()}/comps`); return (await r.json()).comps ?? [];
 }
-async function apiCreateComp(cfg: CompConfig): Promise<CompMeta> {
+async function apiCreateComp(cfg: CompConfig, kind: 'video' | 'image' = 'video'): Promise<CompMeta> {
   const r = await fetch(`${base()}/comps`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: cfg.name, width: cfg.width, height: cfg.height, fps: cfg.fps, totalFrames: cfg.totalFrames }),
+    body: JSON.stringify({ name: cfg.name, width: cfg.width, height: cfg.height, fps: cfg.fps, totalFrames: cfg.totalFrames, kind }),
   });
   if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.detail ?? 'Failed'); }
   return r.json();
@@ -443,13 +443,13 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
           <label className="lib-comp-cfg__label">NAME</label>
           <input ref={nameRef} className="lib-comp-cfg__input" value={name}
             onChange={e => { setName(e.target.value); autoNamed.current = false; }}
-            placeholder="WebComp name…" />
+            placeholder="WebComp nameï¿½" />
 
           <label className="lib-comp-cfg__label" style={{ marginTop: 16 }}>TEMPLATE</label>
 
           {loading ? (
             <div style={{ padding: '20px 0', textAlign: 'center', color: '#5a5a74', fontSize: 12 }}>
-              Loading templates…
+              Loading templatesï¿½
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
@@ -486,7 +486,7 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
                       )}
                       {t.width && (
                         <span style={{ fontSize: 9, color: '#6b7280', background: 'rgba(255,255,255,0.05)',
-                          borderRadius: 4, padding: '1px 5px' }}>{t.width}×{t.height}</span>
+                          borderRadius: 4, padding: '1px 5px' }}>{t.width}ï¿½{t.height}</span>
                       )}
                     </div>
                   </label>
@@ -502,7 +502,7 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
           <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create"
             style={{ background: '#7c3aed' }}
             disabled={creating || !name.trim() || loading}>
-            {creating ? 'Creating…' : '? Create WebComp'}
+            {creating ? 'Creatingï¿½' : '? Create WebComp'}
           </button>
         </div>
       </form>
@@ -583,7 +583,7 @@ function CompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) =
         <div className="lib-modal__body">
           <label className="lib-comp-cfg__label">Name</label>
           <input ref={nameRef} className="lib-comp-cfg__input" value={name}
-            onChange={e => setName(e.target.value)} placeholder="Composition name…" />
+            onChange={e => setName(e.target.value)} placeholder="Composition nameï¿½" />
 
           <label className="lib-comp-cfg__label" style={{ marginTop: 8 }}>Resolution Preset</label>
           <div className="lib-comp-cfg__presets">
@@ -621,13 +621,96 @@ function CompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) =
             </div>
           </div>
           <div className="lib-comp-cfg__hint" style={{ marginTop: 4 }}>
-            {durationSec}s · {width}×{height} · {fps}fps
+            {durationSec}s ï¿½ {width}ï¿½{height} ï¿½ {fps}fps
           </div>
         </div>
         <div className="lib-modal__footer">
           <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
           <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create" disabled={creating || !name.trim()}>
-            {creating ? 'Creating…' : '? Create'}
+            {creating ? 'Creatingï¿½' : '? Create'}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  );
+}
+
+//   Image Comp Config Modal
+
+const IMG_PRESETS = [
+  { label: '1080p', w: 1920, h: 1080 },
+  { label: '4K',    w: 3840, h: 2160 },
+  { label: 'Square',w: 1080, h: 1080 },
+  { label: '9:16',  w: 1080, h: 1920 },
+  { label: 'A4',    w: 2480, h: 3508 },
+];
+
+function ImageCompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) => void; onCancel: () => void }) {
+  const [name, setName] = useState('Poster');
+  const [width, setWidth] = useState(1920);
+  const [height, setHeight] = useState(1080);
+  const [creating, setCreating] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { nameRef.current?.select(); }, []);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', h, true);
+    return () => document.removeEventListener('keydown', h, true);
+  }, [onCancel]);
+
+  const applyPreset = (w: number, h: number) => { setWidth(w); setHeight(h); };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!name.trim()) return;
+    setCreating(true);
+    await onSubmit({ name: name.trim(), width, height, fps: 1, totalFrames: 1 });
+    setCreating(false);
+  };
+
+  return ReactDOM.createPortal(
+    <div className="lib-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
+      <form className="lib-modal" onSubmit={handleSubmit}>
+        <div className="lib-modal__header">
+          <span className="lib-modal__title">ðŸ–¼ New Image Comp</span>
+          <button type="button" className="lib-modal__close" onClick={onCancel}>âœ•</button>
+        </div>
+        <div className="lib-modal__body">
+          <label className="lib-comp-cfg__label">Name</label>
+          <input ref={nameRef} className="lib-comp-cfg__input" value={name}
+            onChange={e => setName(e.target.value)} placeholder="Poster nameâ€¦" />
+
+          <label className="lib-comp-cfg__label" style={{ marginTop: 8 }}>Canvas Preset</label>
+          <div className="lib-comp-cfg__presets">
+            {IMG_PRESETS.map(p => (
+              <button key={p.label} type="button"
+                className={`lib-comp-cfg__preset${width === p.w && height === p.h ? ' lib-comp-cfg__preset--active' : ''}`}
+                onClick={() => applyPreset(p.w, p.h)}>{p.label}</button>
+            ))}
+          </div>
+
+          <div className="lib-comp-cfg__row" style={{ marginTop: 8 }}>
+            <div className="lib-comp-cfg__field">
+              <label className="lib-comp-cfg__label">Width (px)</label>
+              <input className="lib-comp-cfg__input lib-comp-cfg__input--num" type="number"
+                min={1} max={7680} value={width} onChange={e => setWidth(+e.target.value)} />
+            </div>
+            <div className="lib-comp-cfg__field">
+              <label className="lib-comp-cfg__label">Height (px)</label>
+              <input className="lib-comp-cfg__input lib-comp-cfg__input--num" type="number"
+                min={1} max={4320} value={height} onChange={e => setHeight(+e.target.value)} />
+            </div>
+          </div>
+          <div className="lib-comp-cfg__hint" style={{ marginTop: 6, color: '#c084fc' }}>
+            Static canvas Â· {width}Ã—{height}px Â· no timeline
+          </div>
+        </div>
+        <div className="lib-modal__footer">
+          <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create"
+            style={{ background: 'linear-gradient(135deg,#7c3aed,#a855f7)' }}
+            disabled={creating || !name.trim()}>
+            {creating ? 'Creatingâ€¦' : 'ðŸ–¼ Create Image Comp'}
           </button>
         </div>
       </form>
@@ -741,6 +824,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
   const [comps, setComps] = useState<CompMeta[]>([]);
   const [showCfg, setShowCfg] = useState(false);
+  const [showImgCfg, setShowImgCfg] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [compError, setCompError] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
@@ -923,6 +1007,17 @@ export default function LibraryPanel({ onAddToTimeline }: {
     catch (err: any) { setCompError(err.message ?? 'Failed to create composition'); }
   }, []);
 
+  const handleCreateImageComp = useCallback(async (cfg: CompConfig) => {
+    setCompError(null);
+    try {
+      const c = await apiCreateComp(cfg, 'image');
+      setComps(p => [...p, c]);
+      setShowImgCfg(false);
+      dispatch({ type: 'ENTER_COMP', compId: c.compId, compName: c.name, kind: 'image' });
+    }
+    catch (err: any) { setCompError(err.message ?? 'Failed to create image composition'); }
+  }, [dispatch]);
+
   const handleDeleteComp = useCallback(async (comp: CompMeta) => {
     if (!window.confirm(`Delete "${comp.name}"?`)) return;
     await apiDeleteComp(comp.compId);
@@ -931,7 +1026,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
   }, [state.activeCompId, dispatch]);
 
   const handleEnterComp = useCallback((comp: CompMeta) => {
-    dispatch({ type: 'ENTER_COMP', compId: comp.compId, compName: comp.name, kind: 'video' });
+    dispatch({ type: 'ENTER_COMP', compId: comp.compId, compName: comp.name, kind: comp.kind ?? 'video' });
   }, [dispatch]);
 
   const handleAddCompToTimeline = useCallback(async (comp: CompMeta) => {
@@ -982,12 +1077,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
     if ((e.target as HTMLElement).closest('.lib-card,.lib-modal-overlay')) return;
     openCtx(e, [
       { icon: '?', label: 'New Composition',  onClick: () => setShowCfg(true) },
+      { icon: '?', label: 'New Image Comp',       onClick: () => setShowImgCfg(true) },
       { icon: '?', label: 'New WebComp',      onClick: () => setShowWcCfg(true) },
-      { icon: '+', label: 'Import Media…',    onClick: () => fileInputRef.current?.click() },
+      { icon: '+', label: 'Import Mediaï¿½',    onClick: () => fileInputRef.current?.click() },
       { icon: '', label: '', sep: true, onClick: () => {} },
       { icon: '?', label: 'Refresh',          onClick: () => { refreshAssets(); refreshComps(); refreshWebComps(); } },
     ]);
-  }, [openCtx, refreshAssets, refreshComps, refreshWebComps]);
+  }, [openCtx, refreshAssets, refreshComps, refreshWebComps, setShowImgCfg]);
 
 
   const filtered = assets.filter(a => a.filename.toLowerCase().includes(query.toLowerCase()));
@@ -1005,6 +1101,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
       {ctxMenu && <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />}
       {showCfg && <CompConfigModal onSubmit={handleCreateComp} onCancel={() => { setShowCfg(false); setCompError(null); }} />}
+      {showImgCfg && <ImageCompConfigModal onSubmit={handleCreateImageComp} onCancel={() => { setShowImgCfg(false); setCompError(null); }} />}
       {showWcCfg && (
         <WebCompCreateModal
           onSubmit={handleCreateWebComp}
@@ -1017,7 +1114,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
         <span className="lib__search-icon">{semanticLoading ? '?' : isSemanticMode ? '?' : '?'}</span>
         <input
           className="lib__search-input"
-          placeholder="Search files or describe a scene…"
+          placeholder="Search files or describe a sceneï¿½"
           value={query}
           onChange={e => setQuery(e.target.value)}
         />
@@ -1041,7 +1138,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
             {semanticLoading && (
               <div className="lib__semantic-searching">
                 <span className="lib__spinner" style={{ display: 'inline-block', width: 14, height: 14, marginRight: 8 }} />
-                Searching scenes…
+                Searching scenesï¿½
               </div>
             )}
 
@@ -1078,7 +1175,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                       onClick={async () => {
                         if (!asset) return;
                         const frame = state.currentFrame ?? 0;
-                        await addClipToTimeline(hit.assetId, 0, frame, dur, inFrames);
+                        await addClipToTimeline(hit.assetId, 0, frame, dur, inFrames, state.activeCompId);
                         window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
                       }}
                       title={hit.text}
@@ -1086,8 +1183,8 @@ export default function LibraryPanel({ onAddToTimeline }: {
                       <div className="lib__semantic-hit-score">{score}%</div>
                       <div className="lib__semantic-hit-info">
                         <div className="lib__semantic-hit-name">{asset?.filename ?? hit.assetId.slice(0,8)}</div>
-                        <div className="lib__semantic-hit-time">{startS}s – {endS}s</div>
-                        <div className="lib__semantic-hit-desc">{hit.text.slice(0, 120)}{hit.text.length > 120 ? '…' : ''}</div>
+                        <div className="lib__semantic-hit-time">{startS}s ï¿½ {endS}s</div>
+                        <div className="lib__semantic-hit-desc">{hit.text.slice(0, 120)}{hit.text.length > 120 ? 'ï¿½' : ''}</div>
                       </div>
                     </div>
                   );
@@ -1100,7 +1197,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                 {allIndexed
                   ? <><span>??</span><p>No matching scenes found</p><small>All {videoAssets.length} video{videoAssets.length !== 1 ? 's' : ''} indexed</small></>
                   : indexingCount > 0
-                    ? <><span>?</span><p>No results yet</p><small>Still indexing {indexingCount} video{indexingCount !== 1 ? 's' : ''}… try again soon</small></>
+                    ? <><span>?</span><p>No results yet</p><small>Still indexing {indexingCount} video{indexingCount !== 1 ? 's' : ''}ï¿½ try again soon</small></>
                     : <><span>??</span><p>No matching scenes found</p></>}
               </div>
             )}
@@ -1125,7 +1222,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                   type="webcomp"
                   title={wc.name}
                   badge="WC"
-                  subtitle={`${wc.width}×${wc.height} · ${wc.fps}fps`}
+                  subtitle={`${wc.width}ï¿½${wc.height} ï¿½ ${wc.fps}fps`}
                   isDragging={dragging === wc.assetId}
                   onDragStart={e => {
                     setDragging(wc.assetId);
@@ -1168,7 +1265,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     renaming={renamingId === comp.compId}
                     onRenameCommit={v => handleRenameComp(comp.compId, v)}
                     onRenameCancel={() => setRenamingId(null)}
-                    subtitle={`${comp.width}×${comp.height} · ${comp.fps}fps`}
+                    subtitle={`${comp.width}ï¿½${comp.height} ï¿½ ${comp.fps}fps`}
                     onDoubleClick={() => handleEnterComp(comp)}
                     onContextMenu={e => compCtx(e, comp)}
                   />

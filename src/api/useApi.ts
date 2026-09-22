@@ -64,12 +64,13 @@ export async function addClipToTimeline(
   startFrame: number,
   duration: number,
   mediaOffset = 0,
+  compId?: string | null,
 ): Promise<{ clipId: string; startFrame: number; duration: number } | null> {
   try {
     const r = await fetch(`${base()}/timeline/add-clip`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetId, trackIndex, startFrame, duration, mediaOffset }),
+      body: JSON.stringify({ assetId, trackIndex, startFrame, duration, mediaOffset, compId: compId ?? null }),
     });
     if (!r.ok) return null;
     return r.json();

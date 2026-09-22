@@ -60,6 +60,7 @@ const TOOLS = [
 
 function Toolbar() {
   const { state, dispatch } = useTimeline();
+  const isImageComp = state.activeCompKind === 'image';
   return (
     <div className="tl-toolbar">
       {TOOLS.map((t) => (
@@ -76,26 +77,41 @@ function Toolbar() {
 
       <div className="tl-toolbar__sep" />
 
-      {/* Play / Pause */}
-      <button
-        id="tl-play-pause"
-        className="tl-toolbar__btn tl-toolbar__btn--play"
-        title={state.isPlaying ? "Pause (Space)" : "Play (Space)"}
-        onClick={async () => {
-          if (state.isPlaying) {
-            await playbackPause();
-          } else {
-            await playbackPlay();
-          }
-        }}
-      >
-        {state.isPlaying ? "⏸" : "▶"}
-      </button>
+      {/* Hide play controls in image comp mode */}
+      {!isImageComp && (
+        <>
+          <button
+            id="tl-play-pause"
+            className="tl-toolbar__btn tl-toolbar__btn--play"
+            title={state.isPlaying ? "Pause (Space)" : "Play (Space)"}
+            onClick={async () => {
+              if (state.isPlaying) {
+                await playbackPause();
+              } else {
+                await playbackPlay();
+              }
+            }}
+          >
+            {state.isPlaying ? "⏸" : "▶"}
+          </button>
 
-      {/* Timecode display */}
-      <span className="tl-toolbar__timecode" aria-label="Current timecode">
-        {formatTimecode(state.currentFrame, state.fps)}
-      </span>
+          <span className="tl-toolbar__timecode" aria-label="Current timecode">
+            {formatTimecode(state.currentFrame, state.fps)}
+          </span>
+        </>
+      )}
+
+      {/* Image comp badge */}
+      {isImageComp && (
+        <span style={{
+          marginLeft: 8, fontSize: 11, color: '#c084fc',
+          background: '#7c3aed22', border: '1px solid #7c3aed55',
+          borderRadius: 4, padding: '2px 8px', letterSpacing: '0.04em',
+          fontWeight: 600,
+        }}>
+          🖼 IMAGE LAYERS
+        </span>
+      )}
     </div>
   );
 }
@@ -111,6 +127,7 @@ function formatTimecode(frame: number, fps: number) {
 // Inner timeline  
 function TimelineInner() {
   const { state, dispatch } = useTimeline();
+  const isImageComp = state.activeCompKind === 'image';
 
   const contentRef = useRef<HTMLDivElement>(null);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -373,7 +390,11 @@ function TimelineInner() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', overflow: 'hidden' }}>
       <TimelineTabs />
-      <div className="tl-root" style={{ flex: 1, minHeight: 0 }} aria-label="Video Timeline">
+      <div
+        className="tl-root"
+        style={{ flex: 1, minHeight: 0, ...(isImageComp ? { '--tl-ruler-h': '0px' } as React.CSSProperties : {}) }}
+        aria-label={isImageComp ? 'Image Layers' : 'Video Timeline'}
+      >
         {/* Toolbar   */}
         <div
           className="tl-toolbar-row"
@@ -385,17 +406,24 @@ function TimelineInner() {
       
         <div className="tl-corner" style={{ gridColumn: "1", gridRow: "2" }} />
 
-        {/*   Ruler   */}
-        <div
-          className="tl-ruler-container"
-          style={{ gridColumn: "2", gridRow: "2" }}
-        >
-          <TimelineRuler
-            scrollLeft={scrollLeft}
-            totalWidthPx={tw}
-            onSeek={onSeek}
+        {/*   Ruler — hidden in image comp mode  */}
+        {!isImageComp && (
+          <div
+            className="tl-ruler-container"
+            style={{ gridColumn: "2", gridRow: "2" }}
+          >
+            <TimelineRuler
+              scrollLeft={scrollLeft}
+              totalWidthPx={tw}
+              onSeek={onSeek}
+            />
+          </div>
+        )}
+        {isImageComp && (
+          <div
+            style={{ gridColumn: "2", gridRow: "2", height: 0 }}
           />
-        </div>
+        )}
 
         {/*   Track Headers   */}
         <div
@@ -449,8 +477,10 @@ function TimelineInner() {
           <BottomBar contentRef={contentRef} viewWidth={viewWidth} />
         </div>
 
-        {/* Playhead  */}
-        <Playhead scrollLeft={scrollLeft} contentLeft={HEADER_WIDTH} />
+        {/* Playhead — hidden in image comp mode */}
+        {!isImageComp && (
+          <Playhead scrollLeft={scrollLeft} contentLeft={HEADER_WIDTH} />
+        )}
 
         {/*   Ghost clip proxy during move   */}
         <GhostClip />

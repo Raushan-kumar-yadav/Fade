@@ -59,6 +59,7 @@ export default function ImageLayersPanel({ compId }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [isDragTarget, setIsDragTarget] = useState(false); // library asset being dragged over
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
   const renameRef = useRef<HTMLInputElement>(null);
@@ -142,28 +143,70 @@ export default function ImageLayersPanel({ compId }: Props) {
     load();
   };
 
-  // ── Drag-to-reorder ──────────────────────────────────────────────────────
+  // ── Drag-to-reorder / Drop-from-library
 
   const handleDragStart = (id: string) => setDraggingId(id);
-  const handleDragOver = (e: React.DragEvent, id: string) => {
+  const handleDragOver = (e: React.DragEvent, id?: string) => {
     e.preventDefault();
-    setDragOverId(id);
+    e.stopPropagation();
+    if (id) setDragOverId(id);
+    // Show drop-zone highlight when a library asset is incoming
+    if (e.dataTransfer.types.includes('application/fade-asset')) {
+      setIsDragTarget(true);
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    // Only clear when leaving the whole panel
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) {
+      setIsDragTarget(false);
+      setDragOverId(null);
+    }
   };
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
-    if (!draggingId || !dragOverId || draggingId === dragOverId) {
+    e.stopPropagation();
+    setIsDragTarget(false);
+    setDragOverId(null);
+
+    // --- Drop from Library (asset card) ---
+    const assetJson =
+      e.dataTransfer.getData('application/fade-asset') ||
+      e.dataTransfer.getData('text/fade-asset');
+    if (assetJson) {
+      try {
+        const asset = JSON.parse(assetJson);
+        const isImg = asset.type === 'image';
+        const isVid = asset.type === 'video';
+        if (!isImg && !isVid) return; // only image/video assets make sense here
+        const layerName = asset.filename?.replace(/\.[^.]+$/, '') ?? 'Image Layer';
+        const element: ImageLayer['element'] = {
+          type: 'image',          // both image & video frames live as 'image' type in the layer
+          assetId: asset.assetId,
+          x: 0, y: 0,
+          width: 1920, height: 1080,
+          rotation: 0,
+        };
+        await addLayer(compId, layerName, element);
+        load();
+      } catch { /* bad JSON, ignore */ }
       setDraggingId(null);
-      setDragOverId(null);
+      return;
+    }
+
+    // --- Layer reorder (internal drag) ---
+    if (!draggingId || draggingId === dragOverId) {
+      setDraggingId(null);
       return;
     }
     const ids = layers.map((l) => l.trackId);
     const fromIdx = ids.indexOf(draggingId);
-    const toIdx = ids.indexOf(dragOverId);
+    const toIdx   = ids.indexOf(dragOverId ?? draggingId);
+    if (fromIdx === -1 || toIdx === -1) { setDraggingId(null); return; }
     const newIds = [...ids];
     newIds.splice(fromIdx, 1);
     newIds.splice(toIdx, 0, draggingId);
     setDraggingId(null);
-    setDragOverId(null);
     await reorderLayers(compId, newIds);
     load();
   };
@@ -183,9 +226,14 @@ export default function ImageLayersPanel({ compId }: Props) {
 
   const selectedLayer = layers.find((l) => l.trackId === selectedId) ?? null;
 
-  // ─── Render ───────────────────────────────────────────────────────────────
+  // ─── Render ───────────────────────────────────────────────────────────────  //   Render
   return (
-    <div style={s.panel}>
+    <div
+      style={{ ...s.panel, ...(isDragTarget ? s.panelDragOver : {}) }}
+      onDragOver={(e) => handleDragOver(e)}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Header */}
       <div style={s.header}>
         <span style={s.headerTitle}>🖼 Image Layers</span>
@@ -198,11 +246,16 @@ export default function ImageLayersPanel({ compId }: Props) {
       </div>
 
       {/* Layer list */}
-      <div style={s.list} onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
+      <div
+        style={s.list}
+        onDrop={handleDrop}
+        onDragOver={(e) => handleDragOver(e)}
+      >
         {layers.length === 0 && (
-          <div style={s.empty}>
-            No layers yet.<br />
-            Click ■ T 🖼 ◆ above to add one.
+          <div style={{ ...s.empty, ...(isDragTarget ? s.emptyDragOver : {}) }}>
+            {isDragTarget
+              ? '⬇ Drop image here'
+              : <>No layers yet.<br />Drag an image from Library, or click ■ T 🖼 ◆ above.</>}
           </div>
         )}
         {layers.map((lyr) => (
@@ -495,5 +548,19 @@ const s: Record<string, React.CSSProperties> = {
     fontSize: 10,
     minWidth: 28,
     textAlign: "right",
+  },
+  panelDragOver: {
+    outline: "2px dashed #7c3aed",
+    outlineOffset: "-2px",
+  },
+  emptyDragOver: {
+    color: "#c084fc",
+    fontSize: 14,
+    fontWeight: 600,
+    background: "#7c3aed18",
+    border: "2px dashed #7c3aed",
+    borderRadius: 10,
+    margin: "20px 16px",
+    padding: "32px 16px",
   },
 };
