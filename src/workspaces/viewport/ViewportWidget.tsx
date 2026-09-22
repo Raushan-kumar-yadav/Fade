@@ -224,22 +224,18 @@ export default function ViewportWidget() {
     function startSSE(port: number) {
       es = new EventSource(`http://127.0.0.1:${port}/events`);
 
-       
+      // Mark connected as soon as SSE channel opens
       es.onopen = () => setConnected(true);
 
       es.addEventListener('playback', (ev: MessageEvent) => {
         try {
           const data = JSON.parse(ev.data);
           if (data.playing !== undefined) setIsPlaying(data.playing);
-          if (data.fps !== undefined) setFps(data.fps);
+          if (data.fps     !== undefined) setFps(data.fps);
           if (data.totalFrames !== undefined) setTotalFrames(data.totalFrames);
-          if (data.speed !== undefined) setSpeed(data.speed);
+          if (data.speed   !== undefined) setSpeed(data.speed);
           if (data.inPoint !== undefined) setInPoint(data.inPoint);
           if (data.outPoint!== undefined) setOutPoint(data.outPoint);
-          
-          if (data.frame !== undefined) {
-            window.dispatchEvent(new CustomEvent('fade:frame', { detail: data.frame }));
-          }
         } catch { /* malformed payload */ }
       });
 
@@ -249,19 +245,15 @@ export default function ViewportWidget() {
           const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
           if (!r.ok) return;
           const data = await r.json();
-          setConnected(true);  
+          setConnected(true);  // also mark connected on first successful poll
           setIsPlaying(data.playing);
           setFps(data.fps);
           setTotalFrames(data.totalFrames ?? 1800);
-          if (data.speed !== undefined) setSpeed(data.speed);
-          if (data.inPoint !== undefined) setInPoint(data.inPoint);
+          if (data.speed    !== undefined) setSpeed(data.speed);
+          if (data.inPoint  !== undefined) setInPoint(data.inPoint);
           if (data.outPoint !== undefined) setOutPoint(data.outPoint);
-           
-          if (data.frame !== undefined) {
-            window.dispatchEvent(new CustomEvent('fade:frame', { detail: data.frame }));
-          }
         } catch { /* backend restarting */ }
-      }, 100);   
+      }, 2000); 
     }
 
     const knownPort: number | null = (window as any).__FADE_PORT__;
