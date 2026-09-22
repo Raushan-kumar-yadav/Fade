@@ -266,6 +266,83 @@ async def lifespan(app: FastAPI):
 
     threading.Thread(target=_run_tcp_server, daemon=True, name="tcp-frame-server").start()
 
+    # ── Python-fallback play loop ─────────────────────────────────────────────
+    # When the C++ native renderer is NOT connected, engine._currentFrame is
+    # never advanced (the C++ addon drives that via the TCP frame loop).
+    # This thread advances the playhead at the correct fps and broadcasts SSE
+    # 'playback' events so the timeline playhead moves in Python fallback mode.
+    def _run_fallback_play_loop():
+        import time as _time
+        from backend.events import notify as _notify_sse
+        import backend.media.scheduler.decodeScheduler as _ds_mod
+
+        last_frame = -1
+        last_time  = _time.monotonic()
+
+        while True:
+            _time.sleep(0.033)  # ~30fps tick
+
+            # Only drive playback when C++ renderer is NOT connected
+            if _ds_mod.cpp_renderer_active:
+                last_time = _time.monotonic()
+                continue
+
+            if not engine._playing:
+                last_time = _time.monotonic()
+                continue
+
+            prj = engine.project
+            if prj is None:
+                last_time = _time.monotonic()
+                continue
+
+            # Advance frame by elapsed time
+            now     = _time.monotonic()
+            elapsed = now - last_time
+            last_time = now
+
+            fps   = prj.fps or 30.0
+            speed = getattr(engine, "_speed", 1.0)
+            steps = int(elapsed * fps * speed)
+            if steps < 1:
+                continue
+
+            total = prj.totalFrame or 1800
+            in_p  = getattr(engine, "_inPoint",  None)
+            out_p = getattr(engine, "_outPoint", None)
+
+            new_frame = engine._currentFrame + steps
+            if out_p is not None and new_frame > out_p:
+                new_frame = in_p if in_p is not None else 0
+            elif new_frame >= total:
+                new_frame = 0
+                engine._playing = False
+
+            engine._currentFrame = new_frame
+
+            # Broadcast current frame via SSE so frontend playhead updates
+            if new_frame != last_frame:
+                last_frame = new_frame
+                try:
+                    _notify_sse("playback", {
+                        "frame":       new_frame,
+                        "playing":     engine._playing,
+                        "fps":         fps,
+                        "totalFrames": total,
+                        "speed":       speed,
+                        "inPoint":     in_p,
+                        "outPoint":    out_p,
+                    })
+                except Exception:
+                    pass
+
+    threading.Thread(
+        target=_run_fallback_play_loop,
+        daemon=True,
+        name="fallback-play-loop",
+    ).start()
+    # ─────────────────────────────────────────────────────────────────────────
+
 
     # Pre-warm Kokoro TTS model in background (first load downloads ~170MB + ONNX init).
     # This prevents the agent's 30-second HTTP timeout from firing on the first TTS call.
