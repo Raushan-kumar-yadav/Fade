@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback } from 'react'
 import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
@@ -16,34 +16,6 @@ import TransitionPanel from './inspector/TransitionPanel'
 import CompositionsPanel from './compositions/CompositionsPanel'
 
 
-// Tool creation panel  
-
-function ToolPanel() {
-  const { activeTool } = useTool()
-  const [currentFrame] = useState(0)
-
-  if (activeTool === 'text') {
-    return (
-      <TextToolPanel
-        currentFrame={currentFrame}
-        onCreated={(clip) => console.log('[Fade] text clip created', clip.clipId)}
-      />
-    )
-  }
-  if (isShapeTool(activeTool)) {
-    return (
-      <ShapeToolPanel
-        currentFrame={currentFrame}
-        onCreated={(clip) => console.log('[Fade] shape clip created', clip.clipId)}
-      />
-    )
-  }
-  return (
-    <div className="vp vp--props" style={{ padding: 12, color: '#475569', fontSize: 11 }}>
-      Select a creation tool (T / Q / P) to show options here.
-    </div>
-  )
-}
 
 // FlexLayout model  
 
@@ -120,11 +92,38 @@ export default function VideoWorkspace() {
 // Inner component — has access to useTimeline so factory can read activeCompId
 function WorkspaceInner({ model }: { model: FlexLayout.Model }) {
   const { state } = useTimeline()
+  const { activeTool } = useTool()
 
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
     // Always send the currently-open comp so clips land in the right timeline
     await addClipToTimeline(asset.assetId, trackIndex, 0, 300, 0, state.activeCompId)
   }, [state.activeCompId])
+
+  // Tool panel reads currentFrame + activeCompId from context — clips land in the right comp
+  const toolPanel = (() => {
+    const frame = state.currentFrame ?? 0
+    if (activeTool === 'text') {
+      return (
+        <TextToolPanel
+          currentFrame={frame}
+          onCreated={(clip) => console.log('[Fade] text clip created', clip.clipId)}
+        />
+      )
+    }
+    if (isShapeTool(activeTool)) {
+      return (
+        <ShapeToolPanel
+          currentFrame={frame}
+          onCreated={(clip) => console.log('[Fade] shape clip created', clip.clipId)}
+        />
+      )
+    }
+    return (
+      <div className="vp vp--props" style={{ padding: 12, color: '#475569', fontSize: 11 }}>
+        Select a creation tool (T / Q / P) to show options here.
+      </div>
+    )
+  })()
 
   const factory = (node: FlexLayout.TabNode) => {
     switch (node.getComponent()) {
@@ -136,7 +135,7 @@ function WorkspaceInner({ model }: { model: FlexLayout.Model }) {
       case 'inspector': return <InspectorPanel />
       case 'effects': return <EffectsPanel />
       case 'transitions': return <TransitionPanel />
-      case 'tools': return <ToolPanel />
+      case 'tools': return toolPanel
       case 'compositions': return <CompositionsPanel />
       default: return <div className="vp" />
     }

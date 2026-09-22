@@ -25,10 +25,9 @@ def _active_timeline():
 def _resolve_timeline(comp_id: str | None = None):
     """Resolve which timeline to target for clip creation.
 
-    - comp_id=None  → always root/main timeline (safe default; never affected by which
-                       comp tab the user has open in the UI).
-    - comp_id=<id>  → the specific comp timeline with that id, so the agent can
-                       explicitly target any comp without the user having to open it.
+    - comp_id=<id>  → the specific comp timeline with that id.
+    - comp_id=None  → whichever comp tab the user has open (activeTimeline),
+                      falling back to rootTimeline if nothing is active.
 
     This is the single place all clip-creation routes should call.
     """
@@ -37,7 +36,8 @@ def _resolve_timeline(comp_id: str | None = None):
         if tl is None:
             raise HTTPException(404, f"Comp timeline {comp_id!r} not found")
         return tl
-    tl = engine.rootTimeline
+    # Use whatever comp is currently open in the UI
+    tl = engine.activeTimeline or engine.rootTimeline
     if tl is None:
         raise HTTPException(400, "No active timeline")
     return tl

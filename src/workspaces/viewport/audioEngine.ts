@@ -61,24 +61,31 @@ export class AudioEngine {
 
   // Fetch & decode  
 
-  private async _fetchBuffer(node: AudioNode) {
+  private async _fetchBuffer(node: AudioNode, attempt = 0) {
     if (node.loading || node.dead || !this.port) return
     node.loading = true
     const url = `http://127.0.0.1:${this.port}${node.clip.streamUrl}`
     try {
       const resp = await fetch(url)
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      if (!resp.ok) throw new Error(`HTTP ${resp.status} (${resp.statusText})`)
       const arrayBuf = await resp.arrayBuffer()
       const ctx = this._getCtx()
       node.buffer = await ctx.decodeAudioData(arrayBuf)
       console.log('[AudioEngine] decoded', node.clip.clipId.slice(-6),
         `${node.buffer.duration.toFixed(1)}s`)
- 
       if (this._playing) {
         this._startSource(node, this._currentFrame())
       }
     } catch (e) {
-      console.warn('[AudioEngine] fetch/decode failed', node.clip.clipId, e)
+      const maxRetries = 3
+      if (attempt < maxRetries && !node.dead) {
+        const delay = Math.pow(2, attempt) * 2000  // 2s → 4s → 8s
+        console.warn(`[AudioEngine] fetch failed (attempt ${attempt + 1}/${maxRetries}), retrying in ${delay}ms`, node.clip.clipId)
+        node.loading = false
+        setTimeout(() => this._fetchBuffer(node, attempt + 1), delay)
+        return
+      }
+      console.warn('[AudioEngine] fetch/decode failed (giving up)', node.clip.clipId, e)
     } finally {
       node.loading = false
     }

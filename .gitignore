@@ -54,7 +54,8 @@ dummy.mp4
 *.wav
 AIModels/kokoro/
 AIModels/whisper/
-tools/
+tools/ffmpeg_dl.zip
+tools/ffmpeg_tmp/
 
 #   TypeScript build info  
 tsconfig.node.tsbuildinfo

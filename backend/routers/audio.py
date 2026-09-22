@@ -174,13 +174,29 @@ def audioStream(assetId: str, request: Request):
                 out_container.mux(out_packet)
             out_container.close()
             in_container.close()
-            os.replace(tmp_path, cache_path)  # atomic — file appears complete or not at all
+            os.replace(tmp_path, cache_path)  # atomic  
         except HTTPException:
             raise
         except Exception as e:
             if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            raise HTTPException(500, f"Audio extraction error: {e}")
+                try: os.unlink(tmp_path)
+                except: pass
+             
+            import struct, math
+            sample_rate = 44100
+            num_samples = sample_rate  # 1 second
+             
+            data_size   = num_samples * 2
+            header = struct.pack('<4sI4s4sIHHIIHH4sI',
+                b'RIFF', 36 + data_size, b'WAVE',
+                b'fmt ', 16, 1, 1, sample_rate, sample_rate * 2, 2, 16,
+                b'data', data_size)
+            silent_wav = header + bytes(data_size)
+            with open(cache_path, 'wb') as f:
+                f.write(silent_wav)
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Audio extraction failed for {assetId!r}: {e} — serving silent placeholder")
     return _stream_file(cache_path, "audio/wav", request)
 
 

@@ -224,6 +224,9 @@ export default function ViewportWidget() {
     function startSSE(port: number) {
       es = new EventSource(`http://127.0.0.1:${port}/events`);
 
+      // Mark connected as soon as SSE channel opens
+      es.onopen = () => setConnected(true);
+
       es.addEventListener('playback', (ev: MessageEvent) => {
         try {
           const data = JSON.parse(ev.data);
@@ -242,6 +245,7 @@ export default function ViewportWidget() {
           const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
           if (!r.ok) return;
           const data = await r.json();
+          setConnected(true);  // also mark connected on first successful poll
           setIsPlaying(data.playing);
           setFps(data.fps);
           setTotalFrames(data.totalFrames ?? 1800);
