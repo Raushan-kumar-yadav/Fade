@@ -6,7 +6,17 @@ node_modules/
  
 dist/
 dist-electron/
-renderer/build/
+renderer/build/CMakeFiles/
+renderer/build/CMakeCache.txt
+renderer/build/cmake_install.cmake
+renderer/build/Makefile
+renderer/build/*.vcxproj
+renderer/build/*.sln
+renderer/build/Release/*.exp
+renderer/build/Release/*.lib
+renderer/build/Release/ffplay.exe
+renderer/build/Release/ffmpeg.exe
+renderer/build/Release/ffprobe.exe
 renderer/deps/ffmpeg/lib/
 renderer/deps/skia/lib/
 backend/media/decoder/ffmpeg/
