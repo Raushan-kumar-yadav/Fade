@@ -6,6 +6,7 @@ import { useTimeline } from "../timeline/TimelineContext";
 interface CompMeta {
   compId: string;
   name: string;
+  kind: "video" | "image";
   trackCount: number;
   clipCount: number;
 }
@@ -18,11 +19,11 @@ async function fetchComps(): Promise<CompMeta[]> {
   return data.comps ?? [];
 }
 
-async function createComp(name: string): Promise<CompMeta> {
+async function createComp(name: string, kind: "video" | "image"): Promise<CompMeta> {
   const res = await fetch(`${BASE}/comps`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, kind }),
   });
   return res.json();
 }
@@ -51,6 +52,7 @@ async function addCompClip(compId: string, startFrame: number, duration: number)
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [newKind, setNewKind] = useState<"video" | "image">("video");
   const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
@@ -74,8 +76,8 @@ async function addCompClip(compId: string, startFrame: number, duration: number)
     if (!newName.trim()) return;
     setCreating(true);
     try {
-      const comp = await createComp(newName.trim());
-      setComps((prev) => [...prev, { compId: comp.compId, name: comp.name, trackCount: 0, clipCount: 0 }]);
+      const comp = await createComp(newName.trim(), newKind);
+      setComps((prev) => [...prev, { compId: comp.compId, name: comp.name, kind: newKind, trackCount: 0, clipCount: 0 }]);
       setNewName("");
     } catch {
       setError("Failed to create composition");
@@ -107,7 +109,7 @@ async function addCompClip(compId: string, startFrame: number, duration: number)
   };
 
   const handleEnter = (comp: CompMeta) => {
-    dispatch({ type: "ENTER_COMP", compId: comp.compId, compName: comp.name });
+    dispatch({ type: "ENTER_COMP", compId: comp.compId, compName: comp.name, kind: comp.kind ?? "video" });
   };
 
   // Breadcrumb 
@@ -133,16 +135,35 @@ async function addCompClip(compId: string, startFrame: number, duration: number)
 
       {/* New composition form */}
       <form onSubmit={handleCreate} style={styles.form}>
-        <input
-          style={styles.input}
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="Composition name…"
-          disabled={creating}
-        />
-        <button style={styles.createBtn} type="submit" disabled={creating || !newName.trim()}>
-          {creating ? "…" : "+"}
-        </button>
+        {/* Kind toggle */}
+        <div style={styles.kindToggle}>
+          <button
+            type="button"
+            style={{ ...styles.kindBtn, ...(newKind === "video" ? styles.kindBtnActive : {}) }}
+            onClick={() => setNewKind("video")}
+          >
+            🎬 Video
+          </button>
+          <button
+            type="button"
+            style={{ ...styles.kindBtn, ...(newKind === "image" ? styles.kindBtnActiveImg : {}) }}
+            onClick={() => setNewKind("image")}
+          >
+            🖼 Image
+          </button>
+        </div>
+        <div style={styles.formRow}>
+          <input
+            style={styles.input}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder={newKind === "image" ? "Poster name…" : "Composition name…"}
+            disabled={creating}
+          />
+          <button style={styles.createBtn} type="submit" disabled={creating || !newName.trim()}>
+            {creating ? "…" : "+"}
+          </button>
+        </div>
       </form>
 
       {error && (
@@ -166,7 +187,7 @@ async function addCompClip(compId: string, startFrame: number, duration: number)
             }}
           >
             <div style={styles.itemInfo}>
-              <span style={styles.itemIcon}>⊞</span>
+              <span style={styles.itemIcon}>{comp.kind === "image" ? "🖼" : "⊞"}</span>
               <div>
                 <div style={styles.itemName}>{comp.name}</div>
                 <div style={styles.itemMeta}>
@@ -261,9 +282,39 @@ async function addCompClip(compId: string, startFrame: number, duration: number)
   },
   form: {
     display: "flex",
+    flexDirection: "column",
     gap: 6,
     padding: "10px 12px",
     borderBottom: "1px solid #2a2a4a",
+  },
+  kindToggle: {
+    display: "flex",
+    gap: 4,
+  },
+  kindBtn: {
+    flex: 1,
+    background: "#1e1e40",
+    border: "1px solid #3a3a6a",
+    borderRadius: 5,
+    color: "#6060a0",
+    cursor: "pointer",
+    fontSize: 11,
+    padding: "4px 0",
+    transition: "all 0.15s",
+  },
+  kindBtnActive: {
+    background: "#00897b22",
+    borderColor: "#00897b",
+    color: "#00e5cc",
+  },
+  kindBtnActiveImg: {
+    background: "#7c3aed22",
+    borderColor: "#7c3aed",
+    color: "#c084fc",
+  },
+  formRow: {
+    display: "flex",
+    gap: 6,
   },
   input: {
     flex: 1,

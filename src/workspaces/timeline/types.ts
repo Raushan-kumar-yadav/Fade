@@ -78,6 +78,33 @@ export interface GhostInfo {
 export interface CompTab {
   compId: string | null;  // null = root timeline
   name: string;
+  kind: "video" | "image";   // video = normal timeline, image = layer stack
+}
+
+// Image layer element (what sits on a layer canvas)
+export interface ImageLayerElement {
+  type: "image" | "solid" | "text" | "shape";
+  assetId?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  color?: string;
+  text?: string;
+  opacity?: number;
+}
+
+// A single Photoshop-style layer inside an ImageComp
+export interface ImageLayer {
+  trackId: string;
+  name: string;
+  z_index: number;
+  visible: boolean;
+  locked: boolean;
+  opacity: number;
+  blendMode: string;
+  element: ImageLayerElement | null;
 }
 
 // Full Timeline State
@@ -94,6 +121,7 @@ export interface TimelineState {
   // Composition navigation 
   activeCompId: string | null;
   activeCompName: string | null;
+  activeCompKind: "video" | "image" | null;   // what kind of comp is open
   // Master timeline tab stack  
   compTabStack: CompTab[];
 }
@@ -151,7 +179,7 @@ export type TimelineAction =
   | { type: "SET_GHOST"; ghost: GhostInfo | null }
   | { type: "END_INTERACTION" }
   // Composition navigation
-  | { type: "ENTER_COMP"; compId: string; compName: string }
+  | { type: "ENTER_COMP"; compId: string; compName: string; kind: "video" | "image" }
   | { type: "EXIT_COMP" }
   | { type: "SWITCH_COMP_TAB"; compId: string | null }   // switch to existing tab
   | { type: "CLOSE_COMP_TAB"; compId: string };           // close a comp tab

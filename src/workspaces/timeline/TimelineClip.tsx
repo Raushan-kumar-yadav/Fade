@@ -143,7 +143,7 @@ const TimelineClip = memo(function TimelineClip({
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     if (clip.type !== 'comp' || !clip.compId) return;
     e.stopPropagation();
-    dispatch({ type: 'ENTER_COMP', compId: clip.compId, compName: clip.name });
+    dispatch({ type: 'ENTER_COMP', compId: clip.compId, compName: clip.name, kind: 'video' });
   }, [clip.type, clip.compId, clip.name, dispatch]);
 
   // Cursor based on tool
@@ -493,7 +493,7 @@ const TimelineClip = memo(function TimelineClip({
         {clip.type === 'comp' && (
           <button
             style={CTX_ITEM_STYLE}
-            onClick={() => { setCtxMenu(null); dispatch({ type: 'ENTER_COMP', compId: clip.compId!, compName: clip.name }); }}
+            onClick={() => { setCtxMenu(null); dispatch({ type: 'ENTER_COMP', compId: clip.compId!, compName: clip.name, kind: 'video' }); }}
           >? Enter Composition</button>
         )}
         <button

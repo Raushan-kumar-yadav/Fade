@@ -3,7 +3,8 @@ import * as FlexLayout from 'flexlayout-react'
 import 'flexlayout-react/style/dark.css'
 import './VideoWorkspace.css'
 import Timeline from './timeline/Timeline'
-import { TimelineProvider } from './timeline/TimelineContext'
+import ImageLayersPanel from './timeline/ImageLayersPanel'
+import { TimelineProvider, useTimeline } from './timeline/TimelineContext'
 import ViewportWidget from './viewport/ViewportWidget'
 import LibraryPanel from './library/LibraryPanel'
 import InspectorPanel from './inspector/InspectorPanel'
@@ -96,6 +97,23 @@ function getModel(): FlexLayout.Model {
   return _model
 }
 
+// TimelineOrLayers  
+function TimelineOrLayers() {
+  const { state } = useTimeline()
+  if (state.activeCompKind === 'image' && state.activeCompId) {
+    return (
+      <div className="vp vp--timeline" style={{ overflow: 'hidden' }}>
+        <ImageLayersPanel compId={state.activeCompId} />
+      </div>
+    )
+  }
+  return (
+    <div className="vp vp--timeline">
+      <Timeline />
+    </div>
+  )
+}
+
 // VideoWorkspace  
 
 export default function VideoWorkspace() {
@@ -109,9 +127,7 @@ export default function VideoWorkspace() {
     switch (node.getComponent()) {
       case 'library': return <LibraryPanel onAddToTimeline={handleAddToTimeline} />
       case 'viewport': return <ViewportWidget />
-      case 'timeline': return (
-        <div className="vp vp--timeline"><Timeline /></div>
-      )
+      case 'timeline': return <TimelineOrLayers />
       case 'inspector': return <InspectorPanel />
       case 'effects': return <EffectsPanel />
       case 'transitions': return <TransitionPanel />

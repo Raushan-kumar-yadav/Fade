@@ -32,7 +32,8 @@ const INITIAL_STATE: TimelineState = {
   ghost: null,
   activeCompId: null,
   activeCompName: null,
-  compTabStack: [{ compId: null, name: "Main Timeline" }],
+  activeCompKind: null,
+  compTabStack: [{ compId: null, name: "Main Timeline", kind: "video" }],
 };
 
 //   Helpers
@@ -400,14 +401,16 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
 
     case "ENTER_COMP": {
       // Add tab if not already open, then switch to it
+      const kind = action.kind ?? "video";
       const alreadyOpen = state.compTabStack.some(t => t.compId === action.compId);
       const newTabs: CompTab[] = alreadyOpen
         ? state.compTabStack
-        : [...state.compTabStack, { compId: action.compId, name: action.compName }];
+        : [...state.compTabStack, { compId: action.compId, name: action.compName, kind }];
       return {
         ...state,
         activeCompId: action.compId,
         activeCompName: action.compName,
+        activeCompKind: kind,
         compTabStack: newTabs,
         tracks: [],
         currentFrame: 0,
@@ -419,6 +422,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
         ...state,
         activeCompId: null,
         activeCompName: null,
+        activeCompKind: null,
         tracks: [],
         currentFrame: 0,
       };
@@ -431,6 +435,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
         ...state,
         activeCompId: action.compId,
         activeCompName: action.compId === null ? "Main Timeline" : (tab.name),
+        activeCompKind: action.compId === null ? null : (tab.kind ?? "video"),
         tracks: [],
         currentFrame: 0,
       };
@@ -442,7 +447,7 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       const wasActive = state.activeCompId === action.compId;
       return {
         ...state,
-        compTabStack: remainingTabs.length > 0 ? remainingTabs : [{ compId: null, name: "Main Timeline" }],
+        compTabStack: remainingTabs.length > 0 ? remainingTabs : [{ compId: null, name: "Main Timeline", kind: "video" as const }],
         activeCompId: wasActive ? null : state.activeCompId,
         activeCompName: wasActive ? null : state.activeCompName,
         tracks: wasActive ? [] : state.tracks,

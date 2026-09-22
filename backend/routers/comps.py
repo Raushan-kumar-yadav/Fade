@@ -66,6 +66,7 @@ class CreateCompRequest(BaseModel):
     height: int = 1080
     fps: float = 30.0
     totalFrames: int = 900
+    kind : str = "video"
 
 
 class CompRenameRequest(BaseModel):
@@ -93,6 +94,7 @@ def listComps():
         comps.append({
             "compId": tl.timelineId,
             "name": tl.name,
+            "kind" :getattr(tl , "kind" , "video"),
             "isRoot": tl.timelineId == root_id,
             "width": getattr(tl, "width", proj_w),
             "height": getattr(tl, "height", proj_h),
@@ -110,9 +112,12 @@ def createComp(req: CreateCompRequest):
         raise HTTPException(400, "No active project")
     comp = engine.createComposition(name=req.name, width=req.width, height=req.height,
                                     fps=req.fps, total_frames=req.totalFrames)
+
+    comp.kind = req.kind
     from backend.events import notify; notify("comps")
     return {
         "compId": comp.timelineId, "name": comp.name,
+        "kind" : comp.kind ,
         "width": getattr(comp, "width", req.width),
         "height": getattr(comp, "height", req.height),
         "fps": getattr(comp, "fps", req.fps),
@@ -222,3 +227,80 @@ def addCompClip(req: AddCompClipRequest):
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
     from backend.events import notify; notify("timeline")
     return clip.toDict()
+
+
+
+class AddLayerRequest(BaseModel):
+    name:str = "Layer"
+    element:dict | None = None
+
+
+class UpdateLayerRequest(BaseModel):
+    name:str | None = None
+    visible : bool | None = None
+    locked : bool | None = None 
+    opacity : float | None = None
+    blendMode : str | None = None
+    z_index : strt | None = None
+    element : dict | None = None
+
+
+class ReorderLayerRequest(BaseModel):
+    layerIds : list[str]
+
+
+@router.get("/comps/{compId}/layers")
+def getLayers(compId : str):
+    from backend.timeline.tracks.imageLayer import imageLayer
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404,f"comp {CompId!r} not found")
+
+    if getattr(tl ,  "kind","video") != "image":
+        raise HTTPException(400, "Not an image compositor")
+
+    layers = sorted([t for t in tl.tracks if isinstance(t , imageLayer)],
+    key=lambda l : l.z_index , reverse=True
+    )
+    return {"layers":[l.toDict() for l in layers]}
+
+@router.post("/comp/{compId}/layers")
+def addLayer(compId:str , req:AddLayerRequest):
+    from backend.timeline.tracks.imageLayer import imageLayer
+    t1 = engine.getTimeline(compId)
+    if t1 is None:
+        raise HTTPException(404,f"Comp {compId!r} not found ") 
+    
+    if getattr(t1 , "kind" , "video") != "image":
+        raise HTTPException(400 , "not an image composition")
+
+    lyr = imageLayer(name=req.name)
+    lyr.zIndex = len(t1.tracks)
+    lyr.element = req.element
+    t1.tracks(lyr)
+    from backend.events import notify ; notify("timeline")
+    return lyr.toDict()
+
+@router.patch('/comps/{compId}/layers/{layerId}')
+def updateLayer(compId:str , layerId:str , req:UpdateLayerRequest):
+    from backend.timeline.tracks.imageLayer import imageLayer 
+    t1 = engine.getTimeline(compId)
+
+    if t1 is None:
+        raise HTTPException(404 , f"comp {compId!r} not found")
+    
+    lyr = next((t for t in t1.tracks if isinstance(t , imageLayer) and (t.trackId == layerId)) , None )
+
+    if lyr is None:
+        raise HTTPException(404 , f"Layer {layerId!r} not found ")
+
+    if req.name is not None: lyr.name = req.name
+    if req.visible is not None: lyr.visible = req.visible
+    if req.locked is not None: lyr.locked = req.locked
+    if req.opacity is not None: lyr.opacity = req.opacity
+    if req.blendMode is not None: lyr.blendMode = req.blendMode
+    if req.z_index is not None: lyr.z_index = req.z_index
+    if req.element is not None: lyr.element = req.element
+    from backend.events import notify; notify("timeline")
+    return lyr.toDict()
+    

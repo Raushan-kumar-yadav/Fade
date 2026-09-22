@@ -10,7 +10,7 @@ class Timeline:
         self.name = name
         self.tracks: list[BaseTrack] = []
         self.playheadFrame = 0
-        # Timeline-level transitions  
+        self.kind : str = "video"
         self.transitions: list = []   # list[Transition]
 
     #   Clip lookup 
@@ -80,15 +80,9 @@ class Timeline:
         self.tracks.remove(track)
         self.tracks.insert(newIndex, track)
 
-    # Rendering
-    # Tracks are painted in ASCENDING index order (0, 1, 2 ...).
-    # Skia rule: last painted = on top. Therefore:
-    #   tracks[0]    → drawn FIRST  → BOTTOM (background, behind everything)
-    #   tracks[last] → drawn LAST   → TOP    (foreground, in front of everything)
-    # This matches the C++ compositor sort (ascending zOrder) and graphBuilder.py.
-
+ 
     def render(self, canvas, frame: int) -> None:
-        for track in self.tracks:          # ascending — do NOT reverse
+        for track in self.tracks:          # ascending  
             if not track.muted:
                 track.render(canvas, frame)
 
@@ -98,6 +92,7 @@ class Timeline:
         return {
             "timelineId": self.timelineId,
             "name": self.name,
+            "kind" : getattr(self,"kind" , "video"),
             "playheadFrame": self.playheadFrame,
             "tracks": [t.toDict() for t in self.tracks],
             "transitions": [t.toDict() for t in self.transitions],
@@ -107,16 +102,19 @@ class Timeline:
     def fromDict(cls, data: dict) -> "Timeline":
         from backend.timeline.tracks.videoTrack import VideoTrack
         from backend.timeline.tracks.audioTrack import AudioTrack
+        from backend.timeline.tracks.imageLayer import imageLayer
         from backend.timeline.transitions.transition import Transition
 
         _TRACK_REGISTRY = {
             "video": VideoTrack,
             "audio": AudioTrack,
+            "image-layer" : imageLayer
         }
 
         t = cls(name=data["name"])
         t.timelineId = data["timelineId"]
         t.playheadFrame = data.get("playheadFrame", 0)
+        t.kind = data.get("kind","video")
 
         for trackData in data.get("tracks", []):
             trackType = trackData.get("type", "video")

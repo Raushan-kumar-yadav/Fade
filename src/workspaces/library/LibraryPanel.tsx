@@ -931,7 +931,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
   }, [state.activeCompId, dispatch]);
 
   const handleEnterComp = useCallback((comp: CompMeta) => {
-    dispatch({ type: 'ENTER_COMP', compId: comp.compId, compName: comp.name });
+    dispatch({ type: 'ENTER_COMP', compId: comp.compId, compName: comp.name, kind: 'video' });
   }, [dispatch]);
 
   const handleAddCompToTimeline = useCallback(async (comp: CompMeta) => {
