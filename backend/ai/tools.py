@@ -53,7 +53,12 @@ def set_port(port: int) -> None:
  
 @tool
 def get_timeline_state() -> str:
-     
+    """Return a compact snapshot of the current timeline: fps, totalFrames, and all tracks with their clips.
+
+    Each clip includes clipId, type, startFrame, durationFrames, endFrame, trackIndex,
+    and optional fields assetId (video/image/audio), text (text clips), and name.
+    Use this to understand the current edit before making changes.
+    """
     import requests, json
     data = requests.get("http://127.0.0.1:8000/timeline/state").json()
     fps = data.get("fps", 30)

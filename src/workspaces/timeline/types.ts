@@ -111,6 +111,7 @@ export type TimelineAction =
   | { type: "SET_TRACKS"; tracks: Track[] }
   | { type: "SET_TOTAL_FRAMES"; totalFrames: number }
   | { type: "ADD_CLIP"; trackId: string; clip: Clip }
+  | { type: "REPLACE_CLIP"; oldClipId: string; trackId: string; clip: Clip }
   | { type: "DELETE_CLIP"; clipId: string }
   | {
       type: "SPLIT_CLIP_DONE";

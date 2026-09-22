@@ -51,7 +51,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     transitionApi.listAll().then(r => {
       setTransitions(r.transitions.filter(tr => clipIdsRef.current.has(tr.clipA_id)));
     }).catch(() => {});
-  }, []); // no deps — always reads from ref
+  }, []); // no deps ï¿½ always reads from ref
 
   React.useEffect(() => {
     fetchTransitions();
@@ -329,8 +329,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
             type: 'webcomp',
             isSelected: false,
           };
-          dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
-          dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
+          // Atomic swap: one render, no flash
+          dispatch({ type: 'REPLACE_CLIP', oldClipId: optimisticClip.id, trackId: track.id, clip: realClip });
           // Signal useWebCompSync to create  
           window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } else {
@@ -368,9 +368,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
           hit.assetId, trackIndex, frame, hit.duration, hit.inFrames,
         );
         if (result) {
-          // Replace optimistic with real clip
-          dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
-          dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: {
+          // Atomic swap: one render, no flash
+          dispatch({ type: 'REPLACE_CLIP', oldClipId: optimisticClip.id, trackId: track.id, clip: {
             id: result.clipId,
             name: hit.filename,
             startFrame: result.startFrame,
@@ -380,7 +379,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
           }});
           window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } else {
-          // API returned null — rollback
+          // API returned null ï¿½ rollback
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
           console.warn('[TrackRow] addClipToTimeline returned null for scene hit', hit.assetId);
         }
@@ -420,20 +419,21 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       } else {
         result = await addClipToTimeline(asset.assetId, trackIndex, frame, duration);
       }
-      // Remove optimistic placeholde 
-      dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
       if (result) {
         const realClip: Clip = {
           id: result.clipId,
           name: asset.filename,
           startFrame: result.startFrame,
-          duration: result.duration,    
+          duration: result.duration,
           type: optimisticClip.type,
           isSelected: false,
         };
-        dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
+        // Atomic swap: one render, no flash
+        dispatch({ type: 'REPLACE_CLIP', oldClipId: optimisticClip.id, trackId: track.id, clip: realClip });
+      } else {
+        dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
       }
-      // Always notify so AudioEngine reloads its clip list 
+      // Always notify so AudioEngine reloads its clip list
       window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
     } catch (err) {
       console.error('[TrackRow] addClipToTimeline failed:', err);
@@ -526,7 +526,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       )}
 
       {placing && (
-        <div className="tl-track-row__placing-hint">Adding…</div>
+        <div className="tl-track-row__placing-hint">Addingï¿½</div>
       )}
 
       {/* Resize handle */}

@@ -230,6 +230,18 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       return { ...state, tracks };
     }
 
+     
+    case "REPLACE_CLIP": {
+      const tracks = state.tracks.map((t) => {
+        if (t.id !== action.trackId) return t;
+        const clips = t.clips.map((c) =>
+          c.id === action.oldClipId ? action.clip : c,
+        );
+        return { ...t, clips };
+      });
+      return { ...state, tracks };
+    }
+
     case "DELETE_CLIP": {
       const tracks = state.tracks.map((t) => ({
         ...t,
@@ -479,7 +491,7 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
         : `${base}/timeline/state`;
 
       if (state.activeCompId) {
-        // ensure tracks exist (idempotent — safe to call every time)
+        // ensure tracks exist (idempotent ï¿½ safe to call every time)
         await fetch(`${base}/comps/${state.activeCompId}/ensure-tracks`, { method: 'POST' }).catch(() => {});
       }
 
