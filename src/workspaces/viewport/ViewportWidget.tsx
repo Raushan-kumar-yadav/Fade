@@ -8,9 +8,11 @@ import {
 } from '../../api/useApi';
 import { useTool } from '../../context/toolContext';
 import { useSelection } from '../../context/selectionContext';
+import { useTimeline } from '../timeline/TimelineContext';
 import OverlayCanvas from './OverlayCanvas';
 import { AudioEngine, type AudioClipInfo } from './audioEngine';
 import './ViewportWidget.css';
+
 
 function framesToTimecode(frame: number, fps = 30): string {
   const f  = Math.floor(frame);
@@ -54,6 +56,9 @@ const IconFullscreen = () => (
 //   Component  
 
 export default function ViewportWidget() {
+  const { state: tlState } = useTimeline();
+  const isImageComp = tlState.activeCompKind === 'image';
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrame, setCurrentFrame] = useState(0);
   const [totalFrames,  setTotalFrames]  = useState(1800);
@@ -285,8 +290,9 @@ export default function ViewportWidget() {
   //   Controls  
 
   const togglePlay = useCallback(async () => {
+    if (isImageComp) return;  // play disabled in image comp
     const api = (window as any).electronAPI;
- 
+
     const liveFrame = frameNumRef.current ?? currentFrame;
     if (isPlaying) {
       await playbackPause();
@@ -299,7 +305,7 @@ export default function ViewportWidget() {
       audioRef.current?.play(liveFrame);
       setIsPlaying(true);
     }
-  }, [isPlaying, currentFrame, isNativeRender]);
+  }, [isImageComp, isPlaying, currentFrame, isNativeRender]);
 
   const stepFrame = useCallback(async (dir: 1 | -1) => {
     const api = (window as any).electronAPI;
@@ -601,13 +607,34 @@ export default function ViewportWidget() {
           {timecode}
         </div>
         <div className="vw-controls__transport">
-          <button id="vw-prev-frame" className="vw-btn" title="Previous frame" onClick={() => stepFrame(-1)}>
+          <button
+            id="vw-prev-frame"
+            className="vw-btn"  
+            title="Previous frame"
+            disabled={isImageComp}
+            style={isImageComp ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+            onClick={() => stepFrame(-1)}
+          >
             <IconPrev />
           </button>
-          <button id="vw-play-pause" className="vw-btn vw-btn--play" title={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay}>
+          <button
+            id="vw-play-pause"
+            className="vw-btn vw-btn--play"
+            title={isImageComp ? 'Play disabled in image comp' : (isPlaying ? 'Pause' : 'Play')}
+            disabled={isImageComp}
+            style={isImageComp ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+            onClick={togglePlay}
+          >
             {isPlaying ? <IconPause /> : <IconPlay />}
           </button>
-          <button id="vw-next-frame" className="vw-btn" title="Next frame" onClick={() => stepFrame(1)}>
+          <button
+            id="vw-next-frame"
+            className="vw-btn"
+            title="Next frame"
+            disabled={isImageComp}
+            style={isImageComp ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+            onClick={() => stepFrame(1)}
+          >
             <IconNext />
           </button>
           {/* Speed selector */}

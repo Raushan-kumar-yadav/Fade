@@ -159,13 +159,14 @@ function TimelineInner() {
     setScrollTop(el.scrollTop);
   }, []);
 
-  // Wheel 
+  // Wheel — horizontal scroll locked in image comp mode
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
+        if (isImageComp) return;  // no zoom in image comp
         // Zoom X at cursor
         const rect = el.getBoundingClientRect();
         const cursorPx = e.clientX - rect.left + el.scrollLeft;
@@ -179,15 +180,15 @@ function TimelineInner() {
             el.scrollLeft = pivotFrame * newZoom - (e.clientX - rect.left);
         });
       } else if (e.shiftKey) {
-        el.scrollLeft += e.deltaY;
+        if (!isImageComp) el.scrollLeft += e.deltaY;  // horizontal only in video mode
       } else {
-        el.scrollTop += e.deltaY;
-        el.scrollLeft += e.deltaX;
+        el.scrollTop += e.deltaY;                     // vertical always allowed
+        if (!isImageComp) el.scrollLeft += e.deltaX;  // horizontal locked in image comp
       }
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, [state.zoomX, dispatch]);
+  }, [isImageComp, state.zoomX, dispatch]);
 
   // Keyboard shortcuts  
   useEffect(() => {
@@ -226,7 +227,7 @@ function TimelineInner() {
       switch (e.code) {
         case "Space":
           e.preventDefault();
-          dispatch({ type: "TOGGLE_PLAY" });
+          if (!isImageComp) dispatch({ type: "TOGGLE_PLAY" });  // no play in image comp
           break;
         case "KeyV":
           dispatch({ type: "SET_TOOL", tool: "pointer" });
@@ -312,6 +313,13 @@ function TimelineInner() {
     },
     [dispatch],
   );
+
+  // Lock playhead at frame 0 whenever image comp is active
+  useEffect(() => {
+    if (!isImageComp) return;
+    onSeek(0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isImageComp]);  // only re-run when comp kind changes
 
    
   const onContentMouseDown = useCallback(

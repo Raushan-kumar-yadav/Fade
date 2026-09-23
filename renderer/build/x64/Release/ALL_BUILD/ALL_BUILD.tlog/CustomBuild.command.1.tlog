@@ -1,0 +1,10 @@
+^E:\EDITOR_SIH\FADE\RENDERER\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SE:/Editor_SIH/Fade/renderer -BE:/Editor_SIH/Fade/renderer/build --check-stamp-file E:/Editor_SIH/Fade/renderer/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
