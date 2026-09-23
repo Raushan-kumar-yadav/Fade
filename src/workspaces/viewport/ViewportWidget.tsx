@@ -61,15 +61,15 @@ export default function ViewportWidget() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrame, setCurrentFrame] = useState(0);
-  const [totalFrames,  setTotalFrames]  = useState(1800);
+  const [totalFrames, setTotalFrames] = useState(1800);
   const [fps, setFps] = useState(30);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [retryCount, setRetryCount]   = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
   const [resScale, setResScale] = useState<number>(0.5);
   const [previewFormat, setPreviewFormat] = useState<'jpeg' | 'png'>('png');
   const [speed, setSpeed] = useState(1.0);
-  const [inPoint,  setInPoint]  = useState<number | null>(null);
+  const [inPoint, setInPoint]  = useState<number | null>(null);
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const loopActive = inPoint !== null && outPoint !== null;
 
@@ -90,7 +90,7 @@ export default function ViewportWidget() {
    
   const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
 
-  // Expose isImageComp to window so stale event handlers (fade:render-now) can read it
+  // Expose isImageComp to window  
   useEffect(() => {
     (window as any).__FADE_IMAGE_COMP__ = isImageComp;
   }, [isImageComp]);
@@ -151,9 +151,7 @@ export default function ViewportWidget() {
       frameNumRef.current = frameNum;
       window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
       audioRef.current?.tick(frameNum);
-      // Sync audio clock to the authoritative C++ frame number.
-      // tick() handles late-loaded buffers; syncToFrame() corrects drift
-      // when the two independent clocks (AudioContext vs C++ compositor) diverge.
+       
       audioRef.current?.syncToFrame(frameNum);
 
       if (frameNum !== lastStateFrameRef.current) {

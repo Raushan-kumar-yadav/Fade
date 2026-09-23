@@ -49,7 +49,7 @@ function GhostClip() {
   );
 }
 
-// ─── Toolbar ──────────────────────────────────────────────────────────────────
+// Toolbar  
 const TOOLS = [
   { id: "pointer" as const, icon: "↖", title: "Pointer (V)" },
   { id: "razor" as const, icon: "✂", title: "Razor (C)" },
@@ -159,14 +159,14 @@ function TimelineInner() {
     setScrollTop(el.scrollTop);
   }, []);
 
-  // Wheel — horizontal scroll locked in image comp mode
+  // Wheel  
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
-        if (isImageComp) return;  // no zoom in image comp
+        if (isImageComp) return;   
         // Zoom X at cursor
         const rect = el.getBoundingClientRect();
         const cursorPx = e.clientX - rect.left + el.scrollLeft;
@@ -174,16 +174,16 @@ function TimelineInner() {
         const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
         const newZoom = Math.max(0.3, Math.min(60, state.zoomX * factor));
         dispatch({ type: "ZOOM_X", newZoom });
-        // Adjust scroll to keep pivot frame stationary
+         
         requestAnimationFrame(() => {
           if (el)
             el.scrollLeft = pivotFrame * newZoom - (e.clientX - rect.left);
         });
       } else if (e.shiftKey) {
-        if (!isImageComp) el.scrollLeft += e.deltaY;  // horizontal only in video mode
+        if (!isImageComp) el.scrollLeft += e.deltaY;   
       } else {
-        el.scrollTop += e.deltaY;                     // vertical always allowed
-        if (!isImageComp) el.scrollLeft += e.deltaX;  // horizontal locked in image comp
+        el.scrollTop += e.deltaY;                      
+        if (!isImageComp) el.scrollLeft += e.deltaX;   
       }
     };
     el.addEventListener("wheel", handler, { passive: false });
@@ -227,7 +227,7 @@ function TimelineInner() {
       switch (e.code) {
         case "Space":
           e.preventDefault();
-          if (!isImageComp) dispatch({ type: "TOGGLE_PLAY" });  // no play in image comp
+          if (!isImageComp) dispatch({ type: "TOGGLE_PLAY" });   
           break;
         case "KeyV":
           dispatch({ type: "SET_TOOL", tool: "pointer" });
@@ -300,8 +300,7 @@ function TimelineInner() {
   const onSeek = useCallback(
     (frame: number) => {
       dispatch({ type: 'SEEK', frame });
-      // Sync both the Python backend and the C++ native render engine so
-      // that hitting play immediately after seek starts from the right frame.
+       
       (window as any).electronAPI?.renderSeek?.(frame);
       playbackSeek(frame)
         .then(() => {
@@ -314,12 +313,12 @@ function TimelineInner() {
     [dispatch],
   );
 
-  // Lock playhead at frame 3 whenever image comp is active
+ 
   useEffect(() => {
     if (!isImageComp) return;
     onSeek(3);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isImageComp]);  // only re-run when comp kind changes
+  
+  }, [isImageComp]);  
 
    
   const onContentMouseDown = useCallback(
@@ -340,7 +339,7 @@ function TimelineInner() {
         x: e.clientX - rect.left + el.scrollLeft,
         y: e.clientY - rect.top  + el.scrollTop,
         scrollLeft: el.scrollLeft,
-        scrollTop:  el.scrollTop,
+        scrollTop: el.scrollTop,
       };
 
       const isAdditive = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -372,16 +371,16 @@ function TimelineInner() {
         const el2 = contentRef.current;
         if (!el2) return;
         const rect2 = el2.getBoundingClientRect();
-        const endX  = (window.event as MouseEvent | null)?.clientX ?? 0;
-        const endY  = (window.event as MouseEvent | null)?.clientY ?? 0;
-        const curX  = endX - rect2.left + el2.scrollLeft;
-        const curY  = endY - rect2.top  + el2.scrollTop;
+        const endX = (window.event as MouseEvent | null)?.clientX ?? 0;
+        const endY = (window.event as MouseEvent | null)?.clientY ?? 0;
+        const curX = endX - rect2.left + el2.scrollLeft;
+        const curY = endY - rect2.top  + el2.scrollTop;
 
         const frameStart = Math.round(Math.min(orig.x, curX) / state.zoomX);
         const frameEnd   = Math.round(Math.max(orig.x, curX) / state.zoomX);
 
         if (frameEnd - frameStart < 2) {
-          // Tiny click — clear selection
+          // Tiny click  
           if (!isAdditive) dispatch({ type: "CLEAR_SELECTION" });
           return;
         }
@@ -411,7 +410,7 @@ function TimelineInner() {
 
         <div className="tl-corner" style={{ gridColumn: '1', gridRow: '2' }} />
 
-        {/* Ruler — hidden in image comp via CSS */}
+ 
         {!isImageComp && (
           <div className="tl-ruler-container" style={{ gridColumn: '2', gridRow: '2' }}>
             <TimelineRuler scrollLeft={scrollLeft} totalWidthPx={tw} onSeek={onSeek} />
@@ -424,7 +423,7 @@ function TimelineInner() {
           <TrackHeaders scrollTop={scrollTop} totalTrackHeightPx={th} />
         </div>
 
-        {/* Track Content — same as always, drag-drop intact */}
+        {/* Track Content   */}
         <div
           ref={contentRef}
           className="tl-content"
@@ -433,7 +432,10 @@ function TimelineInner() {
           onMouseDown={onContentMouseDown}
         >
           <div style={{ width: isImageComp ? '100%' : tw, minHeight: th, position: 'relative' }}>
-            {state.tracks.map((track, idx) => (
+            {state.tracks
+              // In image comp: hide audio tracks (image comps are purely visual)
+              .filter(track => isImageComp ? !track.name.toLowerCase().includes('audio') : true)
+              .map((track, idx) => (
               <TrackRow
                 key={track.id}
                 track={track}

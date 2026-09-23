@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useEffect, useState, useLayoutEffect } from "react";
+ï»¿import React, { memo, useCallback, useRef, useEffect, useState, useLayoutEffect } from "react";
 import ReactDOM from "react-dom";
 import { useSelection } from "../../context/selectionContext";
 import {
@@ -191,7 +191,7 @@ const TimelineClip = memo(function TimelineClip({
         return;
       }
 
-      // Selection — ctrl/shift+click toggles individual clips  
+      // Selection ï¿½ ctrl/shift+click toggles individual clips  
       const isMulti = e.ctrlKey || e.shiftKey || e.metaKey;
       if (isMulti && clip.isSelected) {
         // ctrl+click on already-selected clip ? deselect it
@@ -262,7 +262,9 @@ const TimelineClip = memo(function TimelineClip({
         const dx = ev.clientX - e.clientX;
 
         if (mode === "move") {
-          const frameDelta = Math.round(dx / zoomX);
+          // In image comp: no horizontal movement - clips always stay at frame 0
+          const isImageComp = state.activeCompKind === 'image';
+          const frameDelta = isImageComp ? 0 : Math.round(dx / zoomX);
           const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
           dispatch({
             type: "UPDATE_INTERACTION",
@@ -273,7 +275,7 @@ const TimelineClip = memo(function TimelineClip({
 
           // Move ghost
           const rect = clipRef.current?.getBoundingClientRect();
-          const ghostX = (rect?.left ?? e.clientX) + dx;
+          const ghostX = isImageComp ? (rect?.left ?? e.clientX) : (rect?.left ?? e.clientX) + dx;
           const ghostY = (rect?.top ?? e.clientY) + (ev.clientY - e.clientY);
           dispatch({
             type: "SET_GHOST",
@@ -324,9 +326,11 @@ const TimelineClip = memo(function TimelineClip({
         if (mode === "move") {
           dispatch({ type: "COMMIT_MOVE" });
           const dx = ev.clientX - e.clientX;
-          const frameDelta = Math.round(dx / zoomX);
-          const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
+          const isImageCompUp = state.activeCompKind === "image";
+          // In image comp: never change startFrame, only allow track reorder
+          const frameDelta = isImageCompUp ? 0 : Math.round(dx / zoomX);
           const newStart = Math.max(0, clip.startFrame + frameDelta);
+          const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
           const dstIdx = Math.max(0, trackIndex + trackDelta);
 
           moveClip(clip.id, newStart, dstIdx).then(() => {

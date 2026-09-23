@@ -81,9 +81,12 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
   }, [activeTool, dispatch, track, trackIndex, scrollLeft, state.zoomX]);
 
    
-  const placeClip = useCallback(async (frame: number) => {
+  const placeClip = useCallback(async (rawFrame: number) => {
     setPlacing(true);
     const tool = activeTool;
+    // In image comp: clips always land at frame 0
+    const isImageComp = state.activeCompKind === 'image';
+    const frame = isImageComp ? 0 : rawFrame;
 
     try {
       let result: any = null;
@@ -147,13 +150,16 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
           isSelected: false,
         };
         dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: newClip });
+        // Notify viewport to refresh — triggers renderSeek(3) in image comp
+        window.dispatchEvent(new CustomEvent('fade:render-now'));
       }
     } catch (err) {
       console.error('[TrackRow] place clip error:', err);
     } finally {
       setPlacing(false);
     }
-  }, [activeTool, track.id, dispatch]);
+  }, [activeTool, state.activeCompKind, track.id, dispatch]);
+
 
   // Resize handle  
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {

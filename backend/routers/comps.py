@@ -34,7 +34,9 @@ def _ensure_comp_tracks(tl) -> None:
     if tl.tracks:
         return
     tl.tracks.append(VideoTrack(name="Video 1"))
-    tl.tracks.append(AudioTrack(name="Audio 1"))
+    # Image comps are purely visual — no audio track
+    if getattr(tl, "kind", "video") != "image":
+        tl.tracks.append(AudioTrack(name="Audio 1"))
 
 
 def _active_timeline():

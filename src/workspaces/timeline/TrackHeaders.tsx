@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef, useState } from 'react';
+ï»¿import React, { memo, useCallback, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, HEADER_WIDTH, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import { addTrack } from '../../api/useApi';
@@ -37,12 +37,15 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
           flexShrink: 0,
         }}
       >
-        {state.tracks.map((track, index) => (
+        {state.tracks
+          // In image comp: hide audio track headers
+          .filter(track => state.activeCompKind === 'image' ? !track.name.toLowerCase().includes('audio') : true)
+          .map((track, index) => (
           <TrackHeaderItem key={track.id} track={track} index={index} />
         ))}
       </div>
 
-      {/* Add Track button — always visible at the bottom of the headers column */}
+      {/* Add Track button â€” always visible at the bottom of the headers column */}
       <div className="tl-headers__add-row">
         <button
           id="tl-add-video-track"
@@ -51,10 +54,10 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
           disabled={adding}
           onClick={(e) => handleAddTrack(e.shiftKey ? 'audio' : 'video')}
         >
-          {adding ? '…' : '+'}
+          {adding ? 'â€¦' : '+'}
         </button>
         <div className="tl-headers__add-label">
-          {adding ? 'Adding…' : 'Add Track'}
+          {adding ? 'Addingâ€¦' : 'Add Track'}
         </div>
       </div>
     </div>
