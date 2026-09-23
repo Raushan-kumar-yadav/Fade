@@ -203,7 +203,9 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
 
     const rowRect  = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
     const localX = e.clientX - rowRect.left;
-    const frame = Math.max(0, Math.round((localX + scrollLeft) / state.zoomX));
+    // In image comp: always place at frame 0 (position in time is irrelevant)
+    const isImageComp = state.activeCompKind === 'image';
+    const frame = isImageComp ? 0 : Math.max(0, Math.round((localX + scrollLeft) / state.zoomX));
 
     //   Handle Transition Drop  
     const transTypeId = e.dataTransfer.getData('application/fade-transition');

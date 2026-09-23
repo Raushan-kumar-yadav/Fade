@@ -90,7 +90,11 @@ export default function ViewportWidget() {
    
   const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
 
-   
+  // Expose isImageComp to window so stale event handlers (fade:render-now) can read it
+  useEffect(() => {
+    (window as any).__FADE_IMAGE_COMP__ = isImageComp;
+  }, [isImageComp]);
+
   useWebCompSync();
 
    
@@ -284,20 +288,32 @@ export default function ViewportWidget() {
   useEffect(() => {
     const handler = () => {
       const f = frameNumRef.current;
-       
-      playbackSeek(f).catch(() => {});
+      const api = (window as any).electronAPI;
+      const imgComp = (window as any).__FADE_IMAGE_COMP__ === true;
+      // In image comp seek to frame 3 (clips always land at frame 0, frame 3 always overlaps)
+      // In video mode seek to whatever frame the C++ renderer is currently at
+      const target = imgComp ? 3 : f;
+      playbackSeek(target).catch(() => {});
+      api?.renderSeek?.(target);
     };
     window.addEventListener('fade:render-now', handler);
     return () => window.removeEventListener('fade:render-now', handler);
   }, []);
 
-  // In image comp: re-render frame 0 whenever tracks change (clip added/moved)
+  // Image comp: seek to frame 3 when entering comp or when tracks change (clip added)
+  // Clips are always forced to startFrame=0, so frame 3 always overlaps them
   useEffect(() => {
     if (!isImageComp) return;
-    const t = setTimeout(() => {
-      playbackSeek(0).catch(() => {});
-      window.dispatchEvent(new CustomEvent('fade:render-now'));
-    }, 150);
+    const api = (window as any).electronAPI;
+
+    const seek = async () => {
+      await playbackSeek(3).catch(() => {});
+      api?.renderSeek?.(3);
+      // One retry after 250ms in case the backend needed time to register the clip
+      setTimeout(() => { api?.renderSeek?.(3); }, 250);
+    };
+
+    const t = setTimeout(seek, 80);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isImageComp, tlState.tracks]);

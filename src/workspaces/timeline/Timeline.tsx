@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   TimelineProvider,
   useTimeline,
@@ -314,10 +314,10 @@ function TimelineInner() {
     [dispatch],
   );
 
-  // Lock playhead at frame 0 whenever image comp is active
+  // Lock playhead at frame 3 whenever image comp is active
   useEffect(() => {
     if (!isImageComp) return;
-    onSeek(0);
+    onSeek(3);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isImageComp]);  // only re-run when comp kind changes
 
