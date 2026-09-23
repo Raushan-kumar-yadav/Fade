@@ -155,6 +155,19 @@ export async function removeClip(clipId: string): Promise<void> {
   await fetch(`${base()}/timeline/clips/${clipId}`, { method: "DELETE" });
 }
 
+/** Reorder a layer in an image comp (no clip array — layers ARE the tracks). */
+export async function moveImageLayer(
+  compId: string,
+  fromIndex: number,
+  toIndex: number,
+): Promise<void> {
+  await fetch(`${base()}/comps/${compId}/layers/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fromIndex, toIndex }),
+  });
+}
+
 export async function trimClip(
   clipId: string,
   side: "left" | "right",

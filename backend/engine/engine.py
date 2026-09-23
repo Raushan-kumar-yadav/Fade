@@ -115,8 +115,15 @@ class Engine:
     # Helpers  
 
     def setActiveComp(self, compId: str | None) -> None:
-        """Switch the active composition. None = root."""
+        """Switch the active composition. None = root.
+        Also updates the render pipeline so the new timeline renders immediately."""
         self._active_comp_id = compId
+        tl = self.activeTimeline  # already updated by line above
+        if tl is not None and self._pipeline is not None:
+            self._pipeline.set_timeline(tl)
+            # seek to frame 0 so the first frame renders without needing play
+            self._currentFrame = 0
+            self._pipeline.notify_seek(0)
 
     @property
     def activeTimeline(self) -> Timeline | None:

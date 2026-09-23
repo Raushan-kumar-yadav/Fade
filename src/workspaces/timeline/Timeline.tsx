@@ -49,7 +49,7 @@ function GhostClip() {
   );
 }
 
-// ─── Toolbar ──────────────────────────────────────────────────────────────────
+// Toolbar  
 const TOOLS = [
   { id: "pointer" as const, icon: "↖", title: "Pointer (V)" },
   { id: "razor" as const, icon: "✂", title: "Razor (C)" },
@@ -159,13 +159,14 @@ function TimelineInner() {
     setScrollTop(el.scrollTop);
   }, []);
 
-  // Wheel 
+  // Wheel  
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
+        if (isImageComp) return;   
         // Zoom X at cursor
         const rect = el.getBoundingClientRect();
         const cursorPx = e.clientX - rect.left + el.scrollLeft;
@@ -173,21 +174,21 @@ function TimelineInner() {
         const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
         const newZoom = Math.max(0.3, Math.min(60, state.zoomX * factor));
         dispatch({ type: "ZOOM_X", newZoom });
-        // Adjust scroll to keep pivot frame stationary
+         
         requestAnimationFrame(() => {
           if (el)
             el.scrollLeft = pivotFrame * newZoom - (e.clientX - rect.left);
         });
       } else if (e.shiftKey) {
-        el.scrollLeft += e.deltaY;
+        if (!isImageComp) el.scrollLeft += e.deltaY;   
       } else {
-        el.scrollTop += e.deltaY;
-        el.scrollLeft += e.deltaX;
+        el.scrollTop += e.deltaY;                      
+        if (!isImageComp) el.scrollLeft += e.deltaX;   
       }
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, [state.zoomX, dispatch]);
+  }, [isImageComp, state.zoomX, dispatch]);
 
   // Keyboard shortcuts  
   useEffect(() => {
@@ -226,7 +227,7 @@ function TimelineInner() {
       switch (e.code) {
         case "Space":
           e.preventDefault();
-          dispatch({ type: "TOGGLE_PLAY" });
+          if (!isImageComp) dispatch({ type: "TOGGLE_PLAY" });   
           break;
         case "KeyV":
           dispatch({ type: "SET_TOOL", tool: "pointer" });
@@ -299,8 +300,7 @@ function TimelineInner() {
   const onSeek = useCallback(
     (frame: number) => {
       dispatch({ type: 'SEEK', frame });
-      // Sync both the Python backend and the C++ native render engine so
-      // that hitting play immediately after seek starts from the right frame.
+       
       (window as any).electronAPI?.renderSeek?.(frame);
       playbackSeek(frame)
         .then(() => {
@@ -312,6 +312,13 @@ function TimelineInner() {
     },
     [dispatch],
   );
+
+ 
+  useEffect(() => {
+    if (!isImageComp) return;
+    onSeek(3);
+  
+  }, [isImageComp]);  
 
    
   const onContentMouseDown = useCallback(
@@ -332,7 +339,7 @@ function TimelineInner() {
         x: e.clientX - rect.left + el.scrollLeft,
         y: e.clientY - rect.top  + el.scrollTop,
         scrollLeft: el.scrollLeft,
-        scrollTop:  el.scrollTop,
+        scrollTop: el.scrollTop,
       };
 
       const isAdditive = e.ctrlKey || e.metaKey || e.shiftKey;
@@ -364,16 +371,16 @@ function TimelineInner() {
         const el2 = contentRef.current;
         if (!el2) return;
         const rect2 = el2.getBoundingClientRect();
-        const endX  = (window.event as MouseEvent | null)?.clientX ?? 0;
-        const endY  = (window.event as MouseEvent | null)?.clientY ?? 0;
-        const curX  = endX - rect2.left + el2.scrollLeft;
-        const curY  = endY - rect2.top  + el2.scrollTop;
+        const endX = (window.event as MouseEvent | null)?.clientX ?? 0;
+        const endY = (window.event as MouseEvent | null)?.clientY ?? 0;
+        const curX = endX - rect2.left + el2.scrollLeft;
+        const curY = endY - rect2.top  + el2.scrollTop;
 
         const frameStart = Math.round(Math.min(orig.x, curX) / state.zoomX);
         const frameEnd   = Math.round(Math.max(orig.x, curX) / state.zoomX);
 
         if (frameEnd - frameStart < 2) {
-          // Tiny click — clear selection
+          // Tiny click  
           if (!isAdditive) dispatch({ type: "CLEAR_SELECTION" });
           return;
         }
@@ -392,44 +399,27 @@ function TimelineInner() {
       <TimelineTabs />
       <div
         className="tl-root"
+        data-image-comp={isImageComp ? 'true' : undefined}
         style={{ flex: 1, minHeight: 0, ...(isImageComp ? { '--tl-ruler-h': '0px' } as React.CSSProperties : {}) }}
         aria-label={isImageComp ? 'Image Layers' : 'Video Timeline'}
       >
-        {/* Toolbar   */}
-        <div
-          className="tl-toolbar-row"
-          style={{ gridColumn: "1 / -1", gridRow: "1" }}
-        >
+        {/* Toolbar */}
+        <div className="tl-toolbar-row" style={{ gridColumn: '1 / -1', gridRow: '1' }}>
           <Toolbar />
         </div>
 
-      
-        <div className="tl-corner" style={{ gridColumn: "1", gridRow: "2" }} />
+        <div className="tl-corner" style={{ gridColumn: '1', gridRow: '2' }} />
 
-        {/*   Ruler — hidden in image comp mode  */}
+ 
         {!isImageComp && (
-          <div
-            className="tl-ruler-container"
-            style={{ gridColumn: "2", gridRow: "2" }}
-          >
-            <TimelineRuler
-              scrollLeft={scrollLeft}
-              totalWidthPx={tw}
-              onSeek={onSeek}
-            />
+          <div className="tl-ruler-container" style={{ gridColumn: '2', gridRow: '2' }}>
+            <TimelineRuler scrollLeft={scrollLeft} totalWidthPx={tw} onSeek={onSeek} />
           </div>
         )}
-        {isImageComp && (
-          <div
-            style={{ gridColumn: "2", gridRow: "2", height: 0 }}
-          />
-        )}
+        {isImageComp && <div style={{ gridColumn: '2', gridRow: '2', height: 0 }} />}
 
-        {/*   Track Headers   */}
-        <div
-          className="tl-headers-container"
-          style={{ gridColumn: "1", gridRow: "3" }}
-        >
+        {/* Track Headers */}
+        <div className="tl-headers-container" style={{ gridColumn: '1', gridRow: '3' }}>
           <TrackHeaders scrollTop={scrollTop} totalTrackHeightPx={th} />
         </div>
 
@@ -437,12 +427,15 @@ function TimelineInner() {
         <div
           ref={contentRef}
           className="tl-content"
-          style={{ gridColumn: "2", gridRow: "3" }}
+          style={{ gridColumn: '2', gridRow: '3' }}
           onScroll={onContentScroll}
           onMouseDown={onContentMouseDown}
         >
-          <div style={{ width: tw, minHeight: th, position: "relative" }}>
-            {state.tracks.map((track, idx) => (
+          <div style={{ width: isImageComp ? '100%' : tw, minHeight: th, position: 'relative' }}>
+            {state.tracks
+              // In image comp  
+              .filter(track => isImageComp ? !track.name.toLowerCase().includes('audio') : true)
+              .map((track, idx) => (
               <TrackRow
                 key={track.id}
                 track={track}
@@ -456,12 +449,12 @@ function TimelineInner() {
               <div
                 className="tl-box-select"
                 style={{
-                  position: "absolute",
-                  left:   boxRect.x,
-                  top:    boxRect.y,
-                  width:  boxRect.w,
+                  position: 'absolute',
+                  left: boxRect.x,
+                  top: boxRect.y,
+                  width: boxRect.w,
                   height: boxRect.h,
-                  pointerEvents: "none",
+                  pointerEvents: 'none',
                   zIndex: 99,
                 }}
               />
@@ -469,27 +462,25 @@ function TimelineInner() {
           </div>
         </div>
 
-        {/*   Bottom Bar   */}
-        <div
-          className="tl-bottom-bar-container"
-          style={{ gridColumn: "1 / -1", gridRow: "4" }}
-        >
+        {/* Bottom Bar */}
+        <div className="tl-bottom-bar-container" style={{ gridColumn: '1 / -1', gridRow: '4' }}>
           <BottomBar contentRef={contentRef} viewWidth={viewWidth} />
         </div>
 
-        {/* Playhead — hidden in image comp mode */}
+        {/* Playhead  */}
         {!isImageComp && (
           <Playhead scrollLeft={scrollLeft} contentLeft={HEADER_WIDTH} />
         )}
 
-        {/*   Ghost clip proxy during move   */}
+        {/* Ghost clip proxy during move */}
         <GhostClip />
       </div>
     </div>
   );
 }
 
-//   Public export 
+//  Public export
 export default function Timeline() {
   return <TimelineInner />;
 }
+

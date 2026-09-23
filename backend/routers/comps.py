@@ -34,7 +34,9 @@ def _ensure_comp_tracks(tl) -> None:
     if tl.tracks:
         return
     tl.tracks.append(VideoTrack(name="Video 1"))
-    tl.tracks.append(AudioTrack(name="Audio 1"))
+    # Image comps are purely visual — no audio track
+    if getattr(tl, "kind", "video") != "image":
+        tl.tracks.append(AudioTrack(name="Audio 1"))
 
 
 def _active_timeline():
@@ -303,4 +305,33 @@ def updateLayer(compId:str , layerId:str , req:UpdateLayerRequest):
     if req.element is not None: lyr.element = req.element
     from backend.events import notify; notify("timeline")
     return lyr.toDict()
-    
+
+
+class MoveLayerRequest(BaseModel):
+    fromIndex: int
+    toIndex: int
+
+
+@router.post("/comps/{compId}/layers/move")
+def moveLayer(compId: str, req: MoveLayerRequest):
+    """Reorder image comp layers by swapping two track positions."""
+    from backend.timeline.tracks.imageLayer import imageLayer
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404, f"comp {compId!r} not found")
+    if getattr(tl, "kind", "video") != "image":
+        raise HTTPException(400, "Not an image compositor")
+
+    tracks = tl.tracks
+    n = len(tracks)
+    src = max(0, min(n - 1, req.fromIndex))
+    dst = max(0, min(n - 1, req.toIndex))
+    if src == dst:
+        return {"status": "ok"}
+
+    # Move the layer from src position to dst position
+    layer = tracks.pop(src)
+    tracks.insert(dst, layer)
+
+    from backend.events import notify; notify("timeline")
+    return {"status": "ok", "fromIndex": src, "toIndex": dst}

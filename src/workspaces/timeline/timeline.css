@@ -1,4 +1,4 @@
- /*    Timeline CSS  */ 
+﻿ /*    Timeline CSS  */ 
  
 /* Tokens   */
 .tl-root {
@@ -593,3 +593,74 @@
   text-shadow: 0 0 6px rgba(0, 210, 255, 0.6);
 }
 
+
+/* ══ IMAGE COMP MODE — Photoshop layer style ════════════════════════════════ */
+
+/* Track row — flat layer row using app theme colors */
+[data-image-comp="true"] .tl-track-row {
+  height: 36px !important;
+  border-bottom: 1px solid var(--tl-sep) !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  transition: background 0.1s;
+}
+[data-image-comp="true"] .tl-track-row:hover {
+  background: var(--tl-track-b) !important;
+}
+
+/* Clip bar — stretches full width, flat layer strip */
+[data-image-comp="true"] .tl-clip {
+  position: relative !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 3px !important;
+  border: none !important;
+  opacity: 0.9;
+}
+
+/* Selected clip — PS-style left accent border */
+[data-image-comp="true"] .tl-clip--selected {
+  outline: none !important;
+  box-shadow: none !important;
+  border-left: 3px solid var(--tl-accent) !important;
+}
+
+/* Clip label — left-aligned like a PS layer name */
+[data-image-comp="true"] .tl-clip__label {
+  text-align: left !important;
+  padding-left: 8px !important;
+  font-size: 11px !important;
+  letter-spacing: 0.02em;
+}
+
+/* Hide resize handles — no trimming in image comp */
+[data-image-comp="true"] .tl-track-row__resize {
+  display: none !important;
+}
+
+/* Track header — matches app header bg */
+[data-image-comp="true"] .tl-header-item {
+  height: 36px !important;
+  background: var(--tl-header-bg) !important;
+  border-bottom: 1px solid var(--tl-sep) !important;
+  border-right: 1px solid var(--tl-sep) !important;
+  gap: 4px !important;
+}
+
+/* Content area — same bg as the rest of the timeline */
+[data-image-comp="true"] .tl-content {
+  background: var(--tl-bg) !important;
+  overflow-x: hidden !important;
+}
+
+/* Track even/odd rows — both use the same flat color in image comp */
+[data-image-comp="true"] .tl-track-row--even,
+[data-image-comp="true"] .tl-track-row--odd {
+  background: transparent !important;
+}
+
+/* Hide bottom zoom scrollbar */
+[data-image-comp="true"] .tl-bottom-bar {
+  display: none !important;
+}

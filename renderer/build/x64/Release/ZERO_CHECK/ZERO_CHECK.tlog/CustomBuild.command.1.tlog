@@ -1,0 +1,10 @@
+^E:\EDITOR_SIH\FADE\RENDERER\BUILD\CMAKEFILES\A465A2E1A3D0C143547C1456D4BB76AB\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SE:/Editor_SIH/Fade/renderer -BE:/Editor_SIH/Fade/renderer/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file E:/Editor_SIH/Fade/renderer/build/render_engine.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

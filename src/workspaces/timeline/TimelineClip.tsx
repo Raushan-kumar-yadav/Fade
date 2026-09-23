@@ -35,7 +35,7 @@ const TimelineClip = memo(function TimelineClip({
 
   const clipRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [peaks, setPeaks]             = useState<number[]>([]);
+  const [peaks, setPeaks] = useState<number[]>([]);
   const [waveLoading, setWaveLoading] = useState(false);
 
   // Derived geometry  
@@ -43,7 +43,7 @@ const TimelineClip = memo(function TimelineClip({
   const width = Math.max(clip.duration * zoomX, 4);
   const color = CLIP_COLORS[clip.type];
 
-  // Only video and audio clips produce waveforms
+  // Only video  
   const wantsWaveform = clip.type === 'video' || clip.type === 'audio';
 
   // Fetch waveform asynchronously  
@@ -73,9 +73,9 @@ const TimelineClip = memo(function TimelineClip({
     const H = canvas.height;
     ctx.clearRect(0, 0, W, H);
     const grad = ctx.createLinearGradient(0, 0, 0, H);
-    grad.addColorStop(0,   'rgba(255,255,255,0.55)');
+    grad.addColorStop(0, 'rgba(255,255,255,0.55)');
     grad.addColorStop(0.5, 'rgba(255,255,255,0.30)');
-    grad.addColorStop(1,   'rgba(255,255,255,0.55)');
+    grad.addColorStop(1, 'rgba(255,255,255,0.55)');
     ctx.fillStyle = grad;
     const barW = W / peaks.length;
     for (let i = 0; i < peaks.length; i++) {
@@ -191,10 +191,10 @@ const TimelineClip = memo(function TimelineClip({
         return;
       }
 
-      // Selection — ctrl/shift+click toggles individual clips  
+  
       const isMulti = e.ctrlKey || e.shiftKey || e.metaKey;
       if (isMulti && clip.isSelected) {
-        // ctrl+click on already-selected clip ? deselect it
+        // ctrl+click on already-selected  
         dispatch({ type: "DESELECT_CLIP", clipId: clip.id });
       } else {
         dispatch({
@@ -262,7 +262,9 @@ const TimelineClip = memo(function TimelineClip({
         const dx = ev.clientX - e.clientX;
 
         if (mode === "move") {
-          const frameDelta = Math.round(dx / zoomX);
+          // In image comp: no horizontal movement  
+          const isImageComp = state.activeCompKind === 'image';
+          const frameDelta = isImageComp ? 0 : Math.round(dx / zoomX);
           const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
           dispatch({
             type: "UPDATE_INTERACTION",
@@ -273,7 +275,7 @@ const TimelineClip = memo(function TimelineClip({
 
           // Move ghost
           const rect = clipRef.current?.getBoundingClientRect();
-          const ghostX = (rect?.left ?? e.clientX) + dx;
+          const ghostX = isImageComp ? (rect?.left ?? e.clientX) : (rect?.left ?? e.clientX) + dx;
           const ghostY = (rect?.top ?? e.clientY) + (ev.clientY - e.clientY);
           dispatch({
             type: "SET_GHOST",
@@ -324,11 +326,14 @@ const TimelineClip = memo(function TimelineClip({
         if (mode === "move") {
           dispatch({ type: "COMMIT_MOVE" });
           const dx = ev.clientX - e.clientX;
-          const frameDelta = Math.round(dx / zoomX);
-          const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
+          const isImageCompUp = state.activeCompKind === "image";
+          // In image comp 
+          const frameDelta = isImageCompUp ? 0 : Math.round(dx / zoomX);
           const newStart = Math.max(0, clip.startFrame + frameDelta);
+          const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
           const dstIdx = Math.max(0, trackIndex + trackDelta);
 
+          // Move clip to destination track  
           moveClip(clip.id, newStart, dstIdx).then(() => {
             fetchTimeline().then((data) => {
               if (data)
@@ -401,7 +406,7 @@ const TimelineClip = memo(function TimelineClip({
     if (!effectType || !clip.id) return;
     try {
       await effectsApi.add(clip.id, effectType);
-      // Select this clip so inspector shows the new effect
+       
       dispatch({ type: 'SELECT_CLIP', clipId: clip.id, trackId: track.id, multi: false });
       setSelected({ type: 'clip', clipId: clip.id, clipName: clip.name, clipType: clip.type, trackIndex });
       window.dispatchEvent(new CustomEvent('fade:effects-changed', { detail: clip.id }));
