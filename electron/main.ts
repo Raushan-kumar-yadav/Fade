@@ -1037,6 +1037,37 @@ ipcMain.handle('app:get-path', (_event, name: string) => {
   }
 })
 
+// Layout persistence — save/load to userData/layout.json
+const LAYOUT_FILE = () => path.join(app.getPath('userData'), 'layout.json')
+
+ipcMain.handle('layout:save', (_event, json: string) => {
+  try {
+    fs.writeFileSync(LAYOUT_FILE(), json, 'utf-8')
+    return true
+  } catch (e) {
+    console.error('[Layout] save failed:', e)
+    return false
+  }
+})
+
+ipcMain.handle('layout:load', () => {
+  try {
+    const p = LAYOUT_FILE()
+    if (fs.existsSync(p)) return fs.readFileSync(p, 'utf-8')
+  } catch (e) {
+    console.error('[Layout] load failed:', e)
+  }
+  return null
+})
+
+ipcMain.handle('layout:reset', () => {
+  try {
+    const p = LAYOUT_FILE()
+    if (fs.existsSync(p)) fs.unlinkSync(p)
+    return true
+  } catch { return false }
+})
+
 //   File dialogs  
 ipcMain.handle('dialog:save', async (_event, opts) => {
   if (!mainWindow) return undefined

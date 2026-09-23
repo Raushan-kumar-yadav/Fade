@@ -244,8 +244,7 @@ def moveClip(req: MoveClipRequest):
         if c:
             clip = c
             srcIdx = i
-            track.removeClip(req.clipId)
-            break
+            break  # don't remove here — MoveClipCommand.execute() handles it
     if clip is None:
         raise HTTPException(404, f"Clip {req.clipId!r} not found")
     dstIdx = max(0, min(len(tl.tracks) - 1, req.trackIndex))

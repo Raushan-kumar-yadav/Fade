@@ -433,7 +433,7 @@ function TimelineInner() {
         >
           <div style={{ width: isImageComp ? '100%' : tw, minHeight: th, position: 'relative' }}>
             {state.tracks
-              // In image comp: hide audio tracks (image comps are purely visual)
+              // In image comp  
               .filter(track => isImageComp ? !track.name.toLowerCase().includes('audio') : true)
               .map((track, idx) => (
               <TrackRow
@@ -450,9 +450,9 @@ function TimelineInner() {
                 className="tl-box-select"
                 style={{
                   position: 'absolute',
-                  left:   boxRect.x,
-                  top:    boxRect.y,
-                  width:  boxRect.w,
+                  left: boxRect.x,
+                  top: boxRect.y,
+                  width: boxRect.w,
                   height: boxRect.h,
                   pointerEvents: 'none',
                   zIndex: 99,
@@ -467,7 +467,7 @@ function TimelineInner() {
           <BottomBar contentRef={contentRef} viewWidth={viewWidth} />
         </div>
 
-        {/* Playhead — hidden in image comp */}
+        {/* Playhead  */}
         {!isImageComp && (
           <Playhead scrollLeft={scrollLeft} contentLeft={HEADER_WIDTH} />
         )}

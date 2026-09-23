@@ -56,6 +56,11 @@ export interface ElectronAPI {
     defaultPath?: string
   }) => Promise<string | undefined>
 
+  //   Layout persistence (userData/layout.json)
+  layoutSave: (json: string) => Promise<boolean>
+  layoutLoad: () => Promise<string | null>
+  layoutReset: () => Promise<boolean>
+
   //     WebComp  
   webcompCreate: (opts: {
     webcompId: string; htmlUrl: string;
@@ -133,6 +138,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   getAppPath: (name: string): Promise<string | null> =>
     ipcRenderer.invoke('app:get-path', name),
+
+  // Layout persistence
+  layoutSave: (json: string): Promise<boolean> => ipcRenderer.invoke('layout:save', json),
+  layoutLoad: (): Promise<string | null>         => ipcRenderer.invoke('layout:load'),
+  layoutReset: (): Promise<boolean>               => ipcRenderer.invoke('layout:reset'),
 
   //   WebComp  
   webcompCreate: (opts: any): Promise<boolean> =>

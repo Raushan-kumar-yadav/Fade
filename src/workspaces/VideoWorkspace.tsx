@@ -62,15 +62,15 @@ const layoutJson: FlexLayout.IJsonModel = {
   },
 }
 
-let _model: FlexLayout.Model | null = null
-function getModel(): FlexLayout.Model {
-  if (!_model) _model = FlexLayout.Model.fromJson(layoutJson)
-  return _model
+ 
+const LAYOUT_DEBOUNCE_MS = 500
+
+function makeDefaultModel() {
+  return FlexLayout.Model.fromJson(layoutJson)
 }
 
 // VideoWorkspace  
 export default function VideoWorkspace() {
-  const model = getModel()
   return (
     <TimelineProvider>
       <div className="video-ws">
@@ -83,23 +83,52 @@ export default function VideoWorkspace() {
           🤖
         </button>
 
-        <WorkspaceInner model={model} />
+        <WorkspaceInner />
       </div>
     </TimelineProvider>
   )
 }
 
-// Inner component — has access to useTimeline so factory can read activeCompId
-function WorkspaceInner({ model }: { model: FlexLayout.Model }) {
+// Inner component  
+function WorkspaceInner() {
   const { state } = useTimeline()
   const { activeTool } = useTool()
 
+  // Model ref  
+  const modelRef = React.useRef<FlexLayout.Model>(makeDefaultModel())
+  const [, forceUpdate] = React.useReducer(x => x + 1, 0)
+  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  const api = (window as any).electronAPI
+
+  // Load saved layout once on mount
+  React.useEffect(() => {
+    api?.layoutLoad?.().then((json: string | null) => {
+      if (!json) return
+      try {
+        modelRef.current = FlexLayout.Model.fromJson(JSON.parse(json))
+        forceUpdate() 
+      } catch (e) {
+        console.warn('[Layout] saved layout invalid, using default', e)
+      }
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Save layout debounced on every model change
+  const onModelChange = useCallback((model: FlexLayout.Model) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(() => {
+      const json = JSON.stringify(model.toJson())
+      api?.layoutSave?.(json).catch(() => {})
+    }, LAYOUT_DEBOUNCE_MS)
+  }, [api])
+
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
-    // Always send the currently-open comp so clips land in the right timeline
+     
     await addClipToTimeline(asset.assetId, trackIndex, 0, 300, 0, state.activeCompId)
   }, [state.activeCompId])
 
-  // Tool panel reads currentFrame + activeCompId from context — clips land in the right comp
+  // Tool panel reads currentFrame  
   const toolPanel = (() => {
     const frame = state.currentFrame ?? 0
     if (activeTool === 'text') {
@@ -141,5 +170,5 @@ function WorkspaceInner({ model }: { model: FlexLayout.Model }) {
     }
   }
 
-  return <FlexLayout.Layout model={model} factory={factory} realtimeResize />
+  return <FlexLayout.Layout model={modelRef.current} factory={factory} onModelChange={onModelChange} realtimeResize />
 }

@@ -24,7 +24,7 @@ const TABS = [
   { id: 'export', label: 'Export' },
 ];
 
-//   dropdown  
+// dropdown  
 
 interface MenuItem {
   label?: string;
@@ -76,7 +76,7 @@ function MenuButton({ label, items }: { label: string; items: MenuItem[] }) {
   );
 }
 
-//   TitleBar  
+ 
 
 // ActiveTool 
 export type { ActiveTool } from '../context/toolContext';
@@ -89,8 +89,8 @@ interface TitleBarProps {
   onNewProject: () => void;
   activeTool?: ActiveTool;
   onTool?: (t: ActiveTool) => void;
-  onToggleToolbox?:   () => void;
-  toolboxOpen?:       boolean;
+  onToggleToolbox?: () => void;
+  toolboxOpen?: boolean;
    onProjectLoaded?: (result: { project: any; timeline: any; missing_assets?: any[] }) => void;
    onLoadStart?: (message: string) => void;
   
@@ -141,14 +141,14 @@ export default function TitleBar({
   const handleOpen = useCallback(async () => {
     const el = (window as any).electronAPI;
 
-    // Try folder picker first (new project format)
+    // Try folder picker first  
     let filepath: string | undefined = await el?.showOpenDialog({
       title: 'Open Project',
       properties: ['openDirectory'],
       buttonLabel: 'Open Project',
     });
 
-    // Fall back to .fade file picker (legacy single-file format)
+    // Fall back to .fade file picker  
     if (!filepath) {
       filepath = await el?.showOpenDialog({
         title: 'Open Project File',
@@ -184,9 +184,9 @@ export default function TitleBar({
     const onKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
       switch (e.key.toLowerCase()) {
-        case 'n': e.preventDefault(); handleNew();   break;
-        case 'o': e.preventDefault(); handleOpen();  break;
-        case 's': e.preventDefault(); handleSave();  break;
+        case 'n': e.preventDefault(); handleNew(); break;
+        case 'o': e.preventDefault(); handleOpen(); break;
+        case 's': e.preventDefault(); handleSave(); break;
       }
     };
     window.addEventListener('keydown', onKey);
@@ -201,7 +201,7 @@ export default function TitleBar({
     { label: 'Save Project',  shortcut: 'Ctrl+S', action: handleSave },
     { label: 'Save As…', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
     { sep: true },
-    { label: 'Import Media',  shortcut: 'Ctrl+I',       action: () => {} },
+    { label: 'Import Media',  shortcut: 'Ctrl+I', action: () => {} },
     { sep: true }, 
     { label: 'Quit', shortcut: 'Alt+F4',       action: () => api?.close() },
   ];
@@ -230,15 +230,22 @@ export default function TitleBar({
     { label: 'Copy', shortcut: 'Ctrl+C', action: () => {} },
     { label: 'Paste', shortcut: 'Ctrl+V', action: () => {} },
     { sep: true },
-    { label: 'Split Clip',  shortcut: 'S',      action: () => {} },
-    { label: 'Delete Clip', shortcut: 'Del',    action: () => {} },
+    { label: 'Split Clip', shortcut: 'S', action: () => {} },
+    { label: 'Delete Clip', shortcut: 'Del', action: () => {} },
   ];
 
   const settingsItems: MenuItem[] = [
     { label: 'Settings', action: onSettings },
     { sep: true },
+    { label: 'Reset Layout', action: () => {
+        const api = (window as any).electronAPI;
+        (api?.layoutReset?.() ?? Promise.resolve()).finally(() => location.reload());
+      }
+    },
+    { sep: true },
     { label: 'Backend Logs', shortcut: 'Ctrl+⇧L', action: toggleDevLog },
   ];
+
 
   return (
     <div className="titlebar">
@@ -249,8 +256,8 @@ export default function TitleBar({
           <span>FADE</span>
         </div>
         <div className="titlebar__menus">
-          <MenuButton label="File"     items={fileItems} />
-          <MenuButton label="Edit"     items={editItems} />
+          <MenuButton label="File" items={fileItems} />
+          <MenuButton label="Edit" items={editItems} />
           <MenuButton label="Settings" items={settingsItems} />
         </div>
 
