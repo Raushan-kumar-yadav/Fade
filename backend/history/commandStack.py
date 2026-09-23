@@ -37,9 +37,14 @@ class CommandStack:
         if not self._redoStack:
             return None
         cmd = self._redoStack.pop()
-        cmd.execute()
-        self._undoStack.append(cmd)
-        return cmd.description
+        try:
+            cmd.execute()
+            self._undoStack.append(cmd)
+            return cmd.description
+        except Exception as e:
+            self._redoStack.append(cmd)
+            print(f"Error in redo: {e}")
+            return None
 
     @property
     def canUndo(self) -> bool:
@@ -312,3 +317,19 @@ class DeleteKeyframeCommand(Command):
     @property
     def description(self) -> str:
         return f"Delete keyframe at {self._frame}"
+
+class SetSelectionCommand(Command):
+    def __init__(self, editor_state, new_geom) -> None:
+        self._editor_state = editor_state
+        self._new_geom = new_geom
+        self._old_geom = editor_state.selection.active_selection
+
+    def execute(self) -> None:
+        self._editor_state.selection.set_selection(self._new_geom)
+
+    def undo(self) -> None:
+        self._editor_state.selection.set_selection(self._old_geom)
+
+    @property
+    def description(self) -> str:
+        return f"Set Selection ({self._new_geom.shape_type if self._new_geom else 'Clear'})"

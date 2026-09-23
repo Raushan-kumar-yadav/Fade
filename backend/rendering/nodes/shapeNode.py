@@ -131,6 +131,11 @@ def _draw_shape_path(canvas: skia.Canvas, path: skia.Path, s) -> None:
         stroke.setStyle(skia.Paint.kStroke_Style)
         stroke.setStrokeWidth(sw)
         stroke.setColor(_rgba(s.strokeColor))
+        stroke.setStrokeCap(skia.Paint.kRound_Cap)
+        stroke.setStrokeJoin(skia.Paint.kRound_Join)
+
+        if hasattr(s, 'blendMode') and s.blendMode == "clear":
+            stroke.setBlendMode(skia.BlendMode.kClear)
 
         if s.strokeStyle == "inside":
             canvas.save()

@@ -45,6 +45,8 @@ class ShapeStyle:
     shadowAngle: float = 135.0      # degrees
     shadowDistance: float = 10.0
     shadowBlur: float = 5.0
+    # Blend
+    blendMode: str = "normal"
 
     def toDict(self) -> dict:
         return self.__dict__.copy()
