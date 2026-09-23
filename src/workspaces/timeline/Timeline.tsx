@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+﻿import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   TimelineProvider,
   useTimeline,
@@ -400,56 +400,39 @@ function TimelineInner() {
       <TimelineTabs />
       <div
         className="tl-root"
+        data-image-comp={isImageComp ? 'true' : undefined}
         style={{ flex: 1, minHeight: 0, ...(isImageComp ? { '--tl-ruler-h': '0px' } as React.CSSProperties : {}) }}
         aria-label={isImageComp ? 'Image Layers' : 'Video Timeline'}
       >
-        {/* Toolbar   */}
-        <div
-          className="tl-toolbar-row"
-          style={{ gridColumn: "1 / -1", gridRow: "1" }}
-        >
+        {/* Toolbar */}
+        <div className="tl-toolbar-row" style={{ gridColumn: '1 / -1', gridRow: '1' }}>
           <Toolbar />
         </div>
 
-      
-        <div className="tl-corner" style={{ gridColumn: "1", gridRow: "2" }} />
+        <div className="tl-corner" style={{ gridColumn: '1', gridRow: '2' }} />
 
-        {/*   Ruler — hidden in image comp mode  */}
+        {/* Ruler — hidden in image comp via CSS */}
         {!isImageComp && (
-          <div
-            className="tl-ruler-container"
-            style={{ gridColumn: "2", gridRow: "2" }}
-          >
-            <TimelineRuler
-              scrollLeft={scrollLeft}
-              totalWidthPx={tw}
-              onSeek={onSeek}
-            />
+          <div className="tl-ruler-container" style={{ gridColumn: '2', gridRow: '2' }}>
+            <TimelineRuler scrollLeft={scrollLeft} totalWidthPx={tw} onSeek={onSeek} />
           </div>
         )}
-        {isImageComp && (
-          <div
-            style={{ gridColumn: "2", gridRow: "2", height: 0 }}
-          />
-        )}
+        {isImageComp && <div style={{ gridColumn: '2', gridRow: '2', height: 0 }} />}
 
-        {/*   Track Headers   */}
-        <div
-          className="tl-headers-container"
-          style={{ gridColumn: "1", gridRow: "3" }}
-        >
+        {/* Track Headers */}
+        <div className="tl-headers-container" style={{ gridColumn: '1', gridRow: '3' }}>
           <TrackHeaders scrollTop={scrollTop} totalTrackHeightPx={th} />
         </div>
 
-        {/* Track Content   */}
+        {/* Track Content — same as always, drag-drop intact */}
         <div
           ref={contentRef}
           className="tl-content"
-          style={{ gridColumn: "2", gridRow: "3" }}
+          style={{ gridColumn: '2', gridRow: '3' }}
           onScroll={onContentScroll}
           onMouseDown={onContentMouseDown}
         >
-          <div style={{ width: tw, minHeight: th, position: "relative" }}>
+          <div style={{ width: isImageComp ? '100%' : tw, minHeight: th, position: 'relative' }}>
             {state.tracks.map((track, idx) => (
               <TrackRow
                 key={track.id}
@@ -464,12 +447,12 @@ function TimelineInner() {
               <div
                 className="tl-box-select"
                 style={{
-                  position: "absolute",
+                  position: 'absolute',
                   left:   boxRect.x,
                   top:    boxRect.y,
                   width:  boxRect.w,
                   height: boxRect.h,
-                  pointerEvents: "none",
+                  pointerEvents: 'none',
                   zIndex: 99,
                 }}
               />
@@ -477,27 +460,25 @@ function TimelineInner() {
           </div>
         </div>
 
-        {/*   Bottom Bar   */}
-        <div
-          className="tl-bottom-bar-container"
-          style={{ gridColumn: "1 / -1", gridRow: "4" }}
-        >
+        {/* Bottom Bar */}
+        <div className="tl-bottom-bar-container" style={{ gridColumn: '1 / -1', gridRow: '4' }}>
           <BottomBar contentRef={contentRef} viewWidth={viewWidth} />
         </div>
 
-        {/* Playhead — hidden in image comp mode */}
+        {/* Playhead — hidden in image comp */}
         {!isImageComp && (
           <Playhead scrollLeft={scrollLeft} contentLeft={HEADER_WIDTH} />
         )}
 
-        {/*   Ghost clip proxy during move   */}
+        {/* Ghost clip proxy during move */}
         <GhostClip />
       </div>
     </div>
   );
 }
 
-//   Public export 
+//  Public export
 export default function Timeline() {
   return <TimelineInner />;
 }
+

@@ -244,8 +244,12 @@ export default function ViewportWidget() {
         } catch { /* malformed payload */ }
       });
 
- 
-      fallbackId = setInterval(async () => {
+      // Re-render current frame whenever backend signals a scene change
+      es.addEventListener('render', () => {
+        window.dispatchEvent(new CustomEvent('fade:render-now'));
+      });
+
+       fallbackId = setInterval(async () => {
         try {
           const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
           if (!r.ok) return;
@@ -286,6 +290,17 @@ export default function ViewportWidget() {
     window.addEventListener('fade:render-now', handler);
     return () => window.removeEventListener('fade:render-now', handler);
   }, []);
+
+  // In image comp: re-render frame 0 whenever tracks change (clip added/moved)
+  useEffect(() => {
+    if (!isImageComp) return;
+    const t = setTimeout(() => {
+      playbackSeek(0).catch(() => {});
+      window.dispatchEvent(new CustomEvent('fade:render-now'));
+    }, 150);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isImageComp, tlState.tracks]);
 
   //   Controls  
 
