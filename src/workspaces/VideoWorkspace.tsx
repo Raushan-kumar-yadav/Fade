@@ -111,7 +111,7 @@ function WorkspaceInner() {
         console.warn('[Layout] saved layout invalid, using default', e)
       }
     }).catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+ 
   }, [])
 
   // Save layout debounced on every model change
