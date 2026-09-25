@@ -4,20 +4,10 @@ const puppeteer = require('puppeteer');
   try {
     const browser = await puppeteer.connect({ browserURL: 'http://localhost:9222' });
     const pages = await browser.pages();
-    let page = pages.find(p => p.url().includes('index.html'));
-    if (!page) {
-        console.log("Urls:", pages.map(p => p.url()));
-        page = pages[0]; // fallback
-    }
-    
-    console.log('Connected to page:', page.url());
+    let page = pages.find(p => p.url().includes('localhost:5173'));
     
     const res = await page.evaluate(async () => {
       let msg = [];
-      const btn = document.querySelector('.hp-btn--primary');
-      if (btn) btn.click();
-      await new Promise(r => setTimeout(r, 2000));
-      
       const brushTool = document.querySelector('#tbx-tool-brush');
       if (brushTool) brushTool.click();
       
@@ -29,9 +19,10 @@ const puppeteer = require('puppeteer');
       
       const tpPanel = document.querySelector('.tp-panel');
       if (tpPanel) {
-          msg.push('Found tp-panel in PRODUCTION.');
+          msg.push('Found tp-panel after redesign!');
+          msg.push('Text inside: ' + tpPanel.innerText.substring(0, 150).replace(/\n/g, ' '));
       } else {
-          msg.push('tp-panel NOT FOUND in PRODUCTION.');
+          msg.push('tp-panel NOT FOUND.');
       }
       return msg;
     });

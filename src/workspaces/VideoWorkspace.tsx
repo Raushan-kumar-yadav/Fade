@@ -12,6 +12,7 @@ import { addClipToTimeline, type AssetItem } from '../api/useApi'
 import { useTool, isShapeTool } from '../context/toolContext'
 import TextToolPanel from './tools/TextToolPanel'
 import BrushToolPanel from './tools/BrushToolPanel'
+import EraserToolPanel from './tools/EraserToolPanel'
 import ShapeToolPanel from './tools/ShapeToolPanel'
 import TransitionPanel from './inspector/TransitionPanel'
 import CompositionsPanel from './compositions/CompositionsPanel'
@@ -176,5 +177,6 @@ function WorkspaceInner() {
 
   return <FlexLayout.Layout model={modelRef.current} factory={factory} onModelChange={onModelChange} realtimeResize />
 }
+
 
 
