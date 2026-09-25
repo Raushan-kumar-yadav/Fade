@@ -69,12 +69,12 @@ def test_brush_eraser():
     assert brush_clip.style.strokeColor == [1, 0, 0, 1]
     
     # Test Eraser
-    cmd_eraser = AddBrushStrokeCommand(eng, pts, 20.0, [1,1,1,1], 1.0, is_eraser=True)
+    from backend.editor_tools.commands import EraseGeometryCommand
+    cmd_eraser = EraseGeometryCommand(eng, pts, 20.0)
     eng.commandStack.execute(cmd_eraser)
     
-    assert len(t.tracks[0].clips) == 2
-    eraser_clip = t.tracks[0].clips[-1]
-    assert eraser_clip.style.blendMode == "clear"
+    # It should have deleted the intersecting clip!
+    assert len(t.tracks[0].clips) == 0
     
     # Test Undo
     eng.commandStack.undo() # Undo eraser

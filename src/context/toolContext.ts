@@ -18,6 +18,8 @@ export type ActiveTool =
   // Creation tools
   | 'text'          // T  — add text clip
   | 'solid'         // O  — add solid/color clip
+    | 'brush'         // B  - brush tool
+    | 'eraser'        // E  - eraser tool
   // Shape sub-tools (Q to cycle, flyout for sub-type)
   | 'shape:rect'
   | 'shape:circle'
@@ -63,11 +65,17 @@ export function isCreationTool(tool: ActiveTool): boolean {
   return !isEditTool(tool);
 }
 
+export function isImageTool(tool: ActiveTool): boolean {
+  return ['brush', 'eraser'].includes(tool);
+}
+
 // ── CSS cursor for each tool ───────────────────────────────────────────────
 export const TOOL_CURSOR: Record<string, string> = {
   pointer:        'default',
   razor:          'url("data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'20\' height=\'20\' viewBox=\'0 0 20 20\'><text y=\'16\' font-size=\'16\'>✂</text></svg>") 4 16, crosshair',
   ripple:         'col-resize',
+    brush:          'crosshair',
+    eraser:         'crosshair',
   slip:           'ew-resize',
   hand:           'grab',
   selectLeft:     'w-resize',

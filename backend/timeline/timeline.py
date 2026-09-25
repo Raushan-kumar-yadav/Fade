@@ -94,6 +94,8 @@ class Timeline:
             "name": self.name,
             "kind" : getattr(self,"kind" , "video"),
             "playheadFrame": self.playheadFrame,
+            "width": getattr(self, "width", 1920),
+            "height": getattr(self, "height", 1080),
             "tracks": [t.toDict() for t in self.tracks],
             "transitions": [t.toDict() for t in self.transitions],
         }

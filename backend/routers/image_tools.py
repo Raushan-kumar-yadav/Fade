@@ -55,13 +55,14 @@ def add_brush(req: StrokeRequest):
         return {"status": "error", "message": "No points provided"}
     cmd = AddBrushStrokeCommand(engine, req.points, req.size, req.color, req.opacity, is_eraser=False)
     engine.commandStack.execute(cmd)
-    return {"status": "ok"}
+    return {"status": "ok", "clipId": cmd.clip.clipId if cmd.clip else None}
 
 @router.post("/eraser")
 def add_eraser(req: StrokeRequest):
     if not req.points:
         return {"status": "error", "message": "No points provided"}
-    cmd = AddBrushStrokeCommand(engine, req.points, req.size, req.color, req.opacity, is_eraser=True)
+    from backend.editor_tools.commands import EraseGeometryCommand
+    cmd = EraseGeometryCommand(engine, req.points, req.size)
     engine.commandStack.execute(cmd)
     return {"status": "ok"}
 

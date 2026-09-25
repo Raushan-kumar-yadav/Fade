@@ -25,6 +25,8 @@ const INITIAL_STATE: TimelineState = {
   currentFrame: 0,
   totalFrames: 1800,
   fps: 30,
+  width: 1920,
+  height: 1080,
   zoomX: 5,
   selectedTool: "pointer",
   isPlaying: false,
@@ -122,6 +124,9 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
 
     case "SET_TOTAL_FRAMES":
       return { ...state, totalFrames: action.totalFrames };
+
+    case "SET_COMP_DIMENSIONS":
+      return { ...state, width: action.width, height: action.height };
 
     case "ADD_CLIP": {
       const tracks = state.tracks.map((t) => {
@@ -509,6 +514,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_TRACKS', tracks });
       const tf = data.totalFrames;
       if (tf) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: tf });
+      if (data.width && data.height) {
+        dispatch({ type: 'SET_COMP_DIMENSIONS', width: data.width, height: data.height });
+      }
     };
 
     ensureAndFetch();
@@ -532,6 +540,9 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_TRACKS', tracks });
           const tf = data.totalFrames;
           if (tf) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: tf });
+          if (data.width && data.height) {
+            dispatch({ type: 'SET_COMP_DIMENSIONS', width: data.width, height: data.height });
+          }
         })
         .catch(() => {});
     }, 400);
@@ -584,6 +595,8 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
           dispatch({ type: "SET_TRACKS", tracks });
           if (data.totalFrames)
             dispatch({ type: "SET_TOTAL_FRAMES", totalFrames: data.totalFrames });
+          if (data.width && data.height)
+            dispatch({ type: "SET_COMP_DIMENSIONS", width: data.width, height: data.height });
         })
         .catch(() => {});
     }

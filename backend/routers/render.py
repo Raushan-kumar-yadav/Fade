@@ -105,6 +105,40 @@ def _build_comp_frame_descriptor(
                     pass
             inner_clips.append(ic_data)
 
+            if ic_type == "image" and hasattr(inner_clip, "brush_strokes") and inner_clip.brush_strokes:
+                # Raw composition-space coords — no letterbox transform applied here.
+                # C++ GPU compositor applies the camera/letterbox matrix exactly once.
+                for idx, stroke in enumerate(inner_clip.brush_strokes):
+                    pen_points = [
+                        {
+                            "x": float(pt['x']),
+                            "y": float(pt['y']),
+                            "inX": 0.0, "inY": 0.0,
+                            "outX": 0.0, "outY": 0.0
+                        }
+                        for pt in stroke.points
+                    ]
+
+                    brush_clip = {
+                        "clipId": f"{inner_clip.clipId}_brush_{idx}",
+                        "file": "",
+                        "sourceFrame": ic_sf,
+                        "opacity": ic_op,
+                        "blendMode": ic_bm,
+                        "type": "pen",
+                        "transform": ic_xform,
+                        "effects": [],
+                        "penStyle": {
+                            "isClosed": False,
+                            "points": pen_points,
+                            "fillOpacity": 0.0,
+                            "strokeColor": list(stroke.color),
+                            "strokeWidth": float(stroke.size),  # raw, no letterbox scale
+                            "shadowEnabled": False,
+                        }
+                    }
+                    inner_clips.append(brush_clip)
+
     if inner_frame % 30 == 0 or _depth == 0:
         print(f"[CompFD depth={_depth}] comp={comp_id} inner_frame={inner_frame} "
               f"tracks={len(inner_tl.tracks)} clips_in_fd={len(inner_clips)}", flush=True)
@@ -233,6 +267,46 @@ def _get_frame_data(frame: int) -> dict:
                 clip_data["masks"] = masks_out
 
             clips_out.append(clip_data)
+
+            try:
+                if clip_type == "image" and hasattr(clip, "brush_strokes") and clip.brush_strokes:
+                    # Serialize BrushStroke points in RAW COMPOSITION SPACE.
+                    # Do NOT apply the letterbox transform here.
+                    # The C++ GPU compositor applies its camera/letterbox matrix
+                    # exactly once to all Pen clip coordinates, identical to how
+                    # native Vector Pen clips are handled by backend/serializers.py.
+                    for idx, stroke in enumerate(clip.brush_strokes):
+                        pen_points = [
+                            {
+                                "x": float(pt['x']),
+                                "y": float(pt['y']),
+                                "inX": 0.0, "inY": 0.0,
+                                "outX": 0.0, "outY": 0.0
+                            }
+                            for pt in stroke.points
+                        ]
+
+                        brush_clip = {
+                            "clipId": f"{clip_id}_brush_{idx}",
+                            "file": "",
+                            "sourceFrame": source_frame,
+                            "opacity": opacity,
+                            "blendMode": blend_mode,
+                            "type": "pen",
+                            "transform": transform_dict,
+                            "effects": [],
+                            "penStyle": {
+                                "isClosed": False,
+                                "points": pen_points,
+                                "fillOpacity": 0.0,
+                                "strokeColor": list(stroke.color),
+                                "strokeWidth": float(stroke.size),  # raw, no letterbox scale
+                                "shadowEnabled": False,
+                            }
+                        }
+                        clips_out.append(brush_clip)
+            except Exception as e:
+                print(f"[BrushSerialize] ERROR for clip {clip_id}: {e}", flush=True)
 
     transition_desc = None
     result = tl.getTransitionAt(frame)

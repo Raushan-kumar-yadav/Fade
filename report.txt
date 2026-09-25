@@ -1,0 +1,8 @@
+﻿A. Current implementation of Brush: Uses /editor/brush -> AddBrushStrokeCommand. Creates a PenClip with the provided points.
+B. Current implementation of Eraser: Uses /editor/eraser -> AddBrushStrokeCommand with is_eraser=True. Sets lendMode="clear" on a PenClip, acting as a raster mask.
+C. Current implementation of Shape: Uses /clips/shape to create a ShapeClip. Bypasses CommandStack.
+D. Current implementation of Vector Pen: Uses /clips/pen to create a PenClip. Bypasses CommandStack.
+E. Exact root cause of the Eraser bug: The eraser does not geometrically interact with underlying paths. It acts as an alpha-knockout overlay instead of deleting/splitting vertices on the affected vector strokes.
+F. Exact reason Brush is not functioning correctly: AddBrushStrokeCommand re-instantiates PenClip on every execute() (e.g. during redo) from the initial points array, losing any incrementally patched points. Furthermore, /editor/brush doesn't return a clipId, making it impossible for a frontend to continuously patch a stroke during drag, forcing isolated point requests.
+G. Shared components that must be changed: AddBrushStrokeCommand must preserve its clip instance for undo/redo. We need a new EraseGeometryCommand that mathematically splits/removes intersecting points on existing PenClips.
+H. Files I intend to modify: ackend/editor_tools/commands.py and ackend/routers/image_tools.py.
