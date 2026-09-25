@@ -83,13 +83,16 @@ class AddBrushStrokeCommand(Command):
         return [t for t in timeline.tracks
                 if not getattr(t, 'isAudio', lambda: False)()]
 
-    def _find_selected_image_clip(self):
-        """Return (ImageClip, track) if the currently selected clip is an ImageClip."""
+    def _find_selected_brushable_clip(self):
         import backend.state as _state
-        from backend.timeline.clips.imageClip import ImageClip
-        sel_id = getattr(_state, '_selected_clip_id', None)
+        sel_id = getattr(_state, "_selected_clip_id", None)
         if not sel_id:
             return None, None
+        for track in self.engine.activeTimeline.tracks:
+            for c in track.clips:
+                if c.clipId == sel_id and hasattr(c, "brush_strokes"):
+                    return c, track
+        return None, None
         for track in self.engine.activeTimeline.tracks:
             for c in track.clips:
                 if c.clipId == sel_id and isinstance(c, ImageClip):
@@ -107,49 +110,47 @@ class AddBrushStrokeCommand(Command):
         if not self.engine.activeTimeline or not self.engine.activeTimeline.tracks:
             return
 
-        # Reuse previously created objects on redo
         if self._stroke is not None:
-            # redo path — re-attach stroke and optionally the clip
             if self._created_clip and self._clip not in self._track.clips:
                 self._track.addClip(self._clip)
             self._clip.brush_strokes.append(self._stroke)
             self.clip = self._clip
             return
 
-        # --- First execution ---
+        clip, track = self._find_selected_brushable_clip()
+        
+        points_to_save = list(self.points)
+        if clip and getattr(clip, "clipType", getattr(clip, "CLIP_TYPE", "")) != "image":
+            from backend.editor_tools.transform_utils import comp_to_local, get_inverse_transform
+            px, py, sx, sy, rot, ax, ay = get_inverse_transform(clip.transform)
+            points_to_save = [comp_to_local(p, px, py, sx, sy, rot, ax, ay) for p in self.points]
 
-        # 1. Try to use the selected ImageClip
-        img_clip, track = self._find_selected_image_clip()
-
-        # 2. If none, create a new transparent ImageClip on the topmost video track
-        if img_clip is None:
+        if clip is None:
             vtracks = self._video_tracks(self.engine.activeTimeline)
             track = vtracks[-1] if vtracks else self.engine.activeTimeline.tracks[0]
-            img_clip = ImageClip(
+            clip = ImageClip(
                 clipId     = str(uuid.uuid4()),
                 startFrame = 0,
                 duration   = 150,
                 assetId    = "",
                 filepath   = "",
-                color      = (0, 0, 0, 0),   # fully transparent — pure brush canvas
+                color      = (0, 0, 0, 0),
             )
-            track.addClip(img_clip)
+            track.addClip(clip)
             self._created_clip = True
 
-        # 3. Build a BrushStroke and append it to the clip
         stroke = BrushStroke(
-            points  = list(self.points),
+            points  = points_to_save,
             size    = self.size,
             color   = list(self.color),
             opacity = self.opacity,
         )
-        img_clip.brush_strokes.append(stroke)
+        clip.brush_strokes.append(stroke)
 
-        # 4. Store references for undo/redo
         self._stroke = stroke
-        self._clip   = img_clip
+        self._clip   = clip
         self._track  = track
-        self.clip    = img_clip   # legacy compat
+        self.clip    = clip
 
     def undo(self) -> None:
         if self._clip is None or self._stroke is None:
@@ -292,6 +293,7 @@ class EraseGeometryCommand(Command):
         self.computed = False
 
     def execute(self) -> None:
+        import copy
         if not self.engine.activeTimeline or not self.engine.activeTimeline.tracks:
             return
             
@@ -299,11 +301,24 @@ class EraseGeometryCommand(Command):
             self.computed = True
             for track in self.engine.activeTimeline.tracks:
                 for clip in track.clips:
-                    if isinstance(clip, ImageClip) and hasattr(clip, 'brush_strokes') and clip.brush_strokes:
+                    if hasattr(clip, 'brush_strokes') and clip.brush_strokes:
                         self.before_state[clip.clipId] = copy.deepcopy(clip.brush_strokes)
                         new_strokes = []
+                        
+                        clip_type = getattr(clip, "clipType", getattr(clip, "CLIP_TYPE", ""))
+                        if clip_type == "image":
+                            clip_eraser_points = self.eraser_points
+                            clip_radius = self.radius
+                        else:
+                            from backend.editor_tools.transform_utils import comp_to_local, get_inverse_transform
+                            px, py, sx, sy, rot, ax, ay = get_inverse_transform(clip.transform)
+                            clip_eraser_points = [comp_to_local(p, px, py, sx, sy, rot, ax, ay) for p in self.eraser_points]
+                            avg_scale = (abs(sx) + abs(sy)) / 2.0
+                            if avg_scale == 0: avg_scale = 1.0
+                            clip_radius = self.radius / avg_scale
+                            
                         for stroke in clip.brush_strokes:
-                            new_strokes.extend(erase_stroke(stroke, self.eraser_points, self.radius))
+                            new_strokes.extend(erase_stroke(stroke, clip_eraser_points, clip_radius))
                         self.after_state[clip.clipId] = new_strokes
                         
         for track in self.engine.activeTimeline.tracks:
@@ -312,6 +327,7 @@ class EraseGeometryCommand(Command):
                     clip.brush_strokes = copy.deepcopy(self.after_state[clip.clipId])
                     
     def undo(self) -> None:
+        import copy
         for track in self.engine.activeTimeline.tracks:
             for clip in track.clips:
                 if clip.clipId in self.before_state:
