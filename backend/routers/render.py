@@ -106,18 +106,27 @@ def _build_comp_frame_descriptor(
             inner_clips.append(ic_data)
 
             if ic_type == "image" and hasattr(inner_clip, "brush_strokes") and inner_clip.brush_strokes:
-                # Raw composition-space coords — no letterbox transform applied here.
-                # C++ GPU compositor applies the camera/letterbox matrix exactly once.
+                # FADE C++ renderer does NOT apply letterbox to Pen clips.
+                # We must map from Composition Space -> 1920x1080 Renderer Space.
+                scale = min(1920.0 / c_width, 1080.0 / c_height)
+                offset_x = (1920.0 - c_width * scale) / 2.0
+                offset_y = (1080.0 - c_height * scale) / 2.0
+
                 for idx, stroke in enumerate(inner_clip.brush_strokes):
                     pen_points = [
                         {
-                            "x": float(pt['x']),
-                            "y": float(pt['y']),
+                            "x": float(pt['x']) * scale + offset_x,
+                            "y": float(pt['y']) * scale + offset_y,
                             "inX": 0.0, "inY": 0.0,
                             "outX": 0.0, "outY": 0.0
                         }
                         for pt in stroke.points
                     ]
+
+                    # Use identity transform for the Pen so it doesn't get double-translated
+                    # by the Image's transform (which is already applied by the user drawing
+                    # over the transformed image on-screen).
+                    identity_xform = {"x": 0.0, "y": 0.0, "scaleX": 1.0, "scaleY": 1.0, "rotation": 0.0, "anchorX": 0.0, "anchorY": 0.0}
 
                     brush_clip = {
                         "clipId": f"{inner_clip.clipId}_brush_{idx}",
@@ -126,14 +135,14 @@ def _build_comp_frame_descriptor(
                         "opacity": ic_op,
                         "blendMode": ic_bm,
                         "type": "pen",
-                        "transform": ic_xform,
+                        "transform": identity_xform,
                         "effects": [],
                         "penStyle": {
                             "isClosed": False,
                             "points": pen_points,
                             "fillOpacity": 0.0,
                             "strokeColor": list(stroke.color),
-                            "strokeWidth": float(stroke.size),  # raw, no letterbox scale
+                            "strokeWidth": float(stroke.size) * scale,
                             "shadowEnabled": False,
                         }
                     }
@@ -270,21 +279,24 @@ def _get_frame_data(frame: int) -> dict:
 
             try:
                 if clip_type == "image" and hasattr(clip, "brush_strokes") and clip.brush_strokes:
-                    # Serialize BrushStroke points in RAW COMPOSITION SPACE.
-                    # Do NOT apply the letterbox transform here.
-                    # The C++ GPU compositor applies its camera/letterbox matrix
-                    # exactly once to all Pen clip coordinates, identical to how
-                    # native Vector Pen clips are handled by backend/serializers.py.
+                    # FADE C++ renderer does NOT apply letterbox to Pen clips.
+                    # We must map from Composition Space -> 1920x1080 Renderer Space.
+                    scale = min(1920.0 / width, 1080.0 / height)
+                    offset_x = (1920.0 - width * scale) / 2.0
+                    offset_y = (1080.0 - height * scale) / 2.0
+
                     for idx, stroke in enumerate(clip.brush_strokes):
                         pen_points = [
                             {
-                                "x": float(pt['x']),
-                                "y": float(pt['y']),
+                                "x": float(pt['x']) * scale + offset_x,
+                                "y": float(pt['y']) * scale + offset_y,
                                 "inX": 0.0, "inY": 0.0,
                                 "outX": 0.0, "outY": 0.0
                             }
                             for pt in stroke.points
                         ]
+
+                        identity_xform = {"x": 0.0, "y": 0.0, "scaleX": 1.0, "scaleY": 1.0, "rotation": 0.0, "anchorX": 0.0, "anchorY": 0.0}
 
                         brush_clip = {
                             "clipId": f"{clip_id}_brush_{idx}",
@@ -293,14 +305,14 @@ def _get_frame_data(frame: int) -> dict:
                             "opacity": opacity,
                             "blendMode": blend_mode,
                             "type": "pen",
-                            "transform": transform_dict,
+                            "transform": identity_xform,
                             "effects": [],
                             "penStyle": {
                                 "isClosed": False,
                                 "points": pen_points,
                                 "fillOpacity": 0.0,
                                 "strokeColor": list(stroke.color),
-                                "strokeWidth": float(stroke.size),  # raw, no letterbox scale
+                                "strokeWidth": float(stroke.size) * scale,
                                 "shadowEnabled": False,
                             }
                         }

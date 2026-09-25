@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useTimeline } from '../timeline/TimelineContext';
+import { useTool } from '../../context/toolContext';
 
 import { viewportToComposition } from './viewportUtils';
 
@@ -11,6 +12,7 @@ interface Props {
 
 export default function BrushOverlay({ mode, width, height }: Props) {
   const { state, dispatch } = useTimeline();
+  const { brushColor, brushSize } = useTool();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   const isDrawing = useRef(false);
@@ -37,7 +39,7 @@ export default function BrushOverlay({ mode, width, height }: Props) {
       await fetch(`http://127.0.0.1:${port}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ points: validPoints.map(p => ({ x: p.x, y: p.y, inX:0, inY:0, outX:0, outY:0 })), size: mode === 'brush' ? 10 : 20 })
+        body: JSON.stringify({ points: validPoints.map(p => ({ x: p.x, y: p.y, inX:0, inY:0, outX:0, outY:0 })), size: mode === 'brush' ? brushSize : 20, color: brushColor })
       });
       
       // 1. Trigger a refresh of the timeline tracks
@@ -62,8 +64,9 @@ export default function BrushOverlay({ mode, width, height }: Props) {
     for (let i = 1; i < pts.length; i++) {
       ctx.lineTo(pts[i].x, pts[i].y);
     }
-    ctx.strokeStyle = mode === 'brush' ? '#ffffff' : 'rgba(255, 0, 0, 0.5)';
-    ctx.lineWidth = mode === 'brush' ? 10 : 20;
+    const [r, g, b, a] = brushColor;
+    ctx.strokeStyle = mode === 'brush' ? 'rgba(' + Math.round(r*255) + ',' + Math.round(g*255) + ',' + Math.round(b*255) + ',' + a + ')' : 'rgba(255, 0, 0, 0.5)';
+    ctx.lineWidth = mode === 'brush' ? brushSize : 20;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.stroke();
@@ -128,3 +131,6 @@ export default function BrushOverlay({ mode, width, height }: Props) {
     </>
   );
 }
+
+
+

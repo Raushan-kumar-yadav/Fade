@@ -112,6 +112,10 @@ export interface ToolCtx {
   setPenSubMode: (m: PenSubMode) => void;
   penOutputMode: PenOutputMode;
   setPenOutputMode: (m: PenOutputMode) => void;
+  brushColor: [number, number, number, number];
+  setBrushColor: (c: [number, number, number, number]) => void;
+  brushSize: number;
+  setBrushSize: (s: number) => void;
 }
 
 export const ToolContext = createContext<ToolCtx>({
@@ -123,8 +127,13 @@ export const ToolContext = createContext<ToolCtx>({
   setPenSubMode:    () => {},
   penOutputMode:    'clip',
   setPenOutputMode: () => {},
+  brushColor: [1, 1, 1, 1],
+  setBrushColor: () => {},
+  brushSize: 10,
+  setBrushSize: () => {},
 });
 
 export function useTool() {
   return useContext(ToolContext);
 }
+

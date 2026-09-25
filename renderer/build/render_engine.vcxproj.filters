@@ -1,67 +1,67 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\napi\RenderEngineAddon.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\napi\RenderEngineAddon.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\HeadlessCompositor.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\HeadlessCompositor.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\rendering\DrawText.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\rendering\DrawText.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\rendering\DrawShape.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\rendering\DrawShape.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\rendering\DrawPen.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\rendering\DrawPen.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\rendering\DrawSvg.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\rendering\DrawSvg.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\gpu\vulkan\device\DeviceContext.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\gpu\vulkan\device\DeviceContext.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\gpu\vulkan\memory\Buffer.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\gpu\vulkan\memory\Buffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\gpu\vulkan\memory\Texture.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\gpu\vulkan\memory\Texture.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\gpu\vulkan\command\CommandBuffer.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\gpu\vulkan\command\CommandBuffer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\gpu\vulkan\command\CommandPool.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\gpu\vulkan\command\CommandPool.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\gpu\vulkan\skia\SkiaContext.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\gpu\vulkan\skia\SkiaContext.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\video\HwVideoDecoder.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\video\HwVideoDecoder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\video\videoDecoder.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\video\videoDecoder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\video\ClipDecoder.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\video\ClipDecoder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\core\video\decoder\imageDecorder.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\core\video\decoder\imageDecorder.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\renderer\src\engine\SchedulerBridge.cpp">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\src\engine\SchedulerBridge.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="E:\Editor_SIH\Fade\node_modules\cmake-js\lib\cpp\win_delay_load_hook.cc">
+    <ClCompile Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\node_modules\cmake-js\lib\cpp\win_delay_load_hook.cc">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <CustomBuild Include="E:\Editor_SIH\Fade\renderer\CMakeLists.txt" />
+    <CustomBuild Include="C:\Users\ariji\OneDrive\Desktop\sih final\Fade\renderer\CMakeLists.txt" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Source Files">
-      <UniqueIdentifier>{D6224E04-CE0A-3305-8550-EBA6692F53EC}</UniqueIdentifier>
+      <UniqueIdentifier>{84EA00D0-A8FE-309D-87D3-9ED3BCB675F5}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>
