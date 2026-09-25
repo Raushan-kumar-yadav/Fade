@@ -9,7 +9,7 @@
         "build:electron": "tsc -p tsconfig.node.json && node -e \"const fs=require('fs');fs.copyFileSync('electron/splash.html','dist-electron/splash.html');fs.copyFileSync('electron/devlog.html','dist-electron/devlog.html')\"",
         "dev": "concurrently \"vite\" \"npm run build:electron && wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
         "build": "vite build && npm run build:electron",
-        "start": "electron .",
+        "start": "electron . --remote-debugging-port=9222",
         "build:native": "cmake-js compile --directory renderer --out renderer/build",
         "dist": "npm run build && electron-builder build --win --publish never"
     },
@@ -18,7 +18,14 @@
         "productName": "Fade",
         "asar": false,
         "win": {
-            "target": [{ "target": "dir", "arch": ["x64"] }]
+            "target": [
+                {
+                    "target": "dir",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ]
         },
         "directories": {
             "output": "dist-app"
@@ -36,27 +43,37 @@
             {
                 "from": "pyinstaller-dist/backend",
                 "to": "backend",
-                "filter": ["**/*"]
+                "filter": [
+                    "**/*"
+                ]
             },
             {
                 "from": "renderer/build/Release",
                 "to": "renderer/build/Release",
-                "filter": ["**/*"]
+                "filter": [
+                    "**/*"
+                ]
             },
             {
                 "from": "backend/timeline/effects/sksl",
                 "to": "backend/timeline/effects/sksl",
-                "filter": ["**/*"]
+                "filter": [
+                    "**/*"
+                ]
             },
             {
                 "from": "templates",
                 "to": "templates",
-                "filter": ["**/*"]
+                "filter": [
+                    "**/*"
+                ]
             },
             {
                 "from": "AIModels/kokoro",
                 "to": "AIModels/kokoro",
-                "filter": ["**/*"]
+                "filter": [
+                    "**/*"
+                ]
             },
             {
                 "from": ".env",
@@ -65,15 +82,16 @@
             {
                 "from": "AIModels",
                 "to": "AIModels",
-                "filter": ["**/*"]
+                "filter": [
+                    "**/*"
+                ]
             }
         ]
     },
     "dependencies": {
         "allotment": "^1.20.5",
         "flexlayout-react": "^0.10.5",
-        "react": "^18.2.0",
-        "react-dom": "^18.2.0"
+        "react": "^18.2.0"
     },
     "devDependencies": {
         "@types/node": "^26.2.0",
@@ -86,9 +104,14 @@
         "electron": "^29.0.0",
         "electron-builder": "^26.0.12",
         "node-addon-api": "^8.9.2",
+        "playwright": "^1.63.0",
+        "puppeteer": "^25.12.0",
+        "react-dom": "^18.3.1",
         "tsx": "^4.23.12",
         "typescript": "^7.0.2",
         "vite": "^5.1.0",
         "wait-on": "^7.2.0"
     }
 }
+
+

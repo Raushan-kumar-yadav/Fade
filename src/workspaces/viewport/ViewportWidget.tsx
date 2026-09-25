@@ -10,6 +10,7 @@ import { useTool } from '../../context/toolContext';
 import { useSelection } from '../../context/selectionContext';
 import { useTimeline } from '../timeline/TimelineContext';
 import OverlayCanvas from './OverlayCanvas';
+import BrushOverlay from './BrushOverlay';
 import { AudioEngine, type AudioClipInfo } from './audioEngine';
 import './ViewportWidget.css';
 
@@ -592,6 +593,15 @@ export default function ViewportWidget() {
           {activeTool !== 'shape:path' && activeTool.startsWith('shape:') && (
             <OverlayCanvas
               mode="shape"
+              width={1920}
+              height={1080}
+            />
+          )}
+          
+          {/* Brush / Eraser overlay */}
+          {(activeTool === 'brush' || activeTool === 'eraser') && (
+            <BrushOverlay
+              mode={activeTool as 'brush' | 'eraser'}
               width={1920}
               height={1080}
             />

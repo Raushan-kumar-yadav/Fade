@@ -11,6 +11,8 @@ import EffectsPanel from './inspector/EffectsPanel'
 import { addClipToTimeline, type AssetItem } from '../api/useApi'
 import { useTool, isShapeTool } from '../context/toolContext'
 import TextToolPanel from './tools/TextToolPanel'
+import BrushToolPanel from './tools/BrushToolPanel'
+import EraserToolPanel from './tools/EraserToolPanel'
 import ShapeToolPanel from './tools/ShapeToolPanel'
 import TransitionPanel from './inspector/TransitionPanel'
 import CompositionsPanel from './compositions/CompositionsPanel'
@@ -131,6 +133,9 @@ function WorkspaceInner() {
   // Tool panel reads currentFrame  
   const toolPanel = (() => {
     const frame = state.currentFrame ?? 0
+    if (activeTool === 'brush') {
+      return <BrushToolPanel key='brush' />
+    }
     if (activeTool === 'text') {
       return (
         <TextToolPanel
@@ -172,3 +177,6 @@ function WorkspaceInner() {
 
   return <FlexLayout.Layout model={modelRef.current} factory={factory} onModelChange={onModelChange} realtimeResize />
 }
+
+
+

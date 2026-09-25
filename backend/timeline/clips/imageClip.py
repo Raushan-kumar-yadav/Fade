@@ -1,8 +1,50 @@
 from __future__ import annotations
 import uuid
+from dataclasses import dataclass, field
 from backend.timeline.clips.baseClip import BaseClip
 from backend.animation.animatableProperty import AnimatableProperty
 
+
+# ---------------------------------------------------------------------------
+# BrushStroke
+# ---------------------------------------------------------------------------
+
+@dataclass
+class BrushStroke:
+    """
+    A single brush stroke owned by an ImageClip.
+
+    Each stroke is a list of (x, y) positions in composition space, along
+    with visual style attributes.  Multiple strokes are stored as
+    ImageClip.brush_strokes so that every Brush action on the same clip is
+    kept together and individually undoable via the CommandStack.
+    """
+    points: list = field(default_factory=list)   # list of {"x": float, "y": float}
+    size: float = 10.0
+    color: list = field(default_factory=lambda: [1.0, 1.0, 1.0, 1.0])  # RGBA 0-1
+    opacity: float = 1.0
+
+    def toDict(self) -> dict:
+        return {
+            "points": self.points,
+            "size":   self.size,
+            "color":  self.color,
+            "opacity": self.opacity,
+        }
+
+    @classmethod
+    def fromDict(cls, d: dict) -> "BrushStroke":
+        return cls(
+            points  = d.get("points", []),
+            size    = d.get("size", 10.0),
+            color   = d.get("color", [1.0, 1.0, 1.0, 1.0]),
+            opacity = d.get("opacity", 1.0),
+        )
+
+
+# ---------------------------------------------------------------------------
+# ImageClip
+# ---------------------------------------------------------------------------
 
 class ImageClip(BaseClip):
     
@@ -36,6 +78,9 @@ class ImageClip(BaseClip):
         self._cachedFrame = None
         self._skiaImage = None
         self._decodeAttempted = False
+
+        # Brush strokes painted onto this clip (leader's BrushPoint model)
+        self.brush_strokes: list[BrushStroke] = []
 
     def evaluateAll(self, frame: int) -> None:
         super().evaluateAll(frame)
@@ -99,7 +144,80 @@ class ImageClip(BaseClip):
         else:
             self._renderSolid(canvas, paint)
 
+        # Draw brush strokes on top of the image
+        self._renderBrushStrokes(canvas)
+
         canvas.restore()
+
+    def _renderBrushStrokes(self, canvas) -> None:
+        """Paint all owned BrushStroke objects onto the 1920x1080 compositor canvas.
+
+        BrushStroke points are stored in composition space (e.g. 1080x1920 for a
+        portrait comp).  The compositor always outputs 1920x1080.  We apply the
+        same object-fit:contain (letterbox) transform that the frontend uses so the
+        strokes land exactly where the user drew them.
+
+        Transform (mirrors frontend viewportUtils.ts compositionToViewport):
+            scale   = min(1920 / compW, 1080 / compH)
+            offsetX = (1920 - compW * scale) / 2
+            offsetY = (1080 - compH * scale) / 2
+            renderX = compX * scale + offsetX
+            renderY = compY * scale + offsetY
+
+        For a 1920x1080 composition scale=1, offsets=0, so existing behaviour is
+        completely preserved.
+        """
+        if not self.brush_strokes:
+            return
+        try:
+            import skia
+            from backend.rendering.nodes.penNode import build_skpath
+            from backend.animation.animPath import PathVertex
+        except Exception:
+            return
+
+        # --- Composition dimensions (used for the letterbox transform) -----------
+        RENDER_W, RENDER_H = 1920, 1080
+        try:
+            from backend.state import engine as _engine
+            tl = _engine.activeTimeline
+            comp_w = float(getattr(tl, 'width',  RENDER_W)) if tl else float(RENDER_W)
+            comp_h = float(getattr(tl, 'height', RENDER_H)) if tl else float(RENDER_H)
+        except Exception:
+            comp_w, comp_h = float(RENDER_W), float(RENDER_H)
+
+        # object-fit:contain scale + letter-box offsets
+        scale   = min(RENDER_W / comp_w, RENDER_H / comp_h)
+        offset_x = (RENDER_W - comp_w * scale) / 2.0
+        offset_y = (RENDER_H - comp_h * scale) / 2.0
+
+        # --- Draw each stroke ---------------------------------------------------
+        for stroke in self.brush_strokes:
+            pts = stroke.points
+            if len(pts) < 2:
+                continue
+
+            # Map composition-space points → 1920x1080 renderer space
+            vertices = [
+                PathVertex(
+                    x=p["x"] * scale + offset_x,
+                    y=p["y"] * scale + offset_y,
+                )
+                for p in pts
+            ]
+            path = build_skpath(vertices, is_closed=False)
+
+            r, g, b, a = stroke.color
+            paint = skia.Paint()
+            paint.setAntiAlias(True)
+            paint.setStyle(skia.Paint.kStroke_Style)
+            # Scale stroke width so it looks the same relative to the image on screen
+            paint.setStrokeWidth(stroke.size * scale)
+            paint.setStrokeCap(skia.Paint.kRound_Cap)
+            paint.setStrokeJoin(skia.Paint.kRound_Join)
+            paint.setColor4f(skia.Color4f(r, g, b, a * stroke.opacity))
+            canvas.drawPath(path, paint)
+
 
     def _renderSolid(self, canvas, paint) -> None:
         import skia
@@ -143,6 +261,7 @@ class ImageClip(BaseClip):
             "blendMode": self.blendMode.toDict(),
             "masks": [m.toDict() for m in self.masks],
             "effects": [e.toDict() for e in self.effects],
+            "brush_strokes": [s.toDict() for s in self.brush_strokes],
         }
 
     @classmethod
@@ -182,5 +301,6 @@ class ImageClip(BaseClip):
                     c.effects.append(SkslEffect.fromDict(ed))
                 except Exception as ex:
                     print(f"[ImageClip] effect restore failed: {ex}")
+        c.brush_strokes = [BrushStroke.fromDict(s) for s in data.get("brush_strokes", [])]
         return c
 

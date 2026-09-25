@@ -81,7 +81,7 @@ void drawPen(SkCanvas *canvas, const ClipDesc &clip, int canvasW, int canvasH) {
   }
 
   // Build the bezier path
-  const SkPath path = buildFromPoints(pen.points, pen.isClosed);
+  const SkPath path = buildFromPoints(pen.points, pen.isClosed); std::cout << "[DIAGNOSTIC] PEN canvasW=" << canvasW << " canvasH=" << canvasH << " first_pt_x=" << (pen.points.empty() ? 0 : pen.points[0].x) << std::endl;
 
   //   Drop shadow
   if (pen.shadowEnabled) {
@@ -123,7 +123,7 @@ void drawPen(SkCanvas *canvas, const ClipDesc &clip, int canvasW, int canvasH) {
     strokePaint.setStrokeCap(SkPaint::kRound_Cap);
     strokePaint.setStrokeJoin(SkPaint::kRound_Join);
     strokePaint.setAntiAlias(true);
-    canvas->drawPath(path, strokePaint);
+    std::cout << "[DIAGNOSTIC] PEN DRAWN bounds left=" << path.getBounds().left() << " top=" << path.getBounds().top() << std::endl; canvas->drawPath(path, strokePaint);
   }
 
   canvas->restore();

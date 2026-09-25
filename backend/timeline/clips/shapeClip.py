@@ -75,6 +75,7 @@ class ShapeClip(BaseClip):
         super().__init__(clipId, startFrame, duration)
         self.style = style or ShapeStyle()
         self.masks: list[MaskLayer] = []
+        self.brush_strokes: list = []
 
     # Render  
 
@@ -91,6 +92,34 @@ class ShapeClip(BaseClip):
     def render(self, canvas, frame: int) -> None:
         from backend.rendering.nodes.shapeNode import draw_shape
         draw_shape(canvas, self, frame)
+
+        if hasattr(self, 'brush_strokes') and self.brush_strokes:
+            import skia
+            from backend.rendering.nodes.penNode import build_skpath
+            from backend.animation.animPath import PathVertex
+            
+            canvas.save()
+            self.transform.applyToCanvas(canvas)
+            
+            for stroke in self.brush_strokes:
+                pts = stroke.points
+                if len(pts) < 2:
+                    continue
+                
+                vertices = [PathVertex(x=p['x'], y=p['y']) for p in pts]
+                path = build_skpath(vertices, is_closed=False)
+                
+                r, g, b, a = stroke.color
+                paint = skia.Paint()
+                paint.setAntiAlias(True)
+                paint.setStyle(skia.Paint.kStroke_Style)
+                paint.setStrokeWidth(stroke.size)
+                paint.setStrokeCap(skia.Paint.kRound_Cap)
+                paint.setStrokeJoin(skia.Paint.kRound_Join)
+                paint.setColor4f(skia.Color4f(r, g, b, a * stroke.opacity))
+                canvas.drawPath(path, paint)
+                
+            canvas.restore()
 
     def getThumbnail(self, frame: int, width: int = 160, height: int = 90) -> bytes:
         import skia
@@ -127,6 +156,7 @@ class ShapeClip(BaseClip):
             "transform":  self.transform.toDict(),
             "style":      self.style.toDict(),
             "masks":      [m.toDict() for m in self.masks],
+            "brush_strokes": [s.toDict() for s in getattr(self, 'brush_strokes', [])],
             "effects":    [e.toDict() for e in self.effects],
         }
 
@@ -141,6 +171,8 @@ class ShapeClip(BaseClip):
         )
         clip.transform = Transform.fromDict(data.get("transform", {}))
         clip.masks = [MaskLayer.fromDict(m) for m in data.get("masks", [])]
+        from backend.timeline.clips.imageClip import BrushStroke
+        clip.brush_strokes = [BrushStroke.fromDict(s) for s in data.get("brush_strokes", [])]
         for ed in data.get("effects", []):
             if ed.get("type", "").startswith("sksl:") or "typeId" in ed:
                 try:
@@ -148,3 +180,5 @@ class ShapeClip(BaseClip):
                 except Exception as ex:
                     print(f"[ShapeClip] effect restore failed: {ex}")
         return clip
+
+

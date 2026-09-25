@@ -23,6 +23,7 @@ class StrokeRequest(BaseModel):
     size: float
     color: list[float] = [1.0, 1.0, 1.0, 1.0]
     opacity: float = 1.0
+    in_progress: bool = False
 
 @router.post("/selection")
 def set_selection(req: SelectionRequest):
@@ -55,13 +56,25 @@ def add_brush(req: StrokeRequest):
         return {"status": "error", "message": "No points provided"}
     cmd = AddBrushStrokeCommand(engine, req.points, req.size, req.color, req.opacity, is_eraser=False)
     engine.commandStack.execute(cmd)
-    return {"status": "ok"}
+    return {"status": "ok", "clipId": cmd.clip.clipId if cmd.clip else None}
 
 @router.post("/eraser")
 def add_eraser(req: StrokeRequest):
     if not req.points:
         return {"status": "error", "message": "No points provided"}
-    cmd = AddBrushStrokeCommand(engine, req.points, req.size, req.color, req.opacity, is_eraser=True)
+        
+    from backend.editor_tools.commands import EraseGeometryCommand
+    
+    top_cmd = None
+    if engine.commandStack._undoStack:
+        top_cmd = engine.commandStack._undoStack[-1]
+        
+    if isinstance(top_cmd, EraseGeometryCommand) and getattr(top_cmd, "in_progress", False):
+        engine.commandStack.undo()
+        engine.commandStack._redoStack.clear()
+            
+    cmd = EraseGeometryCommand(engine, req.points, req.size)
+    cmd.in_progress = req.in_progress
     engine.commandStack.execute(cmd)
+    
     return {"status": "ok"}
-

@@ -25,6 +25,8 @@ const EDIT_TOOLS: ToolDef[] = [
 const CREATE_TOOLS: ToolDef[] = [
   { id: 'text',       icon: 'T',  label: 'Text',        shortcut: 'T', group: 'create' },
   { id: 'solid',      icon: '■',  label: 'Solid Color', shortcut: 'O', group: 'create' },
+  { id: 'brush',      icon: '🖌',  label: 'Brush',       shortcut: 'B', group: 'create' },
+  { id: 'eraser',     icon: '▤',  label: 'Eraser',      shortcut: 'E', group: 'create' },
   { id: 'adjustment', icon: '⚙', label: 'Adjustment',  shortcut: 'A', group: 'create' },
 ];
 
@@ -209,7 +211,7 @@ export default function ToolboxWidget({ docked = false, onClose }: Props) {
       // Main tool shortcuts
       const toolMap: Record<string, ActiveTool> = {
         v: 'pointer', c: 'razor', r: 'ripple', y: 'slip', h: 'hand',
-        t: 'text',    o: 'solid', a: 'adjustment',
+      t: 'text',    o: 'solid', a: 'adjustment', b: 'brush', e: 'eraser',
         q: lastShapeTool, p: 'shape:path',
       };
       const tool = toolMap[e.key.toLowerCase()];

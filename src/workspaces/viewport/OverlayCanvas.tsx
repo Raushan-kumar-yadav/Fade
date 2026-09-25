@@ -15,6 +15,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import './OverlayCanvas.css';
 import { penApi, shapeApi, maskApi, type BezierPoint } from '../../api/toolsApi';
 import { useTool, shapeTypeOf } from '../../context/toolContext';
+import { useTimeline } from '../timeline/TimelineContext';
 import type { PenSubMode } from '../../context/toolContext';
 
 export type OverlayMode = 'pen' | 'mask' | 'shape' | 'none';
@@ -42,7 +43,9 @@ type DragTarget =
   | { kind: 'outHandle'; idx: number }
   | null;
 
-// Convert a mouse/pointer event to design-space coords using the SVG element's CTM
+import { viewportToComposition, compositionToViewport } from './viewportUtils';
+
+// Convert a mouse/pointer event to viewport coords using the SVG element's CTM
 function designCoord(e: React.MouseEvent, svg: SVGSVGElement): { x: number; y: number } {
   const pt = svg.createSVGPoint();
   pt.x = e.clientX;
@@ -58,6 +61,7 @@ export default function OverlayCanvas({
   startFrame = 0, duration = 150, currentFrame = 0, onDone,
 }: Props) {
   const { activeTool, penSubMode, penOutputMode } = useTool();
+  const { state } = useTimeline();
 
   // ── Pen / Mask state ──────────────────────────────────────────────────────
   const [points,   setPoints]   = useState<PtState[]>([]);
@@ -166,16 +170,25 @@ export default function OverlayCanvas({
     if (w < 4 || h < 4) return;
 
     const sType = shapeTypeOf(activeTool) ?? 'rect';
-    const halfW = w / 2;
-    const halfH = h / 2;
+    const compW = state.width || 1920;
+    const compH = state.height || 1080;
+    const scale = Math.min(1920 / compW, 1080 / compH);
+
+    const compCenter = viewportToComposition(cx, cy, compW, compH, false);
+    if (!compCenter) return;
+    const compShapeW = w / scale;
+    const compShapeH = h / scale;
+
+    const halfW = compShapeW / 2;
+    const halfH = compShapeH / 2;
     const minR  = Math.min(halfW, halfH);
     try {
       const result: any = await shapeApi.add(
         startFrame, duration,
         {
           shapeType:     sType as any,
-          width:         w,
-          height:        h,
+          width:         compShapeW,
+          height:        compShapeH,
           radiusX:       halfW,
           radiusY:       halfH,
           outerRadius:   minR,
@@ -190,7 +203,7 @@ export default function OverlayCanvas({
           x2:   halfW, y2:   halfH,
           fillColor: [0.4, 0.4, 1.0, 1.0],
         },
-        cx, cy,  // position = center of drawn box
+        compCenter.x, compCenter.y,  // position = center of drawn box
       );
       window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
       onDone?.(result.clipId);
@@ -202,7 +215,26 @@ export default function OverlayCanvas({
   // ── Pen / Mask ────────────────────────────────────────────────────────────
   const commitPoints = useCallback(async (pts: PtState[], isClosed: boolean) => {
     if (pts.length < 1) return;
-    const bpts = pts.map(({ x, y, inX, inY, outX, outY }) => ({ x, y, inX, inY, outX, outY }));
+    const compW = state.width || 1920;
+    const compH = state.height || 1080;
+    const scale = Math.min(1920 / compW, 1080 / compH);
+    
+    // Map from viewport to composition space before sending to backend
+    const bpts: BezierPoint[] = [];
+    for (const pt of pts) {
+      const mapped = viewportToComposition(pt.x, pt.y, compW, compH, false);
+      if (mapped) {
+        bpts.push({
+          x: mapped.x,
+          y: mapped.y,
+          // Tangents are vectors, they just need to be scaled without offset
+          inX: pt.inX / scale,
+          inY: pt.inY / scale,
+          outX: pt.outX / scale,
+          outY: pt.outY / scale,
+        });
+      }
+    }
 
     if (mode === 'pen') {
       if (!penClipId.current) {
@@ -249,12 +281,19 @@ export default function OverlayCanvas({
           ? masks.find(m => m.maskId === maskId)
           : masks[masks.length - 1];
         if (!target || target.shape !== 'bezier') return;
-        const pts = (target.points ?? []).map((p, i) => ({
-          id: `loaded-${i}`,
-          x: p.x, y: p.y,
-          inX: p.inX ?? 0, inY: p.inY ?? 0,
-          outX: p.outX ?? 0, outY: p.outY ?? 0,
-        }));
+        const compW = state.width || 1920;
+        const compH = state.height || 1080;
+        const scale = Math.min(1920 / compW, 1080 / compH);
+
+        const pts = (target.points ?? []).map((p, i) => {
+          const vp = compositionToViewport(p.x, p.y, compW, compH);
+          return {
+            id: `loaded-${i}`,
+            x: vp.x, y: vp.y,
+            inX: (p.inX ?? 0) * scale, inY: (p.inY ?? 0) * scale,
+            outX: (p.outX ?? 0) * scale, outY: (p.outY ?? 0) * scale,
+          };
+        });
         if (pts.length === 0) return;
         setPoints(pts);
         setClosed(true);
