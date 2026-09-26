@@ -1,0 +1,16 @@
+uniform shader source;
+uniform float cropLeft;
+uniform float cropRight;
+uniform float cropTop;
+uniform float cropBottom;
+uniform float2 resolution;
+
+half4 main(float2 coord) {
+    if (coord.x < cropLeft * resolution.x || 
+        coord.x > resolution.x - (cropRight * resolution.x) || 
+        coord.y < cropTop * resolution.y || 
+        coord.y > resolution.y - (cropBottom * resolution.y)) {
+        return half4(0.0);
+    }
+    return source.eval(coord);
+}

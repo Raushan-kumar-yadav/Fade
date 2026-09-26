@@ -244,6 +244,37 @@ def _get_frame_data(frame: int) -> dict:
                 transform_dict = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
                                   "rotation": 0, "anchorX": 0.0, "anchorY": 0.0}
 
+            base_w = 1920
+            base_h = 1080
+            if clip_type == 'image':
+                if hasattr(clip, '_ensureDecoded'):
+                    if not getattr(clip, 'filepath', None) and filepath:
+                        clip.filepath = filepath
+                    clip._ensureDecoded()
+                if getattr(clip, '_skiaImage', None):
+                    base_w = clip._skiaImage.width()
+                    base_h = clip._skiaImage.height()
+            elif clip_type == 'shape' and hasattr(clip, 'style'):
+                base_w = float(getattr(clip.style, 'width', 200))
+                base_h = float(getattr(clip.style, 'height', 120))
+            elif clip_type == 'video':
+                if not getattr(clip, 'filepath', None) and filepath:
+                    clip.filepath = filepath
+                if getattr(clip, 'decoder', None):
+                    if hasattr(clip.decoder, 'width') and clip.decoder.width and clip.decoder.width > 0:
+                        base_w = clip.decoder.width
+                        base_h = clip.decoder.height
+
+            crop_dict = {"cropLeft": 0.0, "cropRight": 0.0, "cropTop": 0.0, "cropBottom": 0.0}
+            if hasattr(clip, 'cropLeft'):
+                try:
+                    crop_dict["cropLeft"] = float(clip.cropLeft.get())
+                    crop_dict["cropRight"] = float(clip.cropRight.get())
+                    crop_dict["cropTop"] = float(clip.cropTop.get())
+                    crop_dict["cropBottom"] = float(clip.cropBottom.get())
+                except Exception:
+                    pass
+
             clip_data: dict = {
                 "clipId": clip_id,
                 "file": filepath,
@@ -253,6 +284,9 @@ def _get_frame_data(frame: int) -> dict:
                 "blendMode": blend_mode,
                 "type": clip_type,
                 "transform": transform_dict,
+                "baseWidth": base_w,
+                "baseHeight": base_h,
+                **crop_dict,
                 "effects": _serialize_effects(clip, frame),
             }
             _serialize_clip_type_fields(clip, clip_type, frame, clip_data,

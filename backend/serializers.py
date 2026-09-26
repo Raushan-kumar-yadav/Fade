@@ -26,6 +26,24 @@ def _serialize_effects(clip, frame: int) -> list:
             out.append({"typeId": type_id, "uniforms": uniforms_list})
         except Exception as _e:
             print(f"[effects] serialization error for {type(eff).__name__}: {_e}")
+    if hasattr(clip, 'cropLeft'):
+        try:
+            cl = float(clip.cropLeft.get())
+            cr = float(clip.cropRight.get())
+            ct = float(clip.cropTop.get())
+            cb = float(clip.cropBottom.get())
+            if cl > 0.0 or cr > 0.0 or ct > 0.0 or cb > 0.0:
+                out.append({
+                    "typeId": "sksl:crop",
+                    "uniforms": [
+                        {"id": "cropLeft", "values": [cl]},
+                        {"id": "cropRight", "values": [cr]},
+                        {"id": "cropTop", "values": [ct]},
+                        {"id": "cropBottom", "values": [cb]}
+                    ]
+                })
+        except Exception:
+            pass
     return out
 
 

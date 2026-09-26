@@ -10,6 +10,7 @@ import { useTool } from '../../context/toolContext';
 import { useSelection } from '../../context/selectionContext';
 import { useTimeline } from '../timeline/TimelineContext';
 import OverlayCanvas from './OverlayCanvas';
+import TransformGizmo from './TransformGizmo';
 import BrushOverlay from './BrushOverlay';
 import { AudioEngine, type AudioClipInfo } from './audioEngine';
 import './ViewportWidget.css';
@@ -595,6 +596,14 @@ export default function ViewportWidget() {
               mode="shape"
               width={1920}
               height={1080}
+            />
+          )}
+          
+          {/* Direct Manipulation overlay */}
+          {activeTool === 'pointer' && (
+            <TransformGizmo
+              currentFrame={currentFrame}
+              activeTool={activeTool}
             />
           )}
           

@@ -49,9 +49,22 @@ class Transform:
         cosA = math.cos(rad)
         sinA = math.sin(rad)
 
+        cx = 1920 * 0.5
+        cy = 1080 * 0.5
+        # M = Translate(tx + cx, ty + cy) * Rotate(deg) * Scale(sx, sy) * Translate(-cx, -cy)
+        # Simplified:
+        # X = sx * cosA * (x - cx) - sy * sinA * (y - cy) + tx + cx
+        # Y = sx * sinA * (x - cx) + sy * cosA * (y - cy) + ty + cy
+        m00 = sx * cosA
+        m01 = -sy * sinA
+        m10 = sx * sinA
+        m11 = sy * cosA
+        m02 = tx + cx - m00 * cx - m01 * cy
+        m12 = ty + cy - m10 * cx - m11 * cy
+        
         return [
-            [sx * cosA,  -sx * sinA,  tx],
-            [sy * sinA,   sy * cosA,  ty],
+            [m00, m01, m02],
+            [m10, m11, m12],
             [0.0, 0.0, 1.0],
         ]
 
@@ -63,9 +76,14 @@ class Transform:
         deg = self.rotation.get()
         ax, ay = self.anchor.get()
 
-        canvas.translate(tx + ax, ty + ay)
+        # CRITICAL FIX: Rotate around the center by default!
+        # FADE's Python renderer draws into 1920x1080.
+        cx = 1920 * 0.5 + ax
+        cy = 1080 * 0.5 + ay
+        canvas.translate(tx + cx, ty + cy)
         canvas.rotate(deg)
         canvas.scale(sx, sy)
+        canvas.translate(-cx, -cy)
         canvas.translate(-ax, -ay)
 
     #   Serialization

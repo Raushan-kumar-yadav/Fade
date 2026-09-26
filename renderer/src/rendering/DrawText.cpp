@@ -190,8 +190,8 @@ void drawText(SkCanvas *canvas, const ClipDesc &clip, int canvasW,
   sk_sp<SkTypeface> tf = resolveTypeface(ts.fontFamily, ts.bold, ts.italic);
 
   const auto &t = clip.transform;
-  const float cx = t.anchorX * static_cast<float>(canvasW);
-  const float cy = t.anchorY * static_cast<float>(canvasH);
+  const float cx = static_cast<float>(canvasW) * 0.5f + t.anchorX;
+  const float cy = static_cast<float>(canvasH) * 0.5f + t.anchorY;
 
   SkM44 model = SkM44::Translate(t.x + cx, t.y + cy, 0.f);
   model.preConcat(SkM44::Rotate({0, 0, 1}, t.rotation * (SK_ScalarPI / 180.f)));
