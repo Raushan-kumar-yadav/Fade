@@ -6,17 +6,7 @@ node_modules/
  
 dist/
 dist-electron/
-renderer/build/CMakeFiles/
-renderer/build/CMakeCache.txt
-renderer/build/cmake_install.cmake
-renderer/build/Makefile
-renderer/build/*.vcxproj
-renderer/build/*.sln
-renderer/build/Release/*.exp
-renderer/build/Release/*.lib
-renderer/build/Release/ffplay.exe
-renderer/build/Release/ffmpeg.exe
-renderer/build/Release/ffprobe.exe
+renderer/build/
 renderer/deps/ffmpeg/lib/
 renderer/deps/skia/lib/
 backend/media/decoder/ffmpeg/
@@ -86,7 +76,3 @@ Thumbs.db
 #   Misc  
 virality.db
 *.bak
-renderer/build/render_engine.dir/
-renderer/build/x64/
-renderer/build/*.filters
-renderer/build/*.slnx
