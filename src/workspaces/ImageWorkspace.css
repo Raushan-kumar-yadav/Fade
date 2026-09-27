@@ -1,0 +1,14 @@
+﻿/* ── ImageWorkspace overrides ───────────────────────────────────────────── */
+/* Only functional changes — visual style identical to VideoWorkspace */
+
+/* Hide viewport playback controls (scrub bar + transport) in image mode */
+.image-ws-mode .vw-scrub,
+.image-ws-mode .vw-controls {
+  display: none !important;
+}
+
+/* Let the canvas fill the full height now that controls are gone */
+.image-ws-mode .vw-canvas {
+  flex: 1 !important;
+  border-bottom: none !important;
+}

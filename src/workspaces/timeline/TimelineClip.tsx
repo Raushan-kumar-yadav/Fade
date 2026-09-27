@@ -143,8 +143,13 @@ const TimelineClip = memo(function TimelineClip({
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     if (clip.type !== 'comp' || !clip.compId) return;
     e.stopPropagation();
-    dispatch({ type: 'ENTER_COMP', compId: clip.compId, compName: clip.name, kind: 'video' });
-  }, [clip.type, clip.compId, clip.name, dispatch]);
+    const kind: 'video' | 'image' = (clip as any).compKind === 'image' ? 'image' : 'video';
+    dispatch({ type: 'ENTER_COMP', compId: clip.compId, compName: clip.name, kind });
+    // If it's an image comp, switch the app to the image editor tab
+    if (kind === 'image') {
+      window.dispatchEvent(new CustomEvent('fade:enter-image-comp', { detail: { compId: clip.compId, name: clip.name } }));
+    }
+  }, [clip.type, clip.compId, clip.name, (clip as any).compKind, dispatch]);
 
   // Cursor based on tool
   const getCursor = useCallback(
@@ -498,8 +503,15 @@ const TimelineClip = memo(function TimelineClip({
         {clip.type === 'comp' && (
           <button
             style={CTX_ITEM_STYLE}
-            onClick={() => { setCtxMenu(null); dispatch({ type: 'ENTER_COMP', compId: clip.compId!, compName: clip.name, kind: 'video' }); }}
-          >? Enter Composition</button>
+            onClick={() => {
+              setCtxMenu(null);
+              const kind: 'video' | 'image' = (clip as any).compKind === 'image' ? 'image' : 'video';
+              dispatch({ type: 'ENTER_COMP', compId: clip.compId!, compName: clip.name, kind });
+              if (kind === 'image') {
+                window.dispatchEvent(new CustomEvent('fade:enter-image-comp', { detail: { compId: clip.compId, name: clip.name } }));
+              }
+            }}
+          >▶ Enter Composition</button>
         )}
         <button
           style={CTX_ITEM_STYLE}

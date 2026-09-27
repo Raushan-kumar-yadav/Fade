@@ -7,6 +7,7 @@ import AIWorkspace from './workspaces/AIWorkspace'
 import VideoWorkspace from './workspaces/VideoWorkspace'
 import AudioWorkspace from './workspaces/AudioWorkspace'
 import ExportWorkspace from './workspaces/ExportWorkspace'
+import ImageWorkspace from './workspaces/ImageWorkspace'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
 import { SelectionContext, type SelectedItem } from './context/selectionContext'
@@ -16,7 +17,7 @@ import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
-type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export'
+type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image'
 
 //   Loading overlay  
 
@@ -214,14 +215,31 @@ export default function App() {
 
   }, [])
 
-  const workspaces: Record<TabId, React.FC> = {
+  // Listen for imageComp double-click → switch to image tab
+  const [imageCompId, setImageCompId] = useState<string | null>(null);
+  const [imageCompName, setImageCompName] = useState<string>('Image Editor');
+  useEffect(() => {
+    const h = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.compId) {
+        setImageCompId(detail.compId);
+        setImageCompName(detail.name || 'Image Editor');
+      }
+      setActiveTab('image');
+    };
+    window.addEventListener('fade:enter-image-comp', h);
+    return () => window.removeEventListener('fade:enter-image-comp', h);
+  }, []);
+
+  const workspaces: Record<Exclude<TabId, 'image'>, React.FC> = {
     home: HomeWorkspace,
     ai: AIWorkspace,
     video: VideoWorkspace,
     audio: AudioWorkspace,
     export: ExportWorkspace,
   }
-  const Workspace = workspaces[activeTab]
+  const isImageTab = activeTab === 'image';
+  const Workspace = isImageTab ? null : workspaces[activeTab as Exclude<TabId, 'image'>]
 
   return (
     <SelectionContext.Provider value={{ selected, setSelected }}>
@@ -254,11 +272,18 @@ export default function App() {
             onLoadEnd={handleProjectLoadEnd}
           />
           <main className="app-workspace">
-            <Workspace />
+            {isImageTab
+              ? <ImageWorkspace
+                  compId={imageCompId}
+                  compName={imageCompName}
+                  onBack={() => setActiveTab('video')}
+                />
+              : Workspace && <Workspace />
+            }
           </main>
 
            
-          {activeTab === 'video' && showToolbox && (
+          {(activeTab === 'video' || activeTab === 'image') && showToolbox && (
             <ToolboxWidget onClose={() => setShowToolbox(false)} />
           )}
 

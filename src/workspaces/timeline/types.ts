@@ -36,7 +36,8 @@ export interface Clip {
   type: ClipType;
   isSelected: boolean;
   assetId?: string;
-  compId?: string;  // only set when type === 'comp'
+  compId?: string;     // only set when type === 'comp'
+  compKind?: 'video' | 'image'; // kind of the referenced comp
 }
 
 export interface Track {

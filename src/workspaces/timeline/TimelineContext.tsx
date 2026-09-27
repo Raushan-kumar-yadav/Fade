@@ -112,6 +112,7 @@ function mapBackendClip(c: any): Clip {
     isSelected: false,
     assetId: c.assetId,
     compId: c.compId,
+    compKind: c.compKind ?? c.comp_kind ?? undefined,
   };
 }
 

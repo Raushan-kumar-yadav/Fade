@@ -20,6 +20,7 @@ const TABS = [
   { id: 'home', label: 'Home' },
   { id: 'ai', label: 'AI' },
   { id: 'video', label: 'Video' },
+  { id: 'image', label: 'Image' },
   { id: 'audio', label: 'Audio' },
   { id: 'export', label: 'Export' },
 ];
@@ -262,7 +263,7 @@ export default function TitleBar({
         </div>
 
   
-        {active === 'video' && (
+        {(active === 'video' || active === 'image') && (
           <div className="tb-tool-group">
             <button
               id="tb-toolbox-toggle"
