@@ -17,7 +17,7 @@ MAX_JOBS = 30
 _lock: threading.Lock = threading.Lock()
 _jobs: dict[str, dict] = {}          
 _order: list[str] = []            
-_cancelled_jobs: set[str] = set()  # job_ids cancelled by user mid-run
+_cancelled_jobs: set[str] = set()  # job_ids cancelled  
 
 
 def _make_job(
@@ -33,7 +33,7 @@ def _make_job(
         "status": "pending",
         "progress":  0.0,
         "message": "Queued…",
-        "assetIds":  [],
+        "assetIds": [],
          
         "assetId": asset_id,
         "error": None,

@@ -424,6 +424,27 @@ export default function ViewportWidget() {
   const { selected } = useSelection();
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Stable ref for the pen clip ID — persists across renders/remounts so
+  // subsequent strokes update the same clip instead of creating a new one.
+  const penClipIdRef = useRef<string | null>(null);
+
+  // Seed from selection if the selected clip is a pen clip
+  useEffect(() => {
+    if (activeTool !== 'shape:path' || penOutputMode !== 'clip') return;
+    if (selected?.type === 'clip' && selected.clipType === 'pen') {
+      penClipIdRef.current = selected.clipId;
+    }
+  }, [selected, activeTool, penOutputMode]);
+
+  // Clear the ref when leaving the pen tool so the next pen session starts fresh
+  const prevToolRef = useRef(activeTool);
+  useEffect(() => {
+    if (prevToolRef.current === 'shape:path' && activeTool !== 'shape:path') {
+      penClipIdRef.current = null;
+    }
+    prevToolRef.current = activeTool;
+  }, [activeTool]);
+
   // Pan / Zoom state  
   const [vpZoom, setVpZoom] = useState(1);     
   const [vpPan, setVpPan] = useState({ x: 0, y: 0 });  
@@ -581,11 +602,17 @@ export default function ViewportWidget() {
                 duration={(selected as any).duration ?? 150}
               />
             ) : (
+              // key="pen-overlay" keeps the component stable across re-renders
+              // so React never remounts it (and wipes the drawn points).
+              // clipId seeds the internal ref when resuming an existing path.
               <OverlayCanvas
+                key="pen-overlay"
                 mode="pen"
+                clipId={penClipIdRef.current ?? undefined}
                 width={1920}
                 height={1080}
                 currentFrame={currentFrame}
+                onDone={(clipId) => { penClipIdRef.current = clipId; }}
               />
             )
           )}

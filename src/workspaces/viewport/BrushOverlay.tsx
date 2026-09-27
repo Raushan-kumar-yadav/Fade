@@ -1,5 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { useTimeline } from '../timeline/TimelineContext';
+import React, { useRef } from 'react';
 
 interface Props {
   mode: 'brush' | 'eraser';
@@ -8,7 +7,6 @@ interface Props {
 }
 
 export default function BrushOverlay({ mode, width, height }: Props) {
-  const { dispatch } = useTimeline();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
   const isDrawing = useRef(false);

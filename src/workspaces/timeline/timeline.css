@@ -1,4 +1,4 @@
-﻿ /*    Timeline CSS  */ 
+ /*    Timeline CSS  */ 
  
 /* Tokens   */
 .tl-root {
@@ -594,9 +594,9 @@
 }
 
 
-/* ══ IMAGE COMP MODE — Photoshop layer style ════════════════════════════════ */
+/* ══ IMAGE COMP MODE — slim layer-list style ══════════════════════════ */
 
-/* Track row — flat layer row using app theme colors */
+/* Track row — flat 36px layer row */
 [data-image-comp="true"] .tl-track-row {
   height: 36px !important;
   border-bottom: 1px solid var(--tl-sep) !important;
@@ -608,7 +608,7 @@
   background: var(--tl-track-b) !important;
 }
 
-/* Clip bar — stretches full width, flat layer strip */
+/* Clip bar — stretches full width */
 [data-image-comp="true"] .tl-clip {
   position: relative !important;
   left: 0 !important;
@@ -619,27 +619,26 @@
   opacity: 0.9;
 }
 
-/* Selected clip — PS-style left accent border */
+/* Selected clip — left accent border like a layer panel */
 [data-image-comp="true"] .tl-clip--selected {
   outline: none !important;
   box-shadow: none !important;
   border-left: 3px solid var(--tl-accent) !important;
 }
 
-/* Clip label — left-aligned like a PS layer name */
+/* Clip label — left-aligned */
 [data-image-comp="true"] .tl-clip__label {
   text-align: left !important;
   padding-left: 8px !important;
   font-size: 11px !important;
-  letter-spacing: 0.02em;
 }
 
-/* Hide resize handles — no trimming in image comp */
+/* Hide resize handles */
 [data-image-comp="true"] .tl-track-row__resize {
   display: none !important;
 }
 
-/* Track header — matches app header bg */
+/* Track header */
 [data-image-comp="true"] .tl-header-item {
   height: 36px !important;
   background: var(--tl-header-bg) !important;
@@ -648,19 +647,19 @@
   gap: 4px !important;
 }
 
-/* Content area — same bg as the rest of the timeline */
+/* Content area */
 [data-image-comp="true"] .tl-content {
   background: var(--tl-bg) !important;
   overflow-x: hidden !important;
 }
 
-/* Track even/odd rows — both use the same flat color in image comp */
+/* Both row alternating colors — same flat color */
 [data-image-comp="true"] .tl-track-row--even,
 [data-image-comp="true"] .tl-track-row--odd {
   background: transparent !important;
 }
 
 /* Hide bottom zoom scrollbar */
-[data-image-comp="true"] .tl-bottom-bar {
+[data-image-comp="true"] .tl-bottom-bar-container {
   display: none !important;
 }

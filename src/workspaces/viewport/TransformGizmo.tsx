@@ -69,17 +69,25 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
   useEffect(() => {
     if (!selected || selected.type !== 'clip') return;
     let isSubscribed = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
     const updateParams = async () => {
       try {
         const p = await inspectorApi.getParams(selected.clipId, currentFrame);
         if (isSubscribed && !isDragging) {
           setParams(p.params);
         }
-      } catch (e) {}
+      } catch (e: any) {
+        // Stop polling if clip no longer exists on the backend (404 after restart).
+        // inspectorApi throws new Error(responseBody) so check the message text.
+        const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+        if (msg.includes('not found') || msg.includes('404')) {
+          if (timer !== null) { clearInterval(timer); timer = null; }
+        }
+      }
     };
     updateParams();
-    const timer = setInterval(updateParams, 100);
-    return () => { isSubscribed = false; clearInterval(timer); };
+    timer = setInterval(updateParams, 100);
+    return () => { isSubscribed = false; if (timer !== null) clearInterval(timer); };
   }, [selected, isDragging, currentFrame]);
 
   if (!selected || selected.type !== 'clip' || activeTool !== 'pointer') return null;

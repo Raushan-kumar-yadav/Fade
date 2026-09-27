@@ -68,9 +68,14 @@ export default function OverlayCanvas({
   const [closed,   setClosed]   = useState(false);
   const [dragging, setDragging] = useState<DragTarget>(null);
   const [selectedIdx, setSelectedIdx] = useState<Set<number>>(new Set());
-  const penClipId  = useRef<string | null>(clipId ?? null);
-  const maskClipId = useRef<string | null>(clipId ?? null);
+  const penClipId     = useRef<string | null>(clipId ?? null);
+  const maskClipId    = useRef<string | null>(clipId ?? null);
   const createdMaskId = useRef<string | null>(maskId ?? null);
+  // Mutex: true while the initial penApi.add() is in-flight so rapid clicks
+  // don't race and each create a separate clip.
+  const penCreating   = useRef(false);
+  // Points queued during clip creation; flushed once the clipId is known.
+  const penPendingPts = useRef<{ pts: PtState[]; isClosed: boolean } | null>(null);
 
   // ── Path keyframe state ────────────────────────────────────────────────────
   const [pathKfFlash, setPathKfFlash] = useState<'idle'|'ok'|'err'>('idle');
@@ -218,8 +223,8 @@ export default function OverlayCanvas({
     const compW = state.width || 1920;
     const compH = state.height || 1080;
     const scale = Math.min(1920 / compW, 1080 / compH);
-    
-    // Map from viewport to composition space before sending to backend
+
+    // Map from viewport (SVG design space) → composition space before sending to backend
     const bpts: BezierPoint[] = [];
     for (const pt of pts) {
       const mapped = viewportToComposition(pt.x, pt.y, compW, compH, false);
@@ -227,9 +232,9 @@ export default function OverlayCanvas({
         bpts.push({
           x: mapped.x,
           y: mapped.y,
-          // Tangents are vectors, they just need to be scaled without offset
-          inX: pt.inX / scale,
-          inY: pt.inY / scale,
+          // Tangents are vectors — scale without offset
+          inX:  pt.inX  / scale,
+          inY:  pt.inY  / scale,
           outX: pt.outX / scale,
           outY: pt.outY / scale,
         });
@@ -238,10 +243,28 @@ export default function OverlayCanvas({
 
     if (mode === 'pen') {
       if (!penClipId.current) {
-        const clip: any = await penApi.add(startFrame, duration, bpts, isClosed);
-        penClipId.current = clip.clipId;
-        window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
-        onDone?.(clip.clipId);
+        // ── Mutex: if another async creation is already in-flight, just queue
+        // the latest points so we don't spawn a second orphan clip. ──────────
+        if (penCreating.current) {
+          penPendingPts.current = { pts, isClosed };
+          return;
+        }
+        penCreating.current = true;
+        try {
+          const clip: any = await penApi.add(startFrame, duration, bpts, isClosed);
+          penClipId.current = clip.clipId;
+          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+          onDone?.(clip.clipId);
+          // Flush any points that arrived while we were waiting
+          if (penPendingPts.current) {
+            const { pts: latestPts, isClosed: latestClosed } = penPendingPts.current;
+            penPendingPts.current = null;
+            // Don't await — fire-and-forget so we don't block the UI
+            commitPoints(latestPts, latestClosed);
+          }
+        } finally {
+          penCreating.current = false;
+        }
       } else {
         await penApi.updatePoints(penClipId.current, bpts, isClosed);
       }
@@ -250,7 +273,6 @@ export default function OverlayCanvas({
       if (!targetClipId) return;
 
       if (!createdMaskId.current) {
-        // First commit — create the mask; use result.maskId (new stable field)
         const result = await maskApi.add(targetClipId, {
           shape: 'bezier', mode: 'add', points: bpts,
         });
@@ -259,12 +281,44 @@ export default function OverlayCanvas({
         window.dispatchEvent(new CustomEvent('fade:masks-changed', { detail: targetClipId }));
         onDone?.(targetClipId);
       } else {
-        // Subsequent commits — update the existing mask
         await maskApi.update(targetClipId, createdMaskId.current, { points: bpts, shape: 'bezier' });
         console.log('[OverlayCanvas] mask updated', createdMaskId.current, 'pts', bpts.length);
       }
     }
-  }, [mode, clipId, maskId, startFrame, duration, onDone]);
+  }, [mode, clipId, maskId, startFrame, duration, onDone, state]);
+
+  // ── Load existing pen clip on mount (pen mode with clipId) ─────────────────
+  // When the user re-selects the pen tool for a clip that already exists,
+  // load its current path so it's immediately visible and editable.
+  useEffect(() => {
+    if (mode !== 'pen' || !clipId) return;
+    penClipId.current = clipId;  // ensure ref is seeded from prop
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await penApi.getPoints(clipId);
+        if (cancelled || !data.points || data.points.length === 0) return;
+        const compW = state.width || 1920;
+        const compH = state.height || 1080;
+        const scale = Math.min(1920 / compW, 1080 / compH);
+        const pts = data.points.map((p, i) => {
+          const vp = compositionToViewport(p.x, p.y, compW, compH);
+          return {
+            id: `loaded-${i}`,
+            x: vp.x, y: vp.y,
+            inX: (p.inX ?? 0) * scale, inY: (p.inY ?? 0) * scale,
+            outX: (p.outX ?? 0) * scale, outY: (p.outY ?? 0) * scale,
+          };
+        });
+        setPoints(pts);
+        setClosed(data.isClosed ?? false);
+        console.log('[OverlayCanvas] loaded existing pen clip', clipId, 'pts', pts.length);
+      } catch (err) {
+        console.warn('[OverlayCanvas] could not load existing pen clip', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [mode, clipId]);
 
   // ── Load existing mask on mount (mask mode) ───────────────────────────────
   // When the user re-selects the pen-mask tool for a clip that already has a

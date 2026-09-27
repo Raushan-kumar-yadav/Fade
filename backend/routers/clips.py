@@ -278,6 +278,7 @@ def addPenClip(req: PenClipRequest):
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
     notify("timeline")
+    notify("render")
     return clip.toDict()
 
 
@@ -293,7 +294,22 @@ def updatePenPoints(clipId: str, req: PenPointsRequest):
                       outX=float(p.get("outX",0)), outY=float(p.get("outY",0)))
     if req.isClosed is not None:
         clip.isClosed = req.isClosed
+    notify("render")
     return clip.toDict()
+
+
+@router.get("/clips/pen/{clipId}/points")
+def getPenPoints(clipId: str):
+    """Return the current vertices and closed state of a pen clip."""
+    clip, _ = _find_clip(clipId)
+    if not isinstance(clip, PenClip):
+        raise HTTPException(400, "Not a pen clip")
+    verts = clip.shapePath.vertices
+    points = [
+        {"x": v.x, "y": v.y, "inX": v.inX, "inY": v.inY, "outX": v.outX, "outY": v.outY}
+        for v in verts
+    ]
+    return {"clipId": clipId, "points": points, "isClosed": clip.isClosed}
 
 
 @router.post("/clips/pen/{clipId}/path-keyframe")

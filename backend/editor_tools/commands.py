@@ -93,11 +93,6 @@ class AddBrushStrokeCommand(Command):
                 if c.clipId == sel_id and hasattr(c, "brush_strokes"):
                     return c, track
         return None, None
-        for track in self.engine.activeTimeline.tracks:
-            for c in track.clips:
-                if c.clipId == sel_id and isinstance(c, ImageClip):
-                    return c, track
-        return None, None
 
     # ------------------------------------------------------------------
     # Command interface
@@ -169,14 +164,8 @@ class AddBrushStrokeCommand(Command):
     def description(self) -> str:
         return "Eraser Stroke" if self.is_eraser else "Brush Stroke"
 
-import os
-import math
-import uuid
-from backend.history.commandStack import Command
-
 import math
 import copy
-from backend.history.commandStack import Command
 from backend.timeline.clips.imageClip import BrushStroke, ImageClip
 
 def distance_point_to_segment(p, a, b):
@@ -373,8 +362,12 @@ class TransformClipCommand(Command):
         notify("timeline")
         notify("render")
         
-    def do(self) -> None:
+    def execute(self) -> None:
         self._apply(self.after)
-        
+
     def undo(self) -> None:
         self._apply(self.before)
+
+    @property
+    def description(self) -> str:
+        return "Transform Clip"
