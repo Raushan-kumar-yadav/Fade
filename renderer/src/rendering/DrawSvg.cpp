@@ -1,3 +1,4 @@
+#include "TransformHelper.hpp"
 // DrawSvg.cpp — SVG clip rendering for Fade's HeadlessCompositor.
 // Pattern from Qteee-Vulkan: SvgAssest (SkSVGDOM) + SvgDrawNode (canvas ops).
 

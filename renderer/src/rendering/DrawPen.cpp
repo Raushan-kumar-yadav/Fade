@@ -1,3 +1,4 @@
+#include "TransformHelper.hpp"
 #include "rendering/DrawPen.hpp"
 
 // Skia includes
@@ -72,8 +73,8 @@ void drawPen(SkCanvas *canvas, const ClipDesc &clip, int canvasW, int canvasH) {
   canvas->save();
   {
     const auto &t = clip.transform;
-    const float cx = t.anchorX * (float)canvasW;
-    const float cy = t.anchorY * (float)canvasH;
+    const float cx = (float)canvasW * 0.5f + t.anchorX;
+  const float cy = (float)canvasH * 0.5f + t.anchorY;
     canvas->translate(t.x + cx, t.y + cy);
     canvas->rotate(t.rotation);
     canvas->scale(t.scaleX, t.scaleY);
@@ -81,7 +82,7 @@ void drawPen(SkCanvas *canvas, const ClipDesc &clip, int canvasW, int canvasH) {
   }
 
   // Build the bezier path
-  const SkPath path = buildFromPoints(pen.points, pen.isClosed);
+  const SkPath path = buildFromPoints(pen.points, pen.isClosed); std::cout << "[DIAGNOSTIC] PEN canvasW=" << canvasW << " canvasH=" << canvasH << " first_pt_x=" << (pen.points.empty() ? 0 : pen.points[0].x) << std::endl;
 
   //   Drop shadow
   if (pen.shadowEnabled) {
@@ -123,7 +124,7 @@ void drawPen(SkCanvas *canvas, const ClipDesc &clip, int canvasW, int canvasH) {
     strokePaint.setStrokeCap(SkPaint::kRound_Cap);
     strokePaint.setStrokeJoin(SkPaint::kRound_Join);
     strokePaint.setAntiAlias(true);
-    canvas->drawPath(path, strokePaint);
+    std::cout << "[DIAGNOSTIC] PEN DRAWN bounds left=" << path.getBounds().left() << " top=" << path.getBounds().top() << std::endl; canvas->drawPath(path, strokePaint);
   }
 
   canvas->restore();

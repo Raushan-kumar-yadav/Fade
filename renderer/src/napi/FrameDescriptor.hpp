@@ -35,6 +35,12 @@ struct ClipDesc {
   ClipTransform transform;
   std::vector<EffectParam> effects;
 
+  // Crop parameters (0.0 to 1.0 or pixel values? Inspector is usually 0 to 1)
+  float cropLeft = 0.f;
+  float cropRight = 0.f;
+  float cropTop = 0.f;
+  float cropBottom = 0.f;
+
   enum class Type {
     Video,
     Image,

@@ -105,6 +105,56 @@ def _build_comp_frame_descriptor(
                     pass
             inner_clips.append(ic_data)
 
+            if hasattr(inner_clip, "brush_strokes") and inner_clip.brush_strokes:
+                for idx, stroke in enumerate(inner_clip.brush_strokes):
+                    if ic_type == "image":
+                        scale = min(1920.0 / c_width, 1080.0 / c_height)
+                        offset_x = (1920.0 - c_width * scale) / 2.0
+                        offset_y = (1080.0 - c_height * scale) / 2.0
+                        pen_points = [
+                            {
+                                "x": float(pt['x']) * scale + offset_x,
+                                "y": float(pt['y']) * scale + offset_y,
+                                "inX": 0.0, "inY": 0.0,
+                                "outX": 0.0, "outY": 0.0
+                            }
+                            for pt in stroke.points
+                        ]
+                        xform = {"x": 0.0, "y": 0.0, "scaleX": 1.0, "scaleY": 1.0, "rotation": 0.0, "anchorX": 0.0, "anchorY": 0.0}
+                        stroke_width = float(stroke.size) * scale
+                    else:
+                        pen_points = [
+                            {
+                                "x": float(pt['x']),
+                                "y": float(pt['y']),
+                                "inX": 0.0, "inY": 0.0,
+                                "outX": 0.0, "outY": 0.0
+                            }
+                            for pt in stroke.points
+                        ]
+                        xform = ic_xform
+                        stroke_width = float(stroke.size)
+
+                    brush_clip = {
+                        "clipId": f"{inner_clip.clipId}_brush_{idx}",
+                        "file": "",
+                        "sourceFrame": ic_sf,
+                        "opacity": ic_op,
+                        "blendMode": ic_bm,
+                        "type": "pen",
+                        "transform": xform,
+                        "effects": [],
+                        "penStyle": {
+                            "isClosed": False,
+                            "points": pen_points,
+                            "fillOpacity": 0.0,
+                            "strokeColor": list(stroke.color),
+                            "strokeWidth": stroke_width,
+                            "shadowEnabled": False,
+                        }
+                    }
+                    inner_clips.append(brush_clip)
+
     if inner_frame % 30 == 0 or _depth == 0:
         print(f"[CompFD depth={_depth}] comp={comp_id} inner_frame={inner_frame} "
               f"tracks={len(inner_tl.tracks)} clips_in_fd={len(inner_clips)}", flush=True)
@@ -184,15 +234,54 @@ def _get_frame_data(frame: int) -> dict:
                 sx, sy = t.scale.get()
                 rot = t.rotation.get()
                 ax, ay = t.anchor.get()
+                
+                # Native image pivot compatibility
+                anchor_x = float(ax)
+                anchor_y = float(ay)
+                if clip_type in ('image', 'video'):
+                    anchor_x = (width / 2.0 + anchor_x) / float(width)
+                    anchor_y = (height / 2.0 + anchor_y) / float(height)
+
                 transform_dict = {
                     "x": float(px), "y": float(py),
                     "scaleX": float(sx), "scaleY": float(sy),
                     "rotation": float(rot),
-                    "anchorX": float(ax), "anchorY": float(ay),
+                    "anchorX": anchor_x, "anchorY": anchor_y,
                 }
             except Exception:
                 transform_dict = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,
                                   "rotation": 0, "anchorX": 0.0, "anchorY": 0.0}
+
+            base_w = 1920
+            base_h = 1080
+            if clip_type == 'image':
+                if hasattr(clip, '_ensureDecoded'):
+                    if not getattr(clip, 'filepath', None) and filepath:
+                        clip.filepath = filepath
+                    clip._ensureDecoded()
+                if getattr(clip, '_skiaImage', None):
+                    base_w = clip._skiaImage.width()
+                    base_h = clip._skiaImage.height()
+            elif clip_type == 'shape' and hasattr(clip, 'style'):
+                base_w = float(getattr(clip.style, 'width', 200))
+                base_h = float(getattr(clip.style, 'height', 120))
+            elif clip_type == 'video':
+                if not getattr(clip, 'filepath', None) and filepath:
+                    clip.filepath = filepath
+                if getattr(clip, 'decoder', None):
+                    if hasattr(clip.decoder, 'width') and clip.decoder.width and clip.decoder.width > 0:
+                        base_w = clip.decoder.width
+                        base_h = clip.decoder.height
+
+            crop_dict = {"cropLeft": 0.0, "cropRight": 0.0, "cropTop": 0.0, "cropBottom": 0.0}
+            if hasattr(clip, 'cropLeft'):
+                try:
+                    crop_dict["cropLeft"] = float(clip.cropLeft.get())
+                    crop_dict["cropRight"] = float(clip.cropRight.get())
+                    crop_dict["cropTop"] = float(clip.cropTop.get())
+                    crop_dict["cropBottom"] = float(clip.cropBottom.get())
+                except Exception:
+                    pass
 
             clip_data: dict = {
                 "clipId": clip_id,
@@ -203,6 +292,9 @@ def _get_frame_data(frame: int) -> dict:
                 "blendMode": blend_mode,
                 "type": clip_type,
                 "transform": transform_dict,
+                "baseWidth": base_w,
+                "baseHeight": base_h,
+                **crop_dict,
                 "effects": _serialize_effects(clip, frame),
             }
             _serialize_clip_type_fields(clip, clip_type, frame, clip_data,
@@ -233,6 +325,59 @@ def _get_frame_data(frame: int) -> dict:
                 clip_data["masks"] = masks_out
 
             clips_out.append(clip_data)
+
+            try:
+                if hasattr(clip, "brush_strokes") and clip.brush_strokes:
+                    for idx, stroke in enumerate(clip.brush_strokes):
+                        if clip_type == "image":
+                            scale = min(1920.0 / width, 1080.0 / height)
+                            offset_x = (1920.0 - width * scale) / 2.0
+                            offset_y = (1080.0 - height * scale) / 2.0
+                            pen_points = [
+                                {
+                                    "x": float(pt['x']) * scale + offset_x,
+                                    "y": float(pt['y']) * scale + offset_y,
+                                    "inX": 0.0, "inY": 0.0,
+                                    "outX": 0.0, "outY": 0.0
+                                }
+                                for pt in stroke.points
+                            ]
+                            xform = {"x": 0.0, "y": 0.0, "scaleX": 1.0, "scaleY": 1.0, "rotation": 0.0, "anchorX": 0.0, "anchorY": 0.0}
+                            stroke_width = float(stroke.size) * scale
+                        else:
+                            pen_points = [
+                                {
+                                    "x": float(pt['x']),
+                                    "y": float(pt['y']),
+                                    "inX": 0.0, "inY": 0.0,
+                                    "outX": 0.0, "outY": 0.0
+                                }
+                                for pt in stroke.points
+                            ]
+                            xform = transform_dict
+                            stroke_width = float(stroke.size)
+
+                        brush_clip = {
+                            "clipId": f"{clip_id}_brush_{idx}",
+                            "file": "",
+                            "sourceFrame": source_frame,
+                            "opacity": opacity,
+                            "blendMode": blend_mode,
+                            "type": "pen",
+                            "transform": xform,
+                            "effects": [],
+                            "penStyle": {
+                                "isClosed": False,
+                                "points": pen_points,
+                                "fillOpacity": 0.0,
+                                "strokeColor": list(stroke.color),
+                                "strokeWidth": stroke_width,
+                                "shadowEnabled": False,
+                            }
+                        }
+                        clips_out.append(brush_clip)
+            except Exception as e:
+                print(f"[BrushSerialize] ERROR for clip {clip_id}: {e}", flush=True)
 
     transition_desc = None
     result = tl.getTransitionAt(frame)

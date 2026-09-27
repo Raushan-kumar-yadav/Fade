@@ -27,7 +27,8 @@ def test_eraser():
     cmd_brush = AddBrushStrokeCommand(engine, [{"x":0,"y":0}], 10, [1,1,1,1], 1.0, False)
     engine.commandStack.execute(cmd_brush)
     
-    cmd_eraser = AddBrushStrokeCommand(engine, [{"x":10,"y":10}], 10, [1,1,1,1], 1.0, True)
+    from backend.editor_tools.commands import EraseGeometryCommand
+    cmd_eraser = EraseGeometryCommand(engine, [{"x":0,"y":0}], 15.0)
     engine.commandStack.execute(cmd_eraser)
     
     print("After Eraser:")

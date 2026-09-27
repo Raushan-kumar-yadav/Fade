@@ -113,6 +113,8 @@ export interface TimelineState {
   currentFrame: number;
   totalFrames: number;
   fps: number;
+  width: number;
+  height: number;
   zoomX: number;
   selectedTool: ToolType;
   isPlaying: boolean;
@@ -182,7 +184,8 @@ export type TimelineAction =
   | { type: "ENTER_COMP"; compId: string; compName: string; kind: "video" | "image" }
   | { type: "EXIT_COMP" }
   | { type: "SWITCH_COMP_TAB"; compId: string | null }   // switch to existing tab
-  | { type: "CLOSE_COMP_TAB"; compId: string };           // close a comp tab
+  | { type: "CLOSE_COMP_TAB"; compId: string }           // close a comp tab
+  | { type: "SET_COMP_DIMENSIONS"; width: number; height: number };
 
 // Layout Constants
 export const HEADER_WIDTH = 120;

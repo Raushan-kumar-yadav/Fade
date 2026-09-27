@@ -127,6 +127,8 @@ export default function App() {
   const [selected, setSelectedRaw]    = useState<SelectedItem | null>(null)
   const [penSubMode, setPenSubMode] = useState<PenSubMode>('pen:add')
   const [penOutputMode,  setPenOutputMode]  = useState<PenOutputMode>('clip')
+  const [brushColor, setBrushColor] = useState<[number, number, number, number]>([1, 1, 1, 1])
+  const [brushSize, setBrushSize] = useState<number>(10)
 
   // Global AI chat widget  
   const [aiOpen, setAiOpen] = useState(false)
@@ -232,6 +234,10 @@ export default function App() {
         setPenSubMode,
         penOutputMode,
         setPenOutputMode,
+          brushColor,
+          setBrushColor,
+          brushSize,
+          setBrushSize,
       }}>
         <div className="app-shell">
           <TitleBar
@@ -295,3 +301,4 @@ export default function App() {
     </SelectionContext.Provider>
   )
 }
+

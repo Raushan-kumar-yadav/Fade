@@ -1,3 +1,4 @@
+#include "TransformHelper.hpp"
 #include "rendering/DrawShape.hpp"
 
 #include "core/SkBlurTypes.h"
@@ -112,8 +113,8 @@ void drawShape(SkCanvas *canvas, const ClipDesc &clip, int canvasW,
   canvas->save();
   {
     const auto &t = clip.transform;
-    const float cx = t.anchorX * (float)canvasW;
-    const float cy = t.anchorY * (float)canvasH;
+    const float cx = (float)canvasW * 0.5f + t.anchorX;
+  const float cy = (float)canvasH * 0.5f + t.anchorY;
     canvas->translate(t.x + cx, t.y + cy);
     canvas->rotate(t.rotation);
     canvas->scale(t.scaleX, t.scaleY);
