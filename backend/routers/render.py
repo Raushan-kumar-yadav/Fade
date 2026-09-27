@@ -234,11 +234,19 @@ def _get_frame_data(frame: int) -> dict:
                 sx, sy = t.scale.get()
                 rot = t.rotation.get()
                 ax, ay = t.anchor.get()
+                
+                # Native image pivot compatibility
+                anchor_x = float(ax)
+                anchor_y = float(ay)
+                if clip_type in ('image', 'video'):
+                    anchor_x = (width / 2.0 + anchor_x) / float(width)
+                    anchor_y = (height / 2.0 + anchor_y) / float(height)
+
                 transform_dict = {
                     "x": float(px), "y": float(py),
                     "scaleX": float(sx), "scaleY": float(sy),
                     "rotation": float(rot),
-                    "anchorX": float(ax), "anchorY": float(ay),
+                    "anchorX": anchor_x, "anchorY": anchor_y,
                 }
             except Exception:
                 transform_dict = {"x": 0, "y": 0, "scaleX": 1, "scaleY": 1,

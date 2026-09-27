@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 from backend.timeline.clips.baseClip import BaseClip

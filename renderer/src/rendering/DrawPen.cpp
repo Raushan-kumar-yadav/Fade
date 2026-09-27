@@ -1,3 +1,4 @@
+#include "TransformHelper.hpp"
 #include "rendering/DrawPen.hpp"
 
 // Skia includes

@@ -1,3 +1,4 @@
+#include "TransformHelper.hpp"
 #include "rendering/DrawShape.hpp"
 
 #include "core/SkBlurTypes.h"

@@ -1,3 +1,4 @@
+#include "TransformHelper.hpp"
 
 
 #include "rendering/DrawText.hpp"
@@ -190,13 +191,7 @@ void drawText(SkCanvas *canvas, const ClipDesc &clip, int canvasW,
   sk_sp<SkTypeface> tf = resolveTypeface(ts.fontFamily, ts.bold, ts.italic);
 
   const auto &t = clip.transform;
-  const float cx = static_cast<float>(canvasW) * 0.5f + t.anchorX;
-  const float cy = static_cast<float>(canvasH) * 0.5f + t.anchorY;
-
-  SkM44 model = SkM44::Translate(t.x + cx, t.y + cy, 0.f);
-  model.preConcat(SkM44::Rotate({0, 0, 1}, t.rotation * (SK_ScalarPI / 180.f)));
-  model.preConcat(SkM44::Scale(t.scaleX, t.scaleY, 1.f));
-  model.preConcat(SkM44::Translate(-cx, -cy, 0.f));
+  SkM44 model = fade::drawing::getCanonicalMatrix(t);
 
   canvas->save();
   canvas->concat(model);
@@ -214,9 +209,9 @@ void drawText(SkCanvas *canvas, const ClipDesc &clip, int canvasW,
     maxLineW = std::max(maxLineW, w);
   }
 
-  const float originX = static_cast<float>(canvasW) * 0.5f;
-  const float originY =
-      static_cast<float>(canvasH) * 0.5f - totalH * 0.5f + ts.fontSize;
+  // Local object origin is (0,0) center
+  const float originX = 0.0f;
+  const float originY = 0.0f - totalH * 0.5f + ts.fontSize;
 
   // Background box
   if (ts.bgEnabled) {

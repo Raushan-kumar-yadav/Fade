@@ -1,4 +1,4 @@
-#include "HeadlessCompositor.hpp"
+﻿#include "HeadlessCompositor.hpp"
 
 #include "stb/stb_image.h"
 
@@ -115,7 +115,7 @@ HeadlessCompositor::renderComp(const ClipDesc &clip, int64_t frame,
   // Cycle detection
   if (ancestorStack.count(compId)) {
     LOG_ERROR("[Comp] Cycle detected for compId=" + compId +
-              " — returning red error frame");
+              " ΓÇö returning red error frame");
     SkImageInfo errInfo =
         SkImageInfo::MakeN32Premul(m_width, m_height, SkColorSpace::MakeSRGB());
     auto errSurf = SkSurfaces::RenderTarget(m_skia->getDirectContext(),
@@ -375,7 +375,7 @@ void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
   std::vector<ClipPixels> decoded;
 
   for (const auto &clip : fd.clips) {
-    // Generative types — no pixel data
+    // Generative types ΓÇö no pixel data
     if (clip.type == ClipDesc::Type::Solid ||
         clip.type == ClipDesc::Type::Text ||
         clip.type == ClipDesc::Type::Shape ||
@@ -701,7 +701,7 @@ void HeadlessCompositor::drawClipOnCanvas(
       std::cerr << "[drawClipOnCanvas] WARN: dataBytes=" << dataBytes
                 << " > actualDataSize=" << actualDataSize << " imgW=" << imgW
                 << " imgH=" << imgH
-                << " — clamping (will only warn once per size)" << std::endl;
+                << " ΓÇö clamping (will only warn once per size)" << std::endl;
     }
     // Derive safe height from actual data
     imgH = static_cast<int>(actualDataSize / rowBytes);
@@ -1366,7 +1366,7 @@ std::string HeadlessCompositor::fetchFrameJson(int64_t frameNum) {
   // Send
   uint32_t req = static_cast<uint32_t>(frameNum);
   if (send(m_frameSock, reinterpret_cast<char *>(&req), 4, 0) != 4) {
-    LOG_ERROR("TCP send failed — reconnecting next frame");
+    LOG_ERROR("TCP send failed ΓÇö reconnecting next frame");
     closesocket(m_frameSock);
     m_frameSock = INVALID_SOCKET;
     return {};

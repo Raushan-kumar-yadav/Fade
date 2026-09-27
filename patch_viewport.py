@@ -1,40 +1,27 @@
 ﻿import os
+import re
 
-with open('src/workspaces/viewport/ViewportWidget.tsx', 'r', encoding='utf-8') as f:
-    text = f.read()
+path = 'src/workspaces/viewport/ViewportWidget.tsx'
+with open(path, 'r', encoding='utf-8') as f:
+    content = f.read()
 
-if "import BrushOverlay" not in text:
-    text = text.replace("import OverlayCanvas from './OverlayCanvas';", "import OverlayCanvas from './OverlayCanvas';\nimport BrushOverlay from './BrushOverlay';")
+# Revert my bad patch if it applied
+import re
+content = re.sub(r'const arr = new Uint8Array\(buf\);.*?if \(buf\.byteLength < needed\) return;', 'if (buf.byteLength < needed) return;', content, flags=re.DOTALL)
 
-target = '''          {/* Shape draw overlay */}
-          {activeTool !== 'shape:path' && activeTool.startsWith('shape:') && (
-            <OverlayCanvas
-              mode="shape"
-              width={1920}
-              height={1080}
-            />
-          )}'''
+patch = '''      const arr = new Uint8Array(buf);
+      let firstNonZero = -1;
+      for (let i = 0; i < arr.length; i++) {
+          if (arr[i] !== 0) {
+              firstNonZero = i;
+              break;
+          }
+      }
+      console.log([DIAGNOSTIC] ViewportWidget | isNativeRender: true | frame: {frameNum} | bufSize: {buf.byteLength} | expected: {needed} | firstNonZero: {firstNonZero});
+      if (buf.byteLength < needed) return;'''
 
-replacement = '''          {/* Shape draw overlay */}
-          {activeTool !== 'shape:path' && activeTool.startsWith('shape:') && (
-            <OverlayCanvas
-              mode="shape"
-              width={1920}
-              height={1080}
-            />
-          )}
-          
-          {/* Brush / Eraser overlay */}
-          {(activeTool === 'brush' || activeTool === 'eraser') && (
-            <BrushOverlay
-              mode={activeTool as 'brush' | 'eraser'}
-              width={1920}
-              height={1080}
-            />
-          )}'''
+content = content.replace('if (buf.byteLength < needed) return;', patch)
 
-if "<BrushOverlay" not in text:
-    text = text.replace(target, replacement)
-
-with open('src/workspaces/viewport/ViewportWidget.tsx', 'w', encoding='utf-8') as f:
-    f.write(text)
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(content)
+print("Patched ViewportWidget.tsx")

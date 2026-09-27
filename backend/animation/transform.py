@@ -1,14 +1,14 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import math
 from backend.animation.animatableProperty import AnimatableProperty, Vec2Property
 
 
 class Transform:
     """
-    Standard clip transform — position, scale, rotation, opacity, anchor.
+    Standard clip transform ΓÇö position, scale, rotation, opacity, anchor.
     Mirrors C++ ClipTransform / m_transform in VideoClip.
 
-    All properties are AnimatableProperty — they can hold keyframes
+    All properties are AnimatableProperty ΓÇö they can hold keyframes
     and are evaluated every frame by calling evaluateAll(localFrame).
     """
 
@@ -135,6 +135,6 @@ class Transform:
             f"Transform("
             f"pos=({px:.1f},{py:.1f}), "
             f"scale=({sx:.2f},{sy:.2f}), "
-            f"rot={self.rotation.get():.1f}°, "
+            f"rot={self.rotation.get():.1f}┬░, "
             f"opacity={self.opacity.get():.2f})"
         )

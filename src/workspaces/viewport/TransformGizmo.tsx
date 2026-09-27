@@ -219,8 +219,21 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
 
   const handlePointerDown = (e: React.PointerEvent, type: string) => {
     e.stopPropagation();
-    initialTransformRef.current = { px, py, sx, sy, rot, ax, ay, cropL, cropR, cropT, cropB, localMinX, localMaxX, localMinY, localMaxY, imgW, imgH };
-    dragStartRef.current = designCoord(e);
+    const startCoord = designCoord(e);
+    let startMouseAngle = 0;
+    if (type === 'rotate') {
+       const objCenter = applyMatrix({x: 0, y: 0});
+       startMouseAngle = Math.atan2(startCoord.y - objCenter.y, startCoord.x - objCenter.x);
+    }
+    
+    initialTransformRef.current = { 
+       px, py, sx, sy, rot, ax, ay, 
+       cropL, cropR, cropT, cropB, 
+       localMinX, localMaxX, localMinY, localMaxY, imgW, imgH,
+       startMouseAngle
+    } as any;
+    
+    dragStartRef.current = startCoord;
     setDragType(type);
     setIsDragging(true);
     (e.target as Element).setPointerCapture(e.pointerId);
@@ -251,13 +264,21 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
       }
     } 
     else if (dragType === 'rotate') {
-         const anchorScreen = applyMatrix({x: init.ax, y: init.ay});
-         const startAngle = Math.atan2(dragStartRef.current.y - anchorScreen.y, dragStartRef.current.x - anchorScreen.x);
-         const curAngle = Math.atan2(pt.y - anchorScreen.y, pt.x - anchorScreen.x);
-         let deltaAngle = curAngle - startAngle;
-         while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
-         while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+         const objectCenter = applyMatrix({x: 0, y: 0});
+         const currentMouseAngle = Math.atan2(pt.y - objectCenter.y, pt.x - objectCenter.x);
+         let deltaAngle = currentMouseAngle - (init as any).startMouseAngle;
+         
+         if (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+         if (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+         
          next.rot = init.rot + (deltaAngle * 180 / Math.PI);
+         
+         next.px = init.px;
+         next.py = init.py;
+         next.sx = init.sx;
+         next.sy = init.sy;
+         next.ax = init.ax;
+         next.ay = init.ay;
       } 
     else if (dragType?.startsWith('resize_')) {
        const isEdge = dragType.includes('edge');
@@ -559,33 +580,24 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
             >
               {mode === 'crop' ? 'Done' : 'Crop'}
             </button>
-          )}
-          <div style={{ width: `${2 * svgScale}px`, height: `${32 * svgScale}px`, background: '#e5e7eb' }} />
-          <button 
-            onClick={(e) => {
-              e.stopPropagation();
-              inspectorApi.setParam(selected.clipId, 'rotation', rot + 90);
-              fetch(`http://127.0.0.1:${(window as any).__FADE_PORT__ || 8000}/clips/transform-batch`, {
-                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({
-                   clip_id: selected.clipId,
-                   before: { rotation: rot },
-                   after: { rotation: rot + 90 }
-                 })
-              });
-            }}
-            style={{ 
-              background: 'transparent', color: '#000000', border: 'none', cursor: 'pointer', 
-              fontSize: `${18 * svgScale}px`, fontWeight: '600', padding: `${10 * svgScale}px ${16 * svgScale}px`, 
-              borderRadius: `${20 * svgScale}px`, transition: 'all 0.15s ease' 
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-          >
-            Rotate
-          </button>
-        </div>
-      </foreignObject>
-    </svg>
-  );
+            )}
+            <div style={{ width: `${2 * svgScale}px`, height: `${32 * svgScale}px`, background: '#e5e7eb' }} />
+            <button 
+              onPointerDown={(e) => {
+                handlePointerDown(e, 'rotate');
+              }}
+              style={{ 
+                background: 'transparent', color: '#000000', border: 'none', cursor: 'ew-resize', 
+                fontSize: `${18 * svgScale}px`, fontWeight: '600', padding: `${10 * svgScale}px ${16 * svgScale}px`, 
+                borderRadius: `${20 * svgScale}px`, transition: 'all 0.15s ease' 
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+            >
+              Rotate
+            </button>
+          </div>
+        </foreignObject>
+      </svg>
+    );
 }

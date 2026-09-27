@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from backend.timeline.clips.baseClip import BaseClip
@@ -197,7 +197,7 @@ class ImageClip(BaseClip):
             if len(pts) < 2:
                 continue
 
-            # Map composition-space points → 1920x1080 renderer space
+            # Map composition-space points ΓåÆ 1920x1080 renderer space
             vertices = [
                 PathVertex(
                     x=p["x"] * scale + offset_x,
