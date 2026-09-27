@@ -86,3 +86,7 @@ Thumbs.db
 #   Misc  
 virality.db
 *.bak
+renderer/build/render_engine.dir/
+renderer/build/x64/
+renderer/build/*.filters
+renderer/build/*.slnx
