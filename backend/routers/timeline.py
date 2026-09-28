@@ -45,11 +45,19 @@ class AddTrackRequest(BaseModel):
     type: str = "video"   # "video" | "audio"
     name: str = ""
     index: int | None = None  # insert position (None = append)
+    compId: str | None = None  # if set, add track to this comp; else uses activeTimeline
 
 
 @router.post("/timeline/add-track")
 def addTrack(req: AddTrackRequest):
-    tl = engine.activeTimeline
+    # Use explicit compId if provided, otherwise fall back to active timeline
+    if req.compId:
+        tl = engine.getTimeline(req.compId)
+        if tl is None:
+            from fastapi import HTTPException
+            raise HTTPException(404, f"Comp {req.compId!r} not found")
+    else:
+        tl = engine.activeTimeline
     if tl is None:
         from fastapi import HTTPException
         raise HTTPException(400, "No active timeline")

@@ -374,6 +374,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       try {
         const result = await addClipToTimeline(
           hit.assetId, trackIndex, frame, hit.duration, hit.inFrames,
+          state.activeCompId,  // ensures clip lands in the active page comp in PDF mode
         );
         if (result) {
           // Atomic swap: one render, no flash
@@ -425,7 +426,10 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       if (asset.type === 'svg') {
         result = await addSvgClipToTimeline(asset.filepath, trackIndex, frame, duration);
       } else {
-        result = await addClipToTimeline(asset.assetId, trackIndex, frame, duration);
+        result = await addClipToTimeline(
+          asset.assetId, trackIndex, frame, duration, 0,
+          state.activeCompId,  // ensures clip lands in the active page comp in PDF mode
+        );
       }
       if (result) {
         const realClip: Clip = {
@@ -447,7 +451,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       console.error('[TrackRow] addClipToTimeline failed:', err);
       dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
     }
-  }, [track.id, track.clips, trackIndex, scrollLeft, state.zoomX, dispatch]);
+  }, [track.id, track.clips, trackIndex, scrollLeft, state.zoomX, state.activeCompId, dispatch]);
+
 
   // Cursor guide for creation tools  
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {

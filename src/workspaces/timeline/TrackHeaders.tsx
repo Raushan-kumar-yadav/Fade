@@ -17,12 +17,14 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
     if (adding) return;
     setAdding(true);
     try {
-      await addTrack(type);
+      // Pass activeCompId so the track is added to the current page comp explicitly
+      await addTrack(type, '', state.activeCompId);
       window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
     } finally {
       setAdding(false);
     }
-  }, [adding]);
+  }, [adding, state.activeCompId]);
+
 
   return (
     <div

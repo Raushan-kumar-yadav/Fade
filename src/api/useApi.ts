@@ -229,18 +229,20 @@ export async function setTrackLock(trackId: string): Promise<void> {
 export async function addTrack(
   type: "video" | "audio" = "video",
   name = "",
+  compId?: string | null,
 ): Promise<{ trackId: string; name: string; type: string } | null> {
   try {
     const r = await fetch(`${base()}/timeline/add-track`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, name }),
+      body: JSON.stringify({ type, name, compId: compId ?? null }),
     });
     return r.ok ? r.json() : null;
   } catch {
     return null;
   }
 }
+
 
 export async function removeTrack(trackId: string): Promise<void> {
   await fetch(`${base()}/timeline/track/${trackId}`, { method: "DELETE" });
