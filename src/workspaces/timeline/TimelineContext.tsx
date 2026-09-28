@@ -423,6 +423,24 @@ function reducer(state: TimelineState, action: TimelineAction): TimelineState {
       };
     }
 
+    case "SWAP_PDF_PAGE": {
+      // Replace the active comp in-place on the existing PDF tab — no new tab pushed.
+      // This is the Canva/Photoshop page-switch behavior.
+      const updatedTabs: CompTab[] = state.compTabStack.map(t =>
+        t.kind === "pdf" ? { ...t, compId: action.compId, name: action.compName } : t
+      );
+      return {
+        ...state,
+        activeCompId: action.compId,
+        activeCompName: action.compName,
+        activeCompKind: "image",   // each page is an imageComp
+        compTabStack: updatedTabs,
+        tracks: [],
+        currentFrame: 0,
+      };
+    }
+
+
     case "EXIT_COMP":
       return {
         ...state,

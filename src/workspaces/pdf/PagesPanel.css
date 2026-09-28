@@ -1,166 +1,227 @@
-/* ── PagesPanel — Canva-style page thumbnails sidebar ───────────────────── */
+/* ── PagesPanel — Canva-style page thumbnail sidebar ─────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
 .pages-panel {
   display: flex;
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: #0d0f14;
+  background: #0c0e14;
   overflow: hidden;
   font-family: 'Inter', 'Segoe UI', sans-serif;
 }
 
-/* Header */
+/* ── Header ────────────────────────────────────────────────────────────────── */
+
 .pages-panel__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px 8px;
-  border-bottom: 1px solid rgba(255,255,255,0.07);
+  padding: 11px 14px 9px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   flex-shrink: 0;
 }
 .pages-panel__title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.1em;
+  color: rgba(255,255,255,0.38);
 }
 .pages-panel__count {
-  font-size: 11px;
+  font-size: 10px;
   color: rgba(255,255,255,0.3);
   background: rgba(255,255,255,0.07);
   padding: 1px 7px;
   border-radius: 10px;
+  font-weight: 500;
 }
 
-/* Scrollable list */
+/* ── Scrollable list ───────────────────────────────────────────────────────── */
+
 .pages-panel__list {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 8px;
+  padding: 10px 10px 6px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.12) transparent;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
 }
 .pages-panel__list::-webkit-scrollbar { width: 4px; }
 .pages-panel__list::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.1);
   border-radius: 2px;
 }
 
-/* Loading */
-.pages-panel__loading {
-  color: rgba(255,255,255,0.35);
-  font-size: 12px;
-  text-align: center;
-  padding: 20px 0;
-}
+/* ── Individual page card ─────────────────────────────────────────────────── */
 
-/* Individual page card */
 .pages-panel__page {
   position: relative;
   cursor: pointer;
-  border-radius: 7px;
-  border: 2px solid transparent;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  border-radius: 6px;
+  border: 2px solid rgba(255,255,255,0.06);
+  background: #13151d;
+  transition: border-color 0.14s, box-shadow 0.14s, transform 0.1s;
   user-select: none;
+  padding: 5px 5px 0;
 }
 .pages-panel__page:hover {
-  border-color: rgba(139,92,246,0.4);
+  border-color: rgba(124,111,255,0.4);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5);
 }
 .pages-panel__page--active {
   border-color: #7c6fff !important;
-  box-shadow: 0 0 0 1px rgba(124,111,255,0.4), 0 4px 20px rgba(124,111,255,0.25) !important;
+  box-shadow: 0 0 0 1px rgba(124,111,255,0.35), 0 6px 22px rgba(124,111,255,0.22) !important;
+  background: #17192a;
 }
 .pages-panel__page--drag-over {
-  border-color: rgba(99,102,241,0.7) !important;
-  box-shadow: 0 0 0 2px rgba(99,102,241,0.35) !important;
-  transform: scale(1.02);
+  border-color: rgba(99,102,241,0.8) !important;
+  transform: scale(1.015);
+}
+.pages-panel__page--skeleton {
+  pointer-events: none;
 }
 
-/* Page number badge */
+/* ── Page number badge ─────────────────────────────────────────────────────── */
+
 .pages-panel__page-number {
   position: absolute;
-  top: 5px;
-  left: 7px;
-  font-size: 10px;
-  font-weight: 600;
-  color: rgba(255,255,255,0.5);
-  z-index: 2;
+  top: 7px;
+  left: 9px;
+  font-size: 9px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.45);
+  z-index: 4;
   line-height: 1;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
+  background: rgba(0,0,0,0.45);
+  padding: 2px 5px;
+  border-radius: 4px;
+  backdrop-filter: blur(4px);
 }
 
-/* Thumbnail wrapper */
+/* ── Thumbnail wrapper — A4 portrait ratio ─────────────────────────────────── */
+
 .pages-panel__thumb-wrap {
   width: 100%;
-  aspect-ratio: 16 / 9;
-  background: #1a1c23;
-  border-radius: 5px;
+  /* A4 portrait: 1 : √2 ≈ 1 : 1.414 */
+  aspect-ratio: 1 / 1.414;
+  background: #1a1c26;
+  border-radius: 4px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 .pages-panel__thumb {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: 3px;
+  transition: opacity 0.2s;
 }
-.pages-panel__thumb-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  color: rgba(255,255,255,0.15);
-  font-size: 24px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #16181f 0%, #1e2030 100%);
+.pages-panel__thumb--refreshing {
+  opacity: 0.7;
 }
 
-/* Delete button (shown on hover) */
+/* ── Shimmer skeleton ──────────────────────────────────────────────────────── */
+
+@keyframes pages-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+.pages-panel__thumb--shimmer {
+  background: linear-gradient(
+    90deg,
+    #1a1c26 25%,
+    #252736 50%,
+    #1a1c26 75%
+  );
+  background-size: 200% 100%;
+  animation: pages-shimmer 1.6s infinite linear;
+}
+
+/* ── Empty placeholder ─────────────────────────────────────────────────────── */
+
+.pages-panel__thumb-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(160deg, #14161f 0%, #1c1e2d 100%);
+}
+.pages-panel__thumb-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: rgba(255,255,255,0.1);
+  line-height: 1;
+}
+
+/* ── Page label ──────────────────────────────────────────────────────────────  */
+
+.pages-panel__page-label {
+  font-size: 10px;
+  color: rgba(255,255,255,0.35);
+  text-align: center;
+  padding: 5px 4px 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.pages-panel__page--active .pages-panel__page-label {
+  color: rgba(167,153,255,0.75);
+}
+
+/* ── Delete button (hover) ─────────────────────────────────────────────────── */
+
 .pages-panel__delete {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  width: 20px;
-  height: 20px;
+  top: 6px;
+  right: 6px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  background: rgba(239,68,68,0.85);
+  background: rgba(239,68,68,0.88);
   border: none;
   color: #fff;
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1;
   cursor: pointer;
   display: none;
   align-items: center;
   justify-content: center;
-  z-index: 3;
-  transition: background 0.15s;
+  z-index: 5;
+  transition: background 0.14s, transform 0.1s;
 }
 .pages-panel__page:hover .pages-panel__delete {
   display: flex;
 }
 .pages-panel__delete:hover {
   background: rgb(220,38,38);
+  transform: scale(1.1);
 }
 
-/* Add page button */
+/* ── Add page button ─────────────────────────────────────────────────────────  */
+
 .pages-panel__add-btn {
   flex-shrink: 0;
-  margin: 8px;
+  margin: 8px 10px 10px;
   padding: 9px 0;
-  border-radius: 8px;
-  border: 1.5px dashed rgba(124,111,255,0.35);
-  background: rgba(124,111,255,0.05);
-  color: rgba(124,111,255,0.8);
+  border-radius: 7px;
+  border: 1.5px dashed rgba(124,111,255,0.3);
+  background: rgba(124,111,255,0.04);
+  color: rgba(124,111,255,0.7);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
@@ -170,10 +231,11 @@
   justify-content: center;
   gap: 5px;
   letter-spacing: 0.02em;
+  font-family: 'Inter', sans-serif;
 }
 .pages-panel__add-btn:hover {
-  background: rgba(124,111,255,0.14);
-  border-color: rgba(124,111,255,0.7);
+  background: rgba(124,111,255,0.12);
+  border-color: rgba(124,111,255,0.65);
   color: #a78bfa;
 }
 .pages-panel__add-btn span {

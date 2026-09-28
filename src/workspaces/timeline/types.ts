@@ -184,6 +184,7 @@ export type TimelineAction =
   // Composition navigation
   | { type: "ENTER_COMP"; compId: string; compName: string; kind: "video" | "image" | "pdf" }
   | { type: "EXIT_COMP" }
+  | { type: "SWAP_PDF_PAGE"; compId: string; compName: string }  // replace active comp in-place (PDF page switch)
   | { type: "SWITCH_COMP_TAB"; compId: string | null }   // switch to existing tab
   | { type: "CLOSE_COMP_TAB"; compId: string }           // close a comp tab
   | { type: "SET_COMP_DIMENSIONS"; width: number; height: number };

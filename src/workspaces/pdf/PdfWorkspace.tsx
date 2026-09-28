@@ -170,11 +170,11 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
       .finally(() => { _pdfCreating = false; });
   }, [docId, docName]);  
 
-  // Select a page 
+  // Select a page — swap in-place on the PDF tab (no new tab)
   const handleSelectPage = useCallback((page: PdfPage) => {
     _defaultPageId = page.compId;
     setActivePageId(page.compId);
-    dispatch({ type: 'ENTER_COMP', compId: page.compId, compName: page.name, kind: 'image' });
+    dispatch({ type: 'SWAP_PDF_PAGE', compId: page.compId, compName: page.name });
     fetch(`http://127.0.0.1:${port}/comps/${page.compId}/activate`, { method: 'POST' }).catch(() => {});
   }, [dispatch, port]);
 
@@ -190,6 +190,12 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
     } catch { /* silent */ }
   }, [activePageId, port, state.currentFrame]);
 
+  // Register the PDF doc as a tab the first time it resolves (so SWAP_PDF_PAGE has a tab to mutate)
+  useEffect(() => {
+    if (!resolvedDocId) return;
+    dispatch({ type: 'ENTER_COMP', compId: resolvedDocId, compName: resolvedDocName, kind: 'pdf' });
+  }, [resolvedDocId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-select first page when doc resolves and no page is active
   useEffect(() => {
     if (!resolvedDocId || activePageId) return;
@@ -200,7 +206,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
         if (first) handleSelectPage({ index: 0, pageId: first.pageId, compId: first.compId, name: first.name });
       })
       .catch(() => {});
-  }, [resolvedDocId]);  
+  }, [resolvedDocId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   //   FlexLayout model  
   const modelRef = useRef<FlexLayout.Model>(FlexLayout.Model.fromJson(makePdfLayoutJson()));
