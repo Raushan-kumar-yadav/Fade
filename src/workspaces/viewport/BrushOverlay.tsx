@@ -23,7 +23,7 @@ export default function BrushOverlay({ mode, width, height }: Props) {
         body: JSON.stringify({ points: pts.map(p => ({ x: p.x, y: p.y, inX:0, inY:0, outX:0, outY:0 })), size: mode === 'brush' ? 10 : 20 })
       });
       
-      // Trigger a refresh of the timeline tracks so the C++ renderer updates
+ 
       window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
     } catch (e) {
       console.error('Failed to submit stroke', e);

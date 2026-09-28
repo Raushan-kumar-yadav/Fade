@@ -5,20 +5,20 @@ import { exportApi, type ExportProgress } from '../api/toolsApi'
 interface Format { id: string; label: string; icon: string; desc: string; w: number; h: number; ext: string }
 
 const FORMATS: Format[] = [
-  { id: 'mp4-1080',  label: 'MP4 1080p',   icon: '?', desc: 'H.264, AAC · 1920×1080', w: 1920, h: 1080, ext: 'mp4' },
-  { id: 'mp4-4k',    label: 'MP4 4K',      icon: '?', desc: 'H.264 · 3840×2160',      w: 3840, h: 2160, ext: 'mp4' },
-  { id: 'mp4-720',   label: 'MP4 720p',    icon: '?', desc: 'H.264 · 1280×720',       w: 1280, h:  720, ext: 'mp4' },
-  { id: 'shorts',    label: 'YT Shorts',   icon: '?', desc: '1080×1920, 60s max',     w: 1080, h: 1920, ext: 'mp4' },
-  { id: 'reels',     label: 'IG Reels',    icon: '?', desc: '1080×1920, AAC',         w: 1080, h: 1920, ext: 'mp4' },
-  { id: 'webm',      label: 'WebM VP9',    icon: '?', desc: 'Open format · 1920×1080',w: 1920, h: 1080, ext: 'webm' },
-  { id: 'gif',       label: 'GIF',         icon: '?', desc: 'Animated · 854×480',     w:  854, h:  480, ext: 'gif' },
+  { id: 'mp4-1080', label: 'MP4 1080p', icon: '?', desc: 'H.264, AAC ï¿½ 1920ï¿½1080', w: 1920, h: 1080, ext: 'mp4' },
+  { id: 'mp4-4k', label: 'MP4 4K', icon: '?', desc: 'H.264 ï¿½ 3840ï¿½2160', w: 3840, h: 2160, ext: 'mp4' },
+  { id: 'mp4-720', label: 'MP4 720p', icon: '?', desc: 'H.264 ï¿½ 1280ï¿½720',       w: 1280, h:  720, ext: 'mp4' },
+  { id: 'shorts', label: 'YT Shorts', icon: '?', desc: '1080ï¿½1920, 60s max', w: 1080, h: 1920, ext: 'mp4' },
+  { id: 'reels', label: 'IG Reels', icon: '?', desc: '1080ï¿½1920, AAC', w: 1080, h: 1920, ext: 'mp4' },
+  { id: 'webm', label: 'WebM VP9', icon: '?', desc: 'Open format ï¿½ 1920ï¿½1080',w: 1920, h: 1080, ext: 'webm' },
+  { id: 'gif', label: 'GIF', icon: '?', desc: 'Animated ï¿½ 854ï¿½480', w:  854, h:  480, ext: 'gif' },
 ]
 
 const FPS_OPTIONS   = ['24', '25', '30', '50', '60']
 const PRESET_OPTIONS= ['ultrafast','superfast','veryfast','faster','fast','medium','slow','slower','veryslow']
-const AUDIO_SR      = [{ v: '44100', l: '44.1 kHz' }, { v: '48000', l: '48 kHz' }]
-const AUDIO_CH      = [{ v: '2', l: 'Stereo' }, { v: '6', l: '5.1 Surround' }]
-const AUDIO_BR      = ['96k','128k','192k','256k','320k']
+const AUDIO_SR = [{ v: '44100', l: '44.1 kHz' }, { v: '48000', l: '48 kHz' }]
+const AUDIO_CH = [{ v: '2', l: 'Stereo' }, { v: '6', l: '5.1 Surround' }]
+const AUDIO_BR = ['96k','128k','192k','256k','320k']
 
 function estimatedMB(w: number, h: number, fpsVal: number, durSec: number, kbps: number): string {
   const totalKb = kbps * durSec
@@ -26,25 +26,25 @@ function estimatedMB(w: number, h: number, fpsVal: number, durSec: number, kbps:
 }
 
 export default function ExportWorkspace() {
-  const [selected,    setSelected]    = useState<string>('mp4-1080')
-  const [fps,         setFps]         = useState<string>('30')
+  const [selected, setSelected]    = useState<string>('mp4-1080')
+  const [fps, setFps] = useState<string>('30')
   const [outputPath,  setOutputPath]  = useState<string>('fade_export.mp4')
-  const [jobId,       setJobId]       = useState<string | null>(null)
-  const [progress,    setProgress]    = useState<ExportProgress | null>(null)
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [progress, setProgress]     = useState<ExportProgress | null>(null)
   const [webcompPhase, setWebcompPhase] = useState<{ active: boolean; done: number; total: number } | null>(null)
 
   // Quality controls
   const [qualityMode, setQualityMode] = useState<'crf' | 'bitrate'>('crf')
-  const [crf,         setCrf]         = useState<number>(22)
-  const [videoBr,     setVideoBr]     = useState<string>('8')   // in Mbps
-  const [preset,      setPreset]      = useState<string>('medium')
+  const [crf, setCrf] = useState<number>(22)
+  const [videoBr, setVideoBr] = useState<string>('8')   // in Mbps
+  const [preset, setPreset] = useState<string>('medium')
 
   // Audio controls
-  const [audioBr,     setAudioBr]     = useState<string>('192k')
-  const [audioSR,     setAudioSR]     = useState<string>('48000')
-  const [audioCh,     setAudioCh]     = useState<string>('2')
+  const [audioBr, setAudioBr] = useState<string>('192k')
+  const [audioSR, setAudioSR] = useState<string>('48000')
+  const [audioCh, setAudioCh] = useState<string>('2')
 
-  const pollRef    = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
   const wcCleanup  = useRef<(() => void) | null>(null)
 
@@ -55,7 +55,7 @@ export default function ExportWorkspace() {
   }
   useEffect(() => () => { stopPoll(); cleanupRef.current?.(); wcCleanup.current?.() }, [])
 
-  // Resolve real Videos folder from Electron on mount
+ 
   useEffect(() => {
     const api = (window as any).electronAPI
     if (!api?.getAppPath) return
@@ -64,10 +64,10 @@ export default function ExportWorkspace() {
       const dir = videosDir ?? ''
       setOutputPath(dir ? `${dir}${sep}fade_export.${fmt.ext}` : `fade_export.${fmt.ext}`)
     }).catch(() => {})
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+ 
   }, [])
 
-  // Update default output path extension when format changes
+ 
   useEffect(() => {
     setOutputPath(p => {
       const base = p.replace(/\.[^.]+$/, '')
@@ -75,7 +75,7 @@ export default function ExportWorkspace() {
     })
   }, [selected, fmt.ext])
 
-  // Rough duration estimate from playback state
+ 
   const [durSec, setDurSec] = useState<number>(10)
   useEffect(() => {
     const api = (window as any).electronAPI
@@ -93,7 +93,7 @@ export default function ExportWorkspace() {
   async function startExport() {
     const api = (window as any).electronAPI
 
-    // -- Native GPU export path ------------------------------------------------
+    //   Native GPU export path  
     if (api?.startExport && api?.onExportProgress) {
       setJobId('native')
       setProgress({ jobId: 'native', frame: 0, total: 0, percent: 0, done: false, error: null, path: null })
@@ -132,29 +132,29 @@ export default function ExportWorkspace() {
       api.startExport({
         outputPath,
         width:        fmt.w,
-        height:       fmt.h,
-        fps:          parseFloat(fps),
-        codec:        'auto',
+        height: fmt.h,
+        fps: parseFloat(fps),
+        codec: 'auto',
         videoBitrate: `${videoBr}M`,
-        crf:          qualityMode === 'crf' ? crf : -1,
+        crf: qualityMode === 'crf' ? crf : -1,
         preset,
         audioBitrate: audioBr,
         audioSampleRate: parseInt(audioSR),
-        audioChannels:   parseInt(audioCh),
+        audioChannels: parseInt(audioCh),
       })
       return
     }
 
-    // -- Python software-render fallback ---------------------------------------
+    //   Python software-render fallback 
     try {
       const res = await exportApi.start({
         outputPath,
-        width:    fmt.w,
-        height:   fmt.h,
-        fps:      parseFloat(fps),
+        width: fmt.w,
+        height: fmt.h,
+        fps: parseFloat(fps),
         formatId: selected,
         videoBitrate: `${videoBr}M`,
-        crf:      qualityMode === 'crf' ? crf : -1,
+        crf: qualityMode === 'crf' ? crf : -1,
         preset,
         audioBitrate: audioBr,
         audioSampleRate: parseInt(audioSR),
@@ -197,15 +197,15 @@ export default function ExportWorkspace() {
   }
 
   const exporting = !!jobId && !progress?.done
-  const pct       = progress?.percent ?? 0
-  const wcPct     = webcompPhase && webcompPhase.total > 0
+  const pct = progress?.percent ?? 0
+  const wcPct = webcompPhase && webcompPhase.total > 0
     ? Math.round((webcompPhase.done / webcompPhase.total) * 100) : 0
   const estSize   = estimatedMB(fmt.w, fmt.h, parseFloat(fps), durSec,
     qualityMode === 'crf' ? (3000 + (28 - crf) * 400) : parseFloat(videoBr) * 1000)
 
   return (
     <div className="export-ws">
-      {/* -- Left: Format selector --------------------------------------- */}
+ 
       <div className="export-ws__left">
         <h2>Output Format</h2>
         <div className="export-formats">
@@ -224,7 +224,7 @@ export default function ExportWorkspace() {
         </div>
       </div>
 
-      {/* -- Right: Settings + Progress ---------------------------------- */}
+ 
       <div className="export-ws__right">
         <h2>Export Settings</h2>
         <div className="export-props">
@@ -233,7 +233,7 @@ export default function ExportWorkspace() {
           <div className="export-prop-row">
             <div className="export-prop">
               <label>Resolution</label>
-              <div className="export-prop__value">{fmt.w} × {fmt.h}</div>
+              <div className="export-prop__value">{fmt.w} ï¿½ {fmt.h}</div>
             </div>
             <div className="export-prop">
               <label>Frame Rate</label>
@@ -261,14 +261,14 @@ export default function ExportWorkspace() {
 
             {qualityMode === 'crf' ? (
               <div className="export-prop">
-                <label>Quality — CRF {crf} {crf <= 18 ? '(Lossless)' : crf <= 23 ? '(High)' : crf <= 28 ? '(Medium)' : '(Low)'}</label>
+                <label>Quality ï¿½ CRF {crf} {crf <= 18 ? '(Lossless)' : crf <= 23 ? '(High)' : crf <= 28 ? '(Medium)' : '(Low)'}</label>
                 <input type="range" min={12} max={35} value={crf}
                   onChange={e => setCrf(parseInt(e.target.value))} disabled={exporting} />
                 <div className="export-slider-labels"><span>Best</span><span>Fastest</span></div>
               </div>
             ) : (
               <div className="export-prop">
-                <label>Video Bitrate — {videoBr} Mbps</label>
+                <label>Video Bitrate ï¿½ {videoBr} Mbps</label>
                 <input type="range" min={2} max={40} value={parseFloat(videoBr)}
                   onChange={e => setVideoBr(e.target.value)} disabled={exporting} />
                 <div className="export-slider-labels"><span>2 Mbps</span><span>40 Mbps</span></div>
@@ -316,7 +316,7 @@ export default function ExportWorkspace() {
                 value={outputPath}
                 onChange={e => setOutputPath(e.target.value)}
                 disabled={exporting}
-                placeholder="Select output path…"
+                placeholder="Select output pathï¿½"
               />
               <button onClick={browseOutput} disabled={exporting}>Browse</button>
             </div>
@@ -326,15 +326,15 @@ export default function ExportWorkspace() {
           <div className="export-estimate">
             <span>Estimated size:</span>
             <strong>{estSize}</strong>
-            <span>· ~{Math.round(durSec)}s at {fps} fps</span>
+            <span>ï¿½ ~{Math.round(durSec)}s at {fps} fps</span>
           </div>
         </div>
 
-        {/* -- Progress ----------------------------------------------- */}
+        {/* Progress   */}
         {webcompPhase && webcompPhase.total > 0 && (
           <div className="export-progress export-progress--phase">
             <div className="export-progress__label">
-              <span className="export-phase-badge">Preparing overlays…</span>
+              <span className="export-phase-badge">Preparing overlaysï¿½</span>
               <span>{wcPct}% ({webcompPhase.done}/{webcompPhase.total} frames)</span>
             </div>
             <div className="export-progress__bar">
@@ -353,8 +353,8 @@ export default function ExportWorkspace() {
                   : progress.error
                     ? <span className="export-error">? {progress.error}</span>
                     : progress.status === 'audio'
-                      ? <span className="export-phase-badge export-phase-badge--audio">?? Muxing audio…</span>
-                      : <span>Encoding… {pct}% — frame {progress.frame} / {progress.total}</span>
+                      ? <span className="export-phase-badge export-phase-badge--audio">?? Muxing audioï¿½</span>
+                      : <span>Encodingï¿½ {pct}% ï¿½ frame {progress.frame} / {progress.total}</span>
                 }
               </div>
             )}

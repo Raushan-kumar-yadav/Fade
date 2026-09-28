@@ -1,4 +1,4 @@
-/* ── PagesPanel — Canva-style page thumbnail sidebar ─────────────────────── */
+/* PagesPanel  */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
 
@@ -12,7 +12,7 @@
   font-family: 'Inter', 'Segoe UI', sans-serif;
 }
 
-/* ── Header ────────────────────────────────────────────────────────────────── */
+/*   Header   */
 
 .pages-panel__header {
   display: flex;
@@ -38,7 +38,7 @@
   font-weight: 500;
 }
 
-/* ── Scrollable list ───────────────────────────────────────────────────────── */
+/*   Scrollable list   */
 
 .pages-panel__list {
   flex: 1;
@@ -56,7 +56,7 @@
   border-radius: 2px;
 }
 
-/* ── Individual page card ─────────────────────────────────────────────────── */
+/*   Individual page card   */
 
 .pages-panel__page {
   position: relative;
@@ -86,7 +86,7 @@
   pointer-events: none;
 }
 
-/* ── Page number badge ─────────────────────────────────────────────────────── */
+/*   Page number badge   */
 
 .pages-panel__page-number {
   position: absolute;
@@ -104,11 +104,11 @@
   backdrop-filter: blur(4px);
 }
 
-/* ── Thumbnail wrapper — A4 portrait ratio ─────────────────────────────────── */
+/*   Thumbnail wrapper   */
 
 .pages-panel__thumb-wrap {
   width: 100%;
-  /* A4 portrait: 1 : √2 ≈ 1 : 1.414 */
+ 
   aspect-ratio: 1 / 1.414;
   background: #1a1c26;
   border-radius: 4px;
@@ -130,7 +130,7 @@
   opacity: 0.7;
 }
 
-/* ── Shimmer skeleton ──────────────────────────────────────────────────────── */
+/*   Shimmer skeleton   */
 
 @keyframes pages-shimmer {
   0%   { background-position: -200% 0; }
@@ -147,7 +147,7 @@
   animation: pages-shimmer 1.6s infinite linear;
 }
 
-/* ── Empty placeholder ─────────────────────────────────────────────────────── */
+/*   Empty placeholder   */
 
 .pages-panel__thumb-placeholder {
   display: flex;
@@ -166,7 +166,7 @@
   line-height: 1;
 }
 
-/* ── Page label ──────────────────────────────────────────────────────────────  */
+/*   Page label    */
 
 .pages-panel__page-label {
   font-size: 10px;
@@ -183,7 +183,7 @@
   color: rgba(167,153,255,0.75);
 }
 
-/* ── Delete button (hover) ─────────────────────────────────────────────────── */
+/* Delete button (hover)   */
 
 .pages-panel__delete {
   position: absolute;
@@ -212,7 +212,7 @@
   transform: scale(1.1);
 }
 
-/* ── Add page button ─────────────────────────────────────────────────────────  */
+/*   Add page button    */
 
 .pages-panel__add-btn {
   flex-shrink: 0;

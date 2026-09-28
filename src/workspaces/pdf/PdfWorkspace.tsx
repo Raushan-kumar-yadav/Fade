@@ -19,7 +19,7 @@ import PagesPanel, { type PdfPage } from './PagesPanel';
 import LibraryPanel from '../library/LibraryPanel';
 import { type AssetItem } from '../../api/useApi';
 
-// PdfTimeline — always renders in image/layers mode (no playhead, no ruler, no comp tabs)
+// PdfTimeline 
 function PdfTimeline() {
   return <Timeline />;
 }
@@ -45,7 +45,7 @@ const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
         type: 'row',
         weight: 72,
         children: [
-          // Left — Pages panel + Library
+          // Left
           {
             type: 'tabset',
             weight: 15,
@@ -54,7 +54,7 @@ const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
               { type: 'tab', name: 'Library', component: 'library', enableClose: false },
             ],
           },
-          // Center — Viewport
+          // Center  
           {
             type: 'tabset',
             weight: 55,
@@ -62,21 +62,21 @@ const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
               { type: 'tab', name: 'Viewport', component: 'viewport', enableClose: false },
             ],
           },
-          // Right — Inspector / Effects / Transitions / Tools
+          // Right  
           {
             type: 'tabset',
             weight: 30,
             selected: 0,
             children: [
-              { type: 'tab', name: 'Inspector',   component: 'inspector',   enableClose: false },
-              { type: 'tab', name: 'Effects',     component: 'effects',     enableClose: false },
+              { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
+              { type: 'tab', name: 'Effects', component: 'effects', enableClose: false },
               { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
-              { type: 'tab', name: 'Tools',       component: 'tools',       enableClose: false },
+              { type: 'tab', name: 'Tools', component: 'tools', enableClose: false },
             ],
           },
         ],
       },
-      // Bottom — full-width Timeline (layers of selected page)
+      // Bottom  
       {
         type: 'tabset',
         weight: 28,
@@ -91,9 +91,9 @@ const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
 //   Module-level PDF doc cache  
 
 let _defaultPdfDocId: string | null = null;
-let _defaultPdfDocName: string        = 'Untitled Document';
-let _defaultPageId: string | null = null; // last selected page compId
-let _pdfCreating = false;              // mutex: prevent concurrent auto-create
+let _defaultPdfDocName: string = 'Untitled Document';
+let _defaultPageId: string | null = null;  
+let _pdfCreating = false; // mutex: prevent concurrent auto-create
 
 // Export  
 
@@ -126,7 +126,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
 
   useEffect(() => {
     if (docId) {
-      _defaultPdfDocId   = docId;
+      _defaultPdfDocId = docId;
       _defaultPdfDocName = docName || 'Untitled Document';
       setResolvedDocId(docId);
       setResolvedDocName(docName || 'Untitled Document');
@@ -167,7 +167,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
         _defaultPdfDocName = created.name || 'Untitled Document';
         setResolvedDocId(created.docId);
         setResolvedDocName(created.name || 'Untitled Document');
-        // Auto-select first page
+ 
         if (created.pageIds?.length > 0) {
           handleSelectPage({ index: 0, pageId: created.pageIds[0], compId: created.pageIds[0], name: 'Page 1' });
         }
@@ -180,18 +180,18 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
   const handleSelectPage = useCallback((page: PdfPage) => {
     _defaultPageId = page.compId;
     setActivePageId(page.compId);
-    // Swap the active comp in-place (no new tab); kind=image so timeline shows layer mode
+    // Swap the active comp in-place 
     dispatch({ type: 'SWAP_PDF_PAGE', compId: page.compId, compName: page.name });
-    // Tell backend which comp is now active
+ 
     fetch(`http://127.0.0.1:${port}/comps/${page.compId}/activate`, { method: 'POST' })
       .then(() => {
-        // Force immediate track + viewport refresh
+        // Force immediate track  
         window.dispatchEvent(new Event('fade:tracks-changed'));
       })
       .catch(() => {});
   }, [dispatch, port]);
 
-  // Add asset to timeline of the active page  
+ 
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
     if (!activePageId) return;
     try {
@@ -203,7 +203,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
     } catch { /* silent */ }
   }, [activePageId, port, state.currentFrame]);
 
-  // On first doc resolve, select the first page (activates it and registers comp tab)
+  // On first doc resolve 
   useEffect(() => {
     if (!resolvedDocId) return;
     fetch(`http://127.0.0.1:${port}/pdf-docs/${resolvedDocId}/pages`)
@@ -213,7 +213,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
         if (first) handleSelectPage({ index: 0, pageId: first.pageId, compId: first.compId, name: first.name });
       })
       .catch(() => {});
-  }, [resolvedDocId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resolvedDocId]);  
 
   //   FlexLayout model  
   const modelRef = useRef<FlexLayout.Model>(FlexLayout.Model.fromJson(makePdfLayoutJson()));

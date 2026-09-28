@@ -46,8 +46,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     setMode('normal');
   }, [selected?.type === 'clip' ? selected.clipId : null, activeTool]);
 
-  // Single param poll — provides transform values AND base_width/base_height
-  // (backend now exposes those as hidden params for image/video/shape clips)
+ 
   useEffect(() => {
     if (!selected || selected.type !== 'clip') return;
     let isSubscribed = true;
@@ -88,8 +87,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
   const rot = getParam('rotation', 0);
   const ax = getParam('anchor_x', 0);
   const ay = getParam('anchor_y', 0);
-  // base_width/base_height come from the same params poll (added in backend/routers/clips.py)
-  // Falls back to comp size which gives correct layout for shapes / text
+ 
   const baseWidth  = getParam('base_width',  state.width  || 1920);
   const baseHeight = getParam('base_height', state.height || 1080);
 
@@ -100,30 +98,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
 
   const compW = state.width || 1920;
   const compH = state.height || 1080;
-
-  // ── Bounding box in local (pre-transform) space ───────────────────────────
-  // Mirrors exactly what the C++ renderer does:
-  //
-  // Shapes / text / pen:
-  //   Drawn at their own pixel size, centered at 0,0 locally.
-  //   pos_x=0 → top-left of comp (no center offset needed).
-  //
-  // Image / video:
-  //   C++ applies object-fit:contain to fill the composition canvas, then
-  //   draws the scaled image centered in that canvas.
-  //   The resulting fitted dimensions are:
-  //     fitScale = min(compW / imgW, compH / imgH)
-  //     fittedW  = imgW * fitScale
-  //     fittedH  = imgH * fitScale
-  //   The bounding box in local space is [-fittedW/2, +fittedW/2] because
-  //   the anchor is auto-normalized to 0.5 (comp center).
-  //   pos_x=0 → comp center  (anchorX=0.5 in C++ → cx = compW/2).
-
-  // ── C++ renderer constants ───────────────────────────────────────────────
-  // The C++ HeadlessCompositor *always* renders into a 1920×1080 canvas
-  // (m_width=1920, m_height=1080) regardless of the composition dimensions.
-  // Therefore all image/video bounding-box math must use these renderer
-  // dimensions, NOT compW/compH.
+ 
   const REND_W = 1920;
   const REND_H = 1080;
 
@@ -154,18 +129,12 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
   }
 
 
-  // Crop is a fraction of the fitted (visible) dimensions
+ 
   const visualMinX = localMinX + cropL * fittedW;
   const visualMaxX = localMaxX - cropR * fittedW;
   const visualMinY = localMinY + cropT * fittedH;
   const visualMaxY = localMaxY - cropB * fittedH;
-
-  // ── Coordinate origin ─────────────────────────────────────────────────────
-  // image/video: C++ translate(pos_x + REND_W/2, pos_y + REND_H/2) so
-  //   pos_x=0 puts the clip center at the renderer canvas center (960, 540).
-  //   SVG viewBox is also 0 0 1920 1080 = renderer space, so we add 960/540
-  //   directly without going through compositionToViewport.
-  // shape/text/pen: pos_x=0 is top-left of comp → still needs compositionToViewport.
+ 
   const isImageVideo = (clip.type === 'image' || clip.type === 'video');
   const originOffsetX = isImageVideo ? REND_W / 2 : 0;  // always 960 for img/vid
   const originOffsetY = isImageVideo ? REND_H / 2 : 0;  // always 540 for img/vid
@@ -180,14 +149,14 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     const worldX = rx + ax + px + originOffsetX;
     const worldY = ry + ay + py + originOffsetY;
     if (isImageVideo) {
-      // Already in 1920×1080 renderer space = SVG space. No further transform.
+      // Already in 1920×1080 renderer space 
       return { x: worldX, y: worldY };
     }
     return compositionToViewport(worldX, worldY, compW, compH);
   };
 
   const inverseApplyMatrix = (svgPt: {x: number, y: number}) => {
-    // For image/video: SVG coords are already renderer/comp coords. No inverse needed.
+ 
     const worldX = isImageVideo ? svgPt.x : (viewportToComposition(svgPt.x, svgPt.y, compW, compH, false)?.x ?? svgPt.x);
     const worldY = isImageVideo ? svgPt.y : (viewportToComposition(svgPt.x, svgPt.y, compW, compH, false)?.y ?? svgPt.y);
     let rx = worldX - ax - px - originOffsetX;
@@ -221,7 +190,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
       visualMinX, visualMaxX,
       topLeftSVG: vCorners[0],
       topRightSVG: vCorners[1],
-      // C++ expected left edge = originOffsetX - fittedW/2 + px  (for scale=1, no rot)
+      // C++ expected left edge  
       expectedCppLeft: (compW / 2) - (fittedW / 2) + px,
     });
   }
@@ -298,7 +267,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
        cropL, cropR, cropT, cropB, 
        localMinX, localMaxX, localMinY, localMaxY,
        imgW, imgH,
-       fittedW, fittedH,   // ← actual drawn size, used for crop delta math
+       fittedW, fittedH,   
        startMouseAngle
     } as any;
     
@@ -318,7 +287,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
       if (mode === 'crop') {
          const dxLocal = inverseApplyMatrix(pt).x - inverseApplyMatrix(dragStartRef.current).x;
          const dyLocal = inverseApplyMatrix(pt).y - inverseApplyMatrix(dragStartRef.current).y;
-         // SVG space = renderer space for image/video → scaleFactor = 1
+         // SVG space  
          const sf = isImageVideo ? 1 : Math.min(REND_W / compW, REND_H / compH);
          next.px += (pt.x - dragStartRef.current.x) / sf;
          next.py += (pt.y - dragStartRef.current.y) / sf;
@@ -328,7 +297,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
          next.cropT = Math.max(0, Math.min(1, init.cropT - dyLocal / init.fittedH));
          next.cropB = Math.max(0, Math.min(1, init.cropB + dyLocal / init.fittedH));
       } else {
-         // designCoord returns SVG coords (= renderer 1920x1080 space) → delta = pos delta
+         // designCoord returns SVG coords  
          next.px = init.px + (pt.x - dragStartRef.current.x);
          next.py = init.py + (pt.y - dragStartRef.current.y);
       }
@@ -539,7 +508,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
         <>
                       <polygon points={polygonPoints} fill="transparent" stroke={brandColor} strokeWidth={strokeW} pointerEvents="none" />
             
-            {/* Pivot Marker — use same coordinate transform as the gizmo corners */}
+            {/* Pivot Marker   */}
             {(() => {
               const pivot = compositionToViewport(
                 ax + px + originOffsetX,

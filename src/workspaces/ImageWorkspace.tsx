@@ -1,18 +1,4 @@
-/**
- * ImageWorkspace.tsx
- *
- * Uses the SAME real widgets as VideoWorkspace:
- *   LibraryPanel  → left
- *   ViewportWidget → center (playback controls hidden via isImageComp)
- *   InspectorPanel / EffectsPanel → right
- *   Timeline → bottom (shows as Layers panel via isImageComp)
- *
- * The only differences vs VideoWorkspace:
- *  • Starts its own TimelineProvider and immediately dispatches ENTER_COMP
- *    so the comp is active from the first render.
- *  • Slightly different FlexLayout weights (timeline taller for layers).
- *  • A thin top-bar with comp name + "Back to Video" button.
- */
+ 
 import React, { useCallback, useEffect, useRef } from 'react';
 import * as FlexLayout from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
@@ -32,7 +18,7 @@ import BrushToolPanel from './tools/BrushToolPanel';
 import EraserToolPanel from './tools/EraserToolPanel';
 import ShapeToolPanel from './tools/ShapeToolPanel';
 
-// ─── Props ────────────────────────────────────────────────────────────────────
+//   Props  
 
 interface ImageWorkspaceProps {
   compId: string | null;
@@ -40,9 +26,7 @@ interface ImageWorkspaceProps {
   onBack?: () => void; // kept for compat but no longer rendered
 }
 
-// ─── FlexLayout model — image editing layout ──────────────────────────────────
-// Similar to VideoWorkspace but timeline is slightly taller (acts as layers)
-
+ 
 const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
   global: {
     tabEnableClose: false,
@@ -53,11 +37,11 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
   },
   borders: [],
   layout: {
-    // ── Outer column: top-row + bottom-timeline (same as VideoWorkspace) ──
+     
     type: 'column',
     weight: 100,
     children: [
-      // ── Top row: Library | Viewport | Inspector/Effects/Transitions/Tools
+ 
       {
         type: 'row',
         weight: 72,
@@ -81,15 +65,15 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
             weight: 30,
             selected: 0,
             children: [
-              { type: 'tab', name: 'Inspector',   component: 'inspector',   enableClose: false },
-              { type: 'tab', name: 'Effects',     component: 'effects',     enableClose: false },
+              { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
+              { type: 'tab', name: 'Effects', component: 'effects', enableClose: false },
               { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
-              { type: 'tab', name: 'Tools',       component: 'tools',       enableClose: false },
+              { type: 'tab', name: 'Tools', component: 'tools', enableClose: false },
             ],
           },
         ],
       },
-      // ── Bottom: full-width Timeline (acts as Layers in image mode) ────────
+ 
       {
         type: 'tabset',
         weight: 28,
@@ -100,7 +84,7 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
     ],
   },
 });
-// ─── Export ───────────────────────────────────────────────────────────────────
+//   Export  
 
 export default function ImageWorkspace({ compId, compName, onBack }: ImageWorkspaceProps) {
   return (
@@ -112,10 +96,8 @@ export default function ImageWorkspace({ compId, compName, onBack }: ImageWorksp
   );
 }
 
-// ─── Module-level cache ───────────────────────────────────────────────────────
-// Persists across tab switches (component unmounts/remounts).
-// Stores the last-used default image comp so we don't create a new one
-// every time the user clicks the Image tab.
+//   Module-level cache  
+ 
 let _defaultImageCompId: string | null = null;
 let _defaultImageCompName: string = 'Image Editor';
 let _imgCreating = false;  // mutex: prevent concurrent auto-create
@@ -126,12 +108,8 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
   const { state, dispatch } = useTimeline();
   const { activeTool } = useTool();
 
-  // ── Resolve a real backend compId ──────────────────────────────────────────
-  // Priority:
-  //   1. Explicit compId passed from App (user double-clicked an image comp)
-  //   2. Module-level cache (_defaultImageCompId) — survives tab switches
-  //   3. First existing image comp found via GET /comps
-  //   4. Auto-create a new image comp (only when truly none exists)
+  //   Resolve a real backend compId  
+ 
   const [resolvedId,   setResolvedId]   = React.useState<string | null>(compId ?? _defaultImageCompId);
   const [resolvedName, setResolvedName] = React.useState(compName || _defaultImageCompName);
 
@@ -145,23 +123,23 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
       return;
     }
 
-    // Check in-memory cache first (avoids network round-trip on tab switch).
+    // Check in-memory cache first  
     if (_defaultImageCompId) {
       setResolvedId(_defaultImageCompId);
       setResolvedName(_defaultImageCompName);
       return;
     }
 
-    // Nothing cached — query the backend for an existing image comp.
+    // Nothing cached  
     const port = (window as any).__FADE_PORT__ ?? 8000;
-    if (_imgCreating) return;          // another instance is already fetching
+    if (_imgCreating) return;        
     _imgCreating = true;
     fetch(`http://127.0.0.1:${port}/comps`)
       .then(r => r.ok ? r.json() : null)
       .then(async (data) => {
         if (!data) return;
         const allComps: any[] = data.comps ?? [];
-        // Prefer the marked default; fall back to any non-hidden image comp.
+         
         const existing =
           allComps.find((c: any) => c.kind === 'image' && c.isDefault) ||
           allComps.find((c: any) => c.kind === 'image' && !c.isHidden);
@@ -172,7 +150,7 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
           setResolvedName(existing.name || 'Image Editor');
           return;
         }
-        // No image comp exists yet — create exactly one, marked as default.
+   
         const res = await fetch(`http://127.0.0.1:${port}/comps`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -189,7 +167,7 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
       .finally(() => { _imgCreating = false; });
   }, [compId, compName]);
 
-  // Dispatch ENTER_COMP only once we have a real backend compId.
+ 
   useEffect(() => {
     if (!resolvedId) return;
     dispatch({
@@ -198,16 +176,16 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
       compName: resolvedName,
       kind: 'image',
     });
-    // Activate on the backend so renders go to this comp.
+ 
     const port = (window as any).__FADE_PORT__ ?? 8000;
     fetch(`http://127.0.0.1:${port}/comps/${resolvedId}/activate`, { method: 'POST' }).catch(() => {});
   }, [resolvedId, resolvedName, dispatch]);
 
-  // FlexLayout model (fixed — not persisted separately from video layout)
+  // FlexLayout model  
   const modelRef = useRef<FlexLayout.Model>(FlexLayout.Model.fromJson(makeImageLayoutJson()));
 
-  // Image workspace always uses its default layout (not persisted separately)
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Image workspace always uses its default layout  
+ 
   const onModelChange = useCallback((_model: FlexLayout.Model) => {
     // no-op: don't overwrite the video layout
   }, []);
@@ -217,7 +195,7 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
   }, [resolvedId, state.activeCompId]);
 
 
-  // Tool panel — identical to VideoWorkspace
+  // Tool panel  
   const toolPanel = (() => {
     const frame = state.currentFrame ?? 0;
     if (activeTool === 'brush') return <BrushToolPanel key="brush" />;

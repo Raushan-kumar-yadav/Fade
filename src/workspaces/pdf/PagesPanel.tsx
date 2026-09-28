@@ -1,35 +1,27 @@
-/**
- * PagesPanel.tsx — Canva-style vertical page thumbnail sidebar.
- *
- * Each page is an imageComp whose content is previewed via
- * GET /comps/{compId}/thumbnail (portrait A4 ratio).
- *
- * Selecting a page dispatches SWAP_PDF_PAGE (no new tab pushed).
- * The active page thumbnail auto-refreshes every 2 s while edited.
- */
+ 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import './PagesPanel.css';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+//   Types  
 
 export interface PdfPage {
   index:  number;
   pageId: string;
   compId: string;
-  name:   string;
+  name: string;
 }
 
 interface PagesPanelProps {
-  docId:        string;
+  docId: string;
   activePageId: string | null;
   onSelectPage: (page: PdfPage) => void;
 }
 
-// ── Thumbnail cache ───────────────────────────────────────────────────────────
+//   Thumbnail cache  
 
 const thumbCache = new Map<string, string>();   // compId → object-url
-const THUMB_W    = 240;
-const THUMB_H    = 320;   // A4 portrait ratio ≈ 1 : 1.414
+const THUMB_W = 240;
+const THUMB_H = 320;   // A4 portrait ratio ≈ 1 : 1.414
 
 async function fetchThumb(compId: string, port: number, bust = false): Promise<string> {
   if (!bust && thumbCache.has(compId)) return thumbCache.get(compId)!;
@@ -40,7 +32,7 @@ async function fetchThumb(compId: string, port: number, bust = false): Promise<s
     );
     if (!res.ok) return '';
     const blob = await res.blob();
-    if (blob.size < 50) return '';          // empty / error response
+    if (blob.size < 50) return '';         
     const old = thumbCache.get(compId);
     if (old) URL.revokeObjectURL(old);
     const url = URL.createObjectURL(blob);
@@ -51,19 +43,19 @@ async function fetchThumb(compId: string, port: number, bust = false): Promise<s
   }
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+//   Component  
 
 export default function PagesPanel({ docId, activePageId, onSelectPage }: PagesPanelProps) {
-  const [pages,      setPages]      = useState<PdfPage[]>([]);
-  const [loading,    setLoading]    = useState(false);
-  const [thumbs,     setThumbs]     = useState<Record<string, string>>({});
+  const [pages, setPages] = useState<PdfPage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const dragIdxRef  = useRef<number | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const port = (window as any).__FADE_PORT__ ?? 8000;
 
-  // ── Fetch page list ─────────────────────────────────────────────────────────
+  // Fetch page list  
   const fetchPages = useCallback(async (): Promise<PdfPage[]> => {
     if (!docId) return [];
     try {
@@ -74,14 +66,14 @@ export default function PagesPanel({ docId, activePageId, onSelectPage }: PagesP
         index:  p.index,
         pageId: p.pageId,
         compId: p.compId,
-        name:   p.name,
+        name: p.name,
       }));
     } catch {
       return [];
     }
   }, [docId, port]);
 
-  // ── Load one thumbnail ──────────────────────────────────────────────────────
+  //   Load one thumbnail  
   const loadThumb = useCallback(async (compId: string, bust = false) => {
     setLoadingIds(s => new Set(s).add(compId));
     const url = await fetchThumb(compId, port, bust);
@@ -89,18 +81,18 @@ export default function PagesPanel({ docId, activePageId, onSelectPage }: PagesP
     if (url) setThumbs(prev => ({ ...prev, [compId]: url }));
   }, [port]);
 
-  // ── Initial load ─────────────────────────────────────────────────────────────
+  //   Initial load  
   useEffect(() => {
     setLoading(true);
     fetchPages().then(ps => {
       setPages(ps);
       setLoading(false);
-      // Load all thumbnails in parallel (lazily)
+ 
       ps.forEach(p => loadThumb(p.compId));
     });
-  }, [docId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [docId]); 
 
-  // ── Poll active page thumbnail while it is being edited ────────────────────
+  //   Poll active page thumbnail  
   useEffect(() => {
     if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     if (!activePageId) return;
@@ -113,9 +105,9 @@ export default function PagesPanel({ docId, activePageId, onSelectPage }: PagesP
     };
     schedule();
     return () => { if (pollTimerRef.current) clearTimeout(pollTimerRef.current); };
-  }, [activePageId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activePageId]);  
 
-  // ── Add page ─────────────────────────────────────────────────────────────────
+  // Add page 
   const addPage = async () => {
     const r = await fetch(`http://127.0.0.1:${port}/pdf-docs/${docId}/pages`, { method: 'POST' });
     if (!r.ok) return;
@@ -129,7 +121,7 @@ export default function PagesPanel({ docId, activePageId, onSelectPage }: PagesP
     }
   };
 
-  // ── Delete page ──────────────────────────────────────────────────────────────
+  //   Delete page  
   const deletePage = async (e: React.MouseEvent, pageId: string) => {
     e.stopPropagation();
     if (pages.length <= 1) return;
@@ -139,11 +131,11 @@ export default function PagesPanel({ docId, activePageId, onSelectPage }: PagesP
     if (pageId === activePageId && ps.length > 0) onSelectPage(ps[0]);
   };
 
-  // ── Drag reorder ─────────────────────────────────────────────────────────────
+  //   Drag reorder  
   const onDragStart  = (idx: number) => { dragIdxRef.current = idx; };
-  const onDragOver   = (e: React.DragEvent, idx: number) => { e.preventDefault(); setDragOverIdx(idx); };
-  const onDragEnd    = () => setDragOverIdx(null);
-  const onDrop       = async (idx: number) => {
+  const onDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); setDragOverIdx(idx); };
+  const onDragEnd = () => setDragOverIdx(null);
+  const onDrop = async (idx: number) => {
     const from = dragIdxRef.current;
     if (from === null || from === idx) { setDragOverIdx(null); return; }
     const reordered = [...pages];
@@ -158,7 +150,7 @@ export default function PagesPanel({ docId, activePageId, onSelectPage }: PagesP
     });
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  //   Render  
   return (
     <div className="pages-panel">
       <div className="pages-panel__header">
@@ -178,9 +170,9 @@ export default function PagesPanel({ docId, activePageId, onSelectPage }: PagesP
         )}
 
         {pages.map((page, idx) => {
-          const isActive   = page.pageId === activePageId;
-          const thumb      = thumbs[page.compId];
-          const isLoading  = loadingIds.has(page.compId);
+          const isActive = page.pageId === activePageId;
+          const thumb = thumbs[page.compId];
+          const isLoading = loadingIds.has(page.compId);
           return (
             <div
               key={page.pageId}

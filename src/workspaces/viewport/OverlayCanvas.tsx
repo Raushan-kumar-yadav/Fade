@@ -1,16 +1,4 @@
-/**
- * OverlayCanvas.tsx — After Effects style tool overlay
- *
- * Modes:
- *   'pen'   — click to add bezier points, drag handles for tangents
- *   'shape' — drag to draw bounding rectangle
- *   'mask'  — same as pen but for clip masks
- *   'none'  — hidden
- *
- * Coordinate system: SVG viewBox is always 1920×1080 (design space).
- * The SVG element stretches to fill the display area. All coordinates
- * stored/sent to the backend are in design-space pixels (0–1920, 0–1080).
- */
+ 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import './OverlayCanvas.css';
 import { penApi, shapeApi, maskApi, type BezierPoint } from '../../api/toolsApi';
@@ -24,28 +12,28 @@ const DESIGN_W = 1920;
 const DESIGN_H = 1080;
 
 interface Props {
-  mode:         OverlayMode;
-  clipId?:      string;
-  maskId?:      string;
-  width:        number;   // display pixel width
-  height:       number;   // display pixel height
+  mode: OverlayMode;
+  clipId?: string;
+  maskId?: string;
+  width: number;   // display pixel width
+  height: number;   // display pixel height
   startFrame?:  number;
-  duration?:    number;
-  currentFrame?: number;  // playhead frame (for keyframe recording)
+  duration?: number;
+  currentFrame?: number;  // playhead frame  
   onDone?:      (clipId: string) => void;
 }
 
 interface PtState extends BezierPoint { id: string; }
 
 type DragTarget =
-  | { kind: 'anchor';    idx: number }
+  | { kind: 'anchor'; idx: number }
   | { kind: 'inHandle';  idx: number }
   | { kind: 'outHandle'; idx: number }
   | null;
 
 import { viewportToComposition, compositionToViewport } from './viewportUtils';
 
-// Convert a mouse/pointer event to viewport coords using the SVG element's CTM
+// Convert a mouse/pointer event to viewport 
 function designCoord(e: React.MouseEvent, svg: SVGSVGElement): { x: number; y: number } {
   const pt = svg.createSVGPoint();
   pt.x = e.clientX;
@@ -63,38 +51,37 @@ export default function OverlayCanvas({
   const { activeTool, penSubMode, penOutputMode } = useTool();
   const { state } = useTimeline();
 
-  // ── Pen / Mask state ──────────────────────────────────────────────────────
-  const [points,   setPoints]   = useState<PtState[]>([]);
-  const [closed,   setClosed]   = useState(false);
+  //   Pen / Mask state  
+  const [points, setPoints]   = useState<PtState[]>([]);
+  const [closed, setClosed]   = useState(false);
   const [dragging, setDragging] = useState<DragTarget>(null);
   const [selectedIdx, setSelectedIdx] = useState<Set<number>>(new Set());
-  const penClipId     = useRef<string | null>(clipId ?? null);
-  const maskClipId    = useRef<string | null>(clipId ?? null);
+  const penClipId = useRef<string | null>(clipId ?? null);
+  const maskClipId = useRef<string | null>(clipId ?? null);
   const createdMaskId = useRef<string | null>(maskId ?? null);
-  // Mutex: true while the initial penApi.add() is in-flight so rapid clicks
-  // don't race and each create a separate clip.
+ 
   const penCreating   = useRef(false);
   // Points queued during clip creation; flushed once the clipId is known.
   const penPendingPts = useRef<{ pts: PtState[]; isClosed: boolean } | null>(null);
 
-  // ── Path keyframe state ────────────────────────────────────────────────────
+  //   Path keyframe state  
   const [pathKfFlash, setPathKfFlash] = useState<'idle'|'ok'|'err'>('idle');
   const [pathKfFrames, setPathKfFrames] = useState<number[]>([]);
 
-  // ── Shape-draw state ──────────────────────────────────────────────────────
+  //   Shape-draw state  
   const [shapeStart, setShapeStart] = useState<{ x: number; y: number } | null>(null);
   const [shapeCur,   setShapeCur]   = useState<{ x: number; y: number } | null>(null);
   const shapeDrawing = useRef(false);
 
-  // ── Crosshair cursor ─────────────────────────────────────────────────────
+  //   Crosshair cursor  
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
-  // ── Viewport pan / zoom (space+drag or middle-mouse) ─────────────────────
+  //   Viewport pan / zoom  
   const [vpPan,  setVpPan]  = useState({ x: 0, y: 0 });
   const [vpZoom, setVpZoom] = useState(1);
-  const panning     = useRef(false);
-  const panOrigin   = useRef({ x: 0, y: 0 });
-  const panStart    = useRef({ x: 0, y: 0 });
+  const panning = useRef(false);
+  const panOrigin = useRef({ x: 0, y: 0 });
+  const panStart = useRef({ x: 0, y: 0 });
   const spaceDown   = useRef(false);
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -102,7 +89,7 @@ export default function OverlayCanvas({
   const getDC = useCallback((e: React.MouseEvent) =>
     svgRef.current ? designCoord(e, svgRef.current) : { x: 0, y: 0 }, []);
 
-  // ── Space key → pan mode ──────────────────────────────────────────────────
+  //   Space key → pan mode  
   useEffect(() => {
     const kd = (e: KeyboardEvent) => {
       if (e.code === 'Space') { e.preventDefault(); spaceDown.current = true; }
@@ -126,12 +113,12 @@ export default function OverlayCanvas({
     return () => { window.removeEventListener('keydown', kd); window.removeEventListener('keyup', ku); };
   }, [mode, points]);
 
-  // ── Wheel zoom ────────────────────────────────────────────────────────────
+  //   Wheel zoom  
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey && !e.metaKey) return; // only ctrl/cmd+wheel = zoom
+      if (!e.ctrlKey && !e.metaKey) return;  
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
       setVpZoom(z => Math.max(0.1, Math.min(20, z * factor)));
@@ -140,7 +127,7 @@ export default function OverlayCanvas({
     return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  // ── Shape draw ────────────────────────────────────────────────────────────
+  //   Shape draw  
   const onShapeDown = useCallback((e: React.MouseEvent) => {
     if (mode !== 'shape') return;
     const p = getDC(e);
@@ -167,7 +154,7 @@ export default function OverlayCanvas({
     const y2 = Math.max(shapeStart.y, end.y);
     const w  = x2 - x1;
     const h  = y2 - y1;
-    // Center of the drawn box (design-space pixels)
+    // Center of the drawn box 
     const cx = (x1 + x2) / 2;
     const cy = (y1 + y2) / 2;
 
@@ -192,23 +179,23 @@ export default function OverlayCanvas({
         startFrame, duration,
         {
           shapeType:     sType as any,
-          width:         compShapeW,
-          height:        compShapeH,
-          radiusX:       halfW,
-          radiusY:       halfH,
+          width: compShapeW,
+          height: compShapeH,
+          radiusX: halfW,
+          radiusY: halfH,
           outerRadius:   minR,
-          innerRadius:   minR * 0.45,
+          innerRadius: minR * 0.45,
           numPoints:     5,
-          numSides:      6,
+          numSides: 6,
           polygonRadius: minR,
           arcRadius:     minR,
           arcStartAngle: 0,
           arcSweepAngle: 270,
-          x1:  -halfW, y1:  -halfH,   // line endpoints relative to center
-          x2:   halfW, y2:   halfH,
+          x1: -halfW, y1:  -halfH,  
+          x2: halfW, y2:   halfH,
           fillColor: [0.4, 0.4, 1.0, 1.0],
         },
-        compCenter.x, compCenter.y,  // position = center of drawn box
+        compCenter.x, compCenter.y,  
       );
       window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
       onDone?.(result.clipId);
@@ -217,14 +204,14 @@ export default function OverlayCanvas({
     }
   }, [mode, shapeStart, getDC, activeTool, startFrame, duration, onDone]);
 
-  // ── Pen / Mask ────────────────────────────────────────────────────────────
+  //   Pen / Mask  
   const commitPoints = useCallback(async (pts: PtState[], isClosed: boolean) => {
     if (pts.length < 1) return;
     const compW = state.width || 1920;
     const compH = state.height || 1080;
     const scale = Math.min(1920 / compW, 1080 / compH);
 
-    // Map from viewport (SVG design space) → composition space before sending to backend
+    // Map from viewport  
     const bpts: BezierPoint[] = [];
     for (const pt of pts) {
       const mapped = viewportToComposition(pt.x, pt.y, compW, compH, false);
@@ -232,7 +219,7 @@ export default function OverlayCanvas({
         bpts.push({
           x: mapped.x,
           y: mapped.y,
-          // Tangents are vectors — scale without offset
+          // Tangents are vectors  
           inX:  pt.inX  / scale,
           inY:  pt.inY  / scale,
           outX: pt.outX / scale,
@@ -243,8 +230,7 @@ export default function OverlayCanvas({
 
     if (mode === 'pen') {
       if (!penClipId.current) {
-        // ── Mutex: if another async creation is already in-flight, just queue
-        // the latest points so we don't spawn a second orphan clip. ──────────
+ 
         if (penCreating.current) {
           penPendingPts.current = { pts, isClosed };
           return;
@@ -255,11 +241,11 @@ export default function OverlayCanvas({
           penClipId.current = clip.clipId;
           window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
           onDone?.(clip.clipId);
-          // Flush any points that arrived while we were waiting
+           
           if (penPendingPts.current) {
             const { pts: latestPts, isClosed: latestClosed } = penPendingPts.current;
             penPendingPts.current = null;
-            // Don't await — fire-and-forget so we don't block the UI
+ 
             commitPoints(latestPts, latestClosed);
           }
         } finally {
@@ -286,10 +272,7 @@ export default function OverlayCanvas({
       }
     }
   }, [mode, clipId, maskId, startFrame, duration, onDone, state]);
-
-  // ── Load existing pen clip on mount (pen mode with clipId) ─────────────────
-  // When the user re-selects the pen tool for a clip that already exists,
-  // load its current path so it's immediately visible and editable.
+ 
   useEffect(() => {
     if (mode !== 'pen' || !clipId) return;
     penClipId.current = clipId;  // ensure ref is seeded from prop
@@ -319,10 +302,7 @@ export default function OverlayCanvas({
     })();
     return () => { cancelled = true; };
   }, [mode, clipId]);
-
-  // ── Load existing mask on mount (mask mode) ───────────────────────────────
-  // When the user re-selects the pen-mask tool for a clip that already has a
-  // mask, fetch the existing points so the path is visible immediately.
+ 
   useEffect(() => {
     if (mode !== 'mask' || !clipId) return;
     let cancelled = false;
@@ -330,7 +310,7 @@ export default function OverlayCanvas({
       try {
         const { masks } = await maskApi.list(clipId);
         if (cancelled || masks.length === 0) return;
-        // Use the maskId prop if given, otherwise take the last mask
+        // Use the maskId prop if given 
         const target = maskId
           ? masks.find(m => m.maskId === maskId)
           : masks[masks.length - 1];
@@ -370,13 +350,12 @@ export default function OverlayCanvas({
       const { x, y } = getDC(e);
       const id = crypto.randomUUID();
       const newPt = { id, x, y, inX: 0, inY: 0, outX: 0, outY: 0 };
-      // Compute full updated list immediately so commitPoints has all N points
-      // (mouseUp fires BEFORE click, so we can't rely on onPenUp having the new point)
+   
       const newPoints = [...points, newPt];
       setPoints(newPoints);
       commitPoints(newPoints, closed);
     }
-    // Other sub-modes (select, handle, delete, curve) handle via anchor events
+    // Other sub-modes  
   }, [mode, closed, getDC, penSubMode, points, commitPoints]);
 
   const onDblClick = useCallback(() => {
@@ -410,7 +389,7 @@ export default function OverlayCanvas({
     });
   }, [dragging, getDC]);
 
-  // ── Sub-mode anchor event handlers ───────────────────────────────────────
+  //   Sub-mode anchor event handlers  
   const onAnchorClick = useCallback((idx: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (penSubMode === 'pen:delete') {
@@ -453,9 +432,7 @@ export default function OverlayCanvas({
   const onPenUp = useCallback(async () => {
     const wasDragging = dragging !== null;
     setDragging(null);
-    // Only commit on mouseUp when finishing a handle-drag.
-    // Plain clicks are handled inside onPenClick (which fires after mouseUp)
-    // so that the new point is included in the commit.
+ 
     if (wasDragging) {
       await commitPoints(points, closed);
     }
@@ -463,9 +440,9 @@ export default function OverlayCanvas({
 
   useEffect(() => {
     if (closed && points.length >= 2) commitPoints(points, true);
-  }, [closed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [closed]);  
 
-  // ── Viewport pan logic ────────────────────────────────────────────────────
+  //   Viewport pan logic  
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button === 1 || spaceDown.current) {
       panning.current = true;
@@ -488,7 +465,7 @@ export default function OverlayCanvas({
     panning.current = false;
   }, []);
 
-  // ── Unified mouse handlers ─────────────────────────────────────────────────
+  //   Unified mouse handlers  
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (mode === 'shape') onShapeDown(e);
   }, [mode, onShapeDown]);
@@ -503,7 +480,7 @@ export default function OverlayCanvas({
     else onPenUp();
   }, [mode, onShapeUp, onPenUp]);
 
-  // ── Derived values ────────────────────────────────────────────────────────
+  //   Derived values  
   const shapePreview = shapeStart && shapeCur ? {
     x: Math.min(shapeStart.x, shapeCur.x),
     y: Math.min(shapeStart.y, shapeCur.y),
@@ -531,9 +508,9 @@ export default function OverlayCanvas({
     ? 'crosshair'
     : 'default';
 
-  // ── Add Path Keyframe ──────────────────────────────────────────────────────
+  //   Add Path Keyframe  
   const addPathKeyframe = useCallback(async () => {
-    const localFrame = currentFrame - startFrame; // convert to clip-local frame
+    const localFrame = currentFrame - startFrame; 
     try {
       let res: any;
       if (mode === 'pen' && penClipId.current) {
@@ -619,9 +596,9 @@ export default function OverlayCanvas({
         };
 
         const sharedStyle = {
-          fill:            'rgba(99,102,241,0.12)' as string,
-          stroke:          'rgba(99,102,241,0.95)' as string,
-          strokeWidth:     2 as number,
+          fill: 'rgba(99,102,241,0.12)' as string,
+          stroke: 'rgba(99,102,241,0.95)' as string,
+          strokeWidth: 2 as number,
           strokeDasharray: '8,4' as string,
         };
 
@@ -735,7 +712,7 @@ export default function OverlayCanvas({
       )}
     </svg>
 
-    {/* ── Path Keyframe HUD button ────────────────────────────────────────── */}
+    {/*   Path Keyframe HUD button   */}
     {(mode === 'pen' || mode === 'mask') && (
       <div style={{
         position: 'absolute', top: 10, right: 10,
@@ -793,7 +770,7 @@ export default function OverlayCanvas({
   );
 }
 
-// ── Path builder ──────────────────────────────────────────────────────────────
+//   Path builder  
 
 function buildPath(pts: PtState[], closed: boolean): string {
   if (pts.length === 0) return '';

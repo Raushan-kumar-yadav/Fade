@@ -424,8 +424,7 @@ export default function ViewportWidget() {
   const { selected } = useSelection();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Stable ref for the pen clip ID — persists across renders/remounts so
-  // subsequent strokes update the same clip instead of creating a new one.
+ 
   const penClipIdRef = useRef<string | null>(null);
 
   // Seed from selection if the selected clip is a pen clip
@@ -602,9 +601,7 @@ export default function ViewportWidget() {
                 duration={(selected as any).duration ?? 150}
               />
             ) : (
-              // key="pen-overlay" keeps the component stable across re-renders
-              // so React never remounts it (and wipes the drawn points).
-              // clipId seeds the internal ref when resuming an existing path.
+               
               <OverlayCanvas
                 key="pen-overlay"
                 mode="pen"

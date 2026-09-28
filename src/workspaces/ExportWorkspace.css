@@ -1,4 +1,4 @@
-/* ── Layout ──────────────────────────────────────────────────────────────── */
+/*   Layout   */
 .export-ws {
   height: 100%;
   display: flex;
@@ -27,7 +27,7 @@
   letter-spacing: 0.08em; margin-bottom: 14px;
 }
 
-/* ── Format selector ─────────────────────────────────────────────────────── */
+/*   Format selector   */
 .export-formats { display: flex; flex-direction: column; gap: 6px; }
 .export-fmt {
   display: flex; align-items: center; gap: 11px;
@@ -54,7 +54,7 @@
   color: #6c63ff; font-size: 13px; font-weight: 700;
 }
 
-/* ── Settings panel ──────────────────────────────────────────────────────── */
+/*   Settings panel   */
 .export-props {
   display: flex; flex-direction: column;
   gap: 14px; flex: 1;
@@ -99,7 +99,7 @@
   font-size: 10px; color: var(--text-3); margin-top: -2px;
 }
 
-/* ── Sections (Video Quality / Audio) ────────────────────────────────────── */
+/*   Sections  */
 .export-section {
   display: flex; flex-direction: column; gap: 10px;
   padding: 14px;
@@ -132,7 +132,7 @@
 }
 .export-mode-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ── Output path ─────────────────────────────────────────────────────────── */
+/*   Output path   */
 .export-path { display: flex; gap: 7px; }
 .export-path input {
   flex: 1; padding: 6px 9px;
@@ -154,7 +154,7 @@
 }
 .export-path button:hover { border-color: #4a4a5a; }
 
-/* ── Estimated size ──────────────────────────────────────────────────────── */
+/*   Estimated size   */
 .export-estimate {
   display: flex; align-items: center; gap: 6px;
   font-size: 11px; color: var(--text-3);
@@ -165,7 +165,7 @@
 }
 .export-estimate strong { color: var(--text-1); font-size: 12px; }
 
-/* ── Progress ────────────────────────────────────────────────────────────── */
+/*   Progress   */
 .export-progress {
   margin: 14px 0 6px;
   display: flex; flex-direction: column; gap: 7px;
@@ -221,7 +221,7 @@
   padding: 4px 0;
 }
 
-/* ── Actions ─────────────────────────────────────────────────────────────── */
+/*   Actions   */
 .export-actions {
   display: flex; gap: 10px;
   margin-top: 16px; padding-top: 14px;

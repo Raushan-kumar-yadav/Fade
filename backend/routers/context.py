@@ -23,8 +23,8 @@ def _get_chroma_chunks(asset_id: str) -> list[dict]:
         for doc, meta in zip(result["documents"], result["metadatas"]):
             chunks.append({
                 "start_sec": meta.get("start_sec", 0),
-                "end_sec":   meta.get("end_sec",   0),
-                "text":      doc,
+                "end_sec": meta.get("end_sec",   0),
+                "text": doc,
                 "asset_type": meta.get("asset_type", "video"),
             })
         chunks.sort(key=lambda c: c["start_sec"])
@@ -70,7 +70,7 @@ def _build_asset_context(asset_id: str, filepath: str, inbound_sec: float = 0.0,
 
     # Clip to range if provided
     if outbound_sec is not None:
-        chunks     = [c for c in chunks if c["start_sec"] < outbound_sec and c["end_sec"]   > inbound_sec]
+        chunks = [c for c in chunks if c["start_sec"] < outbound_sec and c["end_sec"]   > inbound_sec]
         transcript = [t for t in transcript if t["start"] < outbound_sec and t["end"]       > inbound_sec]
 
     # Build second-by-second timeline 
