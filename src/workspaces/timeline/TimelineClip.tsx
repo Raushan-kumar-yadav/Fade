@@ -39,6 +39,14 @@ const TimelineClip = memo(function TimelineClip({
   const [peaks, setPeaks] = useState<number[]>([]);
   const [waveLoading, setWaveLoading] = useState(false);
 
+  // Keep refs fresh so closures inside onMouseDown always read latest values
+  const activeCompIdRef = useRef(state.activeCompId);
+  const activeCompKindRef = useRef(state.activeCompKind);
+  useEffect(() => {
+    activeCompIdRef.current = state.activeCompId;
+    activeCompKindRef.current = state.activeCompKind;
+  });
+
   // Derived geometry  
   const x = clip.startFrame * zoomX;
   const width = Math.max(clip.duration * zoomX, 4);
@@ -332,20 +340,30 @@ const TimelineClip = memo(function TimelineClip({
         if (mode === "move") {
           dispatch({ type: "COMMIT_MOVE" });
           const dx = ev.clientX - e.clientX;
-          const isImageCompUp = state.activeCompKind === "image";
-          // In image comp 
+          const dy = ev.clientY - e.clientY;
+          // Read latest values from refs — avoids stale closure bug
+          const isImageCompUp = activeCompKindRef.current === "image";
+          const compId = activeCompIdRef.current;
+
           const frameDelta = isImageCompUp ? 0 : Math.round(dx / zoomX);
           const newStart = Math.max(0, clip.startFrame + frameDelta);
-          const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
+          const trackDelta = Math.round(dy / trackHeight);
           const dstIdx = Math.max(0, trackIndex + trackDelta);
 
-          // Move clip to destination track
-          const activeCompId = state.activeCompId;
-          moveClip(clip.id, newStart, dstIdx, activeCompId).then(() => {
-            // Fetch from the specific comp if we're in an image/PDF page comp,
-            // otherwise fall back to /timeline/state (activeTimeline)
-            const fetchFn = activeCompId
-              ? fetchCompTimeline(activeCompId)
+          // Skip the backend call completely when nothing actually moved.
+          // This prevents a phantom moveClip on a plain click.
+          const noop = frameDelta === 0 && dstIdx === trackIndex;
+          if (noop) {
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+            return;
+          }
+
+          // Move clip to destination track using latest comp from ref
+          moveClip(clip.id, newStart, dstIdx, compId).then(() => {
+            // Fetch the specific comp state to avoid getting root timeline data
+            const fetchFn = compId
+              ? fetchCompTimeline(compId)
               : fetchTimeline();
             fetchFn.then((data) => {
               if (data)
