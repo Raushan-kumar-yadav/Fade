@@ -118,6 +118,7 @@ export default function ImageWorkspace({ compId, compName, onBack }: ImageWorksp
 // every time the user clicks the Image tab.
 let _defaultImageCompId: string | null = null;
 let _defaultImageCompName: string = 'Image Editor';
+let _imgCreating = false;  // mutex: prevent concurrent auto-create
 
 interface InnerProps { compId: string | null; compName: string; }
 
@@ -153,24 +154,29 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
 
     // Nothing cached — query the backend for an existing image comp.
     const port = (window as any).__FADE_PORT__ ?? 8000;
+    if (_imgCreating) return;          // another instance is already fetching
+    _imgCreating = true;
     fetch(`http://127.0.0.1:${port}/comps`)
       .then(r => r.ok ? r.json() : null)
       .then(async (data) => {
         if (!data) return;
-        const existing = (data.comps ?? []).find((c: any) => c.kind === 'image');
+        const allComps: any[] = data.comps ?? [];
+        // Prefer the marked default; fall back to any non-hidden image comp.
+        const existing =
+          allComps.find((c: any) => c.kind === 'image' && c.isDefault) ||
+          allComps.find((c: any) => c.kind === 'image' && !c.isHidden);
         if (existing) {
-          // Reuse the first existing image comp.
           _defaultImageCompId   = existing.compId;
           _defaultImageCompName = existing.name || 'Image Editor';
           setResolvedId(existing.compId);
           setResolvedName(existing.name || 'Image Editor');
           return;
         }
-        // No image comp exists yet — create one.
+        // No image comp exists yet — create exactly one, marked as default.
         const res = await fetch(`http://127.0.0.1:${port}/comps`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'Image Editor', kind: 'image', width: 1920, height: 1080 }),
+          body: JSON.stringify({ name: 'Image Editor', kind: 'image', width: 1920, height: 1080, isDefault: true }),
         });
         const created = res.ok ? await res.json() : null;
         if (!created?.compId) return;
@@ -179,7 +185,8 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
         setResolvedId(created.compId);
         setResolvedName(created.name || 'Image Editor');
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { _imgCreating = false; });
   }, [compId, compName]);
 
   // Dispatch ENTER_COMP only once we have a real backend compId.

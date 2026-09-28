@@ -68,7 +68,9 @@ class CreateCompRequest(BaseModel):
     height: int = 1080
     fps: float = 30.0
     totalFrames: int = 900
-    kind : str = "video"
+    kind: str = "video"
+    isHidden: bool = False   # hides comp from library (e.g. PDF page comps)
+    isDefault: bool = False  # marks as the workspace default comp
 
 
 class CompRenameRequest(BaseModel):
@@ -87,17 +89,43 @@ class AddCompClipRequest(BaseModel):
 def listComps():
     if engine.project is None:
         return {"comps": []}
+
+    # ── One-time retroactive migration ────────────────────────────────────────
+    # 1. Collect all page_ids owned by PDF docs → those image comps must be hidden.
+    pdf_page_ids: set[str] = set()
+    for tl in engine.project.timelines:
+        if getattr(tl, "kind", "video") == "pdf":
+            for pid in getattr(tl, "page_ids", []):
+                pdf_page_ids.add(pid)
+
+    # 2. Apply isHidden to page comps; deduplicate isDefault per kind.
+    seen_default: set[str] = set()
+    for tl in engine.project.timelines:
+        kind = getattr(tl, "kind", "video")
+        # Hide PDF page comps
+        if tl.timelineId in pdf_page_ids:
+            tl.isHidden = True
+        # Ensure only one isDefault per kind
+        if getattr(tl, "isDefault", False):
+            if kind in seen_default:
+                tl.isDefault = False   # strip duplicate
+            else:
+                seen_default.add(kind)
+    # ─────────────────────────────────────────────────────────────────────────
+
     root_id  = engine.project.timelines[0].timelineId if engine.project.timelines else ""
-    proj_w = engine.project.width
-    proj_h = engine.project.height
+    proj_w   = engine.project.width
+    proj_h   = engine.project.height
     proj_fps = engine.project.fps
     comps = []
     for tl in engine.project.timelines:
         comps.append({
             "compId": tl.timelineId,
             "name": tl.name,
-            "kind" :getattr(tl , "kind" , "video"),
+            "kind": getattr(tl, "kind", "video"),
             "isRoot": tl.timelineId == root_id,
+            "isHidden": getattr(tl, "isHidden", False),
+            "isDefault": getattr(tl, "isDefault", False),
             "width": getattr(tl, "width", proj_w),
             "height": getattr(tl, "height", proj_h),
             "fps": getattr(tl, "fps", proj_fps),
@@ -108,18 +136,41 @@ def listComps():
     return {"comps": comps}
 
 
+
 @router.post("/comps")
 def createComp(req: CreateCompRequest):
     if engine.project is None:
         raise HTTPException(400, "No active project")
+
+    # If caller wants a default comp, return an existing one for that kind
+    # instead of creating a duplicate.
+    if req.isDefault and engine.project is not None:
+        for tl in engine.project.timelines:
+            if getattr(tl, "kind", "video") == req.kind and getattr(tl, "isDefault", False):
+                return {
+                    "compId": tl.timelineId, "name": tl.name,
+                    "kind": tl.kind,
+                    "isHidden": getattr(tl, "isHidden", False),
+                    "isDefault": True,
+                    "width": getattr(tl, "width", req.width),
+                    "height": getattr(tl, "height", req.height),
+                    "fps": getattr(tl, "fps", req.fps),
+                    "totalFrames": getattr(tl, "totalFrames", req.totalFrames),
+                    "isRoot": False, "trackCount": len(tl.tracks),
+                    "clipCount": sum(len(t.clips) for t in tl.tracks),
+                }
+
     comp = engine.createComposition(name=req.name, width=req.width, height=req.height,
                                     fps=req.fps, total_frames=req.totalFrames)
-
     comp.kind = req.kind
+    comp.isHidden = req.isHidden
+    comp.isDefault = req.isDefault
     from backend.events import notify; notify("comps")
     return {
         "compId": comp.timelineId, "name": comp.name,
-        "kind" : comp.kind ,
+        "kind": comp.kind,
+        "isHidden": comp.isHidden,
+        "isDefault": comp.isDefault,
         "width": getattr(comp, "width", req.width),
         "height": getattr(comp, "height", req.height),
         "fps": getattr(comp, "fps", req.fps),
@@ -353,10 +404,12 @@ class ReorderPagesRequest(BaseModel):
     page_ids: list[str]   # full ordered list of compIds
 
 
-def _make_image_comp(name: str, width: int, height: int):
-    """Create a new image composition and return it."""
+def _make_image_comp(name: str, width: int, height: int, hidden: bool = True):
+    """Create a new image composition (PDF page) and return it."""
     comp = engine.createComposition(name=name, width=width, height=height, fps=30, total_frames=1)
     comp.kind = "image"
+    comp.isHidden = hidden   # PDF page comps are hidden from the library by default
+    comp.isDefault = False
     return comp
 
 
@@ -371,19 +424,33 @@ def _get_pdf_doc(doc_id: str):
 
 @router.post("/pdf-docs")
 def createPdfDoc(req: CreatePdfDocRequest):
-    """Create a new PDF document with one blank first page."""
+    """Create a new PDF document with one blank first page.
+    If a default PDF doc already exists, return it instead of creating a duplicate."""
     if engine.project is None:
         raise HTTPException(400, "No active project")
 
-    # Create the PDF document timeline
+    # Dedup guard: if any PDF doc already exists, return the first one.
+    for tl in engine.project.timelines:
+        if getattr(tl, "kind", "video") == "pdf":
+            return {
+                "docId": tl.timelineId,
+                "name": tl.name,
+                "kind": "pdf",
+                "isDefault": getattr(tl, "isDefault", False),
+                "pageIds": list(getattr(tl, "page_ids", [])),
+            }
+
+    # No PDF doc exists yet — create one.
     doc = engine.createComposition(
         name=req.name, width=req.width, height=req.height, fps=30, total_frames=1
     )
     doc.kind = "pdf"
+    doc.isDefault = True   # first PDF doc is always the default
+    doc.isHidden = False
     doc.page_ids = []
 
-    # Create first page as an image comp
-    page = _make_image_comp(f"{req.name} — Page 1", req.width, req.height)
+    # Create first page as a hidden image comp
+    page = _make_image_comp(f"{req.name} — Page 1", req.width, req.height, hidden=True)
     doc.page_ids.append(page.timelineId)
 
     from backend.events import notify; notify("comps")
@@ -391,6 +458,7 @@ def createPdfDoc(req: CreatePdfDocRequest):
         "docId": doc.timelineId,
         "name": doc.name,
         "kind": "pdf",
+        "isDefault": True,
         "pageIds": doc.page_ids,
     }
 
@@ -407,6 +475,7 @@ def listPdfDocs():
                 "docId": tl.timelineId,
                 "name": tl.name,
                 "kind": "pdf",
+                "isDefault": getattr(tl, "isDefault", False),
                 "pageCount": len(getattr(tl, "page_ids", [])),
                 "pageIds": list(getattr(tl, "page_ids", [])),
             })

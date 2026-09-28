@@ -1,14 +1,4 @@
-/**
- * PdfWorkspace.tsx
- *
- * Canva-like PDF editing workspace.
- * Layout: Pages panel (left) | Viewport (center) | Inspector/Effects/Transitions/Tools (right)
- *                            Timeline (bottom, full-width)
- *
- * Each page in the PDF is an imageComp. Selecting a page dispatches
- * ENTER_COMP for that page's compId, so all existing image editing
- * features (inspector, effects, tools, timeline layers) work on that page.
- */
+ 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as FlexLayout from 'flexlayout-react';
 import 'flexlayout-react/style/dark.css';
@@ -29,7 +19,7 @@ import PagesPanel, { type PdfPage } from './PagesPanel';
 import LibraryPanel from '../library/LibraryPanel';
 import { type AssetItem } from '../../api/useApi';
 
-// ─── FlexLayout model ─────────────────────────────────────────────────────────
+// FlexLayout model  
 
 const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
   global: {
@@ -92,13 +82,14 @@ const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
   },
 });
 
-// ─── Module-level PDF doc cache (persists across tab switches) ────────────────
+//   Module-level PDF doc cache  
 
-let _defaultPdfDocId:   string | null = null;
+let _defaultPdfDocId: string | null = null;
 let _defaultPdfDocName: string        = 'Untitled Document';
-let _defaultPageId:     string | null = null; // last selected page compId
+let _defaultPageId: string | null = null; // last selected page compId
+let _pdfCreating = false;              // mutex: prevent concurrent auto-create
 
-// ─── Export ───────────────────────────────────────────────────────────────────
+// Export  
 
 interface PdfWorkspaceProps {
   docId?: string | null;
@@ -115,17 +106,17 @@ export default function PdfWorkspace({ docId, docName }: PdfWorkspaceProps) {
   );
 }
 
-// ─── Inner ────────────────────────────────────────────────────────────────────
+//   Inner  
 
 function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: string }) {
   const { state, dispatch } = useTimeline();
   const { activeTool } = useTool();
   const port = (window as any).__FADE_PORT__ ?? 8000;
 
-  // ── Resolve PDF doc (same priority chain as ImageWorkspace) ──────────────
-  const [resolvedDocId,   setResolvedDocId]   = useState<string | null>(docId ?? _defaultPdfDocId);
+  //   Resolve PDF doc  
+  const [resolvedDocId, setResolvedDocId] = useState<string | null>(docId ?? _defaultPdfDocId);
   const [resolvedDocName, setResolvedDocName] = useState(docName || _defaultPdfDocName);
-  const [activePageId,    setActivePageId]    = useState<string | null>(_defaultPageId);
+  const [activePageId, setActivePageId] = useState<string | null>(_defaultPageId);
 
   useEffect(() => {
     if (docId) {
@@ -140,19 +131,25 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
       setResolvedDocName(_defaultPdfDocName);
       return;
     }
-    // Check backend for existing pdf docs or create one
+    // Check backend  
+    if (_pdfCreating) return;        
+    _pdfCreating = true;
     fetch(`http://127.0.0.1:${port}/pdf-docs`)
       .then(r => r.ok ? r.json() : null)
       .then(async data => {
-        const existing = (data?.docs ?? []).find((d: any) => d.kind === 'pdf');
+        const allDocs: any[] = data?.docs ?? [];
+        // Prefer the marked default; fall back to any pdf doc.
+        const existing =
+          allDocs.find((d: any) => d.isDefault) ||
+          allDocs[0];
         if (existing) {
-          _defaultPdfDocId   = existing.docId;
+          _defaultPdfDocId = existing.docId;
           _defaultPdfDocName = existing.name || 'Untitled Document';
           setResolvedDocId(existing.docId);
           setResolvedDocName(existing.name || 'Untitled Document');
           return;
         }
-        // Create a new PDF doc
+        // No PDF doc yet  
         const res = await fetch(`http://127.0.0.1:${port}/pdf-docs`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -160,7 +157,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
         });
         const created = res.ok ? await res.json() : null;
         if (!created?.docId) return;
-        _defaultPdfDocId   = created.docId;
+        _defaultPdfDocId = created.docId;
         _defaultPdfDocName = created.name || 'Untitled Document';
         setResolvedDocId(created.docId);
         setResolvedDocName(created.name || 'Untitled Document');
@@ -169,10 +166,11 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
           handleSelectPage({ index: 0, pageId: created.pageIds[0], compId: created.pageIds[0], name: 'Page 1' });
         }
       })
-      .catch(() => {});
-  }, [docId, docName]); // eslint-disable-line react-hooks/exhaustive-deps
+      .catch(() => {})
+      .finally(() => { _pdfCreating = false; });
+  }, [docId, docName]);  
 
-  // ── Select a page: ENTER_COMP for that imageComp ─────────────────────────
+  // Select a page 
   const handleSelectPage = useCallback((page: PdfPage) => {
     _defaultPageId = page.compId;
     setActivePageId(page.compId);
@@ -180,7 +178,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
     fetch(`http://127.0.0.1:${port}/comps/${page.compId}/activate`, { method: 'POST' }).catch(() => {});
   }, [dispatch, port]);
 
-  // ── Add asset to timeline of the active page ─────────────────────────────
+  // Add asset to timeline of the active page  
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
     if (!activePageId) return;
     try {
@@ -202,13 +200,13 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
         if (first) handleSelectPage({ index: 0, pageId: first.pageId, compId: first.compId, name: first.name });
       })
       .catch(() => {});
-  }, [resolvedDocId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [resolvedDocId]);  
 
-  // ── FlexLayout model ─────────────────────────────────────────────────────
+  //   FlexLayout model  
   const modelRef = useRef<FlexLayout.Model>(FlexLayout.Model.fromJson(makePdfLayoutJson()));
   const onModelChange = useCallback((_m: FlexLayout.Model) => { /* no-op */ }, []);
 
-  // ── Tool panel ───────────────────────────────────────────────────────────
+  //   Tool panel  
   const toolPanel = (() => {
     const frame = state.currentFrame ?? 0;
     if (activeTool === 'brush')  return <BrushToolPanel key="brush" />;
@@ -226,21 +224,21 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
     );
   })();
 
-  // ── Factory ──────────────────────────────────────────────────────────────
+  //   Factory  
   const factory = (node: FlexLayout.TabNode) => {
     switch (node.getComponent()) {
       case 'pages':
         return resolvedDocId
           ? <PagesPanel docId={resolvedDocId} activePageId={activePageId} onSelectPage={handleSelectPage} />
           : <div className="vp" style={{ padding: 16, color: '#475569', fontSize: 12 }}>Loading document…</div>;
-      case 'library':    return <LibraryPanel onAddToTimeline={handleAddToTimeline} />;
-      case 'viewport':    return <ViewportWidget />;
-      case 'timeline':    return <div className="vp vp--timeline"><Timeline /></div>;
-      case 'inspector':   return <InspectorPanel />;
-      case 'effects':     return <EffectsPanel />;
+      case 'library': return <LibraryPanel onAddToTimeline={handleAddToTimeline} />;
+      case 'viewport': return <ViewportWidget />;
+      case 'timeline': return <div className="vp vp--timeline"><Timeline /></div>;
+      case 'inspector': return <InspectorPanel />;
+      case 'effects': return <EffectsPanel />;
       case 'transitions': return <TransitionPanel />;
-      case 'tools':       return toolPanel;
-      default:            return <div className="vp" />;
+      case 'tools': return toolPanel;
+      default: return <div className="vp" />;
     }
   };
 

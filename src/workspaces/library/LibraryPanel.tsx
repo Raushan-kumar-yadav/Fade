@@ -10,6 +10,7 @@ import './LibraryPanel.css';
 
 interface CompMeta {
   compId: string; name: string; isRoot: boolean; kind: 'video' | 'image' | 'pdf';
+  isHidden: boolean; isDefault: boolean;
   width: number; height: number; fps: number;
   totalFrames: number; trackCount: number; clipCount: number;
 }
@@ -50,13 +51,14 @@ function base() { return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 80
 //   Type thumbnails
 
 const THUMB_BG: Record<string, string> = {
-  video: 'linear-gradient(135deg,#1a2a4a 0%,#0d1926 100%)',
-  image: 'linear-gradient(135deg,#1a3a2a 0%,#0d2018 100%)',
-  audio: 'linear-gradient(135deg,#2a1a3a 0%,#180d26 100%)',
-  svg: 'linear-gradient(135deg,#1a3a3a 0%,#0d2222 100%)',
-  comp: 'linear-gradient(135deg,#0d2e2e 0%,#051a1a 100%)',
+  video:   'linear-gradient(135deg,#1a2a4a 0%,#0d1926 100%)',
+  image:   'linear-gradient(135deg,#1a3a2a 0%,#0d2018 100%)',
+  pdf:     'linear-gradient(135deg,#3a1a0a 0%,#200d05 100%)',
+  audio:   'linear-gradient(135deg,#2a1a3a 0%,#180d26 100%)',
+  svg:     'linear-gradient(135deg,#1a3a3a 0%,#0d2222 100%)',
+  comp:    'linear-gradient(135deg,#0d2e2e 0%,#051a1a 100%)',
   webcomp: 'linear-gradient(135deg,#1a1040 0%,#0a0628 100%)',
-  unknown:'linear-gradient(135deg,#2a2a2a 0%,#111 100%)',
+  unknown: 'linear-gradient(135deg,#2a2a2a 0%,#111 100%)',
 };
 
 function CardThumb({ type }: { type: string }) {
@@ -112,6 +114,18 @@ function CardThumb({ type }: { type: string }) {
           <rect x="26" y="26" width="16" height="16" rx="2" fill="#0dcfb4" opacity="0.2"/>
           <path d="M22 14 L26 14M14 22 L14 26M34 22 L34 26M26 34 L22 34"
             stroke="#0dcfb4" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      );
+      break;
+    case 'pdf':
+      icon = (
+        <svg viewBox="0 0 48 48" width={22} height={22} fill="none">
+          <rect x="10" y="4" width="22" height="30" rx="2" fill="none" stroke="#f97316" strokeWidth="2.2"/>
+          <rect x="16" y="34" width="22" height="10" rx="2" fill="#f97316" opacity="0.18"/>
+          <line x1="15" y1="14" x2="27" y2="14" stroke="#f97316" strokeWidth="1.8" strokeLinecap="round"/>
+          <line x1="15" y1="19" x2="27" y2="19" stroke="#f97316" strokeWidth="1.8" strokeLinecap="round"/>
+          <line x1="15" y1="24" x2="22" y2="24" stroke="#f97316" strokeWidth="1.8" strokeLinecap="round"/>
+          <text x="34" y="43" textAnchor="middle" fontSize="8" fill="#f97316" fontFamily="monospace" fontWeight="700">PDF</text>
         </svg>
       );
       break;
@@ -838,16 +852,19 @@ interface CardProps {
   onRenameCommit?: (v: string) => void;
   onRenameCancel?: () => void;
   subtitle?: string;
+  isDefault?: boolean;
+  cardStyle?: React.CSSProperties;
 }
 
 function LibCard({
   type, title, badge, isActive, isDragging,
   onDoubleClick, onContextMenu, onDragStart, onDragEnd,
-  onDelete, renaming, onRenameCommit, onRenameCancel, subtitle,
+  onDelete, renaming, onRenameCommit, onRenameCancel, subtitle, isDefault, cardStyle,
 }: CardProps) {
   return (
     <div
       className={`lib-card${isActive ? ' lib-card--active' : ''}${isDragging ? ' lib-card--dragging' : ''}`}
+      style={cardStyle}
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -856,7 +873,10 @@ function LibCard({
     >
       <CardThumb type={type} />
       <div className="lib-card__body">
-        {badge && <span className={`lib-card__badge lib-card__badge--${type}`}>{badge}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {badge && <span className={`lib-card__badge lib-card__badge--${type}`}>{badge}</span>}
+          {isDefault && <span style={{ fontSize: 9, color: '#fbbf24', opacity: 0.8, letterSpacing: 0.5 }}>DEFAULT</span>}
+        </div>
         {renaming && onRenameCommit && onRenameCancel ? (
           <InlineRename initial={title} onCommit={onRenameCommit} onCancel={onRenameCancel} />
         ) : (
@@ -1342,15 +1362,26 @@ export default function LibraryPanel({ onAddToTimeline }: {
               </div>
             ))}
 
-            {comps.map(comp => {
+            {comps.filter(comp => !comp.isHidden).map(comp => {
               const isActive = state.activeCompId === comp.compId;
+              const isPdf = comp.kind === 'pdf';
+              const isImg = comp.kind === 'image';
+              const cardStyle: React.CSSProperties = isPdf
+                ? { borderColor: 'rgba(249,115,22,0.35)', boxShadow: isActive ? '0 0 0 2px #f97316' : undefined }
+                : isImg
+                ? { borderColor: 'rgba(167,139,250,0.3)', boxShadow: isActive ? '0 0 0 2px #a855f7' : undefined }
+                : {};
+              const badge = comp.isRoot ? 'ROOT' : isPdf ? 'PDF' : isImg ? 'IMAGE' : 'COMP';
+              const thumbType = isPdf ? 'pdf' : isImg ? 'image' : 'comp';
               return (
                 <div key={comp.compId} className="lib__card-wrap">
                   <LibCard
-                    type="comp"
+                    type={thumbType}
                     title={comp.name}
-                    badge={comp.isRoot ? 'ROOT' : 'COMP'}
+                    badge={badge}
                     isActive={isActive}
+                    isDefault={comp.isDefault}
+                    cardStyle={cardStyle}
                     isDragging={dragging === comp.compId}
                     onDragStart={e => {
                       if (comp.isRoot) return;
@@ -1362,14 +1393,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     renaming={renamingId === comp.compId}
                     onRenameCommit={v => handleRenameComp(comp.compId, v)}
                     onRenameCancel={() => setRenamingId(null)}
-                    subtitle={`${comp.width}�${comp.height} � ${comp.fps}fps`}
+                    subtitle={`${comp.width}×${comp.height} · ${comp.fps}fps`}
                     onDoubleClick={() => handleEnterComp(comp)}
                     onContextMenu={e => compCtx(e, comp)}
                   />
                 </div>
               );
             })}
-
             {loading && filtered.length === 0 && (
               <div className="lib__spinner" style={{ margin: '20px auto', gridColumn: '1/-1' }} />
             )}
