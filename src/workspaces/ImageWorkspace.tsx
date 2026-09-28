@@ -49,60 +49,57 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
     tabEnableRename: false,
     tabSetEnableDrop: true,
     tabSetEnableMaximize: false,
+    tabSetTabStripHeight: 28,
   },
   borders: [],
   layout: {
-    type: 'row',
+    // ── Outer column: top-row + bottom-timeline (same as VideoWorkspace) ──
+    type: 'column',
     weight: 100,
     children: [
-      // ── Left: Library (narrow)
+      // ── Top row: Library | Viewport | Inspector/Effects/Transitions/Tools
       {
-        type: 'tabset',
-        weight: 14,
+        type: 'row',
+        weight: 72,
         children: [
-          { type: 'tab', name: 'Library', component: 'library', enableClose: false },
-        ],
-      },
-
-      // ── Center: Viewport (wide)
-      {
-        type: 'tabset',
-        weight: 56,
-        children: [
-          { type: 'tab', name: 'Viewport', component: 'viewport', enableClose: false },
-        ],
-      },
-
-      // ── Right: Inspector top + Layers bottom (in a column)
-      {
-        type: 'column',
-        weight: 30,
-        children: [
-          // Right top — Inspector / Effects / Tools tabs
           {
             type: 'tabset',
-            weight: 55,
+            weight: 18,
+            children: [
+              { type: 'tab', name: 'Library', component: 'library', enableClose: false },
+            ],
+          },
+          {
+            type: 'tabset',
+            weight: 52,
+            children: [
+              { type: 'tab', name: 'Viewport', component: 'viewport', enableClose: false },
+            ],
+          },
+          {
+            type: 'tabset',
+            weight: 30,
             selected: 0,
             children: [
-              { type: 'tab', name: 'Inspector',   component: 'inspector',    enableClose: false },
-              { type: 'tab', name: 'Effects',     component: 'effects',      enableClose: false },
-              { type: 'tab', name: 'Tools',       component: 'tools',        enableClose: false },
+              { type: 'tab', name: 'Inspector',   component: 'inspector',   enableClose: false },
+              { type: 'tab', name: 'Effects',     component: 'effects',     enableClose: false },
+              { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
+              { type: 'tab', name: 'Tools',       component: 'tools',       enableClose: false },
             ],
           },
-          // Right bottom — Layers (Timeline in image mode)
-          {
-            type: 'tabset',
-            weight: 45,
-            children: [
-              { type: 'tab', name: 'Layers', component: 'timeline', enableClose: false },
-            ],
-          },
+        ],
+      },
+      // ── Bottom: full-width Timeline (acts as Layers in image mode) ────────
+      {
+        type: 'tabset',
+        weight: 28,
+        children: [
+          { type: 'tab', name: 'Timeline', component: 'timeline', enableClose: false },
         ],
       },
     ],
   },
 });
-
 // ─── Export ───────────────────────────────────────────────────────────────────
 
 export default function ImageWorkspace({ compId, compName, onBack }: ImageWorkspaceProps) {
@@ -115,7 +112,12 @@ export default function ImageWorkspace({ compId, compName, onBack }: ImageWorksp
   );
 }
 
-// ─── Inner ────────────────────────────────────────────────────────────────────
+// ─── Module-level cache ───────────────────────────────────────────────────────
+// Persists across tab switches (component unmounts/remounts).
+// Stores the last-used default image comp so we don't create a new one
+// every time the user clicks the Image tab.
+let _defaultImageCompId: string | null = null;
+let _defaultImageCompName: string = 'Image Editor';
 
 interface InnerProps { compId: string | null; compName: string; }
 
@@ -123,18 +125,76 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
   const { state, dispatch } = useTimeline();
   const { activeTool } = useTool();
 
-  // Force image mode in this workspace's TimelineContext.
-  // We always dispatch with kind='image' so isImageComp=true applies
-  // immediately — even when the user opens Image tab directly without
-  // double-clicking a comp (compId may be null).
+  // ── Resolve a real backend compId ──────────────────────────────────────────
+  // Priority:
+  //   1. Explicit compId passed from App (user double-clicked an image comp)
+  //   2. Module-level cache (_defaultImageCompId) — survives tab switches
+  //   3. First existing image comp found via GET /comps
+  //   4. Auto-create a new image comp (only when truly none exists)
+  const [resolvedId,   setResolvedId]   = React.useState<string | null>(compId ?? _defaultImageCompId);
+  const [resolvedName, setResolvedName] = React.useState(compName || _defaultImageCompName);
+
   useEffect(() => {
+    if (compId) {
+      // Explicit comp provided — always respect it.
+      _defaultImageCompId   = compId;
+      _defaultImageCompName = compName || 'Image Editor';
+      setResolvedId(compId);
+      setResolvedName(compName || 'Image Editor');
+      return;
+    }
+
+    // Check in-memory cache first (avoids network round-trip on tab switch).
+    if (_defaultImageCompId) {
+      setResolvedId(_defaultImageCompId);
+      setResolvedName(_defaultImageCompName);
+      return;
+    }
+
+    // Nothing cached — query the backend for an existing image comp.
+    const port = (window as any).__FADE_PORT__ ?? 8000;
+    fetch(`http://127.0.0.1:${port}/comps`)
+      .then(r => r.ok ? r.json() : null)
+      .then(async (data) => {
+        if (!data) return;
+        const existing = (data.comps ?? []).find((c: any) => c.kind === 'image');
+        if (existing) {
+          // Reuse the first existing image comp.
+          _defaultImageCompId   = existing.compId;
+          _defaultImageCompName = existing.name || 'Image Editor';
+          setResolvedId(existing.compId);
+          setResolvedName(existing.name || 'Image Editor');
+          return;
+        }
+        // No image comp exists yet — create one.
+        const res = await fetch(`http://127.0.0.1:${port}/comps`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: 'Image Editor', kind: 'image', width: 1920, height: 1080 }),
+        });
+        const created = res.ok ? await res.json() : null;
+        if (!created?.compId) return;
+        _defaultImageCompId   = created.compId;
+        _defaultImageCompName = created.name || 'Image Editor';
+        setResolvedId(created.compId);
+        setResolvedName(created.name || 'Image Editor');
+      })
+      .catch(() => {});
+  }, [compId, compName]);
+
+  // Dispatch ENTER_COMP only once we have a real backend compId.
+  useEffect(() => {
+    if (!resolvedId) return;
     dispatch({
       type: 'ENTER_COMP',
-      compId: compId || '__image_workspace__',
-      compName: compName || 'Image Editor',
+      compId: resolvedId,
+      compName: resolvedName,
       kind: 'image',
     });
-  }, [compId, compName, dispatch]);
+    // Activate on the backend so renders go to this comp.
+    const port = (window as any).__FADE_PORT__ ?? 8000;
+    fetch(`http://127.0.0.1:${port}/comps/${resolvedId}/activate`, { method: 'POST' }).catch(() => {});
+  }, [resolvedId, resolvedName, dispatch]);
 
   // FlexLayout model (fixed — not persisted separately from video layout)
   const modelRef = useRef<FlexLayout.Model>(FlexLayout.Model.fromJson(makeImageLayoutJson()));
@@ -146,8 +206,9 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
   }, []);
 
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
-    await addClipToTimeline(asset.assetId, trackIndex, 0, 90, 0, state.activeCompId);
-  }, [state.activeCompId]);
+    await addClipToTimeline(asset.assetId, trackIndex, 0, 90, 0, resolvedId ?? state.activeCompId);
+  }, [resolvedId, state.activeCompId]);
+
 
   // Tool panel — identical to VideoWorkspace
   const toolPanel = (() => {

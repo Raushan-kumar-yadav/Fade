@@ -272,15 +272,22 @@ export default function App() {
             onLoadEnd={handleProjectLoadEnd}
           />
           <main className="app-workspace">
-            {isImageTab
-              ? <ImageWorkspace
-                  compId={imageCompId}
-                  compName={imageCompName}
-                  onBack={() => setActiveTab('video')}
-                />
-              : Workspace && <Workspace />
-            }
+            {/* ImageWorkspace stays ALWAYS mounted — hiding it preserves the
+                FlexLayout model (panel positions/sizes) and comp state.
+                Unmounting + remounting resets modelRef every time. */}
+            <div style={{
+              display: isImageTab ? 'flex' : 'none',
+              width: '100%', height: '100%',
+            }}>
+              <ImageWorkspace
+                compId={imageCompId}
+                compName={imageCompName}
+                onBack={() => setActiveTab('video')}
+              />
+            </div>
+            {!isImageTab && Workspace && <Workspace />}
           </main>
+
 
            
           {(activeTab === 'video' || activeTab === 'image') && showToolbox && (
