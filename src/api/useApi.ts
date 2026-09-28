@@ -143,11 +143,12 @@ export async function moveClip(
   clipId: string,
   startFrame: number,
   trackIndex: number,
+  compId?: string | null,
 ): Promise<void> {
   await fetch(`${base()}/timeline/move-clip`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clipId, startFrame, trackIndex }),
+    body: JSON.stringify({ clipId, startFrame, trackIndex, compId: compId ?? null }),
   });
 }
 
@@ -252,6 +253,16 @@ export async function removeTrack(trackId: string): Promise<void> {
 export async function fetchTimeline(): Promise<any> {
   try {
     const r = await fetch(`${base()}/timeline/state`);
+    return r.ok ? r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+// Re-fetch timeline state for a specific comp (used after clip moves in PDF/image mode)
+export async function fetchCompTimeline(compId: string): Promise<any> {
+  try {
+    const r = await fetch(`${base()}/timeline/comp/${compId}/state`);
     return r.ok ? r.json() : null;
   } catch {
     return null;

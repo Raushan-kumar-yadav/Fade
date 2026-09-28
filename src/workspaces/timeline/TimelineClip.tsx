@@ -6,7 +6,8 @@ import {
   mapBackendTrack,
   mapBackendTracksPreservingOrder,
 } from "./TimelineContext";
-import { moveClip, trimClip, fetchTimeline, splitClip } from "../../api/useApi";
+import { moveClip, trimClip, fetchTimeline, fetchCompTimeline, splitClip } from "../../api/useApi";
+
 import { waveformApi, effectsApi } from "../../api/toolsApi";
 import {
   type Clip,
@@ -338,9 +339,15 @@ const TimelineClip = memo(function TimelineClip({
           const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
           const dstIdx = Math.max(0, trackIndex + trackDelta);
 
-          // Move clip to destination track  
-          moveClip(clip.id, newStart, dstIdx).then(() => {
-            fetchTimeline().then((data) => {
+          // Move clip to destination track
+          const activeCompId = state.activeCompId;
+          moveClip(clip.id, newStart, dstIdx, activeCompId).then(() => {
+            // Fetch from the specific comp if we're in an image/PDF page comp,
+            // otherwise fall back to /timeline/state (activeTimeline)
+            const fetchFn = activeCompId
+              ? fetchCompTimeline(activeCompId)
+              : fetchTimeline();
+            fetchFn.then((data) => {
               if (data)
                 dispatch({
                   type: "SET_TRACKS",
@@ -351,6 +358,7 @@ const TimelineClip = memo(function TimelineClip({
                 });
             });
           });
+
         } else {
           dispatch({ type: "END_INTERACTION" });
           if (

@@ -28,6 +28,7 @@ class MoveClipRequest(BaseModel):
     clipId: str
     startFrame: int
     trackIndex: int
+    compId: str | None = None  # if set, operate on this comp explicitly
 
 
 class TrimClipRequest(BaseModel):
@@ -242,7 +243,13 @@ def addSvgClip(req: AddSvgClipRequest):
 
 @router.post("/timeline/move-clip")
 def moveClip(req: MoveClipRequest):
-    tl = engine.activeTimeline
+    # Use explicit compId if provided to avoid activeTimeline race conditions
+    if req.compId:
+        tl = engine.getTimeline(req.compId)
+        if tl is None:
+            raise HTTPException(404, f"Comp {req.compId!r} not found")
+    else:
+        tl = engine.activeTimeline
     if tl is None:
         raise HTTPException(400, "No active timeline")
     clip = None
@@ -456,6 +463,22 @@ def timelineState():
     totalFrames = getattr(tl, "totalFrames", None) or (prj.totalFrame if prj else 1800)
     if tl is None:
         return {"tracks": [], "totalFrames": totalFrames, "fps": fps}
+    data = tl.toDict()
+    data["totalFrames"] = totalFrames
+    data["fps"] = getattr(tl, "fps", fps)
+    return data
+
+
+@router.get("/timeline/comp/{compId}/state")
+def compTimelineState(compId: str):
+    """Return timeline track/clip state for a specific comp by ID.
+    Unlike /timeline/state this never relies on engine.activeTimeline."""
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404, f"Comp {compId!r} not found")
+    prj = engine.project
+    fps = prj.fps if prj else 30.0
+    totalFrames = getattr(tl, "totalFrames", None) or (prj.totalFrame if prj else 1800)
     data = tl.toDict()
     data["totalFrames"] = totalFrames
     data["fps"] = getattr(tl, "fps", fps)
