@@ -170,7 +170,7 @@ export function useWebCompSync() {
             const capGen = myGen;
             api.webcompPushToNative(
               webcompId,
-              srcFrame,   // localFrame ← cache key the compositor uses
+              srcFrame,   
               clip.width,
               clip.height,
             ).then((ok: boolean) => {
@@ -236,7 +236,7 @@ export function useWebCompSync() {
     };
   }, []);
 
-  /* Sync offscreen windows with timeline state   */
+ 
   const syncBusyRef = useRef<boolean>(false);
   const syncQueuedRef = useRef<boolean>(false);
 
@@ -318,7 +318,7 @@ export function useWebCompSync() {
         }
       }
 
-      /* Destroy windows no longer needed */
+ 
       for (const id of Array.from(knownIdsRef.current)) {
         if (!newIds.has(id)) {
           stopLoopForClip(id);          

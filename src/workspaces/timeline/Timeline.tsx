@@ -433,16 +433,18 @@ function TimelineInner() {
         >
           <div style={{ width: isImageComp ? '100%' : tw, minHeight: th, position: 'relative' }}>
             {state.tracks
-              // In image comp  
-              .filter(track => isImageComp ? !track.name.toLowerCase().includes('audio') : true)
-              .map((track, idx) => (
+    
+              .map((track, realIdx) => ({ track, realIdx }))
+              .filter(({ track }) => isImageComp ? !track.name.toLowerCase().includes('audio') : true)
+              .map(({ track, realIdx }) => (
               <TrackRow
                 key={track.id}
                 track={track}
-                trackIndex={idx}
+                trackIndex={realIdx}
                 scrollLeft={scrollLeft}
               />
             ))}
+
 
             {/* Rubber-band selection overlay */}
             {boxRect && boxRect.w > 4 && boxRect.h > 4 && (

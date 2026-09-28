@@ -7,6 +7,8 @@ import AIWorkspace from './workspaces/AIWorkspace'
 import VideoWorkspace from './workspaces/VideoWorkspace'
 import AudioWorkspace from './workspaces/AudioWorkspace'
 import ExportWorkspace from './workspaces/ExportWorkspace'
+import ImageWorkspace from './workspaces/ImageWorkspace'
+import PdfWorkspace from './workspaces/pdf/PdfWorkspace'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
 import { SelectionContext, type SelectedItem } from './context/selectionContext'
@@ -16,7 +18,7 @@ import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
-type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export'
+type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image' | 'pdf'
 
 //   Loading overlay  
 
@@ -214,14 +216,49 @@ export default function App() {
 
   }, [])
 
-  const workspaces: Record<TabId, React.FC> = {
+  // Listen for imageComp double-click → switch to image tab
+  const [imageCompId, setImageCompId] = useState<string | null>(null);
+  const [imageCompName, setImageCompName] = useState<string>('Image Editor');
+  useEffect(() => {
+    const h = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.compId) {
+        setImageCompId(detail.compId);
+        setImageCompName(detail.name || 'Image Editor');
+      }
+      setActiveTab('image');
+    };
+    window.addEventListener('fade:enter-image-comp', h);
+    return () => window.removeEventListener('fade:enter-image-comp', h);
+  }, []);
+
+  // Listen for PDF doc open → switch to pdf tab
+  const [pdfDocId, setPdfDocId] = useState<string | null>(null);
+  const [pdfDocName, setPdfDocName] = useState<string>('Untitled Document');
+  useEffect(() => {
+    const h = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.docId) {
+        setPdfDocId(detail.docId);
+        setPdfDocName(detail.name || 'Untitled Document');
+      }
+      setActiveTab('pdf');
+    };
+    window.addEventListener('fade:enter-pdf-doc', h);
+    return () => window.removeEventListener('fade:enter-pdf-doc', h);
+  }, []);
+
+  const workspaces: Record<Exclude<TabId, 'image' | 'pdf'>, React.FC> = {
     home: HomeWorkspace,
     ai: AIWorkspace,
     video: VideoWorkspace,
     audio: AudioWorkspace,
     export: ExportWorkspace,
   }
-  const Workspace = workspaces[activeTab]
+
+  const isImageTab = activeTab === 'image';
+  const isPdfTab   = activeTab === 'pdf';
+  const Workspace  = (isImageTab || isPdfTab) ? null : workspaces[activeTab as Exclude<TabId, 'image' | 'pdf'>]
 
   return (
     <SelectionContext.Provider value={{ selected, setSelected }}>
@@ -254,11 +291,34 @@ export default function App() {
             onLoadEnd={handleProjectLoadEnd}
           />
           <main className="app-workspace">
-            <Workspace />
+            {/* ImageWorkspace stays ALWAYS mounted — hiding it preserves the
+                FlexLayout model (panel positions/sizes) and comp state.
+                Unmounting + remounting resets modelRef every time. */}
+            <div style={{
+              display: isImageTab ? 'flex' : 'none',
+              width: '100%', height: '100%',
+            }}>
+              <ImageWorkspace
+                compId={imageCompId}
+                compName={imageCompName}
+                onBack={() => setActiveTab('video')}
+              />
+            </div>
+
+            {/* PdfWorkspace — always mounted, same pattern */}
+            <div style={{
+              display: isPdfTab ? 'flex' : 'none',
+              width: '100%', height: '100%',
+            }}>
+              <PdfWorkspace docId={pdfDocId} docName={pdfDocName} />
+            </div>
+
+            {!isImageTab && !isPdfTab && Workspace && <Workspace />}
           </main>
 
+
            
-          {activeTab === 'video' && showToolbox && (
+          {(activeTab === 'video' || activeTab === 'image') && showToolbox && (
             <ToolboxWidget onClose={() => setShowToolbox(false)} />
           )}
 

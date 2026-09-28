@@ -36,7 +36,8 @@ export interface Clip {
   type: ClipType;
   isSelected: boolean;
   assetId?: string;
-  compId?: string;  // only set when type === 'comp'
+  compId?: string;     // only set when type === 'comp'
+  compKind?: 'video' | 'image'; // kind of the referenced comp
 }
 
 export interface Track {
@@ -78,7 +79,7 @@ export interface GhostInfo {
 export interface CompTab {
   compId: string | null;  // null = root timeline
   name: string;
-  kind: "video" | "image";   // video = normal timeline, image = layer stack
+  kind: "video" | "image" | "pdf";   // video = normal timeline, image = layer stack, pdf = pdf document
 }
 
 // Image layer element (what sits on a layer canvas)
@@ -123,7 +124,7 @@ export interface TimelineState {
   // Composition navigation 
   activeCompId: string | null;
   activeCompName: string | null;
-  activeCompKind: "video" | "image" | null;   // what kind of comp is open
+  activeCompKind: "video" | "image" | "pdf" | null;   // what kind of comp is open
   // Master timeline tab stack  
   compTabStack: CompTab[];
 }
@@ -181,8 +182,9 @@ export type TimelineAction =
   | { type: "SET_GHOST"; ghost: GhostInfo | null }
   | { type: "END_INTERACTION" }
   // Composition navigation
-  | { type: "ENTER_COMP"; compId: string; compName: string; kind: "video" | "image" }
+  | { type: "ENTER_COMP"; compId: string; compName: string; kind: "video" | "image" | "pdf" }
   | { type: "EXIT_COMP" }
+  | { type: "SWAP_PDF_PAGE"; compId: string; compName: string }  // replace active comp in-place (PDF page switch)
   | { type: "SWITCH_COMP_TAB"; compId: string | null }   // switch to existing tab
   | { type: "CLOSE_COMP_TAB"; compId: string }           // close a comp tab
   | { type: "SET_COMP_DIMENSIONS"; width: number; height: number };

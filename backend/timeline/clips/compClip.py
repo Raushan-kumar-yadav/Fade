@@ -41,16 +41,31 @@ class CompClip(BaseClip):
 
     #   Serialization  
     def toDict(self) -> dict:
+        # Resolve the kind of the referenced comp so the frontend knows
+        # whether to open the image editor or video editor on double-click.
+        comp_kind = "video"
+        try:
+            from backend.state import engine
+            if engine.project:
+                for tl in engine.project.timelines:
+                    if getattr(tl, "compId", None) == self.compId:
+                        comp_kind = getattr(tl, "kind", "video") or "video"
+                        break
+        except Exception:
+            pass
+
         return {
             "type": self.CLIP_TYPE,
             "clipId": self.clipId,
             "startFrame": self.startFrame,
             "duration": self.duration,
             "compId": self.compId,
+            "compKind": comp_kind,
             "mediaOffset": self.mediaOffset,
             "transform": self.transform.toDict(),
             "effects": [e.toDict() for e in self.effects],
         }
+
 
     @classmethod
     def fromDict(cls, data: dict) -> "CompClip":

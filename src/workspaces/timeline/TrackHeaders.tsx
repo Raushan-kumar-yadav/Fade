@@ -1,4 +1,4 @@
-﻿import React, { memo, useCallback, useRef, useState } from 'react';
+import React, { memo, useCallback, useRef, useState } from 'react';
 import { useTimeline } from './TimelineContext';
 import { type Track, HEADER_WIDTH, MIN_TRACK_H, MAX_TRACK_H } from './types';
 import { addTrack } from '../../api/useApi';
@@ -17,13 +17,14 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
     if (adding) return;
     setAdding(true);
     try {
-      await addTrack(type);
-      // TimelineContext already listens to this event to refetch
+      // Pass activeCompId so the track is added to the current page comp explicitly
+      await addTrack(type, '', state.activeCompId);
       window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
     } finally {
       setAdding(false);
     }
-  }, [adding]);
+  }, [adding, state.activeCompId]);
+
 
   return (
     <div
@@ -38,14 +39,13 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
         }}
       >
         {state.tracks
-          // In image comp: hide audio track headers
           .filter(track => state.activeCompKind === 'image' ? !track.name.toLowerCase().includes('audio') : true)
           .map((track, index) => (
           <TrackHeaderItem key={track.id} track={track} index={index} />
         ))}
       </div>
 
-      {/* Add Track button — always visible at the bottom of the headers column */}
+      {/* Add Track button */}
       <div className="tl-headers__add-row">
         <button
           id="tl-add-video-track"
@@ -64,7 +64,7 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
   );
 });
 
-// Individual track header  
+// Individual track header
 interface ItemProps { track: Track; index: number }
 
 const TrackHeaderItem = memo(function TrackHeaderItem({ track, index }: ItemProps) {
@@ -73,7 +73,6 @@ const TrackHeaderItem = memo(function TrackHeaderItem({ track, index }: ItemProp
   const startYRef  = useRef(0);
   const startHRef  = useRef(0);
 
-  // Track resize handle  
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     resizingRef.current = true;
@@ -100,7 +99,6 @@ const TrackHeaderItem = memo(function TrackHeaderItem({ track, index }: ItemProp
       style={{ height: track.height }}
       aria-label={`Track ${index + 1}: ${track.name}`}
     >
-      {/* Track name */}
       <span
         className="tl-header-item__name"
         style={{ opacity: track.muted ? 0.35 : 1 }}
@@ -108,7 +106,6 @@ const TrackHeaderItem = memo(function TrackHeaderItem({ track, index }: ItemProp
         {track.name}
       </span>
 
-      {/* buttons */}
       <div className="tl-header-item__controls">
         <button
           className={`tl-btn-msb ${track.muted ? 'tl-btn-msb--muted' : ''}`}
@@ -136,7 +133,6 @@ const TrackHeaderItem = memo(function TrackHeaderItem({ track, index }: ItemProp
         </button>
       </div>
 
-      {/* Resize handle */}
       <div
         className="tl-header-item__resize"
         onMouseDown={onResizeMouseDown}

@@ -22,14 +22,10 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
   const svgRef = useRef<SVGSVGElement>(null);
   
   const [params, setParams] = useState<ParamRow[]>([]);
-  const [baseWidth, setBaseWidth] = useState(1920);
-  const [baseHeight, setBaseHeight] = useState(1080);
-  
   const [isDragging, setIsDragging] = useState(false);
   const [dragType, setDragType] = useState<string | null>(null);
   const [mode, setMode] = useState<'normal' | 'crop'>('normal');
   const [hoveredHandle, setHoveredHandle] = useState<string | null>(null);
-  
   const [svgScale, setSvgScale] = useState(1);
 
   const initialTransformRef = useRef<any>(null);
@@ -50,37 +46,29 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     setMode('normal');
   }, [selected?.type === 'clip' ? selected.clipId : null, activeTool]);
 
-  useEffect(() => {
-    if (!selected || selected.type !== 'clip' || activeTool !== 'pointer') return;
-    const clip = state.tracks.flatMap(tr => tr.clips).find(c => c.id === selected.clipId);
-    if (!clip) return;
-    
-    fetch(`http://127.0.0.1:${(window as any).__FADE_PORT__ || 8000}/render/frame/${currentFrame}`)
-      .then(r => r.json())
-      .then(data => {
-         const c = data.clips?.find((x: any) => x.clipId === selected.clipId);
-         if (c && c.baseWidth && c.baseHeight) {
-            setBaseWidth(c.baseWidth);
-            setBaseHeight(c.baseHeight);
-         }
-      }).catch(() => {});
-  }, [selected, currentFrame, activeTool, state]);
-
+ 
   useEffect(() => {
     if (!selected || selected.type !== 'clip') return;
     let isSubscribed = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
     const updateParams = async () => {
       try {
         const p = await inspectorApi.getParams(selected.clipId, currentFrame);
         if (isSubscribed && !isDragging) {
           setParams(p.params);
         }
-      } catch (e) {}
+      } catch (e: any) {
+        const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
+        if (msg.includes('not found') || msg.includes('404')) {
+          if (timer !== null) { clearInterval(timer); timer = null; }
+        }
+      }
     };
     updateParams();
-    const timer = setInterval(updateParams, 100);
-    return () => { isSubscribed = false; clearInterval(timer); };
+    timer = setInterval(updateParams, 100);
+    return () => { isSubscribed = false; if (timer !== null) clearInterval(timer); };
   }, [selected, isDragging, currentFrame]);
+
 
   if (!selected || selected.type !== 'clip' || activeTool !== 'pointer') return null;
 
@@ -99,6 +87,9 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
   const rot = getParam('rotation', 0);
   const ax = getParam('anchor_x', 0);
   const ay = getParam('anchor_y', 0);
+ 
+  const baseWidth  = getParam('base_width',  state.width  || 1920);
+  const baseHeight = getParam('base_height', state.height || 1080);
 
   const cropL = getParam('cropLeft', 0);
   const cropR = getParam('cropRight', 0);
@@ -107,33 +98,46 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
 
   const compW = state.width || 1920;
   const compH = state.height || 1080;
+ 
+  const REND_W = 1920;
+  const REND_H = 1080;
 
-  let localMinX = 0, localMinY = 0, localMaxX = 1920, localMaxY = 1080;
-  let imgW = 1920, imgH = 1080;
+  let localMinX = 0, localMinY = 0, localMaxX = compW, localMaxY = compH;
+  let imgW = compW, imgH = compH;       // native image pixels (from backend)
+  let fittedW = compW, fittedH = compH; // what the C++ actually draws
 
   if (clip.type === 'shape') {
     imgW = getParam('shape_w', baseWidth);
     imgH = getParam('shape_h', baseHeight);
-    localMinX = -imgW / 2;
-    localMinY = -imgH / 2;
-    localMaxX = imgW / 2;
-    localMaxY = imgH / 2;
+    fittedW = imgW;
+    fittedH = imgH;
+    localMinX = -fittedW / 2;
+    localMinY = -fittedH / 2;
+    localMaxX =  fittedW / 2;
+    localMaxY =  fittedH / 2;
   } else if (clip.type === 'image' || clip.type === 'video') {
-    // FADE's C++ renderer draws images at their exact native pixel resolution (1:1).
-    // CRITICAL: The local mesh in FADE is centered at 0,0 (from -0.5 to +0.5).
-    // Therefore, the local bounding box goes from -width/2 to +width/2.
-    imgW = baseWidth;
-    imgH = baseHeight;
-    localMinX = -imgW / 2;
-    localMinY = -imgH / 2;
-    localMaxX = imgW / 2;
-    localMaxY = imgH / 2;
+    imgW = baseWidth  || REND_W;
+    imgH = baseHeight || REND_H;
+    // C++ object-fit:contain into the 1920×1080 renderer canvas (not compW/compH)
+    const fitScale = Math.min(REND_W / imgW, REND_H / imgH);
+    fittedW = imgW * fitScale;
+    fittedH = imgH * fitScale;
+    localMinX = -fittedW / 2;
+    localMinY = -fittedH / 2;
+    localMaxX =  fittedW / 2;
+    localMaxY =  fittedH / 2;
   }
 
-  const visualMinX = localMinX + cropL * imgW;
-  const visualMaxX = localMaxX - cropR * imgW;
-  const visualMinY = localMinY + cropT * imgH;
-  const visualMaxY = localMaxY - cropB * imgH;
+
+ 
+  const visualMinX = localMinX + cropL * fittedW;
+  const visualMaxX = localMaxX - cropR * fittedW;
+  const visualMinY = localMinY + cropT * fittedH;
+  const visualMaxY = localMaxY - cropB * fittedH;
+ 
+  const isImageVideo = (clip.type === 'image' || clip.type === 'video');
+  const originOffsetX = isImageVideo ? REND_W / 2 : 0;  // always 960 for img/vid
+  const originOffsetY = isImageVideo ? REND_H / 2 : 0;  // always 540 for img/vid
 
   const applyMatrix = (pt: {x: number, y: number}) => {
     let nx = pt.x - ax; let ny = pt.y - ay;
@@ -142,24 +146,56 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     const cosA = Math.cos(rad); const sinA = Math.sin(rad);
     const rx = nx * cosA - ny * sinA;
     const ry = nx * sinA + ny * cosA;
-    return compositionToViewport(rx + ax + px, ry + ay + py, compW, compH);
+    const worldX = rx + ax + px + originOffsetX;
+    const worldY = ry + ay + py + originOffsetY;
+    if (isImageVideo) {
+      // Already in 1920×1080 renderer space 
+      return { x: worldX, y: worldY };
+    }
+    return compositionToViewport(worldX, worldY, compW, compH);
   };
 
-  const inverseApplyMatrix = (screenPt: {x: number, y: number}) => {
-    const compPt = viewportToComposition(screenPt.x, screenPt.y, compW, compH, false)!;
-    let rx = compPt.x - ax - px; let ry = compPt.y - ay - py;
+  const inverseApplyMatrix = (svgPt: {x: number, y: number}) => {
+ 
+    const worldX = isImageVideo ? svgPt.x : (viewportToComposition(svgPt.x, svgPt.y, compW, compH, false)?.x ?? svgPt.x);
+    const worldY = isImageVideo ? svgPt.y : (viewportToComposition(svgPt.x, svgPt.y, compW, compH, false)?.y ?? svgPt.y);
+    let rx = worldX - ax - px - originOffsetX;
+    let ry = worldY - ay - py - originOffsetY;
     const rad = -rot * Math.PI / 180;
     const cosA = Math.cos(rad); const sinA = Math.sin(rad);
     let nx = rx * cosA - ry * sinA;
     let ny = rx * sinA + ry * cosA;
-    nx /= (sx === 0 ? 0.001 : sx); ny /= (sy === 0 ? 0.001 : sy);
+    nx /= (sx === 0 ? 0.001 : sx);
+    ny /= (sy === 0 ? 0.001 : sy);
     return { x: nx + ax, y: ny + ay };
   };
+
+
 
   const vCorners = [
     { x: visualMinX, y: visualMinY }, { x: visualMaxX, y: visualMinY },
     { x: visualMaxX, y: visualMaxY }, { x: visualMinX, y: visualMaxY }
   ].map(applyMatrix);
+
+  // DEBUG — remove after fixing offset
+  if (isImageVideo) {
+    console.log('[Gizmo]', {
+      clipType: clip.type,
+      compW, compH,
+      baseWidth, baseHeight,
+      fittedW, fittedH,
+      px, py, ax, ay, sx, sy, rot,
+      originOffsetX, originOffsetY,
+      localMinX, localMaxX,
+      visualMinX, visualMaxX,
+      topLeftSVG: vCorners[0],
+      topRightSVG: vCorners[1],
+      // C++ expected left edge  
+      expectedCppLeft: (compW / 2) - (fittedW / 2) + px,
+    });
+  }
+
+
 
   const edgeMidpoints = [
     { x: (vCorners[0].x + vCorners[1].x) / 2, y: (vCorners[0].y + vCorners[1].y) / 2 },
@@ -206,7 +242,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     
     if (inside) {
        e.stopPropagation();
-       initialTransformRef.current = { px, py, sx, sy, rot, ax, ay, cropL, cropR, cropT, cropB, localMinX, localMaxX, localMinY, localMaxY, imgW, imgH };
+       initialTransformRef.current = { px, py, sx, sy, rot, ax, ay, cropL, cropR, cropT, cropB, localMinX, localMaxX, localMinY, localMaxY, imgW, imgH, fittedW, fittedH };
        dragStartRef.current = pt;
        setDragType('move');
        setIsDragging(true);
@@ -229,7 +265,9 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     initialTransformRef.current = { 
        px, py, sx, sy, rot, ax, ay, 
        cropL, cropR, cropT, cropB, 
-       localMinX, localMaxX, localMinY, localMaxY, imgW, imgH,
+       localMinX, localMaxX, localMinY, localMaxY,
+       imgW, imgH,
+       fittedW, fittedH,   
        startMouseAngle
     } as any;
     
@@ -249,18 +287,19 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
       if (mode === 'crop') {
          const dxLocal = inverseApplyMatrix(pt).x - inverseApplyMatrix(dragStartRef.current).x;
          const dyLocal = inverseApplyMatrix(pt).y - inverseApplyMatrix(dragStartRef.current).y;
-         const scaleFactor = Math.min(1920 / compW, 1080 / compH);
-         next.px += (pt.x - dragStartRef.current.x) / scaleFactor;
-         next.py += (pt.y - dragStartRef.current.y) / scaleFactor;
+         // SVG space  
+         const sf = isImageVideo ? 1 : Math.min(REND_W / compW, REND_H / compH);
+         next.px += (pt.x - dragStartRef.current.x) / sf;
+         next.py += (pt.y - dragStartRef.current.y) / sf;
          
-         next.cropL = Math.max(0, Math.min(1, init.cropL - dxLocal / init.imgW));
-         next.cropR = Math.max(0, Math.min(1, init.cropR + dxLocal / init.imgW));
-         next.cropT = Math.max(0, Math.min(1, init.cropT - dyLocal / init.imgH));
-         next.cropB = Math.max(0, Math.min(1, init.cropB + dyLocal / init.imgH));
+         next.cropL = Math.max(0, Math.min(1, init.cropL - dxLocal / init.fittedW));
+         next.cropR = Math.max(0, Math.min(1, init.cropR + dxLocal / init.fittedW));
+         next.cropT = Math.max(0, Math.min(1, init.cropT - dyLocal / init.fittedH));
+         next.cropB = Math.max(0, Math.min(1, init.cropB + dyLocal / init.fittedH));
       } else {
-         const scaleFactor = Math.min(1920 / compW, 1080 / compH);
-         next.px = init.px + (pt.x - dragStartRef.current.x) / scaleFactor;
-         next.py = init.py + (pt.y - dragStartRef.current.y) / scaleFactor;
+         // designCoord returns SVG coords  
+         next.px = init.px + (pt.x - dragStartRef.current.x);
+         next.py = init.py + (pt.y - dragStartRef.current.y);
       }
     } 
     else if (dragType === 'rotate') {
@@ -286,10 +325,10 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
        const oppIndex = (index + 2) % 4;
        
        const startLocalCorners = [
-         { x: init.localMinX + init.cropL * init.imgW, y: init.localMinY + init.cropT * init.imgH },
-         { x: init.localMaxX - init.cropR * init.imgW, y: init.localMinY + init.cropT * init.imgH },
-         { x: init.localMaxX - init.cropR * init.imgW, y: init.localMaxY - init.cropB * init.imgH },
-         { x: init.localMinX + init.cropL * init.imgW, y: init.localMaxY - init.cropB * init.imgH }
+         { x: init.localMinX + init.cropL * init.fittedW, y: init.localMinY + init.cropT * init.fittedH },
+         { x: init.localMaxX - init.cropR * init.fittedW, y: init.localMinY + init.cropT * init.fittedH },
+         { x: init.localMaxX - init.cropR * init.fittedW, y: init.localMaxY - init.cropB * init.fittedH },
+         { x: init.localMinX + init.cropL * init.fittedW, y: init.localMaxY - init.cropB * init.fittedH }
        ];
        
        let dragLocal = startLocalCorners[index];
@@ -341,16 +380,16 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
        const localPt = inverseApplyMatrix(pt);
        
        if (cornerIndex === 0 || cornerIndex === 3) {
-          next.cropL = Math.max(0, Math.min(1 - next.cropR, (localPt.x - init.localMinX) / init.imgW));
+          next.cropL = Math.max(0, Math.min(1 - next.cropR, (localPt.x - init.localMinX) / init.fittedW));
        }
        if (cornerIndex === 1 || cornerIndex === 2) {
-          next.cropR = Math.max(0, Math.min(1 - next.cropL, (init.localMaxX - localPt.x) / init.imgW));
+          next.cropR = Math.max(0, Math.min(1 - next.cropL, (init.localMaxX - localPt.x) / init.fittedW));
        }
        if (cornerIndex === 0 || cornerIndex === 1) {
-          next.cropT = Math.max(0, Math.min(1 - next.cropB, (localPt.y - init.localMinY) / init.imgH));
+          next.cropT = Math.max(0, Math.min(1 - next.cropB, (localPt.y - init.localMinY) / init.fittedH));
        }
        if (cornerIndex === 2 || cornerIndex === 3) {
-          next.cropB = Math.max(0, Math.min(1 - next.cropT, (init.localMaxY - localPt.y) / init.imgH));
+          next.cropB = Math.max(0, Math.min(1 - next.cropT, (init.localMaxY - localPt.y) / init.fittedH));
        }
     }
 
@@ -469,9 +508,20 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
         <>
                       <polygon points={polygonPoints} fill="transparent" stroke={brandColor} strokeWidth={strokeW} pointerEvents="none" />
             
-            {/* Pivot Marker */}
-            <circle cx={1920/2 + px + ax} cy={1080/2 + py + ay} r={4 * svgScale} fill="#0f0" pointerEvents="none" />
-            <circle cx={1920/2 + px + ax} cy={1080/2 + py + ay} r={6 * svgScale} fill="transparent" stroke="#0f0" strokeWidth={2 * svgScale} pointerEvents="none" />
+            {/* Pivot Marker   */}
+            {(() => {
+              const pivot = compositionToViewport(
+                ax + px + originOffsetX,
+                ay + py + originOffsetY,
+                compW, compH
+              );
+              return (
+                <>
+                  <circle cx={pivot.x} cy={pivot.y} r={4 * svgScale} fill="#0f0" pointerEvents="none" />
+                  <circle cx={pivot.x} cy={pivot.y} r={6 * svgScale} fill="transparent" stroke="#0f0" strokeWidth={2 * svgScale} pointerEvents="none" />
+                </>
+              );
+            })()}
 
           {/* Canva Rotation Handle - Below Image */}
           <g 

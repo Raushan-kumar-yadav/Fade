@@ -75,13 +75,14 @@ export default function ViewportWidget() {
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const loopActive = inPoint !== null && outPoint !== null;
 
- 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<AudioEngine | null>(null);
 
-   
   const frameNumRef = useRef<number>(0);
- 
+  // Ref-backed mirror of isPlaying so closures registered once (no deps) can
+  // always read the latest value without stale capture.
+  const isPlayingRef = useRef(false);
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
   const lastStateFrameRef = useRef<number>(-1);
 
  
@@ -287,6 +288,11 @@ export default function ViewportWidget() {
  
   useEffect(() => {
     const handler = () => {
+      // Never seek during active playback — the backend pipeline is already
+      // advancing frames. Seeking here (with stale frameNumRef=0 in non-native
+      // mode) is what causes the observed loop-back to frame 0.
+      if (isPlayingRef.current) return;
+
       const f = frameNumRef.current;
       const api = (window as any).electronAPI;
       const imgComp = (window as any).__FADE_IMAGE_COMP__ === true;
@@ -299,6 +305,7 @@ export default function ViewportWidget() {
     window.addEventListener('fade:render-now', handler);
     return () => window.removeEventListener('fade:render-now', handler);
   }, []);
+
 
   // Image comp: seek to frame 3 when entering comp or when tracks change (clip added)
   // Clips are always forced to startFrame=0, so frame 3 always overlaps them
@@ -423,6 +430,26 @@ export default function ViewportWidget() {
   const { activeTool, penOutputMode } = useTool();
   const { selected } = useSelection();
   const containerRef = useRef<HTMLDivElement>(null);
+
+ 
+  const penClipIdRef = useRef<string | null>(null);
+
+  // Seed from selection if the selected clip is a pen clip
+  useEffect(() => {
+    if (activeTool !== 'shape:path' || penOutputMode !== 'clip') return;
+    if (selected?.type === 'clip' && selected.clipType === 'pen') {
+      penClipIdRef.current = selected.clipId;
+    }
+  }, [selected, activeTool, penOutputMode]);
+
+  // Clear the ref when leaving the pen tool so the next pen session starts fresh
+  const prevToolRef = useRef(activeTool);
+  useEffect(() => {
+    if (prevToolRef.current === 'shape:path' && activeTool !== 'shape:path') {
+      penClipIdRef.current = null;
+    }
+    prevToolRef.current = activeTool;
+  }, [activeTool]);
 
   // Pan / Zoom state  
   const [vpZoom, setVpZoom] = useState(1);     
@@ -581,11 +608,15 @@ export default function ViewportWidget() {
                 duration={(selected as any).duration ?? 150}
               />
             ) : (
+               
               <OverlayCanvas
+                key="pen-overlay"
                 mode="pen"
+                clipId={penClipIdRef.current ?? undefined}
                 width={1920}
                 height={1080}
                 currentFrame={currentFrame}
+                onDone={(clipId) => { penClipIdRef.current = clipId; }}
               />
             )
           )}

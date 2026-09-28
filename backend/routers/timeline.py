@@ -28,6 +28,7 @@ class MoveClipRequest(BaseModel):
     clipId: str
     startFrame: int
     trackIndex: int
+    compId: str | None = None   
 
 
 class TrimClipRequest(BaseModel):
@@ -45,11 +46,19 @@ class AddTrackRequest(BaseModel):
     type: str = "video"   # "video" | "audio"
     name: str = ""
     index: int | None = None  # insert position (None = append)
+    compId: str | None = None  # if set, add track to this comp; else uses activeTimeline
 
 
 @router.post("/timeline/add-track")
 def addTrack(req: AddTrackRequest):
-    tl = engine.activeTimeline
+  
+    if req.compId:
+        tl = engine.getTimeline(req.compId)
+        if tl is None:
+            from fastapi import HTTPException
+            raise HTTPException(404, f"Comp {req.compId!r} not found")
+    else:
+        tl = engine.activeTimeline
     if tl is None:
         from fastapi import HTTPException
         raise HTTPException(400, "No active timeline")
@@ -77,8 +86,7 @@ def addClip(req: AddClipRequest):
         if tl is None:
             raise HTTPException(404, f"Comp timeline {req.compId!r} not found")
     else:
-        # Use the currently-active timeline (whichever comp tab is open in the UI).
-        # Fall back to root only if nothing is active.
+       
         tl = engine.activeTimeline or engine.rootTimeline
         if tl is None:
             raise HTTPException(400, "No active timeline")
@@ -234,7 +242,13 @@ def addSvgClip(req: AddSvgClipRequest):
 
 @router.post("/timeline/move-clip")
 def moveClip(req: MoveClipRequest):
-    tl = engine.activeTimeline
+ 
+    if req.compId:
+        tl = engine.getTimeline(req.compId)
+        if tl is None:
+            raise HTTPException(404, f"Comp {req.compId!r} not found")
+    else:
+        tl = engine.activeTimeline
     if tl is None:
         raise HTTPException(400, "No active timeline")
     clip = None
@@ -244,7 +258,7 @@ def moveClip(req: MoveClipRequest):
         if c:
             clip = c
             srcIdx = i
-            break  # don't remove here — MoveClipCommand.execute() handles it
+            break  # don't remove here  
     if clip is None:
         raise HTTPException(404, f"Clip {req.clipId!r} not found")
     dstIdx = max(0, min(len(tl.tracks) - 1, req.trackIndex))
@@ -448,6 +462,22 @@ def timelineState():
     totalFrames = getattr(tl, "totalFrames", None) or (prj.totalFrame if prj else 1800)
     if tl is None:
         return {"tracks": [], "totalFrames": totalFrames, "fps": fps}
+    data = tl.toDict()
+    data["totalFrames"] = totalFrames
+    data["fps"] = getattr(tl, "fps", fps)
+    return data
+
+
+@router.get("/timeline/comp/{compId}/state")
+def compTimelineState(compId: str):
+    """Return timeline track/clip state for a specific comp by ID.
+    Unlike /timeline/state this never relies on engine.activeTimeline."""
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404, f"Comp {compId!r} not found")
+    prj = engine.project
+    fps = prj.fps if prj else 30.0
+    totalFrames = getattr(tl, "totalFrames", None) or (prj.totalFrame if prj else 1800)
     data = tl.toDict()
     data["totalFrames"] = totalFrames
     data["fps"] = getattr(tl, "fps", fps)

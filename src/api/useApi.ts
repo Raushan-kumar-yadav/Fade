@@ -143,11 +143,12 @@ export async function moveClip(
   clipId: string,
   startFrame: number,
   trackIndex: number,
+  compId?: string | null,
 ): Promise<void> {
   await fetch(`${base()}/timeline/move-clip`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ clipId, startFrame, trackIndex }),
+    body: JSON.stringify({ clipId, startFrame, trackIndex, compId: compId ?? null }),
   });
 }
 
@@ -155,7 +156,7 @@ export async function removeClip(clipId: string): Promise<void> {
   await fetch(`${base()}/timeline/clips/${clipId}`, { method: "DELETE" });
 }
 
-/** Reorder a layer in an image comp (no clip array — layers ARE the tracks). */
+ 
 export async function moveImageLayer(
   compId: string,
   fromIndex: number,
@@ -229,12 +230,13 @@ export async function setTrackLock(trackId: string): Promise<void> {
 export async function addTrack(
   type: "video" | "audio" = "video",
   name = "",
+  compId?: string | null,
 ): Promise<{ trackId: string; name: string; type: string } | null> {
   try {
     const r = await fetch(`${base()}/timeline/add-track`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, name }),
+      body: JSON.stringify({ type, name, compId: compId ?? null }),
     });
     return r.ok ? r.json() : null;
   } catch {
@@ -242,14 +244,25 @@ export async function addTrack(
   }
 }
 
+
 export async function removeTrack(trackId: string): Promise<void> {
   await fetch(`${base()}/timeline/track/${trackId}`, { method: "DELETE" });
 }
 
-// Re-fetch timeline state (used after undo/redo to sync UI)
+ 
 export async function fetchTimeline(): Promise<any> {
   try {
     const r = await fetch(`${base()}/timeline/state`);
+    return r.ok ? r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+// Re-fetch timeline state for a specific comp 
+export async function fetchCompTimeline(compId: string): Promise<any> {
+  try {
+    const r = await fetch(`${base()}/timeline/comp/${compId}/state`);
     return r.ok ? r.json() : null;
   } catch {
     return null;

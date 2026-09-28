@@ -1,4 +1,4 @@
- 
+ï»¿ 
 function port(): number {
   return (window as any).__FADE_PORT__ ?? 8000;
 }
@@ -121,6 +121,9 @@ export const penApi = {
  
   addPathKeyframe: (clipId: string, frame: number, interp = 'bezier') =>
     post(`/clips/pen/${clipId}/path-keyframe`, { frame, interp }),
+
+  getPoints: (clipId: string): Promise<{ clipId: string; points: BezierPoint[]; isClosed: boolean }> =>
+    fetch(`${base()}/clips/pen/${clipId}/points`).then(r => r.json()),
   removePathKeyframe: (clipId: string, frame: number) =>
     del(`/clips/pen/${clipId}/path-keyframe/${frame}`),
 };
@@ -167,6 +170,7 @@ export const maskApi = {
   /** Snapshot current mask path as an animation keyframe at `frame`. */
   addPathKeyframe: (clipId: string, maskId: string, frame: number, interp = 'bezier') =>
     post(`/clips/${clipId}/mask/${maskId}/path-keyframe`, { frame, interp }),
+
   removePathKeyframe: (clipId: string, maskId: string, frame: number) =>
     del(`/clips/${clipId}/mask/${maskId}/path-keyframe/${frame}`),
 };
@@ -227,7 +231,7 @@ export interface ExportProgress {
   done: boolean;
   error: string | null;
   path: string | null;
-  status?: string;  // 'video' | 'audio' | undefined — used to show mux phase label
+  status?: string;  // 'video' | 'audio' | undefined ï¿½ used to show mux phase label
 }
 
 export const exportApi = {
@@ -250,7 +254,7 @@ async function _pollWaveform(
   if (r.ok || r.status === 202) {
     const d = await r.json();
     if (d.status === 'done') return { peaks: d.peaks, bins: d.bins };
-    // pending — retry with exponential backoff, up to ~60s total
+    // pending ï¿½ retry with exponential backoff, up to ~60s total
     if (attempts > 20) throw new Error('waveform timeout');
     const delay = Math.min(300 * Math.pow(1.5, attempts), 6000);
     await new Promise(res => setTimeout(res, delay));
@@ -334,3 +338,4 @@ export const transitionApi = {
   remove: (transId: string): Promise<void> =>
     del(`/transitions/${transId}`),
 };
+

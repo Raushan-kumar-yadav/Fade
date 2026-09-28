@@ -17,12 +17,15 @@ declare global {
 }
 
 const TABS = [
-  { id: 'home', label: 'Home' },
-  { id: 'ai', label: 'AI' },
-  { id: 'video', label: 'Video' },
-  { id: 'audio', label: 'Audio' },
+  { id: 'home',   label: 'Home'   },
+  { id: 'ai',     label: 'AI'     },
+  { id: 'video',  label: 'Video'  },
+  { id: 'image',  label: 'Image'  },
+  { id: 'pdf',    label: 'PDF'    },
+  { id: 'audio',  label: 'Audio'  },
   { id: 'export', label: 'Export' },
 ];
+
 
 // dropdown  
 
@@ -262,7 +265,7 @@ export default function TitleBar({
         </div>
 
   
-        {active === 'video' && (
+        {(active === 'video' || active === 'image') && (
           <div className="tb-tool-group">
             <button
               id="tb-toolbox-toggle"

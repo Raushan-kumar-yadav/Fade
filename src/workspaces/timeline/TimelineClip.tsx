@@ -6,7 +6,8 @@ import {
   mapBackendTrack,
   mapBackendTracksPreservingOrder,
 } from "./TimelineContext";
-import { moveClip, trimClip, fetchTimeline, splitClip } from "../../api/useApi";
+import { moveClip, trimClip, fetchTimeline, fetchCompTimeline, splitClip } from "../../api/useApi";
+
 import { waveformApi, effectsApi } from "../../api/toolsApi";
 import {
   type Clip,
@@ -37,6 +38,14 @@ const TimelineClip = memo(function TimelineClip({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [peaks, setPeaks] = useState<number[]>([]);
   const [waveLoading, setWaveLoading] = useState(false);
+
+  // Keep refs fresh so closures inside onMouseDown always read latest values
+  const activeCompIdRef = useRef(state.activeCompId);
+  const activeCompKindRef = useRef(state.activeCompKind);
+  useEffect(() => {
+    activeCompIdRef.current = state.activeCompId;
+    activeCompKindRef.current = state.activeCompKind;
+  });
 
   // Derived geometry  
   const x = clip.startFrame * zoomX;
@@ -143,8 +152,13 @@ const TimelineClip = memo(function TimelineClip({
   const onDoubleClick = useCallback((e: React.MouseEvent) => {
     if (clip.type !== 'comp' || !clip.compId) return;
     e.stopPropagation();
-    dispatch({ type: 'ENTER_COMP', compId: clip.compId, compName: clip.name, kind: 'video' });
-  }, [clip.type, clip.compId, clip.name, dispatch]);
+    const kind: 'video' | 'image' = (clip as any).compKind === 'image' ? 'image' : 'video';
+    dispatch({ type: 'ENTER_COMP', compId: clip.compId, compName: clip.name, kind });
+    // If it's an image comp, switch the app to the image editor tab
+    if (kind === 'image') {
+      window.dispatchEvent(new CustomEvent('fade:enter-image-comp', { detail: { compId: clip.compId, name: clip.name } }));
+    }
+  }, [clip.type, clip.compId, clip.name, (clip as any).compKind, dispatch]);
 
   // Cursor based on tool
   const getCursor = useCallback(
@@ -326,16 +340,32 @@ const TimelineClip = memo(function TimelineClip({
         if (mode === "move") {
           dispatch({ type: "COMMIT_MOVE" });
           const dx = ev.clientX - e.clientX;
-          const isImageCompUp = state.activeCompKind === "image";
-          // In image comp 
+          const dy = ev.clientY - e.clientY;
+          // Read latest values from refs — avoids stale closure bug
+          const isImageCompUp = activeCompKindRef.current === "image";
+          const compId = activeCompIdRef.current;
+
           const frameDelta = isImageCompUp ? 0 : Math.round(dx / zoomX);
           const newStart = Math.max(0, clip.startFrame + frameDelta);
-          const trackDelta = Math.round((ev.clientY - e.clientY) / trackHeight);
+          const trackDelta = Math.round(dy / trackHeight);
           const dstIdx = Math.max(0, trackIndex + trackDelta);
 
-          // Move clip to destination track  
-          moveClip(clip.id, newStart, dstIdx).then(() => {
-            fetchTimeline().then((data) => {
+          // Skip the backend call completely when nothing actually moved.
+          // This prevents a phantom moveClip on a plain click.
+          const noop = frameDelta === 0 && dstIdx === trackIndex;
+          if (noop) {
+            window.removeEventListener("mousemove", onMouseMove);
+            window.removeEventListener("mouseup", onMouseUp);
+            return;
+          }
+
+          // Move clip to destination track using latest comp from ref
+          moveClip(clip.id, newStart, dstIdx, compId).then(() => {
+            // Fetch the specific comp state to avoid getting root timeline data
+            const fetchFn = compId
+              ? fetchCompTimeline(compId)
+              : fetchTimeline();
+            fetchFn.then((data) => {
               if (data)
                 dispatch({
                   type: "SET_TRACKS",
@@ -346,6 +376,7 @@ const TimelineClip = memo(function TimelineClip({
                 });
             });
           });
+
         } else {
           dispatch({ type: "END_INTERACTION" });
           if (
@@ -498,8 +529,15 @@ const TimelineClip = memo(function TimelineClip({
         {clip.type === 'comp' && (
           <button
             style={CTX_ITEM_STYLE}
-            onClick={() => { setCtxMenu(null); dispatch({ type: 'ENTER_COMP', compId: clip.compId!, compName: clip.name, kind: 'video' }); }}
-          >? Enter Composition</button>
+            onClick={() => {
+              setCtxMenu(null);
+              const kind: 'video' | 'image' = (clip as any).compKind === 'image' ? 'image' : 'video';
+              dispatch({ type: 'ENTER_COMP', compId: clip.compId!, compName: clip.name, kind });
+              if (kind === 'image') {
+                window.dispatchEvent(new CustomEvent('fade:enter-image-comp', { detail: { compId: clip.compId, name: clip.name } }));
+              }
+            }}
+          >▶ Enter Composition</button>
         )}
         <button
           style={CTX_ITEM_STYLE}

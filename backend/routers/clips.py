@@ -97,6 +97,41 @@ def _clip_param_schema(clip) -> list:
         {"id": "anchor_x", "label": "Anchor X", "type": "float", "min": -1920,"max": 1920, "default": round(ax, 2), "group": "Transform"},
         {"id": "anchor_y", "label": "Anchor Y", "type": "float", "min": -1080,"max": 1080, "default": round(ay, 2), "group": "Transform"},
     ]
+
+    # ── Native asset dimensions (hidden, used by frontend TransformGizmo) ────────
+    # Exposed as read-only params on the same endpoint the gizmo already polls
+    # (every 100 ms) so no extra network round-trip is needed.
+    from backend.timeline.clips.imageClip import ImageClip
+    try:
+        from backend.timeline.clips.videoClip import VideoClip as _VC
+    except Exception:
+        _VC = None
+    native_w, native_h = 1920, 1080  # safe defaults
+    if isinstance(clip, ImageClip):
+        if hasattr(clip, "_ensureDecoded"):
+            try: clip._ensureDecoded()
+            except Exception: pass
+        img = getattr(clip, "_skiaImage", None)
+        if img is not None:
+            native_w, native_h = img.width(), img.height()
+    elif _VC is not None and isinstance(clip, _VC):
+        dec = getattr(clip, "decoder", None)
+        if dec and getattr(dec, "width", 0) and dec.width > 0:
+            native_w, native_h = dec.width, dec.height
+    elif isinstance(clip, ShapeClip):
+        s = getattr(clip, "style", None)
+        if s:
+            native_w = int(getattr(s, "width", 1920))
+            native_h = int(getattr(s, "height", 1080))
+
+    if not isinstance(clip, TextClip):  # all visual clips get base dims
+        base += [
+            {"id": "base_width",  "label": "Base Width",  "type": "float",
+             "min": 1, "max": 8192, "default": native_w, "group": "_meta", "hidden": True},
+            {"id": "base_height", "label": "Base Height", "type": "float",
+             "min": 1, "max": 8192, "default": native_h, "group": "_meta", "hidden": True},
+        ]
+
     if isinstance(clip, TextClip):
         s = clip.style
         base += [
@@ -278,6 +313,7 @@ def addPenClip(req: PenClipRequest):
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
     notify("timeline")
+    notify("render")
     return clip.toDict()
 
 
@@ -293,7 +329,22 @@ def updatePenPoints(clipId: str, req: PenPointsRequest):
                       outX=float(p.get("outX",0)), outY=float(p.get("outY",0)))
     if req.isClosed is not None:
         clip.isClosed = req.isClosed
+    notify("render")
     return clip.toDict()
+
+
+@router.get("/clips/pen/{clipId}/points")
+def getPenPoints(clipId: str):
+    """Return the current vertices and closed state of a pen clip."""
+    clip, _ = _find_clip(clipId)
+    if not isinstance(clip, PenClip):
+        raise HTTPException(400, "Not a pen clip")
+    verts = clip.shapePath.vertices
+    points = [
+        {"x": v.x, "y": v.y, "inX": v.inX, "inY": v.inY, "outX": v.outX, "outY": v.outY}
+        for v in verts
+    ]
+    return {"clipId": clipId, "points": points, "isClosed": clip.isClosed}
 
 
 @router.post("/clips/pen/{clipId}/path-keyframe")

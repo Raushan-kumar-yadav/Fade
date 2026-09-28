@@ -9,7 +9,8 @@ import './LibraryPanel.css';
 //   Types  
 
 interface CompMeta {
-  compId: string; name: string; isRoot: boolean; kind: 'video' | 'image';
+  compId: string; name: string; isRoot: boolean; kind: 'video' | 'image' | 'pdf';
+  isHidden: boolean; isDefault: boolean;
   width: number; height: number; fps: number;
   totalFrames: number; trackCount: number; clipCount: number;
 }
@@ -50,13 +51,14 @@ function base() { return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 80
 //   Type thumbnails
 
 const THUMB_BG: Record<string, string> = {
-  video: 'linear-gradient(135deg,#1a2a4a 0%,#0d1926 100%)',
-  image: 'linear-gradient(135deg,#1a3a2a 0%,#0d2018 100%)',
-  audio: 'linear-gradient(135deg,#2a1a3a 0%,#180d26 100%)',
-  svg: 'linear-gradient(135deg,#1a3a3a 0%,#0d2222 100%)',
-  comp: 'linear-gradient(135deg,#0d2e2e 0%,#051a1a 100%)',
+  video:   'linear-gradient(135deg,#1a2a4a 0%,#0d1926 100%)',
+  image:   'linear-gradient(135deg,#1a3a2a 0%,#0d2018 100%)',
+  pdf:     'linear-gradient(135deg,#3a1a0a 0%,#200d05 100%)',
+  audio:   'linear-gradient(135deg,#2a1a3a 0%,#180d26 100%)',
+  svg:     'linear-gradient(135deg,#1a3a3a 0%,#0d2222 100%)',
+  comp:    'linear-gradient(135deg,#0d2e2e 0%,#051a1a 100%)',
   webcomp: 'linear-gradient(135deg,#1a1040 0%,#0a0628 100%)',
-  unknown:'linear-gradient(135deg,#2a2a2a 0%,#111 100%)',
+  unknown: 'linear-gradient(135deg,#2a2a2a 0%,#111 100%)',
 };
 
 function CardThumb({ type }: { type: string }) {
@@ -112,6 +114,18 @@ function CardThumb({ type }: { type: string }) {
           <rect x="26" y="26" width="16" height="16" rx="2" fill="#0dcfb4" opacity="0.2"/>
           <path d="M22 14 L26 14M14 22 L14 26M34 22 L34 26M26 34 L22 34"
             stroke="#0dcfb4" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+      );
+      break;
+    case 'pdf':
+      icon = (
+        <svg viewBox="0 0 48 48" width={22} height={22} fill="none">
+          <rect x="10" y="4" width="22" height="30" rx="2" fill="none" stroke="#f97316" strokeWidth="2.2"/>
+          <rect x="16" y="34" width="22" height="10" rx="2" fill="#f97316" opacity="0.18"/>
+          <line x1="15" y1="14" x2="27" y2="14" stroke="#f97316" strokeWidth="1.8" strokeLinecap="round"/>
+          <line x1="15" y1="19" x2="27" y2="19" stroke="#f97316" strokeWidth="1.8" strokeLinecap="round"/>
+          <line x1="15" y1="24" x2="22" y2="24" stroke="#f97316" strokeWidth="1.8" strokeLinecap="round"/>
+          <text x="34" y="43" textAnchor="middle" fontSize="8" fill="#f97316" fontFamily="monospace" fontWeight="700">PDF</text>
         </svg>
       );
       break;
@@ -294,7 +308,7 @@ function AssetTaskOverlay({
 async function fetchComps(): Promise<CompMeta[]> {
   const r = await fetch(`${base()}/comps`); return (await r.json()).comps ?? [];
 }
-async function apiCreateComp(cfg: CompConfig, kind: 'video' | 'image' = 'video'): Promise<CompMeta> {
+async function apiCreateComp(cfg: CompConfig, kind: 'video' | 'image' | 'pdf' = 'video'): Promise<CompMeta> {
   const r = await fetch(`${base()}/comps`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: cfg.name, width: cfg.width, height: cfg.height, fps: cfg.fps, totalFrames: cfg.totalFrames, kind }),
@@ -719,6 +733,89 @@ function ImageCompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConf
   );
 }
 
+// ─── PDF Comp Config Modal ────────────────────────────────────────────────────
+
+const PDF_PRESETS = [
+  { label: 'A4',     w: 2480, h: 3508 },
+  { label: 'A5',     w: 1748, h: 2480 },
+  { label: 'Letter', w: 2550, h: 3300 },
+  { label: 'Legal',  w: 2550, h: 4200 },
+  { label: 'Square', w: 2480, h: 2480 },
+];
+
+function PdfCompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) => void; onCancel: () => void }) {
+  const [name, setName] = useState('PDF Document');
+  const [width, setWidth] = useState(2480);
+  const [height, setHeight] = useState(3508);
+  const [creating, setCreating] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { nameRef.current?.select(); }, []);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', h, true);
+    return () => document.removeEventListener('keydown', h, true);
+  }, [onCancel]);
+
+  const applyPreset = (w: number, h: number) => { setWidth(w); setHeight(h); };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!name.trim()) return;
+    setCreating(true);
+    await onSubmit({ name: name.trim(), width, height, fps: 1, totalFrames: 1 });
+    setCreating(false);
+  };
+
+  return ReactDOM.createPortal(
+    <div className="lib-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
+      <form className="lib-modal" onSubmit={handleSubmit}>
+        <div className="lib-modal__header">
+          <span className="lib-modal__title">📄 New PDF Comp</span>
+          <button type="button" className="lib-modal__close" onClick={onCancel}>✕</button>
+        </div>
+        <div className="lib-modal__body">
+          <label className="lib-comp-cfg__label">Name</label>
+          <input ref={nameRef} className="lib-comp-cfg__input" value={name}
+            onChange={e => setName(e.target.value)} placeholder="Document name…" />
+
+          <label className="lib-comp-cfg__label" style={{ marginTop: 8 }}>Page Preset</label>
+          <div className="lib-comp-cfg__presets">
+            {PDF_PRESETS.map(p => (
+              <button key={p.label} type="button"
+                className={`lib-comp-cfg__preset${width === p.w && height === p.h ? ' lib-comp-cfg__preset--active' : ''}`}
+                onClick={() => applyPreset(p.w, p.h)}>{p.label}</button>
+            ))}
+          </div>
+
+          <div className="lib-comp-cfg__row" style={{ marginTop: 8 }}>
+            <div className="lib-comp-cfg__field">
+              <label className="lib-comp-cfg__label">Width (px)</label>
+              <input className="lib-comp-cfg__input lib-comp-cfg__input--num" type="number"
+                min={1} max={7680} value={width} onChange={e => setWidth(+e.target.value)} />
+            </div>
+            <div className="lib-comp-cfg__field">
+              <label className="lib-comp-cfg__label">Height (px)</label>
+              <input className="lib-comp-cfg__input lib-comp-cfg__input--num" type="number"
+                min={1} max={10000} value={height} onChange={e => setHeight(+e.target.value)} />
+            </div>
+          </div>
+          <div className="lib-comp-cfg__hint" style={{ marginTop: 6, color: '#f97316' }}>
+            PDF canvas · {width}×{height}px · multi-page document
+          </div>
+        </div>
+        <div className="lib-modal__footer">
+          <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create"
+            style={{ background: 'linear-gradient(135deg,#ea580c,#f97316)' }}
+            disabled={creating || !name.trim()}>
+            {creating ? 'Creating…' : '📄 Create PDF Comp'}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  );
+}
+
 //   Inline rename  
 
 function InlineRename({ initial, onCommit, onCancel }: {
@@ -755,16 +852,19 @@ interface CardProps {
   onRenameCommit?: (v: string) => void;
   onRenameCancel?: () => void;
   subtitle?: string;
+  isDefault?: boolean;
+  cardStyle?: React.CSSProperties;
 }
 
 function LibCard({
   type, title, badge, isActive, isDragging,
   onDoubleClick, onContextMenu, onDragStart, onDragEnd,
-  onDelete, renaming, onRenameCommit, onRenameCancel, subtitle,
+  onDelete, renaming, onRenameCommit, onRenameCancel, subtitle, isDefault, cardStyle,
 }: CardProps) {
   return (
     <div
       className={`lib-card${isActive ? ' lib-card--active' : ''}${isDragging ? ' lib-card--dragging' : ''}`}
+      style={cardStyle}
       draggable={!!onDragStart}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -773,7 +873,10 @@ function LibCard({
     >
       <CardThumb type={type} />
       <div className="lib-card__body">
-        {badge && <span className={`lib-card__badge lib-card__badge--${type}`}>{badge}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {badge && <span className={`lib-card__badge lib-card__badge--${type}`}>{badge}</span>}
+          {isDefault && <span style={{ fontSize: 9, color: '#fbbf24', opacity: 0.8, letterSpacing: 0.5 }}>DEFAULT</span>}
+        </div>
         {renaming && onRenameCommit && onRenameCancel ? (
           <InlineRename initial={title} onCommit={onRenameCommit} onCancel={onRenameCancel} />
         ) : (
@@ -825,6 +928,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
   const [comps, setComps] = useState<CompMeta[]>([]);
   const [showCfg, setShowCfg] = useState(false);
   const [showImgCfg, setShowImgCfg] = useState(false);
+  const [showPdfCfg, setShowPdfCfg] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [compError, setCompError] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
@@ -1018,6 +1122,17 @@ export default function LibraryPanel({ onAddToTimeline }: {
     catch (err: any) { setCompError(err.message ?? 'Failed to create image composition'); }
   }, [dispatch]);
 
+  const handleCreatePdfComp = useCallback(async (cfg: CompConfig) => {
+    setCompError(null);
+    try {
+      const c = await apiCreateComp(cfg, 'pdf');
+      setComps(p => [...p, c]);
+      setShowPdfCfg(false);
+      dispatch({ type: 'ENTER_COMP', compId: c.compId, compName: c.name, kind: 'pdf' });
+    }
+    catch (err: any) { setCompError(err.message ?? 'Failed to create PDF composition'); }
+  }, [dispatch]);
+
   const handleDeleteComp = useCallback(async (comp: CompMeta) => {
     if (!window.confirm(`Delete "${comp.name}"?`)) return;
     await apiDeleteComp(comp.compId);
@@ -1078,12 +1193,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
     openCtx(e, [
       { icon: '?', label: 'New Composition',  onClick: () => setShowCfg(true) },
       { icon: '?', label: 'New Image Comp',       onClick: () => setShowImgCfg(true) },
+      { icon: '?', label: 'New PDF Comp',       onClick: () => setShowPdfCfg(true) },
       { icon: '?', label: 'New WebComp',      onClick: () => setShowWcCfg(true) },
       { icon: '+', label: 'Import Media�',    onClick: () => fileInputRef.current?.click() },
       { icon: '', label: '', sep: true, onClick: () => {} },
       { icon: '?', label: 'Refresh',          onClick: () => { refreshAssets(); refreshComps(); refreshWebComps(); } },
     ]);
-  }, [openCtx, refreshAssets, refreshComps, refreshWebComps, setShowImgCfg]);
+  }, [openCtx, refreshAssets, refreshComps, refreshWebComps, setShowImgCfg, setShowPdfCfg]);
 
 
   const filtered = assets.filter(a => a.filename.toLowerCase().includes(query.toLowerCase()));
@@ -1102,6 +1218,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
       {ctxMenu && <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />}
       {showCfg && <CompConfigModal onSubmit={handleCreateComp} onCancel={() => { setShowCfg(false); setCompError(null); }} />}
       {showImgCfg && <ImageCompConfigModal onSubmit={handleCreateImageComp} onCancel={() => { setShowImgCfg(false); setCompError(null); }} />}
+      {showPdfCfg && <PdfCompConfigModal onSubmit={handleCreatePdfComp} onCancel={() => { setShowPdfCfg(false); setCompError(null); }} />}
       {showWcCfg && (
         <WebCompCreateModal
           onSubmit={handleCreateWebComp}
@@ -1245,15 +1362,26 @@ export default function LibraryPanel({ onAddToTimeline }: {
               </div>
             ))}
 
-            {comps.map(comp => {
+            {comps.filter(comp => !comp.isHidden).map(comp => {
               const isActive = state.activeCompId === comp.compId;
+              const isPdf = comp.kind === 'pdf';
+              const isImg = comp.kind === 'image';
+              const cardStyle: React.CSSProperties = isPdf
+                ? { borderColor: 'rgba(249,115,22,0.35)', boxShadow: isActive ? '0 0 0 2px #f97316' : undefined }
+                : isImg
+                ? { borderColor: 'rgba(167,139,250,0.3)', boxShadow: isActive ? '0 0 0 2px #a855f7' : undefined }
+                : {};
+              const badge = comp.isRoot ? 'ROOT' : isPdf ? 'PDF' : isImg ? 'IMAGE' : 'COMP';
+              const thumbType = isPdf ? 'pdf' : isImg ? 'image' : 'comp';
               return (
                 <div key={comp.compId} className="lib__card-wrap">
                   <LibCard
-                    type="comp"
+                    type={thumbType}
                     title={comp.name}
-                    badge={comp.isRoot ? 'ROOT' : 'COMP'}
+                    badge={badge}
                     isActive={isActive}
+                    isDefault={comp.isDefault}
+                    cardStyle={cardStyle}
                     isDragging={dragging === comp.compId}
                     onDragStart={e => {
                       if (comp.isRoot) return;
@@ -1265,14 +1393,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
                     renaming={renamingId === comp.compId}
                     onRenameCommit={v => handleRenameComp(comp.compId, v)}
                     onRenameCancel={() => setRenamingId(null)}
-                    subtitle={`${comp.width}�${comp.height} � ${comp.fps}fps`}
+                    subtitle={`${comp.width}×${comp.height} · ${comp.fps}fps`}
                     onDoubleClick={() => handleEnterComp(comp)}
                     onContextMenu={e => compCtx(e, comp)}
                   />
                 </div>
               );
             })}
-
             {loading && filtered.length === 0 && (
               <div className="lib__spinner" style={{ margin: '20px auto', gridColumn: '1/-1' }} />
             )}

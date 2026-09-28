@@ -68,7 +68,9 @@ class CreateCompRequest(BaseModel):
     height: int = 1080
     fps: float = 30.0
     totalFrames: int = 900
-    kind : str = "video"
+    kind: str = "video"
+    isHidden: bool = False   # hides comp from library (e.g. PDF page comps)
+    isDefault: bool = False  # marks as the workspace default comp
 
 
 class CompRenameRequest(BaseModel):
@@ -87,17 +89,43 @@ class AddCompClipRequest(BaseModel):
 def listComps():
     if engine.project is None:
         return {"comps": []}
+
+    # ── One-time retroactive migration ────────────────────────────────────────
+    # 1. Collect all page_ids owned by PDF docs → those image comps must be hidden.
+    pdf_page_ids: set[str] = set()
+    for tl in engine.project.timelines:
+        if getattr(tl, "kind", "video") == "pdf":
+            for pid in getattr(tl, "page_ids", []):
+                pdf_page_ids.add(pid)
+
+    # 2. Apply isHidden to page comps; deduplicate isDefault per kind.
+    seen_default: set[str] = set()
+    for tl in engine.project.timelines:
+        kind = getattr(tl, "kind", "video")
+        # Hide PDF page comps
+        if tl.timelineId in pdf_page_ids:
+            tl.isHidden = True
+        # Ensure only one isDefault per kind
+        if getattr(tl, "isDefault", False):
+            if kind in seen_default:
+                tl.isDefault = False   # strip duplicate
+            else:
+                seen_default.add(kind)
+    # ─────────────────────────────────────────────────────────────────────────
+
     root_id  = engine.project.timelines[0].timelineId if engine.project.timelines else ""
-    proj_w = engine.project.width
-    proj_h = engine.project.height
+    proj_w   = engine.project.width
+    proj_h   = engine.project.height
     proj_fps = engine.project.fps
     comps = []
     for tl in engine.project.timelines:
         comps.append({
             "compId": tl.timelineId,
             "name": tl.name,
-            "kind" :getattr(tl , "kind" , "video"),
+            "kind": getattr(tl, "kind", "video"),
             "isRoot": tl.timelineId == root_id,
+            "isHidden": getattr(tl, "isHidden", False),
+            "isDefault": getattr(tl, "isDefault", False),
             "width": getattr(tl, "width", proj_w),
             "height": getattr(tl, "height", proj_h),
             "fps": getattr(tl, "fps", proj_fps),
@@ -108,18 +136,41 @@ def listComps():
     return {"comps": comps}
 
 
+
 @router.post("/comps")
 def createComp(req: CreateCompRequest):
     if engine.project is None:
         raise HTTPException(400, "No active project")
+
+    # If caller wants a default comp, return an existing one for that kind
+    # instead of creating a duplicate.
+    if req.isDefault and engine.project is not None:
+        for tl in engine.project.timelines:
+            if getattr(tl, "kind", "video") == req.kind and getattr(tl, "isDefault", False):
+                return {
+                    "compId": tl.timelineId, "name": tl.name,
+                    "kind": tl.kind,
+                    "isHidden": getattr(tl, "isHidden", False),
+                    "isDefault": True,
+                    "width": getattr(tl, "width", req.width),
+                    "height": getattr(tl, "height", req.height),
+                    "fps": getattr(tl, "fps", req.fps),
+                    "totalFrames": getattr(tl, "totalFrames", req.totalFrames),
+                    "isRoot": False, "trackCount": len(tl.tracks),
+                    "clipCount": sum(len(t.clips) for t in tl.tracks),
+                }
+
     comp = engine.createComposition(name=req.name, width=req.width, height=req.height,
                                     fps=req.fps, total_frames=req.totalFrames)
-
     comp.kind = req.kind
+    comp.isHidden = req.isHidden
+    comp.isDefault = req.isDefault
     from backend.events import notify; notify("comps")
     return {
         "compId": comp.timelineId, "name": comp.name,
-        "kind" : comp.kind ,
+        "kind": comp.kind,
+        "isHidden": comp.isHidden,
+        "isDefault": comp.isDefault,
         "width": getattr(comp, "width", req.width),
         "height": getattr(comp, "height", req.height),
         "fps": getattr(comp, "fps", req.fps),
@@ -335,3 +386,162 @@ def moveLayer(compId: str, req: MoveLayerRequest):
 
     from backend.events import notify; notify("timeline")
     return {"status": "ok", "fromIndex": src, "toIndex": dst}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  PDF DOCUMENT ROUTES
+#  A PDF document is a Timeline with kind="pdf" whose page_ids list holds
+#  ordered imageComp IDs (each page = a Timeline with kind="image").
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class CreatePdfDocRequest(BaseModel):
+    name: str = "Untitled Document"
+    width: int = 1920
+    height: int = 1080
+
+
+class ReorderPagesRequest(BaseModel):
+    page_ids: list[str]   # full ordered list of compIds
+
+
+def _make_image_comp(name: str, width: int, height: int, hidden: bool = True):
+    """Create a new image composition (PDF page) and return it."""
+    comp = engine.createComposition(name=name, width=width, height=height, fps=30, total_frames=1)
+    comp.kind = "image"
+    comp.isHidden = hidden   # PDF page comps are hidden from the library by default
+    comp.isDefault = False
+    return comp
+
+
+def _get_pdf_doc(doc_id: str):
+    tl = engine.getTimeline(doc_id)
+    if tl is None:
+        raise HTTPException(404, f"PDF document {doc_id!r} not found")
+    if getattr(tl, "kind", "video") != "pdf":
+        raise HTTPException(400, f"{doc_id!r} is not a PDF document")
+    return tl
+
+
+@router.post("/pdf-docs")
+def createPdfDoc(req: CreatePdfDocRequest):
+    """Create a new PDF document with one blank first page.
+    If a default PDF doc already exists, return it instead of creating a duplicate."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+
+    # Dedup guard: if any PDF doc already exists, return the first one.
+    for tl in engine.project.timelines:
+        if getattr(tl, "kind", "video") == "pdf":
+            return {
+                "docId": tl.timelineId,
+                "name": tl.name,
+                "kind": "pdf",
+                "isDefault": getattr(tl, "isDefault", False),
+                "pageIds": list(getattr(tl, "page_ids", [])),
+            }
+
+    # No PDF doc exists yet — create one.
+    doc = engine.createComposition(
+        name=req.name, width=req.width, height=req.height, fps=30, total_frames=1
+    )
+    doc.kind = "pdf"
+    doc.isDefault = True   # first PDF doc is always the default
+    doc.isHidden = False
+    doc.page_ids = []
+
+    # Create first page as a hidden image comp
+    page = _make_image_comp(f"{req.name} — Page 1", req.width, req.height, hidden=True)
+    doc.page_ids.append(page.timelineId)
+
+    from backend.events import notify; notify("comps")
+    return {
+        "docId": doc.timelineId,
+        "name": doc.name,
+        "kind": "pdf",
+        "isDefault": True,
+        "pageIds": doc.page_ids,
+    }
+
+
+@router.get("/pdf-docs")
+def listPdfDocs():
+    """List all PDF documents in the project."""
+    if engine.project is None:
+        return {"docs": []}
+    docs = []
+    for tl in engine.project.timelines:
+        if getattr(tl, "kind", "video") == "pdf":
+            docs.append({
+                "docId": tl.timelineId,
+                "name": tl.name,
+                "kind": "pdf",
+                "isDefault": getattr(tl, "isDefault", False),
+                "pageCount": len(getattr(tl, "page_ids", [])),
+                "pageIds": list(getattr(tl, "page_ids", [])),
+            })
+    return {"docs": docs}
+
+
+@router.get("/pdf-docs/{docId}/pages")
+def getPdfPages(docId: str):
+    """Get ordered list of pages for a PDF document."""
+    doc = _get_pdf_doc(docId)
+    pages = []
+    for idx, comp_id in enumerate(doc.page_ids):
+        comp = engine.getTimeline(comp_id)
+        pages.append({
+            "index": idx,
+            "pageId": comp_id,
+            "compId": comp_id,
+            "name": comp.name if comp else f"Page {idx + 1}",
+            "exists": comp is not None,
+        })
+    return {"docId": docId, "pages": pages}
+
+
+@router.post("/pdf-docs/{docId}/pages")
+def addPdfPage(docId: str):
+    """Add a new blank page to the PDF document."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+    doc = _get_pdf_doc(docId)
+    page_num = len(doc.page_ids) + 1
+    doc_name = doc.name
+    page = _make_image_comp(f"{doc_name} — Page {page_num}", 1920, 1080)
+    doc.page_ids.append(page.timelineId)
+    from backend.events import notify; notify("comps")
+    return {
+        "index": len(doc.page_ids) - 1,
+        "pageId": page.timelineId,
+        "compId": page.timelineId,
+        "name": page.name,
+    }
+
+
+@router.delete("/pdf-docs/{docId}/pages/{pageId}")
+def deletePdfPage(docId: str, pageId: str):
+    """Delete a page from the PDF document (also deletes the imageComp)."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+    doc = _get_pdf_doc(docId)
+    if pageId not in doc.page_ids:
+        raise HTTPException(404, f"Page {pageId!r} not in document {docId!r}")
+    if len(doc.page_ids) <= 1:
+        raise HTTPException(400, "Cannot delete the last page")
+    doc.page_ids.remove(pageId)
+    # Also remove the imageComp timeline
+    engine.deleteComposition(pageId)
+    from backend.events import notify; notify("comps")
+    return {"status": "ok", "docId": docId, "deletedPageId": pageId}
+
+
+@router.post("/pdf-docs/{docId}/pages/reorder")
+def reorderPdfPages(docId: str, req: ReorderPagesRequest):
+    """Reorder pages by providing the new complete ordered list of compIds."""
+    doc = _get_pdf_doc(docId)
+    # Validate — must be same set
+    if set(req.page_ids) != set(doc.page_ids):
+        raise HTTPException(400, "page_ids must contain the same pages, just reordered")
+    doc.page_ids = list(req.page_ids)
+    from backend.events import notify; notify("comps")
+    return {"status": "ok", "pageIds": doc.page_ids}
