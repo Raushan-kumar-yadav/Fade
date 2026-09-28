@@ -19,6 +19,12 @@ import PagesPanel, { type PdfPage } from './PagesPanel';
 import LibraryPanel from '../library/LibraryPanel';
 import { type AssetItem } from '../../api/useApi';
 
+// PdfTimeline — always renders in image/layers mode (no playhead, no ruler, no comp tabs)
+function PdfTimeline() {
+  return <Timeline />;
+}
+
+
 // FlexLayout model  
 
 const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
@@ -138,7 +144,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
       .then(r => r.ok ? r.json() : null)
       .then(async data => {
         const allDocs: any[] = data?.docs ?? [];
-        // Prefer the marked default; fall back to any pdf doc.
+ 
         const existing =
           allDocs.find((d: any) => d.isDefault) ||
           allDocs[0];
@@ -170,12 +176,19 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
       .finally(() => { _pdfCreating = false; });
   }, [docId, docName]);  
 
-  // Select a page — swap in-place on the PDF tab (no new tab)
+  // Select a page  
   const handleSelectPage = useCallback((page: PdfPage) => {
     _defaultPageId = page.compId;
     setActivePageId(page.compId);
+    // Swap the active comp in-place (no new tab); kind=image so timeline shows layer mode
     dispatch({ type: 'SWAP_PDF_PAGE', compId: page.compId, compName: page.name });
-    fetch(`http://127.0.0.1:${port}/comps/${page.compId}/activate`, { method: 'POST' }).catch(() => {});
+    // Tell backend which comp is now active
+    fetch(`http://127.0.0.1:${port}/comps/${page.compId}/activate`, { method: 'POST' })
+      .then(() => {
+        // Force immediate track + viewport refresh
+        window.dispatchEvent(new Event('fade:tracks-changed'));
+      })
+      .catch(() => {});
   }, [dispatch, port]);
 
   // Add asset to timeline of the active page  
@@ -190,15 +203,9 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
     } catch { /* silent */ }
   }, [activePageId, port, state.currentFrame]);
 
-  // Register the PDF doc as a tab the first time it resolves (so SWAP_PDF_PAGE has a tab to mutate)
+  // On first doc resolve, select the first page (activates it and registers comp tab)
   useEffect(() => {
     if (!resolvedDocId) return;
-    dispatch({ type: 'ENTER_COMP', compId: resolvedDocId, compName: resolvedDocName, kind: 'pdf' });
-  }, [resolvedDocId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Auto-select first page when doc resolves and no page is active
-  useEffect(() => {
-    if (!resolvedDocId || activePageId) return;
     fetch(`http://127.0.0.1:${port}/pdf-docs/${resolvedDocId}/pages`)
       .then(r => r.ok ? r.json() : null)
       .then(data => {
@@ -239,7 +246,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
           : <div className="vp" style={{ padding: 16, color: '#475569', fontSize: 12 }}>Loading document…</div>;
       case 'library': return <LibraryPanel onAddToTimeline={handleAddToTimeline} />;
       case 'viewport': return <ViewportWidget />;
-      case 'timeline': return <div className="vp vp--timeline"><Timeline /></div>;
+      case 'timeline': return <div className="vp vp--timeline"><PdfTimeline /></div>;
       case 'inspector': return <InspectorPanel />;
       case 'effects': return <EffectsPanel />;
       case 'transitions': return <TransitionPanel />;

@@ -5,7 +5,11 @@ import './TimelineTabs.css';
  
 export default function TimelineTabs() {
   const { state, dispatch } = useTimeline();
-  const { compTabStack, activeCompId } = state;
+  const { compTabStack, activeCompId, activeCompKind } = state;
+
+  // In image/page comp mode (PDF workspace), hide the tab bar entirely —
+  // page switching is handled by the Pages panel sidebar.
+  if (activeCompKind === 'image') return null;
 
   if (compTabStack.length <= 1 && activeCompId === null) {
     // Only root 
