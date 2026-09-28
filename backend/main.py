@@ -337,6 +337,14 @@ app.include_router(virality.router)  # virality predictor + social connections
 app.include_router(image_tools.router)
 
  
+# PII Detection + Sanitization router
+try:
+    from backend.routers import pii as _pii_router_mod
+    app.include_router(_pii_router_mod.router)
+    print("[main] PII router mounted at /pii", flush=True)
+except Exception as _pii_err:
+    print(f"[main] PII router not available: {_pii_err}", flush=True)
+
 from fastapi.responses import FileResponse as _FileResponse
 import pathlib as _pathlib
 
