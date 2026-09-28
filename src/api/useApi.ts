@@ -156,7 +156,7 @@ export async function removeClip(clipId: string): Promise<void> {
   await fetch(`${base()}/timeline/clips/${clipId}`, { method: "DELETE" });
 }
 
-/** Reorder a layer in an image comp (no clip array — layers ARE the tracks). */
+ 
 export async function moveImageLayer(
   compId: string,
   fromIndex: number,
@@ -249,7 +249,7 @@ export async function removeTrack(trackId: string): Promise<void> {
   await fetch(`${base()}/timeline/track/${trackId}`, { method: "DELETE" });
 }
 
-// Re-fetch timeline state (used after undo/redo to sync UI)
+ 
 export async function fetchTimeline(): Promise<any> {
   try {
     const r = await fetch(`${base()}/timeline/state`);
@@ -259,7 +259,7 @@ export async function fetchTimeline(): Promise<any> {
   }
 }
 
-// Re-fetch timeline state for a specific comp (used after clip moves in PDF/image mode)
+// Re-fetch timeline state for a specific comp 
 export async function fetchCompTimeline(compId: string): Promise<any> {
   try {
     const r = await fetch(`${base()}/timeline/comp/${compId}/state`);

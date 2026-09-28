@@ -433,7 +433,7 @@ function TimelineInner() {
         >
           <div style={{ width: isImageComp ? '100%' : tw, minHeight: th, position: 'relative' }}>
             {state.tracks
-              // In image comp hide audio tracks visually, but preserve their real index
+    
               .map((track, realIdx) => ({ track, realIdx }))
               .filter(({ track }) => isImageComp ? !track.name.toLowerCase().includes('audio') : true)
               .map(({ track, realIdx }) => (

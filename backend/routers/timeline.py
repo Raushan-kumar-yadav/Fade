@@ -28,7 +28,7 @@ class MoveClipRequest(BaseModel):
     clipId: str
     startFrame: int
     trackIndex: int
-    compId: str | None = None  # if set, operate on this comp explicitly
+    compId: str | None = None   
 
 
 class TrimClipRequest(BaseModel):
@@ -51,7 +51,7 @@ class AddTrackRequest(BaseModel):
 
 @router.post("/timeline/add-track")
 def addTrack(req: AddTrackRequest):
-    # Use explicit compId if provided, otherwise fall back to active timeline
+  
     if req.compId:
         tl = engine.getTimeline(req.compId)
         if tl is None:
@@ -86,8 +86,7 @@ def addClip(req: AddClipRequest):
         if tl is None:
             raise HTTPException(404, f"Comp timeline {req.compId!r} not found")
     else:
-        # Use the currently-active timeline (whichever comp tab is open in the UI).
-        # Fall back to root only if nothing is active.
+       
         tl = engine.activeTimeline or engine.rootTimeline
         if tl is None:
             raise HTTPException(400, "No active timeline")
@@ -243,7 +242,7 @@ def addSvgClip(req: AddSvgClipRequest):
 
 @router.post("/timeline/move-clip")
 def moveClip(req: MoveClipRequest):
-    # Use explicit compId if provided to avoid activeTimeline race conditions
+ 
     if req.compId:
         tl = engine.getTimeline(req.compId)
         if tl is None:
@@ -259,7 +258,7 @@ def moveClip(req: MoveClipRequest):
         if c:
             clip = c
             srcIdx = i
-            break  # don't remove here — MoveClipCommand.execute() handles it
+            break  # don't remove here  
     if clip is None:
         raise HTTPException(404, f"Clip {req.clipId!r} not found")
     dstIdx = max(0, min(len(tl.tracks) - 1, req.trackIndex))
