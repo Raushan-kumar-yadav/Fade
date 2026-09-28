@@ -467,22 +467,22 @@ def getThumbnail(frame: int, w: int = 320, h: int = 180):
 @router.get("/comps/{comp_id}/thumbnail")
 def getCompThumbnail(comp_id: str, w: int = 240, h: int = 320):
     """Render frame 0 of a specific comp as a thumbnail PNG.
-    Temporarily switches active timeline, renders, then restores."""
+    Passes the target timeline directly to the compositor — no active-timeline swap needed."""
     if engine.project is None or engine.compositor is None:
         return Response(content=b"", media_type="image/png")
-    # Find the target timeline
+    # Find the target timeline by ID
     target = next((tl for tl in engine.project.timelines if tl.timelineId == comp_id), None)
     if target is None:
         return Response(content=b"", media_type="image/png")
-    prev = engine.activeTimeline
     try:
-        engine.activeTimeline = target
+        # compositor.renderThumbnail(timeline, frame, w, h) — pass target directly
         png = engine.compositor.renderThumbnail(target, 0, w, h)
-    except Exception:
+    except Exception as e:
+        print(f"[THUMB] Failed to render comp {comp_id}: {e}")
         png = b""
-    finally:
-        engine.activeTimeline = prev
     return Response(content=png, media_type="image/png")
+
+
 
 
 
