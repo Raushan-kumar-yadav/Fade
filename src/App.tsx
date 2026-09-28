@@ -8,6 +8,7 @@ import VideoWorkspace from './workspaces/VideoWorkspace'
 import AudioWorkspace from './workspaces/AudioWorkspace'
 import ExportWorkspace from './workspaces/ExportWorkspace'
 import ImageWorkspace from './workspaces/ImageWorkspace'
+import PdfWorkspace from './workspaces/pdf/PdfWorkspace'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
 import { SelectionContext, type SelectedItem } from './context/selectionContext'
@@ -17,7 +18,7 @@ import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
-type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image'
+type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image' | 'pdf'
 
 //   Loading overlay  
 
@@ -231,15 +232,33 @@ export default function App() {
     return () => window.removeEventListener('fade:enter-image-comp', h);
   }, []);
 
-  const workspaces: Record<Exclude<TabId, 'image'>, React.FC> = {
+  // Listen for PDF doc open → switch to pdf tab
+  const [pdfDocId, setPdfDocId] = useState<string | null>(null);
+  const [pdfDocName, setPdfDocName] = useState<string>('Untitled Document');
+  useEffect(() => {
+    const h = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.docId) {
+        setPdfDocId(detail.docId);
+        setPdfDocName(detail.name || 'Untitled Document');
+      }
+      setActiveTab('pdf');
+    };
+    window.addEventListener('fade:enter-pdf-doc', h);
+    return () => window.removeEventListener('fade:enter-pdf-doc', h);
+  }, []);
+
+  const workspaces: Record<Exclude<TabId, 'image' | 'pdf'>, React.FC> = {
     home: HomeWorkspace,
     ai: AIWorkspace,
     video: VideoWorkspace,
     audio: AudioWorkspace,
     export: ExportWorkspace,
   }
+
   const isImageTab = activeTab === 'image';
-  const Workspace = isImageTab ? null : workspaces[activeTab as Exclude<TabId, 'image'>]
+  const isPdfTab   = activeTab === 'pdf';
+  const Workspace  = (isImageTab || isPdfTab) ? null : workspaces[activeTab as Exclude<TabId, 'image' | 'pdf'>]
 
   return (
     <SelectionContext.Provider value={{ selected, setSelected }}>
@@ -285,7 +304,16 @@ export default function App() {
                 onBack={() => setActiveTab('video')}
               />
             </div>
-            {!isImageTab && Workspace && <Workspace />}
+
+            {/* PdfWorkspace — always mounted, same pattern */}
+            <div style={{
+              display: isPdfTab ? 'flex' : 'none',
+              width: '100%', height: '100%',
+            }}>
+              <PdfWorkspace docId={pdfDocId} docName={pdfDocName} />
+            </div>
+
+            {!isImageTab && !isPdfTab && Workspace && <Workspace />}
           </main>
 
 

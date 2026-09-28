@@ -335,3 +335,144 @@ def moveLayer(compId: str, req: MoveLayerRequest):
 
     from backend.events import notify; notify("timeline")
     return {"status": "ok", "fromIndex": src, "toIndex": dst}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  PDF DOCUMENT ROUTES
+#  A PDF document is a Timeline with kind="pdf" whose page_ids list holds
+#  ordered imageComp IDs (each page = a Timeline with kind="image").
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class CreatePdfDocRequest(BaseModel):
+    name: str = "Untitled Document"
+    width: int = 1920
+    height: int = 1080
+
+
+class ReorderPagesRequest(BaseModel):
+    page_ids: list[str]   # full ordered list of compIds
+
+
+def _make_image_comp(name: str, width: int, height: int):
+    """Create a new image composition and return it."""
+    comp = engine.createComposition(name=name, width=width, height=height, fps=30, total_frames=1)
+    comp.kind = "image"
+    return comp
+
+
+def _get_pdf_doc(doc_id: str):
+    tl = engine.getTimeline(doc_id)
+    if tl is None:
+        raise HTTPException(404, f"PDF document {doc_id!r} not found")
+    if getattr(tl, "kind", "video") != "pdf":
+        raise HTTPException(400, f"{doc_id!r} is not a PDF document")
+    return tl
+
+
+@router.post("/pdf-docs")
+def createPdfDoc(req: CreatePdfDocRequest):
+    """Create a new PDF document with one blank first page."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+
+    # Create the PDF document timeline
+    doc = engine.createComposition(
+        name=req.name, width=req.width, height=req.height, fps=30, total_frames=1
+    )
+    doc.kind = "pdf"
+    doc.page_ids = []
+
+    # Create first page as an image comp
+    page = _make_image_comp(f"{req.name} — Page 1", req.width, req.height)
+    doc.page_ids.append(page.timelineId)
+
+    from backend.events import notify; notify("comps")
+    return {
+        "docId": doc.timelineId,
+        "name": doc.name,
+        "kind": "pdf",
+        "pageIds": doc.page_ids,
+    }
+
+
+@router.get("/pdf-docs")
+def listPdfDocs():
+    """List all PDF documents in the project."""
+    if engine.project is None:
+        return {"docs": []}
+    docs = []
+    for tl in engine.project.timelines:
+        if getattr(tl, "kind", "video") == "pdf":
+            docs.append({
+                "docId": tl.timelineId,
+                "name": tl.name,
+                "kind": "pdf",
+                "pageCount": len(getattr(tl, "page_ids", [])),
+                "pageIds": list(getattr(tl, "page_ids", [])),
+            })
+    return {"docs": docs}
+
+
+@router.get("/pdf-docs/{docId}/pages")
+def getPdfPages(docId: str):
+    """Get ordered list of pages for a PDF document."""
+    doc = _get_pdf_doc(docId)
+    pages = []
+    for idx, comp_id in enumerate(doc.page_ids):
+        comp = engine.getTimeline(comp_id)
+        pages.append({
+            "index": idx,
+            "pageId": comp_id,
+            "compId": comp_id,
+            "name": comp.name if comp else f"Page {idx + 1}",
+            "exists": comp is not None,
+        })
+    return {"docId": docId, "pages": pages}
+
+
+@router.post("/pdf-docs/{docId}/pages")
+def addPdfPage(docId: str):
+    """Add a new blank page to the PDF document."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+    doc = _get_pdf_doc(docId)
+    page_num = len(doc.page_ids) + 1
+    doc_name = doc.name
+    page = _make_image_comp(f"{doc_name} — Page {page_num}", 1920, 1080)
+    doc.page_ids.append(page.timelineId)
+    from backend.events import notify; notify("comps")
+    return {
+        "index": len(doc.page_ids) - 1,
+        "pageId": page.timelineId,
+        "compId": page.timelineId,
+        "name": page.name,
+    }
+
+
+@router.delete("/pdf-docs/{docId}/pages/{pageId}")
+def deletePdfPage(docId: str, pageId: str):
+    """Delete a page from the PDF document (also deletes the imageComp)."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+    doc = _get_pdf_doc(docId)
+    if pageId not in doc.page_ids:
+        raise HTTPException(404, f"Page {pageId!r} not in document {docId!r}")
+    if len(doc.page_ids) <= 1:
+        raise HTTPException(400, "Cannot delete the last page")
+    doc.page_ids.remove(pageId)
+    # Also remove the imageComp timeline
+    engine.deleteComposition(pageId)
+    from backend.events import notify; notify("comps")
+    return {"status": "ok", "docId": docId, "deletedPageId": pageId}
+
+
+@router.post("/pdf-docs/{docId}/pages/reorder")
+def reorderPdfPages(docId: str, req: ReorderPagesRequest):
+    """Reorder pages by providing the new complete ordered list of compIds."""
+    doc = _get_pdf_doc(docId)
+    # Validate — must be same set
+    if set(req.page_ids) != set(doc.page_ids):
+        raise HTTPException(400, "page_ids must contain the same pages, just reordered")
+    doc.page_ids = list(req.page_ids)
+    from backend.events import notify; notify("comps")
+    return {"status": "ok", "pageIds": doc.page_ids}

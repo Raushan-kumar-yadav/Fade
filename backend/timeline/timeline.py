@@ -11,6 +11,7 @@ class Timeline:
         self.tracks: list[BaseTrack] = []
         self.playheadFrame = 0
         self.kind : str = "video"
+        self.page_ids: list[str] = []   # ordered page compIds — only used when kind="pdf"
         self.transitions: list = []   # list[Transition]
 
     #   Clip lookup 
@@ -93,6 +94,7 @@ class Timeline:
             "timelineId": self.timelineId,
             "name": self.name,
             "kind" : getattr(self,"kind" , "video"),
+            "page_ids": list(getattr(self, "page_ids", [])),
             "playheadFrame": self.playheadFrame,
             "width": getattr(self, "width", 1920),
             "height": getattr(self, "height", 1080),
@@ -117,6 +119,7 @@ class Timeline:
         t.timelineId = data["timelineId"]
         t.playheadFrame = data.get("playheadFrame", 0)
         t.kind = data.get("kind","video")
+        t.page_ids = list(data.get("page_ids", []))
 
         for trackData in data.get("tracks", []):
             trackType = trackData.get("type", "video")

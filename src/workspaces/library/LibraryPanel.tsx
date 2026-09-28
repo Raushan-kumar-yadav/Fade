@@ -9,7 +9,7 @@ import './LibraryPanel.css';
 //   Types  
 
 interface CompMeta {
-  compId: string; name: string; isRoot: boolean; kind: 'video' | 'image';
+  compId: string; name: string; isRoot: boolean; kind: 'video' | 'image' | 'pdf';
   width: number; height: number; fps: number;
   totalFrames: number; trackCount: number; clipCount: number;
 }
@@ -294,7 +294,7 @@ function AssetTaskOverlay({
 async function fetchComps(): Promise<CompMeta[]> {
   const r = await fetch(`${base()}/comps`); return (await r.json()).comps ?? [];
 }
-async function apiCreateComp(cfg: CompConfig, kind: 'video' | 'image' = 'video'): Promise<CompMeta> {
+async function apiCreateComp(cfg: CompConfig, kind: 'video' | 'image' | 'pdf' = 'video'): Promise<CompMeta> {
   const r = await fetch(`${base()}/comps`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: cfg.name, width: cfg.width, height: cfg.height, fps: cfg.fps, totalFrames: cfg.totalFrames, kind }),
@@ -719,6 +719,89 @@ function ImageCompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConf
   );
 }
 
+// ─── PDF Comp Config Modal ────────────────────────────────────────────────────
+
+const PDF_PRESETS = [
+  { label: 'A4',     w: 2480, h: 3508 },
+  { label: 'A5',     w: 1748, h: 2480 },
+  { label: 'Letter', w: 2550, h: 3300 },
+  { label: 'Legal',  w: 2550, h: 4200 },
+  { label: 'Square', w: 2480, h: 2480 },
+];
+
+function PdfCompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) => void; onCancel: () => void }) {
+  const [name, setName] = useState('PDF Document');
+  const [width, setWidth] = useState(2480);
+  const [height, setHeight] = useState(3508);
+  const [creating, setCreating] = useState(false);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { nameRef.current?.select(); }, []);
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', h, true);
+    return () => document.removeEventListener('keydown', h, true);
+  }, [onCancel]);
+
+  const applyPreset = (w: number, h: number) => { setWidth(w); setHeight(h); };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault(); if (!name.trim()) return;
+    setCreating(true);
+    await onSubmit({ name: name.trim(), width, height, fps: 1, totalFrames: 1 });
+    setCreating(false);
+  };
+
+  return ReactDOM.createPortal(
+    <div className="lib-modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel(); }}>
+      <form className="lib-modal" onSubmit={handleSubmit}>
+        <div className="lib-modal__header">
+          <span className="lib-modal__title">📄 New PDF Comp</span>
+          <button type="button" className="lib-modal__close" onClick={onCancel}>✕</button>
+        </div>
+        <div className="lib-modal__body">
+          <label className="lib-comp-cfg__label">Name</label>
+          <input ref={nameRef} className="lib-comp-cfg__input" value={name}
+            onChange={e => setName(e.target.value)} placeholder="Document name…" />
+
+          <label className="lib-comp-cfg__label" style={{ marginTop: 8 }}>Page Preset</label>
+          <div className="lib-comp-cfg__presets">
+            {PDF_PRESETS.map(p => (
+              <button key={p.label} type="button"
+                className={`lib-comp-cfg__preset${width === p.w && height === p.h ? ' lib-comp-cfg__preset--active' : ''}`}
+                onClick={() => applyPreset(p.w, p.h)}>{p.label}</button>
+            ))}
+          </div>
+
+          <div className="lib-comp-cfg__row" style={{ marginTop: 8 }}>
+            <div className="lib-comp-cfg__field">
+              <label className="lib-comp-cfg__label">Width (px)</label>
+              <input className="lib-comp-cfg__input lib-comp-cfg__input--num" type="number"
+                min={1} max={7680} value={width} onChange={e => setWidth(+e.target.value)} />
+            </div>
+            <div className="lib-comp-cfg__field">
+              <label className="lib-comp-cfg__label">Height (px)</label>
+              <input className="lib-comp-cfg__input lib-comp-cfg__input--num" type="number"
+                min={1} max={10000} value={height} onChange={e => setHeight(+e.target.value)} />
+            </div>
+          </div>
+          <div className="lib-comp-cfg__hint" style={{ marginTop: 6, color: '#f97316' }}>
+            PDF canvas · {width}×{height}px · multi-page document
+          </div>
+        </div>
+        <div className="lib-modal__footer">
+          <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create"
+            style={{ background: 'linear-gradient(135deg,#ea580c,#f97316)' }}
+            disabled={creating || !name.trim()}>
+            {creating ? 'Creating…' : '📄 Create PDF Comp'}
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  );
+}
+
 //   Inline rename  
 
 function InlineRename({ initial, onCommit, onCancel }: {
@@ -825,6 +908,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
   const [comps, setComps] = useState<CompMeta[]>([]);
   const [showCfg, setShowCfg] = useState(false);
   const [showImgCfg, setShowImgCfg] = useState(false);
+  const [showPdfCfg, setShowPdfCfg] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [compError, setCompError] = useState<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
@@ -1018,6 +1102,17 @@ export default function LibraryPanel({ onAddToTimeline }: {
     catch (err: any) { setCompError(err.message ?? 'Failed to create image composition'); }
   }, [dispatch]);
 
+  const handleCreatePdfComp = useCallback(async (cfg: CompConfig) => {
+    setCompError(null);
+    try {
+      const c = await apiCreateComp(cfg, 'pdf');
+      setComps(p => [...p, c]);
+      setShowPdfCfg(false);
+      dispatch({ type: 'ENTER_COMP', compId: c.compId, compName: c.name, kind: 'pdf' });
+    }
+    catch (err: any) { setCompError(err.message ?? 'Failed to create PDF composition'); }
+  }, [dispatch]);
+
   const handleDeleteComp = useCallback(async (comp: CompMeta) => {
     if (!window.confirm(`Delete "${comp.name}"?`)) return;
     await apiDeleteComp(comp.compId);
@@ -1078,12 +1173,13 @@ export default function LibraryPanel({ onAddToTimeline }: {
     openCtx(e, [
       { icon: '?', label: 'New Composition',  onClick: () => setShowCfg(true) },
       { icon: '?', label: 'New Image Comp',       onClick: () => setShowImgCfg(true) },
+      { icon: '?', label: 'New PDF Comp',       onClick: () => setShowPdfCfg(true) },
       { icon: '?', label: 'New WebComp',      onClick: () => setShowWcCfg(true) },
       { icon: '+', label: 'Import Media�',    onClick: () => fileInputRef.current?.click() },
       { icon: '', label: '', sep: true, onClick: () => {} },
       { icon: '?', label: 'Refresh',          onClick: () => { refreshAssets(); refreshComps(); refreshWebComps(); } },
     ]);
-  }, [openCtx, refreshAssets, refreshComps, refreshWebComps, setShowImgCfg]);
+  }, [openCtx, refreshAssets, refreshComps, refreshWebComps, setShowImgCfg, setShowPdfCfg]);
 
 
   const filtered = assets.filter(a => a.filename.toLowerCase().includes(query.toLowerCase()));
@@ -1102,6 +1198,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
       {ctxMenu && <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />}
       {showCfg && <CompConfigModal onSubmit={handleCreateComp} onCancel={() => { setShowCfg(false); setCompError(null); }} />}
       {showImgCfg && <ImageCompConfigModal onSubmit={handleCreateImageComp} onCancel={() => { setShowImgCfg(false); setCompError(null); }} />}
+      {showPdfCfg && <PdfCompConfigModal onSubmit={handleCreatePdfComp} onCancel={() => { setShowPdfCfg(false); setCompError(null); }} />}
       {showWcCfg && (
         <WebCompCreateModal
           onSubmit={handleCreateWebComp}

@@ -1,0 +1,183 @@
+/* ── PagesPanel — Canva-style page thumbnails sidebar ───────────────────── */
+
+.pages-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #0d0f14;
+  overflow: hidden;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+/* Header */
+.pages-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  flex-shrink: 0;
+}
+.pages-panel__title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.5);
+}
+.pages-panel__count {
+  font-size: 11px;
+  color: rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.07);
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+/* Scrollable list */
+.pages-panel__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+.pages-panel__list::-webkit-scrollbar { width: 4px; }
+.pages-panel__list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.12);
+  border-radius: 2px;
+}
+
+/* Loading */
+.pages-panel__loading {
+  color: rgba(255,255,255,0.35);
+  font-size: 12px;
+  text-align: center;
+  padding: 20px 0;
+}
+
+/* Individual page card */
+.pages-panel__page {
+  position: relative;
+  cursor: pointer;
+  border-radius: 7px;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  user-select: none;
+}
+.pages-panel__page:hover {
+  border-color: rgba(139,92,246,0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.45);
+}
+.pages-panel__page--active {
+  border-color: #7c6fff !important;
+  box-shadow: 0 0 0 1px rgba(124,111,255,0.4), 0 4px 20px rgba(124,111,255,0.25) !important;
+}
+.pages-panel__page--drag-over {
+  border-color: rgba(99,102,241,0.7) !important;
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.35) !important;
+  transform: scale(1.02);
+}
+
+/* Page number badge */
+.pages-panel__page-number {
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.5);
+  z-index: 2;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+
+/* Thumbnail wrapper */
+.pages-panel__thumb-wrap {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #1a1c23;
+  border-radius: 5px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pages-panel__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pages-panel__thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(255,255,255,0.15);
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #16181f 0%, #1e2030 100%);
+}
+
+/* Delete button (shown on hover) */
+.pages-panel__delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(239,68,68,0.85);
+  border: none;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  transition: background 0.15s;
+}
+.pages-panel__page:hover .pages-panel__delete {
+  display: flex;
+}
+.pages-panel__delete:hover {
+  background: rgb(220,38,38);
+}
+
+/* Add page button */
+.pages-panel__add-btn {
+  flex-shrink: 0;
+  margin: 8px;
+  padding: 9px 0;
+  border-radius: 8px;
+  border: 1.5px dashed rgba(124,111,255,0.35);
+  background: rgba(124,111,255,0.05);
+  color: rgba(124,111,255,0.8);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  letter-spacing: 0.02em;
+}
+.pages-panel__add-btn:hover {
+  background: rgba(124,111,255,0.14);
+  border-color: rgba(124,111,255,0.7);
+  color: #a78bfa;
+}
+.pages-panel__add-btn span {
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 300;
+}
