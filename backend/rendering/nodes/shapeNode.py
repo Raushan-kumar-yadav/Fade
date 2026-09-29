@@ -159,7 +159,9 @@ def _draw_shape_path(canvas: skia.Canvas, path: skia.Path, s) -> None:
 
 def draw_shape(canvas: skia.Canvas, clip: "ShapeClip", frame: int) -> None:
      
-    clip.evaluateAll(frame)
+    from backend.state import engine as _engine
+    _expr_tl = _engine.activeTimeline if _engine else None
+    clip.evaluateAll(frame, _timeline=_expr_tl)
 
     s    = clip.style
     path = _build_path(s)

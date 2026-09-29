@@ -30,7 +30,7 @@ class BaseClip(ABC):
     def overlaps(self, frame: int) -> bool:
         return self.startFrame <= frame < self.endFrame
 
-    def evaluateAll(self, frame: int) -> None:
+    def evaluateAll(self, frame: int, _timeline=None) -> None:
         """Update all animatable properties for the given timeline frame."""
         lf = self.localFrame(frame)
 
@@ -39,7 +39,7 @@ class BaseClip(ABC):
             print(f"[ANIM] evaluateAll  clip={self.clipId[:8]}({type(self).__name__})  "
                   f"timeline_frame={frame}  local_frame={lf}", flush=True)
 
-        self.transform.evaluateAll(lf)
+        self.transform.evaluateAll(lf, _clip=self, _timeline=_timeline)
 
         # Old animEngine-style params 
         if hasattr(self, '_anim_params'):

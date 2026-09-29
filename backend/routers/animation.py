@@ -594,3 +594,125 @@ def moveKeyframe(clipId: str, req: MoveKeyframeRequest):
         "appliedPreset": applied_preset,
         "keyframe": _kf_to_dict(new_kf),
     }
+
+
+# =============================================================================
+#  Expression endpoints
+# =============================================================================
+
+class ExpressionRequest(BaseModel):
+    expression: str
+
+
+class ExpressionTestRequest(BaseModel):
+    expression: str
+    frame: int = 0
+
+
+@router.get("/clips/{clipId}/expression/{param}")
+def get_expression(clipId: str, param: str):
+    """Get the expression string set on a property (empty string if none)."""
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    expr = prop.get_expression()
+    return {
+        "clipId": clipId,
+        "param": param,
+        "expression": expr or "",
+        "hasExpression": expr is not None,
+        "error": prop.expression_error() if expr else "",
+    }
+
+
+@router.post("/clips/{clipId}/expression/{param}")
+def set_expression(clipId: str, param: str, req: ExpressionRequest):
+    """Set an expression on a clip property.
+    The expression is evaluated every frame and overrides the keyframe value.
+
+    Examples:
+        sin(time * 2 * pi) * 100
+        comp.clip('other_id').pos_x * 0.5
+        wiggle(2, 30)
+        value + sin(time * 4) * 20
+    """
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    prop.set_expression(req.expression)
+
+    if prop.expression_error():
+        # Syntax error — return 422 with details but still save so user can fix it
+        return {
+            "clipId": clipId,
+            "param": param,
+            "expression": req.expression,
+            "status": "syntax_error",
+            "error": prop.expression_error(),
+        }
+
+    notify("timeline")
+    return {
+        "clipId": clipId,
+        "param": param,
+        "expression": req.expression,
+        "status": "ok",
+        "error": "",
+    }
+
+
+@router.delete("/clips/{clipId}/expression/{param}")
+def clear_expression(clipId: str, param: str):
+    """Remove an expression from a clip property, reverting to keyframe control."""
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    prop.set_expression(None)
+    notify("timeline")
+    return {"clipId": clipId, "param": param, "status": "cleared"}
+
+
+@router.post("/clips/{clipId}/expression/{param}/test")
+def test_expression(clipId: str, param: str, req: ExpressionTestRequest):
+    """Evaluate an expression at a given frame without applying it.
+    Use this to preview expression output before committing.
+
+    Returns the computed value or an error string.
+    """
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    from backend.animation.expression_context import build_context, SAFE_BUILTINS
+    import types
+
+    # Compile
+    expr = req.expression.strip()
+    try:
+        code = compile(expr, "<test>", "eval")
+    except SyntaxError as exc:
+        return {"ok": False, "error": f"SyntaxError: {exc}", "value": None}
+
+    # Get base value at this frame
+    if prop.is_animated():
+        base = prop._track.evaluateAt(req.frame, prop._baseValue)
+    else:
+        base = prop._baseValue
+
+    tl = engine.activeTimeline if engine else None
+    ctx = build_context(req.frame, base, clip, tl)
+    try:
+        result = eval(code, {"__builtins__": SAFE_BUILTINS}, ctx)
+        return {"ok": True, "value": float(result), "error": ""}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "value": None}

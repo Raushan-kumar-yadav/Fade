@@ -3820,3 +3820,112 @@ NEW_GUI_TOOLS = [
 ]
 ALL_TOOLS.extend(NEW_GUI_TOOLS)
 
+
+# =============================================================================
+#  Expression tools
+# =============================================================================
+
+@tool
+def set_expression(clip_id: str, param: str, expression: str) -> str:
+    """Set a mathematical expression on a clip property so it is re-evaluated
+    every frame automatically, like After Effects expressions.
+
+    The expression can reference:
+        frame      -- current timeline frame (int)
+        time       -- current time in seconds (float)
+        fps        -- project fps
+        duration   -- clip duration in frames
+        value      -- keyframe-interpolated value before expression runs
+        sin / cos / tan / pi / abs / min / max / round
+        clamp(v, lo, hi)
+        lerp(a, b, t)
+        smoothstep(lo, hi, t)
+        wiggle(freq_hz, amplitude)
+        comp.clip("other_clip_id").pos_x  (link to another clip live value)
+        index      -- deterministic int unique per clip (for staggered offsets)
+
+    Supported params:
+        pos_x, pos_y, scale_x, scale_y, rotation, opacity, anchor_x, anchor_y
+
+    Examples:
+        sin(time * 2 * pi) * 100           (oscillate +-100 px in a loop)
+        wiggle(2, 30)                      (random shake at 2 Hz +-30 px)
+        comp.clip("ball_id").pos_x         (link position to another clip)
+        value + sin(time * 4) * 20         (add wobble on top of keyframes)
+        index * 10 + sin(time) * 50        (stagger multiple clips by index)
+
+    Args:
+        clip_id:    The clipId to apply the expression to.
+        param:      Property name -- pos_x | pos_y | scale_x | scale_y |
+                    rotation | opacity | anchor_x | anchor_y | font_size
+        expression: A single-line Python expression string.
+
+    Returns:
+        Confirmation or error details if the expression has a syntax error.
+    """
+    result = _post(f"/clips/{clip_id}/expression/{param}", {"expression": expression})
+    status = result.get("status", "?")
+    if status == "syntax_error":
+        return (
+            f"Expression set but has a SYNTAX ERROR on clip {clip_id[:8]}... "
+            f"param={param}:\n  {result.get('error', '')}\n"
+            "Fix the expression with another set_expression() call."
+        )
+    return (
+        f"Expression applied to clip {clip_id[:8]}... param={param}.\n"
+        f"  Expression: {expression}\n"
+        "It will be re-evaluated every frame automatically."
+    )
+
+
+@tool
+def clear_expression(clip_id: str, param: str) -> str:
+    """Remove an expression from a clip property, returning it to normal
+    keyframe control.
+
+    Args:
+        clip_id: The clipId to clear the expression on.
+        param:   Property name -- same options as set_expression().
+
+    Returns:
+        Confirmation message.
+    """
+    _delete(f"/clips/{clip_id}/expression/{param}")
+    return f"Expression cleared on clip {clip_id[:8]}... param={param}. Property is now keyframe-driven."
+
+
+@tool
+def test_expression(clip_id: str, param: str, expression: str, frame: int = 0) -> str:
+    """Preview the output value of an expression at a given frame WITHOUT
+    applying it. Use this to verify an expression before committing with
+    set_expression().
+
+    Args:
+        clip_id:    The clipId to evaluate against (provides clip context).
+        param:      Property name (provides base/keyframe value at that frame).
+        expression: The expression string to test.
+        frame:      Timeline frame to evaluate at. Default 0.
+
+    Returns:
+        The computed float value, or an error message.
+    """
+    result = _post(
+        f"/clips/{clip_id}/expression/{param}/test",
+        {"expression": expression, "frame": frame},
+    )
+    if result.get("ok"):
+        return (
+            f"Expression test at frame {frame}:\n"
+            f"  \'{expression}\'\n"
+            f"  -> {result['value']:.4f}"
+        )
+    return (
+        f"Expression test FAILED at frame {frame}:\n"
+        f"  \'{expression}\'\n"
+        f"  Error: {result.get('error', 'unknown')}"
+    )
+
+
+EXPRESSION_TOOLS = [set_expression, clear_expression, test_expression]
+ALL_TOOLS.extend(EXPRESSION_TOOLS)
+

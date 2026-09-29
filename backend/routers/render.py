@@ -227,7 +227,9 @@ def _get_frame_data(frame: int) -> dict:
                 source_frame = 0
             
             try:
-                clip.evaluateAll(frame)
+                from backend.state import engine as _engine
+                _expr_tl = _engine.activeTimeline if _engine else None
+                clip.evaluateAll(frame, _timeline=_expr_tl)
             except Exception:
                 pass
             try:
