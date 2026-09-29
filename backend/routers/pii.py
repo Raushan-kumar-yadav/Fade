@@ -4,13 +4,10 @@ backend/routers/pii.py
 FastAPI router that exposes the FADE PII detection + sanitization API.
 
 Endpoints:
-    POST /pii/detect    -> DetectionResult list
-    POST /pii/sanitize  -> sanitized file bytes
-
-These endpoints follow the same conventions as the rest of the FADE backend:
-  - multipart/form-data for file upload
-  - JSON body for redaction requests (supplied as a form field)
-  - all file paths are never logged in full
+    POST /pii/detect                    -> DetectionResult list
+    POST /pii/sanitize                  -> sanitized file bytes
+    POST /pii/register-sanitized        -> swap timeline refs + mark security states
+    GET  /pii/security-state/{asset_id} -> current security state for an asset
 """
 from __future__ import annotations
 
@@ -23,6 +20,7 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from backend.pii.detector  import detect_text, detect_image, detect_video
 from backend.pii.sanitizer import sanitize_text, sanitize_image, sanitize_video
@@ -203,3 +201,117 @@ async def pii_sanitize(
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{out_name}"'},
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /pii/register-sanitized
+# ---------------------------------------------------------------------------
+
+class RegisterSanitizedRequest(BaseModel):
+    originalAssetId:  str
+    sanitizedAssetId: str
+
+
+@router.post("/register-sanitized")
+def pii_register_sanitized(req: RegisterSanitizedRequest) -> dict[str, Any]:
+    """Complete the PII sanitization workflow:
+
+    1. Mark ``originalAssetId``  as RESTRICTED in the security registry.
+    2. Mark ``sanitizedAssetId`` as SANITIZED and record the link.
+    3. Walk every active timeline and swap all clips whose assetId is
+       ``originalAssetId`` to point at ``sanitizedAssetId`` instead.
+    4. Fire SSE events so the frontend timeline and library panels refresh.
+
+    This endpoint is called by the frontend immediately after the sanitized
+    file has been uploaded to /library/upload and a new assetId is known.
+
+    The ORIGINAL asset remains in _library for local recovery/editing but is
+    now RESTRICTED and will be blocked from AI/LLM/external transmission.
+    """
+    from backend.pii import security as _sec
+    from backend.state import engine, _library
+    from backend.events import notify
+
+    original_id  = req.originalAssetId
+    sanitized_id = req.sanitizedAssetId
+
+    # Verify both assets exist
+    if original_id not in _library:
+        raise HTTPException(404, f"Original asset '{original_id}' not found in library")
+    if sanitized_id not in _library:
+        raise HTTPException(404, f"Sanitized asset '{sanitized_id}' not found in library")
+
+    # 1 & 2 — mark security states and link
+    _sec.mark(original_id,  "RESTRICTED")
+    _sec.mark(sanitized_id, "SANITIZED")
+    _sec.link(original_id,  sanitized_id)
+
+    # 3 — swap timeline clip references
+    swapped_clips: list[str] = []
+    timelines = engine.project.timelines if engine.project else []
+    if not timelines and engine.activeTimeline:
+        timelines = [engine.activeTimeline]
+
+    new_asset = _library.get(sanitized_id)
+    new_filepath = getattr(new_asset, "filepath", "") if new_asset else ""
+
+    for tl in timelines:
+        for track in getattr(tl, "tracks", []):
+            for clip in getattr(track, "clips", []):
+                if getattr(clip, "assetId", None) == original_id:
+                    clip.assetId = sanitized_id
+                    # ImageClip and VideoClip also carry filepath
+                    if hasattr(clip, "filepath") and new_filepath:
+                        clip.filepath = new_filepath
+                    swapped_clips.append(getattr(clip, "clipId", "?"))
+                    logger.info(
+                        "[/pii/register-sanitized] swapped clip %s: %s -> %s",
+                        clip.clipId, original_id[:8], sanitized_id[:8],
+                    )
+
+    # 4 — refresh frontend
+    notify("timeline")
+    notify("library")
+
+    print(
+        f"[PII] register-sanitized: original={original_id[:8]} RESTRICTED | "
+        f"sanitized={sanitized_id[:8]} SANITIZED | clips swapped={len(swapped_clips)}",
+        flush=True,
+    )
+
+    return {
+        "status":             "ok",
+        "originalAssetId":    original_id,
+        "sanitizedAssetId":   sanitized_id,
+        "originalState":      "RESTRICTED",
+        "sanitizedState":     "SANITIZED",
+        "clipsSwapped":       len(swapped_clips),
+        "swappedClipIds":     swapped_clips,
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /pii/security-state/{asset_id}
+# ---------------------------------------------------------------------------
+
+@router.get("/security-state/{asset_id}")
+def pii_security_state(asset_id: str) -> dict[str, Any]:
+    """Return the current PII security state for a given asset.
+
+    Response:
+        {
+            "assetId":       str,
+            "securityState": "NONE" | "RESTRICTED" | "SANITIZED",
+            "sanitizedAssetId": str | null,  # set if this asset is the ORIGINAL
+            "originalAssetId":  str | null,  # set if this asset is the SANITIZED copy
+        }
+    """
+    from backend.pii import security as _sec
+    state = _sec.get_state(asset_id)
+    return {
+        "assetId":          asset_id,
+        "securityState":    state,
+        "sanitizedAssetId": _sec.get_sanitized(asset_id),
+        "originalAssetId":  _sec.get_original(asset_id),
+    }
+

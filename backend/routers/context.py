@@ -1,4 +1,5 @@
-﻿ 
+ 
+
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -9,7 +10,26 @@ from backend.state import engine, _library
 router = APIRouter(prefix="/context", tags=["context"])
 
 _FPS_DEFAULT = 30.0
-_SEMANTIC_INTERVAL = 2.0   # seconds  
+_SEMANTIC_INTERVAL = 2.0   # seconds
+
+_PII_BLOCKED_MSG = (
+    "Security review required. This asset has not been approved for AI/external "
+    "processing. Open the PII Review panel, review detections, and click "
+    "Confirm & Sanitize to approve it."
+)
+
+
+def _pii_security_check(asset_id: str) -> None:
+    """Raise HTTP 403 if the asset is RESTRICTED (original before PII sanitization)."""
+    try:
+        from backend.pii import security as _sec
+        if _sec.get_state(asset_id) == "RESTRICTED":
+            raise HTTPException(status_code=403, detail=_PII_BLOCKED_MSG)
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # security module import failure is non-fatal; don't crash AI tools
+
 
 
 #   helpers  
@@ -388,6 +408,25 @@ def get_timeline_context(format: str = "json"):
     for clip in clips:
         if not clip["assetId"] or not clip["filepath"]:
             continue
+        # AI security gate: skip RESTRICTED assets silently (don't expose filepath)
+        try:
+            from backend.pii import security as _sec
+            if _sec.get_state(clip["assetId"]) == "RESTRICTED":
+                results.append({
+                    **clip,
+                    "context": {
+                        "assetId": clip["assetId"],
+                        "filepath": "[RESTRICTED — PII review required]",
+                        "indexed": False,
+                        "semantic_chunks": 0,
+                        "transcript_segments": 0,
+                        "timeline": [],
+                        "_securityState": "RESTRICTED",
+                    },
+                })
+                continue
+        except Exception:
+            pass
         ctx = _build_asset_context(
             asset_id = clip["assetId"],
             filepath = clip["filepath"],
@@ -430,6 +469,9 @@ def get_clip_context(clip_id: str, format: str = "json"):
     if not clip["filepath"]:
         raise HTTPException(422, f"Clip '{clip_id}' has no filepath (asset may be missing)")
 
+    # AI security gate
+    _pii_security_check(clip["assetId"])
+
     ctx = _build_asset_context(
         asset_id = clip["assetId"],
         filepath = clip["filepath"],
@@ -464,6 +506,9 @@ def get_asset_context(asset_id: str, format: str = "json"):
     asset = _library.get(asset_id)
     if not asset:
         raise HTTPException(404, f"Asset '{asset_id}' not in library")
+
+    # AI security gate
+    _pii_security_check(asset_id)
 
     filepath = getattr(asset, "filepath", "")
     ctx = _build_asset_context(asset_id=asset_id, filepath=filepath)

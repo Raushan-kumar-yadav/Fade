@@ -139,15 +139,17 @@ def _import_file(filepath: str) -> dict:
 @router.get("/library/assets")
 def listAssets():
     from backend.media.asset.baseAsset import MediaType
+    from backend.pii import security as _pii_sec
     return [
         {
-            "assetId":  a.assetId,
-            "filename": os.path.basename(a.filepath),
-            "filepath": a.filepath,
-            "type": a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType),
+            "assetId":       a.assetId,
+            "filename":      os.path.basename(a.filepath),
+            "filepath":      a.filepath,
+            "type":          a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType),
+            "securityState": _pii_sec.get_state(a.assetId),
         }
         for a in _library.values()
-         
+
         if getattr(a, 'mediaType', None) != MediaType.webcomp
     ]
 
@@ -268,19 +270,21 @@ def listAssetsRich():
         idx_status = _index_status(a.assetId)
         tx_status  = _transcript_status(a.assetId)
 
+        from backend.pii import security as _pii_sec
         entry = {
-            "assetId": a.assetId,
-            "filename": os.path.basename(a.filepath),
-            "filepath": a.filepath,
-            "type": mtype,
-            "durationFrames":  dur_frames,
-            "durationSec": dur_sec,
-            "fps": round(asset_fps, 3),
-            "width": getattr(a, 'width',    0),
-            "height": getattr(a, 'height',   0),
-            "hasAudio": bool(getattr(a, 'hasAudio', False)),
-            "indexStatus": idx_status,
+            "assetId":          a.assetId,
+            "filename":         os.path.basename(a.filepath),
+            "filepath":         a.filepath,
+            "type":             mtype,
+            "durationFrames":   dur_frames,
+            "durationSec":      dur_sec,
+            "fps":              round(asset_fps, 3),
+            "width":            getattr(a, 'width',    0),
+            "height":           getattr(a, 'height',   0),
+            "hasAudio":         bool(getattr(a, 'hasAudio', False)),
+            "indexStatus":      idx_status,
             "transcriptStatus": tx_status,
+            "securityState":    _pii_sec.get_state(a.assetId),
         }
 
         # Enrich with indexed content
