@@ -3107,3 +3107,716 @@ ALL_TOOLS.extend(VOLUME_TOOLS)
 # ── Publishing tools ──────────────────────────────────────────────────────────
 from backend.ai.publish_tools import PUBLISH_TOOLS as _PUBLISH_TOOLS
 ALL_TOOLS.extend(_PUBLISH_TOOLS)
+
+
+# =============================================================================
+#  NEW TOOLS — GUI features previously unexposed to the agent
+#  Phase 1: Track control
+#  Phase 2: Mask layers
+#  Phase 3: SVG clip
+#  Phase 4: Canvas crop
+#  Phase 5: Comp management (rename, layers)
+#  Phase 6: PDF doc / page management
+#  Phase 7: Playback control
+#  Phase 8: Virality / social
+#  Phase 9: Transform batch
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+#  Phase 1 — Track control: solo, lock, move/reorder
+# ---------------------------------------------------------------------------
+
+@tool
+def solo_track(track_id: str) -> str:
+    """Toggle solo on a track. When soloed, only this track renders audio/video.
+    All other tracks are silenced/hidden until solo is toggled off.
+
+    Args:
+        track_id: The trackId of the track to toggle solo on.
+
+    Returns:
+        The new solo state.
+    """
+    result = _post(f"/timeline/track/{track_id}/solo", {})
+    solo = result.get("solo", False)
+    return f"Track {track_id[:8]}… solo {'ON 🔊' if solo else 'OFF'}."
+
+
+@tool
+def lock_track(track_id: str) -> str:
+    """Toggle lock on a track. Locked tracks cannot be edited, moved, or
+    accidentally modified. Toggle again to unlock.
+
+    Args:
+        track_id: The trackId of the track to toggle lock on.
+
+    Returns:
+        The new lock state.
+    """
+    result = _post(f"/timeline/track/{track_id}/lock", {})
+    locked = result.get("locked", False)
+    return f"Track {track_id[:8]}… {'LOCKED 🔒' if locked else 'UNLOCKED 🔓'}."
+
+
+@tool
+def move_track(track_id: str, new_index: int) -> str:
+    """Reorder a track to a new position in the track list.
+    Index 0 is rendered on top; higher indices are further back.
+
+    Args:
+        track_id:  The trackId to move.
+        new_index: New zero-based position. 0 = topmost track.
+
+    Returns:
+        Confirmation with the final index.
+    """
+    result = _post("/timeline/move-track", {"trackId": track_id, "newIndex": new_index})
+    idx = result.get("newIndex", new_index)
+    return f"Track {track_id[:8]}… moved to index {idx}."
+
+
+# ---------------------------------------------------------------------------
+#  Phase 2 — Mask layers
+# ---------------------------------------------------------------------------
+
+@tool
+def add_mask(
+    clip_id: str,
+    shape: str = "rect",
+    mode: str = "add",
+    feather: float = 0.0,
+    opacity: float = 1.0,
+    inverted: bool = False,
+    name: str = "Mask",
+) -> str:
+    """Add a mask layer to a clip to reveal or hide parts of it.
+
+    Args:
+        clip_id:  The clipId to add the mask to.
+        shape:    Mask shape — "rect" | "ellipse" | "freeform". Default "rect".
+        mode:     Compositing mode — "add" (reveal) | "subtract" (cut out).
+                  Default "add".
+        feather:  Soft edge blur in pixels (0 = hard edge). Default 0.
+        opacity:  Mask strength, 0.0–1.0. Default 1.0.
+        inverted: Invert the mask so the shape cuts away instead of revealing.
+        name:     Human-readable name for the mask layer.
+
+    Returns:
+        The maskId of the new mask layer.
+    """
+    result = _post(f"/clips/{clip_id}/mask", {
+        "name": name,
+        "shape": shape,
+        "mode": mode,
+        "feather": feather,
+        "opacity": opacity,
+        "inverted": inverted,
+        "points": [],
+    })
+    mask_id = result.get("maskId", "?")
+    return f"Mask '{name}' ({shape}) added to clip {clip_id[:8]}… → maskId={mask_id}."
+
+
+@tool
+def update_mask(
+    clip_id: str,
+    mask_id: str,
+    feather: float | None = None,
+    opacity: float | None = None,
+    inverted: bool | None = None,
+    mode: str | None = None,
+    name: str | None = None,
+) -> str:
+    """Update an existing mask layer's parameters.
+
+    Args:
+        clip_id:  The clipId the mask belongs to.
+        mask_id:  The maskId to update.
+        feather:  New feather/blur value (optional).
+        opacity:  New mask opacity 0.0–1.0 (optional).
+        inverted: Flip mask inversion (optional).
+        mode:     New compositing mode "add"|"subtract" (optional).
+        name:     New display name (optional).
+
+    Returns:
+        Confirmation message.
+    """
+    patch: dict = {}
+    if feather  is not None: patch["feather"]  = feather
+    if opacity  is not None: patch["opacity"]  = opacity
+    if inverted is not None: patch["inverted"] = inverted
+    if mode     is not None: patch["mode"]     = mode
+    if name     is not None: patch["name"]     = name
+    _patch(f"/clips/{clip_id}/mask/{mask_id}", patch)
+    return f"Mask {mask_id[:8]}… on clip {clip_id[:8]}… updated."
+
+
+@tool
+def remove_mask(clip_id: str, mask_id: str) -> str:
+    """Delete a mask layer from a clip.
+
+    Args:
+        clip_id: The clipId the mask belongs to.
+        mask_id: The maskId to delete.
+
+    Returns:
+        Confirmation message.
+    """
+    _delete(f"/clips/{clip_id}/mask/{mask_id}")
+    return f"Mask {mask_id[:8]}… removed from clip {clip_id[:8]}…."
+
+
+@tool
+def list_masks(clip_id: str) -> str:
+    """List all mask layers on a clip with their shapes, modes, and parameters.
+
+    Args:
+        clip_id: The clipId to inspect.
+
+    Returns:
+        Summary of all mask layers.
+    """
+    result = _get(f"/clips/{clip_id}/masks")
+    masks = result.get("masks", [])
+    if not masks:
+        return f"Clip {clip_id[:8]}… has no masks."
+    lines = [f"Clip {clip_id[:8]}… — {len(masks)} mask(s):"]
+    for m in masks:
+        lines.append(
+            f"  [{m.get('maskId','?')[:8]}…] '{m.get('name','Mask')}' "
+            f"shape={m.get('shape','?')} mode={m.get('mode','add')} "
+            f"feather={m.get('feather',0)} opacity={m.get('opacity',1)} "
+            f"inverted={m.get('inverted',False)}"
+        )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+#  Phase 3 — SVG clip
+# ---------------------------------------------------------------------------
+
+@tool
+def add_svg_clip(
+    filepath: str,
+    start_frame: int = 0,
+    duration: int = 90,
+    track_index: int | None = None,
+) -> str:
+    """Add an SVG vector graphic as a clip on the timeline.
+    SVG clips are resolution-independent and support animation.
+
+    Args:
+        filepath:    Absolute path to the .svg file.
+        start_frame: Frame where the clip starts. Default 0.
+        duration:    Clip duration in frames (90 = 3s at 30fps). Default 90.
+        track_index: Track index to place the clip on. None = auto-pick.
+
+    Returns:
+        The clipId of the new SVG clip.
+    """
+    payload: dict = {
+        "filepath": filepath,
+        "startFrame": start_frame,
+        "duration": duration,
+    }
+    if track_index is not None:
+        payload["trackIndex"] = track_index
+    result = _post("/timeline/add-svg-clip", payload)
+    clip_id = result.get("clipId", "?")
+    return f"SVG clip added: clipId={clip_id} at frame {start_frame}, duration={duration}f."
+
+
+# ---------------------------------------------------------------------------
+#  Phase 4 — Canvas crop
+# ---------------------------------------------------------------------------
+
+@tool
+def crop_canvas(x: float, y: float, width: float, height: float) -> str:
+    """Crop the composition canvas to a new rectangular region.
+    All clips outside the crop region will be clipped to this area.
+    Use this to change the framing/composition of the entire canvas.
+
+    Args:
+        x:      Left edge of the crop region in pixels.
+        y:      Top edge of the crop region in pixels.
+        width:  Width of the crop region in pixels (must be > 0).
+        height: Height of the crop region in pixels (must be > 0).
+
+    Returns:
+        The new canvas dimensions after cropping.
+    """
+    if width <= 0 or height <= 0:
+        return "Error: width and height must both be > 0."
+    result = _post("/editor/crop", {"x": x, "y": y, "width": width, "height": height})
+    return (
+        f"Canvas cropped to {int(result.get('width', width))}x{int(result.get('height', height))} "
+        f"at offset ({x}, {y})."
+    )
+
+
+# ---------------------------------------------------------------------------
+#  Phase 5 — Comp management: rename, layers
+# ---------------------------------------------------------------------------
+
+@tool
+def rename_composition(comp_id: str, new_name: str) -> str:
+    """Rename a composition. The new name will appear in the comp panel and
+    tab bar.
+
+    Args:
+        comp_id:  The composition ID to rename.
+        new_name: The new display name (must not be empty).
+
+    Returns:
+        Confirmation with the updated name.
+    """
+    if not new_name.strip():
+        return "Error: new_name cannot be empty."
+    result = _patch(f"/comps/{comp_id}/rename", {"name": new_name.strip()})
+    return f"Comp {comp_id[:8]}… renamed to '{result.get('name', new_name)}'."
+
+
+@tool
+def get_comp_layers(comp_id: str) -> str:
+    """List all layers in an image composition with their blend modes,
+    opacity, visibility, and lock state. Useful before updating layers.
+
+    Args:
+        comp_id: The composition ID (must be an image-type comp).
+
+    Returns:
+        A formatted list of all layers.
+    """
+    result = _get(f"/comps/{comp_id}/layers")
+    layers = result.get("layers", [])
+    if not layers:
+        return f"Comp {comp_id[:8]}… has no layers."
+    lines = [f"Comp {comp_id[:8]}… — {len(layers)} layer(s) (top → bottom):"]
+    for L in layers:
+        visible = "👁" if L.get("visible", True) else "🚫"
+        locked  = "🔒" if L.get("locked", False) else "  "
+        lines.append(
+            f"  {visible}{locked} [{L.get('trackId','?')[:8]}…] '{L.get('name','Layer')}' "
+            f"blend={L.get('blendMode','normal')} opacity={L.get('opacity',1.0):.2f} "
+            f"z={L.get('z_index',0)}"
+        )
+    return "\n".join(lines)
+
+
+@tool
+def update_comp_layer(
+    comp_id: str,
+    layer_id: str,
+    opacity: float | None = None,
+    blend_mode: str | None = None,
+    visible: bool | None = None,
+    locked: bool | None = None,
+    name: str | None = None,
+    z_index: int | None = None,
+) -> str:
+    """Update a layer's visual properties inside a composition.
+    Use get_comp_layers() first to find layer IDs.
+
+    Args:
+        comp_id:    The composition ID.
+        layer_id:   The layer trackId to update.
+        opacity:    0.0–1.0 opacity (optional).
+        blend_mode: Blend mode name e.g. "normal"|"multiply"|"screen"|"overlay"|
+                    "hard_light"|"soft_light"|"difference"|"exclusion"|"add"|
+                    "darken"|"lighten" (optional).
+        visible:    True/False visibility (optional).
+        locked:     True/False lock state (optional).
+        name:       New display name (optional).
+        z_index:    New z-order index (optional).
+
+    Returns:
+        Confirmation message.
+    """
+    patch: dict = {}
+    if opacity    is not None: patch["opacity"]    = opacity
+    if blend_mode is not None: patch["blendMode"]  = blend_mode
+    if visible    is not None: patch["visible"]    = visible
+    if locked     is not None: patch["locked"]     = locked
+    if name       is not None: patch["name"]       = name
+    if z_index    is not None: patch["z_index"]    = z_index
+    result = _patch(f"/comps/{comp_id}/layers/{layer_id}", patch)
+    return f"Layer {layer_id[:8]}… in comp {comp_id[:8]}… updated."
+
+
+@tool
+def move_comp_layer(comp_id: str, from_index: int, to_index: int) -> str:
+    """Reorder a layer within a composition by moving it from one index to another.
+    Index 0 = topmost layer (rendered last, appears on top).
+
+    Args:
+        comp_id:    The image composition ID.
+        from_index: Current zero-based layer index.
+        to_index:   Target zero-based layer index.
+
+    Returns:
+        Confirmation message.
+    """
+    _post(f"/comps/{comp_id}/layers/move", {"fromIndex": from_index, "toIndex": to_index})
+    return f"Layer moved from index {from_index} → {to_index} in comp {comp_id[:8]}…."
+
+
+# ---------------------------------------------------------------------------
+#  Phase 6 — PDF document / page management
+# ---------------------------------------------------------------------------
+
+@tool
+def create_pdf_doc(
+    name: str = "Untitled Document",
+    width: int = 2480,
+    height: int = 3508,
+) -> str:
+    """Create a new multi-page PDF document composition.
+    Default dimensions are A4 at 300 DPI (2480×3508 px).
+    If a PDF document already exists in the project, returns it.
+
+    Args:
+        name:   Document name displayed in the PDF workspace.
+        width:  Page width in pixels. Default 2480 (A4 300dpi).
+        height: Page height in pixels. Default 3508 (A4 300dpi).
+
+    Returns:
+        The docId of the created (or existing) PDF document.
+    """
+    result = _post("/pdf-docs", {"name": name, "width": width, "height": height})
+    doc_id = result.get("docId", "?")
+    pages  = result.get("pageIds", [])
+    return (
+        f"PDF doc '{result.get('name', name)}' ready. "
+        f"docId={doc_id}  pages={len(pages)}"
+    )
+
+
+@tool
+def list_pdf_docs() -> str:
+    """List all PDF documents in the current project.
+
+    Returns:
+        Table of PDF documents with their docIds and page counts.
+    """
+    result = _get("/pdf-docs")
+    docs = result.get("docs", [])
+    if not docs:
+        return "No PDF documents in this project. Use create_pdf_doc() to make one."
+    lines = [f"{len(docs)} PDF document(s):"]
+    for d in docs:
+        lines.append(
+            f"  [{d['docId'][:8]}…] '{d['name']}' — {d['pageCount']} page(s)"
+        )
+    return "\n".join(lines)
+
+
+@tool
+def list_pdf_pages(doc_id: str) -> str:
+    """List all pages in a PDF document with their IDs and names.
+
+    Args:
+        doc_id: The PDF document ID (use list_pdf_docs() to find it).
+
+    Returns:
+        Ordered list of pages with pageId/compId for each.
+    """
+    result = _get(f"/pdf-docs/{doc_id}/pages")
+    pages = result.get("pages", [])
+    if not pages:
+        return f"PDF doc {doc_id[:8]}… has no pages."
+    lines = [f"PDF doc {doc_id[:8]}… — {len(pages)} page(s):"]
+    for p in pages:
+        lines.append(
+            f"  Page {p.get('index',0)+1}: [{p.get('pageId','?')[:8]}…] '{p.get('name','Page')}' "
+            f"({p.get('width',0)}x{p.get('height',0)})"
+        )
+    return "\n".join(lines)
+
+
+@tool
+def add_pdf_page(doc_id: str) -> str:
+    """Add a new blank page to a PDF document.
+    The page inherits the document's dimensions automatically.
+
+    Args:
+        doc_id: The PDF document ID to add a page to.
+
+    Returns:
+        The pageId/compId of the new page, and its index.
+    """
+    result = _post(f"/pdf-docs/{doc_id}/pages", {})
+    page_id = result.get("pageId", "?")
+    idx     = result.get("index", "?")
+    name    = result.get("name", "Page")
+    return f"Page '{name}' added to doc {doc_id[:8]}… → pageId={page_id} (index {idx})."
+
+
+@tool
+def delete_pdf_page(doc_id: str, page_id: str) -> str:
+    """Delete a page from a PDF document.
+    Cannot delete the last remaining page.
+
+    Args:
+        doc_id:  The PDF document ID.
+        page_id: The pageId (compId) of the page to delete.
+
+    Returns:
+        Confirmation message.
+    """
+    _delete(f"/pdf-docs/{doc_id}/pages/{page_id}")
+    return f"Page {page_id[:8]}… deleted from doc {doc_id[:8]}…."
+
+
+@tool
+def reorder_pdf_pages(doc_id: str, page_ids: list[str]) -> str:
+    """Reorder the pages of a PDF document.
+    You must supply ALL existing page IDs in the new desired order.
+
+    Args:
+        doc_id:   The PDF document ID.
+        page_ids: Complete list of pageIds in the new order.
+                  All existing pages must be present — just reordered.
+
+    Returns:
+        The new page order.
+    """
+    result = _post(f"/pdf-docs/{doc_id}/pages/reorder", {"page_ids": page_ids})
+    new_order = result.get("pageIds", page_ids)
+    return (
+        f"PDF doc {doc_id[:8]}… pages reordered. "
+        f"New order: {[p[:8]+'…' for p in new_order]}"
+    )
+
+
+# ---------------------------------------------------------------------------
+#  Phase 7 — Playback control
+# ---------------------------------------------------------------------------
+
+@tool
+def play() -> str:
+    """Start timeline playback from the current frame position.
+
+    Returns:
+        Confirmation that playback started.
+    """
+    _post("/playback/play", {})
+    return "Playback started."
+
+
+@tool
+def pause() -> str:
+    """Pause timeline playback at the current frame.
+
+    Returns:
+        Confirmation that playback paused.
+    """
+    _post("/playback/pause", {})
+    return "Playback paused."
+
+
+@tool
+def set_playback_speed(speed: float) -> str:
+    """Set the playback speed multiplier.
+    Examples: 1.0 = normal, 2.0 = double speed, 0.5 = half speed, -1.0 = reverse.
+
+    Args:
+        speed: Speed multiplier. Positive = forward, negative = reverse.
+
+    Returns:
+        The applied speed.
+    """
+    if speed == 0:
+        return "Error: speed cannot be 0. Use pause() to stop."
+    result = _post("/playback/speed", {"speed": speed})
+    return f"Playback speed set to {result.get('speed', speed)}x."
+
+
+@tool
+def set_in_out_points(
+    in_frame: int | None = None,
+    out_frame: int | None = None,
+) -> str:
+    """Set the in/out work-area markers on the timeline.
+    These define the range used for looped playback and export.
+    Pass None to clear a marker.
+
+    Args:
+        in_frame:  Frame number for the In marker (or None to clear).
+        out_frame: Frame number for the Out marker (or None to clear).
+
+    Returns:
+        The new in/out point values.
+    """
+    result = _post("/playback/inout", {"inPoint": in_frame, "outPoint": out_frame})
+    inp = result.get("inPoint")
+    out = result.get("outPoint")
+    return (
+        f"In/Out markers set: in={inp if inp is not None else 'cleared'}, "
+        f"out={out if out is not None else 'cleared'}."
+    )
+
+
+# ---------------------------------------------------------------------------
+#  Phase 8 — Virality / social analysis
+# ---------------------------------------------------------------------------
+
+@tool
+def analyze_virality(
+    title: str,
+    thumb_url: str,
+    platform: str = "youtube",
+    category: str = "Entertainment",
+    baseline_views: int = 1000,
+) -> str:
+    """Analyze a video/image for predicted virality score using the Fade AI model.
+    Returns creative quality score, text/title strength, virality potential,
+    and AI-generated improvement suggestions.
+
+    Args:
+        title:          Video title or content caption.
+        thumb_url:      URL to the thumbnail image (publicly accessible).
+        platform:       "youtube" or "instagram". Default "youtube".
+        category:       Content category — "Entertainment" | "Education" | "Gaming" |
+                        "People & Blogs" | "Science & Technology" | "Instagram_Content".
+                        Default "Entertainment".
+        baseline_views: Creator's median view count for calibration. Default 1000.
+
+    Returns:
+        Virality scores (0–100) and AI narrative analysis.
+    """
+    result = _post("/virality/analyze", {
+        "title": title,
+        "thumbUrl": thumb_url,
+        "platform": platform,
+        "category": category,
+        "baselineViews": baseline_views,
+    })
+    scores   = result.get("scores", {})
+    analysis = result.get("analysis", "No analysis available.")
+    return (
+        f"Virality Analysis for '{title}':\n"
+        f"  Creative Quality: {scores.get('quality', '?')}/100\n"
+        f"  Title Strength:   {scores.get('text', '?')}/100\n"
+        f"  Virality Score:   {scores.get('virality', '?')}/100\n\n"
+        f"{analysis}"
+    )
+
+
+@tool
+def get_social_connections() -> str:
+    """Check which social media platforms are connected in Fade.
+    Currently supports YouTube and Instagram.
+
+    Returns:
+        Connection status and channel/account info for each platform.
+    """
+    result = _get("/virality/connections")
+    connections = result.get("connections", [])
+    if not connections:
+        return "No social connections configured. Go to Settings → Social to connect accounts."
+    lines = ["Social connections:"]
+    for c in connections:
+        status = "✅ Connected" if c.get("connected") else "❌ Not connected"
+        name   = c.get("channel_name") or c.get("account_name") or ""
+        lines.append(
+            f"  {c.get('platform','?').capitalize()}: {status}"
+            + (f" — {name}" if name else "")
+        )
+    return "\n".join(lines)
+
+
+@tool
+def get_youtube_videos() -> str:
+    """Fetch the latest videos from the connected YouTube channel.
+    Requires YouTube to be connected in Settings → Social.
+
+    Returns:
+        List of recent videos with view counts, likes, and virality baseline.
+    """
+    result = _get("/virality/youtube/videos")
+    videos = result.get("videos", [])
+    if not videos:
+        return "No videos found. Make sure YouTube is connected in Settings."
+    lines = [f"Latest {len(videos)} YouTube video(s):"]
+    for v in videos:
+        lines.append(
+            f"  [{v.get('videoId','?')}] '{v.get('title','?')}'\n"
+            f"    Views: {v.get('views',0):,}  Likes: {v.get('likes',0):,}  "
+            f"Comments: {v.get('comments',0):,}  Category: {v.get('category','?')}\n"
+            f"    Thumb: {v.get('thumbUrl','')}"
+        )
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+#  Phase 9 — Transform batch (multi-clip simultaneous transform)
+# ---------------------------------------------------------------------------
+
+@tool
+def transform_batch(transforms: list[dict]) -> str:
+    """Apply transform changes to multiple clips simultaneously.
+    More efficient than calling update_clip() in a loop.
+
+    Each item in transforms can have:
+        clip_id (required), pos_x, pos_y, scale_x, scale_y,
+        rotation, opacity, anchor_x, anchor_y
+
+    Example:
+        transform_batch([
+            {"clip_id": "abc123", "pos_x": 100, "pos_y": 50, "opacity": 0.8},
+            {"clip_id": "def456", "scale_x": 1.5, "scale_y": 1.5, "rotation": 45},
+        ])
+
+    Args:
+        transforms: List of dicts, each with clip_id plus optional transform params.
+
+    Returns:
+        Summary of how many clips were updated.
+    """
+    if not transforms:
+        return "No transforms provided."
+    # Map to backend format
+    items = []
+    for t in transforms:
+        item: dict = {"clipId": t.get("clip_id") or t.get("clipId", "")}
+        for k in ["pos_x", "pos_y", "scale_x", "scale_y", "rotation",
+                  "opacity", "anchor_x", "anchor_y"]:
+            if k in t:
+                item[k] = t[k]
+        # Accept camelCase too
+        for k in ["posX", "posY", "scaleX", "scaleY", "anchorX", "anchorY"]:
+            if k in t:
+                item[k] = t[k]
+        items.append(item)
+    result = _post("/clips/transform-batch", {"transforms": items})
+    updated = result.get("updated", len(items))
+    return f"Transform batch applied: {updated}/{len(items)} clip(s) updated."
+
+
+# ---------------------------------------------------------------------------
+#  Extend ALL_TOOLS with all new tools
+# ---------------------------------------------------------------------------
+
+NEW_GUI_TOOLS = [
+    # Track control
+    solo_track, lock_track, move_track,
+    # Masks
+    add_mask, update_mask, remove_mask, list_masks,
+    # SVG
+    add_svg_clip,
+    # Canvas
+    crop_canvas,
+    # Comp management
+    rename_composition, get_comp_layers, update_comp_layer, move_comp_layer,
+    # PDF docs
+    create_pdf_doc, list_pdf_docs, list_pdf_pages,
+    add_pdf_page, delete_pdf_page, reorder_pdf_pages,
+    # Playback
+    play, pause, set_playback_speed, set_in_out_points,
+    # Virality / social
+    analyze_virality, get_social_connections, get_youtube_videos,
+    # Batch transform
+    transform_batch,
+]
+ALL_TOOLS.extend(NEW_GUI_TOOLS)
+

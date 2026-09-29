@@ -48,6 +48,42 @@ _TOOL_LABELS: dict[str, str] = {
     "generate_captions": "Generating captions…",
     "undo": "Undoing…",
     "redo": "Redoing…",
+    # Phase 1 — Track control
+    "solo_track": "Soloing track…",
+    "lock_track": "Locking track…",
+    "move_track": "Reordering track…",
+    # Phase 2 — Masks
+    "add_mask": "Adding mask…",
+    "update_mask": "Updating mask…",
+    "remove_mask": "Removing mask…",
+    "list_masks": "Reading masks…",
+    # Phase 3 — SVG
+    "add_svg_clip": "Adding SVG clip…",
+    # Phase 4 — Canvas
+    "crop_canvas": "Cropping canvas…",
+    # Phase 5 — Comp management
+    "rename_composition": "Renaming comp…",
+    "get_comp_layers": "Reading layers…",
+    "update_comp_layer": "Updating layer…",
+    "move_comp_layer": "Reordering layer…",
+    # Phase 6 — PDF
+    "create_pdf_doc": "Creating PDF doc…",
+    "list_pdf_docs": "Listing PDF docs…",
+    "list_pdf_pages": "Listing pages…",
+    "add_pdf_page": "Adding page…",
+    "delete_pdf_page": "Deleting page…",
+    "reorder_pdf_pages": "Reordering pages…",
+    # Phase 7 — Playback
+    "play": "Starting playback…",
+    "pause": "Pausing…",
+    "set_playback_speed": "Setting speed…",
+    "set_in_out_points": "Setting in/out…",
+    # Phase 8 — Virality / social
+    "analyze_virality": "Analyzing virality…",
+    "get_social_connections": "Checking connections…",
+    "get_youtube_videos": "Fetching YouTube videos…",
+    # Phase 9 — Batch transform
+    "transform_batch": "Batch transforming…",
 }
 
 def _tool_label(name: str) -> str:
