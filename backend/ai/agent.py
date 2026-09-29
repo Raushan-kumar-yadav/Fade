@@ -847,12 +847,20 @@ def _trim_messages(messages: list) -> list:
 
 #   Graph builder  
 
-def build_agent(port: int = 8000):
-    """Build and return the compiled LangGraph agent."""
+def build_agent(port: int = 8000, tools_override=None, system_override: str = ""):
+    """Build and return the compiled LangGraph agent.
+
+    Args:
+        port: The Python backend port to bind tools to.
+        tools_override: If provided, use these tools instead of ALL_TOOLS.
+        system_override: If provided, prepend this to the system prompt
+            (used by Director to inject comp_id/type context).
+    """
     set_port(port)
     llm = _build_llm()
-    llm_with_tools = llm.bind_tools(ALL_TOOLS)
-    tool_node = ToolNode(ALL_TOOLS)
+    tools = tools_override if tools_override is not None else ALL_TOOLS
+    llm_with_tools = llm.bind_tools(tools)
+    tool_node = ToolNode(tools)
 
     def call_model(state: AgentState):
         # Personalise system prompt with the user's saved profile name
@@ -866,6 +874,9 @@ def build_agent(port: int = 8000):
             system_content = greeting + _SYSTEM
         else:
             system_content = _SYSTEM
+        # Prepend any Director-supplied comp-scoped context
+        if system_override:
+            system_content = system_override + "\n\n" + system_content
         raw_messages = [SystemMessage(content=system_content)] + state["messages"]
         messages = _trim_messages(raw_messages)
         if len(messages) < len(raw_messages):

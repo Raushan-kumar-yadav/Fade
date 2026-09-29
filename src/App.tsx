@@ -9,6 +9,7 @@ import AudioWorkspace from './workspaces/AudioWorkspace'
 import ExportWorkspace from './workspaces/ExportWorkspace'
 import ImageWorkspace from './workspaces/ImageWorkspace'
 import PdfWorkspace from './workspaces/pdf/PdfWorkspace'
+import DirectorPanel from './workspaces/director/DirectorPanel'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
 import { SelectionContext, type SelectedItem } from './context/selectionContext'
@@ -18,7 +19,8 @@ import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
-type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image' | 'pdf'
+type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image' | 'pdf' | 'director'
+
 
 //   Loading overlay  
 
@@ -254,6 +256,7 @@ export default function App() {
     video: VideoWorkspace,
     audio: AudioWorkspace,
     export: ExportWorkspace,
+    director: DirectorPanel,
   }
 
   const isImageTab = activeTab === 'image';

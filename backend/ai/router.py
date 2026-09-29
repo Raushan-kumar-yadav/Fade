@@ -362,3 +362,60 @@ async def ai_create_video(req: CreateVideoRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+# Director - multi-agent parallel composition
+
+class DirectorRequest(BaseModel):
+    assets:        list[str] = []
+    intent:        str = ""
+    comp_types:    list[str] = ["image", "video", "pdf"]
+    publish_after: bool = False
+    port:          int = 8000
+
+
+@ai_router.post("/director/run")
+async def director_run(req: DirectorRequest):
+    """Launch parallel agents (one per comp type). Returns SSE stream of progress."""
+    from backend.ai.director import Director
+    import os
+    port = req.port or int(os.environ.get("BACKEND_PORT", 8000))
+
+    async def stream():
+        director = Director()
+        async for event in director.run(
+            assets=req.assets,
+            intent=req.intent,
+            port=port,
+            comp_types=req.comp_types,
+            publish_after=req.publish_after,
+        ):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@ai_router.get("/director/status/{session_id}")
+async def director_status(session_id: str):
+    """Poll status of all agents in a Director session."""
+    from backend.ai.director import Director
+    from fastapi import HTTPException
+    result = Director().status(session_id)
+    if result is None:
+        raise HTTPException(404, f"Session {session_id!r} not found")
+    return result
+
+
+@ai_router.post("/director/cancel/{session_id}")
+async def director_cancel(session_id: str):
+    """Cancel all running agents in a Director session."""
+    from backend.ai.director import Director
+    from fastapi import HTTPException
+    ok = Director().cancel(session_id)
+    if not ok:
+        raise HTTPException(404, f"Session {session_id!r} not found")
+    return {"status": "cancelled", "session_id": session_id}
+
