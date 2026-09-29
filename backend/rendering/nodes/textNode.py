@@ -125,7 +125,9 @@ def _char_alpha(
 def draw_text(canvas: skia.Canvas, clip: "TextClip", frame: int) -> None:
      
     # Evaluate all animatable properties for this frame
-    clip.evaluateAll(frame)
+    from backend.state import engine as _engine
+    _expr_tl = _engine.activeTimeline if _engine else None
+    clip.evaluateAll(frame, _timeline=_expr_tl)
 
     s = clip.style
 

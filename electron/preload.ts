@@ -12,12 +12,12 @@ export interface ElectronAPI {
   // Dev log (used by devlog.html)
   onDevLog: (cb: (msg: { type: string; text: string; alive?: boolean }) => void) => void
 
-  //   Native render engine  
   isNativeRender: () => Promise<boolean>
   renderSeek: (frame: number) => void
   renderPlay: () => void
   renderPause: () => void
   renderSetPreviewScale: (scale: number) => void
+  resizeRenderEngine: (width: number, height: number, fps: number) => void
   getRenderBuffer: () => Promise<ArrayBuffer | null>
   onFrameReady: (cb: (frameNum: number) => void) => () => void
   getRenderStats: () => Promise<{ width: number; height: number; fps: number; bufferSize: number } | null>
@@ -43,6 +43,8 @@ export interface ElectronAPI {
     total: number
   }) => void) => () => void   // WebComp pre-render progress
   cancelExport: () => void
+  captureImage: (config: { compId: string; width: number; height: number; fps: number; outputPath: string }) => Promise<{ ok: boolean; path?: string; error?: string }>
+  capturePdf: (config: { pdfCompId: string; pages: Array<{ compId: string; width: number; height: number }>; outputPath: string; fps?: number }) => Promise<{ ok: boolean; error?: string }>
 
   //     File dialogs  
   showSaveDialog: (opts?: {
@@ -101,6 +103,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   renderPlay:  (): void => ipcRenderer.send('render:play'),
   renderPause: (): void => ipcRenderer.send('render:pause'),
   renderSetPreviewScale: (scale: number): void => ipcRenderer.send('render:set-preview-scale', scale),
+  resizeRenderEngine: (width: number, height: number, fps: number): void =>
+    ipcRenderer.send('render:resize', width, height, fps),
 
   getRenderBuffer: (): Promise<ArrayBuffer | null> => ipcRenderer.invoke('render:get-buffer'),
   getRenderStats:  (): Promise<{ width: number; height: number; fps: number; bufferSize: number } | null> =>
@@ -114,6 +118,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   //   Export  
   startExport: (config: any): void => ipcRenderer.send('export:start', config),
+  captureImage: (config: any) => ipcRenderer.invoke('export:capture-image', config),
+  capturePdf:   (config: any) => ipcRenderer.invoke('export:capture-pdf', config),
 
   onExportProgress: (cb: (p: any) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, p: any) => cb(p)

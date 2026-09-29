@@ -124,12 +124,25 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
   const [resolvedDocName, setResolvedDocName] = useState(docName || _defaultPdfDocName);
   const [activePageId, setActivePageId] = useState<string | null>(_defaultPageId);
 
+  // Track the previous resolved doc so we can reset page state on doc switch
+  const prevDocIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     if (docId) {
-      _defaultPdfDocId = docId;
-      _defaultPdfDocName = docName || 'Untitled Document';
-      setResolvedDocId(docId);
-      setResolvedDocName(docName || 'Untitled Document');
+      const isNewDoc = docId !== prevDocIdRef.current;
+      if (isNewDoc) {
+        // Switching to a different PDF doc — reset page state immediately
+        prevDocIdRef.current = docId;
+        _defaultPdfDocId   = docId;
+        _defaultPdfDocName = docName || 'Untitled Document';
+        _defaultPageId     = null;
+        setActivePageId(null);
+        setResolvedDocId(docId);
+        setResolvedDocName(docName || 'Untitled Document');
+      } else {
+        // Same doc re-render — just sync name
+        setResolvedDocName(docName || 'Untitled Document');
+      }
       return;
     }
     if (_defaultPdfDocId) {
@@ -151,6 +164,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
         if (existing) {
           _defaultPdfDocId = existing.docId;
           _defaultPdfDocName = existing.name || 'Untitled Document';
+          prevDocIdRef.current = existing.docId;
           setResolvedDocId(existing.docId);
           setResolvedDocName(existing.name || 'Untitled Document');
           return;
@@ -165,6 +179,7 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
         if (!created?.docId) return;
         _defaultPdfDocId = created.docId;
         _defaultPdfDocName = created.name || 'Untitled Document';
+        prevDocIdRef.current = created.docId;
         setResolvedDocId(created.docId);
         setResolvedDocName(created.name || 'Untitled Document');
  
@@ -184,12 +199,20 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
     dispatch({ type: 'SWAP_PDF_PAGE', compId: page.compId, compName: page.name });
  
     fetch(`http://127.0.0.1:${port}/comps/${page.compId}/activate`, { method: 'POST' })
-      .then(() => {
-        // Force immediate track  
+      .then(r => r.json())
+      .then((data: { width?: number; height?: number; fps?: number }) => {
+        // Force immediate track refresh
         window.dispatchEvent(new Event('fade:tracks-changed'));
+        // Tell the viewport to resize the C++ render engine + safe-area box
+        if (data.width && data.height) {
+          window.dispatchEvent(new CustomEvent('fade:comp-resized', {
+            detail: { width: data.width, height: data.height, fps: data.fps ?? 30 }
+          }));
+        }
       })
       .catch(() => {});
   }, [dispatch, port]);
+
 
  
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {

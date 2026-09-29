@@ -1,12 +1,12 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSelection } from '../../context/selectionContext';
 import { inspectorApi, type ParamRow, type ClipParams, type KFDef } from '../../api/inspectorApi';
+import { expressionApi, type ExpressionState } from '../../api/expressionApi';
 import { maskApi, effectsApi, type MaskInfo, type EffectInfo, type EffectParamDef } from '../../api/toolsApi';
 import EffectsPanel from './EffectsPanel';
 import TransitionPanel from './TransitionPanel';
 import TextInspectorPanel from './TextInspectorPanel';
 import WebCompInspectorPanel from './WebCompInspectorPanel';
-import TrackingPanel from './TrackingPanel';
 import './InspectorPanel.css';
 
 
@@ -73,7 +73,7 @@ interface KeyframeBtnProps {
 function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBtnProps) {
   return (
     <div className="insp-kf-group">
-      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onPrev} title="Previous keyframe">‹</button>
+      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onPrev} title="Previous keyframe">�</button>
       <button
         className={`insp-kf-diamond${hasKf ? ' insp-kf-diamond--active' : ''}${isAnimated ? ' insp-kf-diamond--animated' : ''}`}
         onClick={onToggle}
@@ -88,7 +88,7 @@ function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBt
           />
         </svg>
       </button>
-      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onNext} title="Next keyframe">›</button>
+      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onNext} title="Next keyframe">�</button>
     </div>
   );
 }
@@ -248,7 +248,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     onRefresh(); load();
   }, [kfData, clipId, paramId, onRefresh, load]);
 
-  if (loading) return <div className="insp-kftrack-loading">Loading…</div>;
+  if (loading) return <div className="insp-kftrack-loading">Loading�</div>;
 
   // Render  
   const playX = frameToX(currentFrame);
@@ -257,7 +257,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     <div className="insp-kftrack" onClick={e => e.stopPropagation()}>
       {/* Header */}
       <div className="insp-kftrack-header">
-        <span className="insp-kftrack-title">Keyframes — {label}</span>
+        <span className="insp-kftrack-title">Keyframes � {label}</span>
         <span className="insp-kftrack-count">{kfData.length} kf</span>
         <button className="insp-kftrack-zoom-btn" onClick={() => { setTlZoom(1); setTlPan(0); }} title="Reset zoom">?</button>
       </div>
@@ -327,7 +327,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
                 fill={col} stroke={isSel ? '#fff' : 'rgba(255,255,255,0.5)'}
                 strokeWidth={isSel ? 1.5 : 1}
               />
-              <title>Frame {kf.frame} · {kf.interp} · {kf.value.toFixed(3)}</title>
+              <title>Frame {kf.frame} � {kf.interp} � {kf.value.toFixed(3)}</title>
             </g>
           );
         })}
@@ -438,8 +438,269 @@ interface ParamRowProps {
   onRefresh: () => void;
 }
 
+// ── Expression Editor ──────────────────────────────────────────────────────
+interface ExprEditorProps {
+  clipId: string;
+  param: string;
+  currentFrame: number;
+  onClose: () => void;
+}
+
+function ExpressionEditor({ clipId, param, currentFrame, onClose }: ExprEditorProps) {
+  const [expr,    setExpr]    = useState('');
+  const [preview, setPreview] = useState<{ ok: boolean; value: number | null; error: string } | null>(null);
+  const [saving,  setSaving]  = useState(false);
+  const [loading, setLoading] = useState(true);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  // Load existing expression on mount
+  useEffect(() => {
+    expressionApi.get(clipId, param).then(s => {
+      setExpr(s.expression);
+      setLoading(false);
+      setTimeout(() => textRef.current?.focus(), 50);
+    }).catch(() => setLoading(false));
+  }, [clipId, param]);
+
+  const handleTest = useCallback(async () => {
+    if (!expr.trim()) { setPreview(null); return; }
+    try {
+      const r = await expressionApi.test(clipId, param, expr, currentFrame);
+      setPreview(r);
+    } catch (e: any) {
+      setPreview({ ok: false, value: null, error: String(e) });
+    }
+  }, [clipId, param, expr, currentFrame]);
+
+  const handleApply = useCallback(async () => {
+    setSaving(true);
+    try {
+      await expressionApi.set(clipId, param, expr);
+      window.dispatchEvent(new CustomEvent('fade:timeline-changed'));
+      onClose();
+    } finally { setSaving(false); }
+  }, [clipId, param, expr, onClose]);
+
+  const handleClear = useCallback(async () => {
+    await expressionApi.clear(clipId, param);
+    window.dispatchEvent(new CustomEvent('fade:timeline-changed'));
+    onClose();
+  }, [clipId, param, onClose]);
+
+  const SNIPPETS = [
+    { label: 'oscillate',  code: 'sin(time * 2 * pi) * 100' },
+    { label: 'wiggle',     code: 'wiggle(2, 30)' },
+    { label: 'bounce',     code: 'abs(sin(time * 3)) * 200' },
+    { label: 'stagger',    code: 'index * 20 + value' },
+    { label: 'ease loop',  code: 'smoothstep(0, 1, (time % 2) / 2) * 100' },
+    { label: 'link pos_x', code: "comp.clip('CLIP_ID').pos_x" },
+  ];
+
+  return (
+    <div className="expr-editor">
+      <div className="expr-editor__header">
+        <span className="expr-editor__icon">ƒ</span>
+        <span className="expr-editor__title">Expression — <code>{param}</code></span>
+        <button className="expr-editor__close" onClick={onClose} title="Close">✕</button>
+      </div>
+
+      {loading ? (
+        <div className="expr-editor__loading">Loading…</div>
+      ) : (
+        <>
+          <textarea
+            ref={textRef}
+            className="expr-editor__input"
+            placeholder={'e.g.  sin(time * 2 * pi) * 100'}
+            value={expr}
+            onChange={e => setExpr(e.target.value)}
+            rows={3}
+            spellCheck={false}
+          />
+
+          {/* Snippets */}
+          <div className="expr-editor__snippets">
+            {SNIPPETS.map(s => (
+              <button
+                key={s.label}
+                className="expr-editor__snippet"
+                onClick={() => setExpr(s.code)}
+                title={s.code}
+              >{s.label}</button>
+            ))}
+          </div>
+
+          {/* Preview */}
+          {preview && (
+            <div className={`expr-editor__preview ${preview.ok ? 'ok' : 'err'}`}>
+              {preview.ok
+                ? <><span>@f{currentFrame}</span><strong>{preview.value?.toFixed(4)}</strong></>
+                : <span className="expr-editor__err">{preview.error}</span>
+              }
+            </div>
+          )}
+
+          {/* Context vars reference */}
+          <details className="expr-editor__ref">
+            <summary>Available variables</summary>
+            <ul>
+              <li><code>time</code> – seconds (float)</li>
+              <li><code>frame</code> – timeline frame (int)</li>
+              <li><code>value</code> – keyframe value at this frame</li>
+              <li><code>duration</code> – clip duration (frames)</li>
+              <li><code>index</code> – unique int per clip (stagger)</li>
+              <li><code>sin cos tan pi tau sqrt abs min max clamp lerp smoothstep</code></li>
+              <li><code>wiggle(freq, amp)</code> – perlin shake</li>
+              <li><code>comp.clip("id").pos_x</code> – link to other clip</li>
+            </ul>
+          </details>
+
+          <div className="expr-editor__actions">
+            <button className="expr-editor__btn expr-editor__btn--test" onClick={handleTest}>
+              Test @ f{currentFrame}
+            </button>
+            <button
+              className="expr-editor__btn expr-editor__btn--apply"
+              onClick={handleApply}
+              disabled={saving || !expr.trim()}
+            >
+              {saving ? 'Applying…' : 'Apply'}
+            </button>
+            <button className="expr-editor__btn expr-editor__btn--clear" onClick={handleClear}>
+              Clear
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Link-to-Clip Picker ───────────────────────────────────────────────────
+interface LinkPickerProps {
+  clipId: string;
+  param: string;
+  onClose: () => void;
+}
+
+function LinkToPicker({ clipId, param, onClose }: LinkPickerProps) {
+  const [clips, setClips] = useState<{ clipId: string; clipType: string; label: string }[]>([]);
+  const [propPick, setPropPick] = useState<string>('pos_x');
+  const [selClip, setSelClip] = useState<string>('');
+
+  useEffect(() => {
+    fetch(`http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}/timeline/state`)
+      .then(r => r.json())
+      .then(data => {
+        const all: { clipId: string; clipType: string; label: string }[] = [];
+        (data.tracks ?? []).forEach((t: any) => {
+          (t.clips ?? []).forEach((c: any) => {
+            if (c.clipId !== clipId)
+              all.push({ clipId: c.clipId, clipType: c.clipType ?? '?', label: c.label ?? c.clipId.slice(0,8) + '…' });
+          });
+        });
+        setClips(all);
+      }).catch(() => {});
+  }, [clipId]);
+
+  const LINK_PROPS = ['pos_x','pos_y','scale_x','scale_y','rotation','opacity'];
+
+  const handleLink = useCallback(async () => {
+    if (!selClip) return;
+    const expr = `comp.clip('${selClip}').${propPick}`;
+    await expressionApi.set(clipId, param, expr);
+    window.dispatchEvent(new CustomEvent('fade:timeline-changed'));
+    onClose();
+  }, [clipId, param, selClip, propPick, onClose]);
+
+  return (
+    <div className="expr-editor expr-editor--link">
+      <div className="expr-editor__header">
+        <span className="expr-editor__icon">🔗</span>
+        <span className="expr-editor__title">Link <code>{param}</code> to clip</span>
+        <button className="expr-editor__close" onClick={onClose}>✕</button>
+      </div>
+
+      <label className="expr-editor__field-label">Source clip</label>
+      <select className="expr-editor__select" value={selClip} onChange={e => setSelClip(e.target.value)}>
+        <option value="">— pick a clip —</option>
+        {clips.map(c => (
+          <option key={c.clipId} value={c.clipId}>[{c.clipType}] {c.label}</option>
+        ))}
+      </select>
+
+      <label className="expr-editor__field-label">Source property</label>
+      <select className="expr-editor__select" value={propPick} onChange={e => setPropPick(e.target.value)}>
+        {LINK_PROPS.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>
+
+      {selClip && (
+        <div className="expr-editor__preview ok">
+          <span>Expression:</span>
+          <code>{`comp.clip('${selClip}').${propPick}`}</code>
+        </div>
+      )}
+
+      <div className="expr-editor__actions">
+        <button
+          className="expr-editor__btn expr-editor__btn--apply"
+          onClick={handleLink}
+          disabled={!selClip}
+        >Link</button>
+        <button className="expr-editor__btn" onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Param Row Context Menu ─────────────────────────────────────────────────
+interface ParamCtxMenuProps {
+  x: number; y: number;
+  hasExpr: boolean;
+  onAddExpr: () => void;
+  onLinkClip: () => void;
+  onClearExpr: () => void;
+  onClose: () => void;
+}
+
+function ParamCtxMenu({ x, y, hasExpr, onAddExpr, onLinkClip, onClearExpr, onClose }: ParamCtxMenuProps) {
+  useEffect(() => {
+    const close = () => onClose();
+    window.addEventListener('click', close, { once: true });
+    return () => window.removeEventListener('click', close);
+  }, [onClose]);
+
+  return (
+    <div
+      className="param-ctx-menu"
+      style={{ left: x, top: y }}
+      onClick={e => e.stopPropagation()}
+    >
+      <button className="param-ctx-menu__item" onClick={() => { onAddExpr(); onClose(); }}>
+        <span className="param-ctx-menu__icon">ƒ</span>
+        {hasExpr ? 'Edit Expression…' : 'Add Expression…'}
+      </button>
+      <button className="param-ctx-menu__item" onClick={() => { onLinkClip(); onClose(); }}>
+        <span className="param-ctx-menu__icon">🔗</span>
+        Link / Parent to Clip…
+      </button>
+      {hasExpr && (
+        <>
+          <div className="param-ctx-menu__sep" />
+          <button className="param-ctx-menu__item param-ctx-menu__item--danger" onClick={() => { onClearExpr(); onClose(); }}>
+            <span className="param-ctx-menu__icon">✕</span>
+            Clear Expression
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── ParamRowWidget ────────────────────────────────────────────────────────
+
 function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: ParamRowProps) {
-   
+
   if (param.id === 'blend_mode') {
     return <BlendModeSelector param={param} clipId={clipId} onChange={onChange} />;
   }
@@ -449,14 +710,25 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
   const [showTrack, setShowTrack] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Expression state — driven from param.hasExpression (batch-loaded, no extra request)
+  const [showExpr,    setShowExpr]    = useState(false);   // show inline editor
+  const [showLink,    setShowLink]    = useState(false);   // show link picker
+  const [ctxMenu,     setCtxMenu]     = useState<{ x: number; y: number } | null>(null);
+  // Local mirror of expression state so we can refresh after edits
+  const [exprOverride, setExprOverride] = useState<{ hasExpression: boolean; expression: string; error: string } | null>(null);
+
   useEffect(() => { setLocalVal(param.value); }, [param.value]);
+
+  // Use batch-loaded state, falling back to local override after edits
+  const hasExpr  = exprOverride != null ? exprOverride.hasExpression  : (param.hasExpression ?? false);
+  const exprStr  = exprOverride != null ? exprOverride.expression      : (param.expression    ?? '');
+  const exprErr  = exprOverride != null ? exprOverride.error           : (param.expressionError ?? '');
 
   const handleSlider = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setLocalVal(parseFloat(e.target.value));
   }, []);
 
   const handleSliderCommit = useCallback(async () => {
-    console.log(`[Inspector] slider commit: clipId=${clipId} param=${param.id} value=${localVal}`);
     await inspectorApi.setParam(clipId, param.id, localVal, -1);
     onChange(param.id, localVal);
   }, [clipId, param.id, localVal, onChange]);
@@ -467,7 +739,6 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
       if (!isNaN(v)) {
         const clamped = Math.max(param.min, Math.min(param.max, v));
         setLocalVal(clamped);
-        console.log(`[Inspector] number commit: clipId=${clipId} param=${param.id} value=${clamped}`);
         await inspectorApi.setParam(clipId, param.id, clamped, -1);
         onChange(param.id, clamped);
         setEditing(false);
@@ -500,9 +771,20 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
     }
   }, [param.keyframes, currentFrame]);
 
+  const handleRightClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleClearExpr = useCallback(async () => {
+    await expressionApi.clear(clipId, param.id);
+    setExprOverride({ hasExpression: false, expression: '', error: '' });
+    window.dispatchEvent(new CustomEvent('fade:timeline-changed'));
+  }, [clipId, param.id]);
+
   const pct = ((localVal - param.min) / (param.max - param.min)) * 100;
 
-  // Format value nicely 
   const fmtVal = (v: number) => {
     if (v % 1 === 0) return v.toFixed(0);
     if (Math.abs(v) < 10) return v.toFixed(3);
@@ -511,7 +793,10 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
 
   return (
     <>
-      <div className={`insp-row${param.isAnimated ? ' insp-row--animated' : ''}`}>
+      <div
+        className={`insp-row${param.isAnimated ? ' insp-row--animated' : ''}${hasExpr ? ' insp-row--expr' : ''}`}
+        onContextMenu={handleRightClick}
+      >
         <KeyframeBtn
           isAnimated={param.isAnimated}
           hasKf={param.hasKeyframe}
@@ -521,11 +806,12 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
         />
 
         <span
-          className={`insp-row__label${param.isAnimated ? ' insp-row__label--animated' : ''}`}
-          title={param.id}
+          className={`insp-row__label${param.isAnimated ? ' insp-row__label--animated' : ''}${hasExpr ? ' insp-row__label--expr' : ''}`}
+          title={hasExpr ? `ƒ ${exprStr}` : param.id}
           onClick={() => param.isAnimated && setShowTrack(s => !s)}
           style={{ cursor: param.isAnimated ? 'pointer' : 'default' }}
         >
+          {hasExpr && <span className="insp-row__expr-badge" title="Expression active">ƒ</span>}
           {param.label}
           {param.isAnimated && <span className="insp-row__kf-count">{param.keyframes.length}</span>}
         </span>
@@ -545,8 +831,8 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
             onMouseUp={handleSliderCommit}
             onTouchEnd={handleSliderCommit}
             aria-label={param.label}
+            disabled={hasExpr}
           />
-          {/* Keyframe markers */}
           {param.isAnimated && param.keyframes.map(kf => {
             const kpct = ((kf - param.min) / (param.max - param.min)) * 100;
             return (
@@ -571,14 +857,59 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
           />
         ) : (
           <button
-            className="insp-row__val"
-            onClick={() => setEditing(true)}
-            title="Click to enter value"
+            className={`insp-row__val${hasExpr ? ' insp-row__val--expr' : ''}`}
+            onClick={() => hasExpr ? setShowExpr(true) : setEditing(true)}
+            title={hasExpr ? 'Expression active — click to edit' : 'Click to enter value'}
           >
-            {fmtVal(localVal)}
+            {hasExpr ? 'ƒ(x)' : fmtVal(localVal)}
           </button>
         )}
       </div>
+
+      {/* Inline Expression Editor */}
+      {showExpr && (
+        <ExpressionEditor
+          clipId={clipId}
+          param={param.id}
+          currentFrame={currentFrame}
+          onClose={() => {
+            setShowExpr(false);
+            // Refresh expression state from API after editing
+            expressionApi.get(clipId, param.id)
+              .then(s => setExprOverride({ hasExpression: s.hasExpression, expression: s.expression, error: s.error }))
+              .catch(() => {});
+            onRefresh();
+          }}
+        />
+      )}
+
+      {/* Link to Clip Picker */}
+      {showLink && (
+        <LinkToPicker
+          clipId={clipId}
+          param={param.id}
+          onClose={() => {
+            setShowLink(false);
+            expressionApi.get(clipId, param.id)
+              .then(s => setExprOverride({ hasExpression: s.hasExpression, expression: s.expression, error: s.error }))
+              .catch(() => {});
+            onRefresh();
+          }}
+        />
+      )}
+
+      {/* Right-click context menu */}
+      {ctxMenu && (
+        <ParamCtxMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          hasExpr={hasExpr}
+          onAddExpr={() => setShowExpr(true)}
+          onLinkClip={() => setShowLink(true)}
+          onClearExpr={handleClearExpr}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
 
       {showTrack && param.isAnimated && (
         <KFTrackPanel
@@ -593,6 +924,7 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
     </>
   );
 }
+
 
 // Group header  
 
@@ -786,7 +1118,7 @@ export default function InspectorPanel() {
     return (
       <div className="insp-empty">
         <div className="insp-empty__spinner" />
-        <div className="insp-empty__text">Loading…</div>
+        <div className="insp-empty__text">Loading�</div>
       </div>
     );
   }
@@ -819,12 +1151,11 @@ export default function InspectorPanel() {
         <div className="insp-clip-header__badge">{data.clipType.replace('Clip', '')}</div>
         <div className="insp-clip-header__name">{selected.clipName}</div>
         <div className="insp-clip-header__meta">
-          {data.duration} fr · start {data.startFrame} · track {selected.trackIndex + 1}
+          {data.duration} fr � start {data.startFrame} � track {selected.trackIndex + 1}
         </div>
       </div>
 
-      <TrackingPanel clipId={data.clipId} startFrame={data.startFrame} duration={data.duration} />
-        <div className="insp-groups">
+      <div className="insp-groups">
         {Object.entries(grouped).map(([group, params]) => {
           const { rendered, groups: vec4Groups } = extractVec4Groups(params);
           return (
@@ -973,4 +1304,3 @@ function InspectorEffectsPanel({ clipId }: { clipId: string }) {
     </div>
   );
 }
-

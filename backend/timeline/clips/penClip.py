@@ -79,7 +79,7 @@ class PenClip(BaseClip):
      
 
     def evaluateAll(self, frame: int) -> None:
-        super().evaluateAll(frame)
+        super().evaluateAll(frame, _timeline=_timeline)
         lf = self.localFrame(frame)
          
         self._syncBase()

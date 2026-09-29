@@ -9,6 +9,7 @@ import AudioWorkspace from './workspaces/AudioWorkspace'
 import ExportWorkspace from './workspaces/ExportWorkspace'
 import ImageWorkspace from './workspaces/ImageWorkspace'
 import PdfWorkspace from './workspaces/pdf/PdfWorkspace'
+import DirectorPanel from './workspaces/director/DirectorPanel'
 import { ToolContext, TOOL_CURSOR } from './context/toolContext'
 import type { ActiveTool, PenSubMode, PenOutputMode } from './context/toolContext'
 import { SelectionContext, type SelectedItem } from './context/selectionContext'
@@ -18,9 +19,10 @@ import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
-type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image' | 'pdf'
+type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image' | 'pdf' | 'director'
 
-//   Loading overlay  
+
+// Loading overlay  
 
 function LoadingOverlay({ message }: { message: string }) {
   return (
@@ -254,6 +256,7 @@ export default function App() {
     video: VideoWorkspace,
     audio: AudioWorkspace,
     export: ExportWorkspace,
+    director: DirectorPanel,
   }
 
   const isImageTab = activeTab === 'image';
@@ -264,9 +267,9 @@ export default function App() {
     <SelectionContext.Provider value={{ selected, setSelected }}>
       <ToolContext.Provider value={{
         activeTool,
-        setTool:          setActiveTool,
+        setTool: setActiveTool,
         lastShapeTool,
-        setLastShape:     setLastShapeTool,
+        setLastShape: setLastShapeTool,
         penSubMode,
         setPenSubMode,
         penOutputMode,
@@ -291,9 +294,7 @@ export default function App() {
             onLoadEnd={handleProjectLoadEnd}
           />
           <main className="app-workspace">
-            {/* ImageWorkspace stays ALWAYS mounted — hiding it preserves the
-                FlexLayout model (panel positions/sizes) and comp state.
-                Unmounting + remounting resets modelRef every time. */}
+           
             <div style={{
               display: isImageTab ? 'flex' : 'none',
               width: '100%', height: '100%',
@@ -305,7 +306,7 @@ export default function App() {
               />
             </div>
 
-            {/* PdfWorkspace — always mounted, same pattern */}
+            {/* PdfWorkspace  */}
             <div style={{
               display: isPdfTab ? 'flex' : 'none',
               width: '100%', height: '100%',
@@ -343,7 +344,7 @@ export default function App() {
           )}
 
            
-          {/* AI-triggered export progress — visible on any tab */}
+          {/* AI-triggered export progress */}
           <ExportProgressOverlay />
 
            

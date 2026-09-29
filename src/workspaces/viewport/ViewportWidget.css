@@ -62,8 +62,7 @@
 /* Stage */
 .vw-stage {
   position: relative;
-  width: 1920px;
-  height: 1080px;
+  /* width/height are set as inline styles from nativeDims React state */
   flex-shrink: 0;
  
   will-change: transform;
@@ -150,8 +149,7 @@
 /* Canvas el  */
 .vw-canvas__el {
   display: block;
-  width: 1920px;
-  height: 1080px;
+  /* width/height are set as inline styles from nativeDims React state */
   border-radius: 2px;
   pointer-events: none;
  

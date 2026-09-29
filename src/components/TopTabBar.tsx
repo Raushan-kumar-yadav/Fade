@@ -11,11 +11,12 @@ interface TopTabBarProps {
 }
 
 const TABS: Tab[] = [
-  { id: 'home', label: 'Home' },
-  { id: 'ai', label: 'AI' },
-  { id: 'video', label: 'Video' },
-  { id: 'audio', label: 'Audio' },
-  { id: 'export', label: 'Export' },
+  { id: 'home',     label: 'Home' },
+  { id: 'ai',       label: 'AI' },
+  { id: 'video',    label: 'Video' },
+  { id: 'audio',    label: 'Audio' },
+  { id: 'export',   label: 'Export' },
+  { id: 'director', label: '✦ Director' },
 ]
 
 export default function TopTabBar({ active, onTab }: TopTabBarProps) {

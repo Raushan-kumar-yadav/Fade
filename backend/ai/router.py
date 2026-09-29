@@ -48,6 +48,42 @@ _TOOL_LABELS: dict[str, str] = {
     "generate_captions": "Generating captions…",
     "undo": "Undoing…",
     "redo": "Redoing…",
+    # Phase 1 — Track control
+    "solo_track": "Soloing track…",
+    "lock_track": "Locking track…",
+    "move_track": "Reordering track…",
+    # Phase 2 — Masks
+    "add_mask": "Adding mask…",
+    "update_mask": "Updating mask…",
+    "remove_mask": "Removing mask…",
+    "list_masks": "Reading masks…",
+    # Phase 3 — SVG
+    "add_svg_clip": "Adding SVG clip…",
+    # Phase 4 — Canvas
+    "crop_canvas": "Cropping canvas…",
+    # Phase 5 — Comp management
+    "rename_composition": "Renaming comp…",
+    "get_comp_layers": "Reading layers…",
+    "update_comp_layer": "Updating layer…",
+    "move_comp_layer": "Reordering layer…",
+    # Phase 6 — PDF
+    "create_pdf_doc": "Creating PDF doc…",
+    "list_pdf_docs": "Listing PDF docs…",
+    "list_pdf_pages": "Listing pages…",
+    "add_pdf_page": "Adding page…",
+    "delete_pdf_page": "Deleting page…",
+    "reorder_pdf_pages": "Reordering pages…",
+    # Phase 7 — Playback
+    "play": "Starting playback…",
+    "pause": "Pausing…",
+    "set_playback_speed": "Setting speed…",
+    "set_in_out_points": "Setting in/out…",
+    # Phase 8 — Virality / social
+    "analyze_virality": "Analyzing virality…",
+    "get_social_connections": "Checking connections…",
+    "get_youtube_videos": "Fetching YouTube videos…",
+    # Phase 9 — Batch transform
+    "transform_batch": "Batch transforming…",
 }
 
 def _tool_label(name: str) -> str:
@@ -362,3 +398,60 @@ async def ai_create_video(req: CreateVideoRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+# Director - multi-agent parallel composition
+
+class DirectorRequest(BaseModel):
+    assets:        list[str] = []
+    intent:        str = ""
+    comp_types:    list[str] = ["image", "video", "pdf"]
+    publish_after: bool = False
+    port:          int = 8000
+
+
+@ai_router.post("/director/run")
+async def director_run(req: DirectorRequest):
+    """Launch parallel agents (one per comp type). Returns SSE stream of progress."""
+    from backend.ai.director import Director
+    import os
+    port = req.port or int(os.environ.get("BACKEND_PORT", 8000))
+
+    async def stream():
+        director = Director()
+        async for event in director.run(
+            assets=req.assets,
+            intent=req.intent,
+            port=port,
+            comp_types=req.comp_types,
+            publish_after=req.publish_after,
+        ):
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@ai_router.get("/director/status/{session_id}")
+async def director_status(session_id: str):
+    """Poll status of all agents in a Director session."""
+    from backend.ai.director import Director
+    from fastapi import HTTPException
+    result = Director().status(session_id)
+    if result is None:
+        raise HTTPException(404, f"Session {session_id!r} not found")
+    return result
+
+
+@ai_router.post("/director/cancel/{session_id}")
+async def director_cancel(session_id: str):
+    """Cancel all running agents in a Director session."""
+    from backend.ai.director import Director
+    from fastapi import HTTPException
+    ok = Director().cancel(session_id)
+    if not ok:
+        raise HTTPException(404, f"Session {session_id!r} not found")
+    return {"status": "cancelled", "session_id": session_id}
+

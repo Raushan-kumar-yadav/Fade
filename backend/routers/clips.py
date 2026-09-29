@@ -589,17 +589,45 @@ class MoveKeyframeBody(BaseModel):
 def getClipParams(clipId: str, frame: int = 0):
     clip, _ = _find_clip(clipId)
     schema   = _clip_param_schema(clip)
-    rows     = []
+    rows = []
+
+ 
+    from backend.routers.animation import _resolve_property
+    t = clip.transform
+
     for p in schema:
-        ap    = _get_or_create_anim(clip, p["id"], p["default"])
-        value = ap.evaluate(frame) if ap.is_animated() else ap._base[0]
+        pid = p["id"]
+        ap  = _get_or_create_anim(clip, pid, p["default"])  
+
+        
+        try:
+            tprop = _resolve_property(clip, pid)  # AnimatableProperty
+        except (ValueError, Exception):
+            tprop = None
+
+        has_expr = bool(tprop and getattr(tprop, '_expression', None))
+        expr_str = (tprop._expression or '') if has_expr else ''
+        expr_error = (tprop._expr_error  or '') if has_expr else ''
+
+        # Value to display 
+        if has_expr and tprop is not None:
+            value = tprop.get()   
+        elif ap.is_animated():
+            value = ap.evaluate(frame)
+        else:
+            value = ap._base[0]
+
         rows.append({
-            "id": p["id"], "label": p["label"], "type": p["type"],
+            "id": pid, "label": p["label"], "type": p["type"],
             "min": p["min"], "max": p["max"], "default": p["default"],
             "group": p["group"], "value": value,
             "isAnimated": ap.is_animated(),
             "hasKeyframe": ap.has_keyframe_at(frame),
             "keyframes": ap.all_keyframe_frames(),
+            # Expression state — new fields
+            "hasExpression": has_expr,
+            "expression": expr_str,
+            "expressionError": expr_error,
         })
     return {"clipId": clipId, "clipType": type(clip).__name__,
             "startFrame": clip.startFrame, "duration": clip.duration, "params": rows}
@@ -612,6 +640,17 @@ def setClipParam(clipId: str, key: str, body: ParamValueBody):
     p_def   = next((p for p in schema if p["id"] == key), None)
     if p_def is None:
         raise HTTPException(404, f"Unknown param {key!r}")
+
+    # Block writes when an expression is controlling this property
+    from backend.routers.animation import _resolve_property
+    try:
+        tprop = _resolve_property(clip, key)
+        if getattr(tprop, '_expression', None):
+            return {"status": "blocked", "reason": "expression_active",
+                    "key": key, "expression": tprop._expression}
+    except Exception:
+        pass
+
     ap = _get_or_create_anim(clip, key, p_def["default"])
     if body.frame >= 0:
         ap.add_keyframe(body.frame, body.value, Interp.linear)
@@ -675,24 +714,18 @@ def removeKeyframe(clipId: str, key: str, frame: int):
     return {"status": "ok"}
 
 
-# ── Bulk Update ────────────────────────────────────────────────────────────────
+# Bulk Update  
 
 class BulkUpdateRequest(BaseModel):
     clip_ids: list[str]
-    style: dict = {}          # TextStyle fields (fontSize, color, etc.)
-    transform: dict = {}      # Transform fields (pos_x, pos_y, scale_x, etc.)
-    include_text: bool = False  # if False, 'text' key in style is ignored
+    style: dict = {}          # TextStyle fields 
+    transform: dict = {}      # Transform fields 
+    include_text: bool = False  # if False, 'text' key in style   
 
 
 @router.post("/clips/bulk-update")
 def bulkUpdateClips(req: BulkUpdateRequest):
-    """
-    Apply style/transform params to multiple clips at once.
-
-    - style dict is applied to TextClip.style (skipping 'text' unless include_text=True)
-    - transform dict keys: pos_x, pos_y, scale_x, scale_y, rotation, opacity, anchor_x, anchor_y
-    - Returns per-clip results with ok/error status
-    """
+     
     from backend.animation.transform import Transform
     results = []
     for cid in req.clip_ids:
@@ -718,7 +751,7 @@ def bulkUpdateClips(req: BulkUpdateRequest):
     return {"updated": len([r for r in results if r["status"] == "ok"]), "results": results}
 
 
-# ── Set static param (no keyframe) ─────────────────────────────────────────────
+# Set static param 
 
 class SetParamRequest(BaseModel):
     clip_id: str
@@ -728,13 +761,7 @@ class SetParamRequest(BaseModel):
 
 @router.post("/clips/set-param")
 def setClipParam(req: SetParamRequest):
-    """
-    Directly set a static (non-animated) parameter value on a clip.
-    This does NOT add a keyframe — it sets the base value.
-
-    Useful for one-shot changes: move a clip, resize, change opacity, etc.
-    For animated changes use POST /anim/{clipId}/keyframe instead.
-    """
+     
     clip, _ = _find_clip(req.clip_id)
     _apply_single_param(clip, req.param, req.value)
     notify("timeline")
@@ -746,12 +773,12 @@ def _apply_transform_dict(clip, transform: dict) -> None:
     """Apply a dict of transform param names → float values to a clip's transform."""
     t = clip.transform
     _TRANSFORM_SETTERS = {
-        "pos_x":    lambda v: t.position.setX(v),
-        "pos_y":    lambda v: t.position.setY(v),
-        "scale_x":  lambda v: t.scale.setX(v),
-        "scale_y":  lambda v: t.scale.setY(v),
+        "pos_x": lambda v: t.position.setX(v),
+        "pos_y": lambda v: t.position.setY(v),
+        "scale_x": lambda v: t.scale.setX(v),
+        "scale_y": lambda v: t.scale.setY(v),
         "rotation": lambda v: setattr(t, "_rotation_base", v) or t.rotation.setBase(v),
-        "opacity":  lambda v: t.opacity.setBase(v),
+        "opacity": lambda v: t.opacity.setBase(v),
         "anchor_x": lambda v: t.anchor.setX(v),
         "anchor_y": lambda v: t.anchor.setY(v),
     }
@@ -769,12 +796,12 @@ def _apply_single_param(clip, param: str, value: float) -> None:
     t = clip.transform
     # Transform params
     transform_map = {
-        "pos_x":    lambda: t.position.setX(value),
-        "pos_y":    lambda: t.position.setY(value),
-        "scale_x":  lambda: t.scale.setX(value),
-        "scale_y":  lambda: t.scale.setY(value),
+        "pos_x": lambda: t.position.setX(value),
+        "pos_y": lambda: t.position.setY(value),
+        "scale_x": lambda: t.scale.setX(value),
+        "scale_y": lambda: t.scale.setY(value),
         "rotation": lambda: t.rotation.setBase(value),
-        "opacity":  lambda: t.opacity.setBase(value),
+        "opacity": lambda: t.opacity.setBase(value),
         "anchor_x": lambda: t.anchor.setX(value),
         "anchor_y": lambda: t.anchor.setY(value),
     }
@@ -784,13 +811,13 @@ def _apply_single_param(clip, param: str, value: float) -> None:
     # Text-specific params
     if isinstance(clip, TextClip):
         text_map = {
-            "font_size":    lambda: setattr(clip.style, "fontSize", value),
-            "tracking":     lambda: setattr(clip.style, "letterSpacing", value),
+            "font_size": lambda: setattr(clip.style, "fontSize", value),
+            "tracking": lambda: setattr(clip.style, "letterSpacing", value),
             "line_height":  lambda: setattr(clip.style, "lineHeight", value),
-            "fill_r":       lambda: clip.style.color.__setitem__(0, value),
-            "fill_g":       lambda: clip.style.color.__setitem__(1, value),
-            "fill_b":       lambda: clip.style.color.__setitem__(2, value),
-            "fill_a":       lambda: clip.style.color.__setitem__(3, value),
+            "fill_r": lambda: clip.style.color.__setitem__(0, value),
+            "fill_g": lambda: clip.style.color.__setitem__(1, value),
+            "fill_b": lambda: clip.style.color.__setitem__(2, value),
+            "fill_a": lambda: clip.style.color.__setitem__(3, value),
         }
         if param in text_map:
             text_map[param]()
@@ -809,22 +836,16 @@ def _apply_single_param(clip, param: str, value: float) -> None:
     raise HTTPException(400, f"Unknown param '{param}' for this clip type")
 
 
-# ── Audio volume / mute ────────────────────────────────────────────────────────
+# Audio volume / mute  
 
 class ClipVolumeRequest(BaseModel):
-    volume: float | None = None   # 0.0 = silence, 1.0 = original, >1 = boost
-    mute:   bool  | None = None   # True = silence regardless of volume
+    volume: float | None = None   
+    mute:   bool  | None = None    
 
 
 @router.patch("/clips/{clipId}/volume")
 def setClipVolume(clipId: str, req: ClipVolumeRequest):
-    """Set the volume (0.0–2.0) and/or mute state of any clip that carries audio.
-
-    Works on:
-    - AudioClip (native volume & mute fields)
-    - VideoClip (dynamic volume/mute attrs used by the encoder and frontend
-                 audio engine for the embedded audio stream)
-    """
+     
     clip, _track = _find_clip(clipId)
     from backend.timeline.clips.audioClip import AudioClip
     from backend.timeline.clips.videoClip  import VideoClip
@@ -847,10 +868,10 @@ def setClipVolume(clipId: str, req: ClipVolumeRequest):
 
     notify("tracks-changed")
     return {
-        "ok":     True,
+        "ok": True,
         "clipId": clipId,
         "volume": getattr(clip, "volume", 1.0),
-        "mute":   getattr(clip, "mute",   False),
+        "mute": getattr(clip, "mute",   False),
     }
 
 
@@ -862,7 +883,7 @@ def getClipVolume(clipId: str):
         "clipId": clipId,
         "clipType": getattr(clip, "CLIP_TYPE", "unknown"),
         "volume": getattr(clip, "volume", 1.0),
-        "mute":   getattr(clip, "mute",   False),
+        "mute": getattr(clip, "mute",   False),
     }
 
 
@@ -873,9 +894,7 @@ class TransformBatchRequest(BaseModel):
 
 @router.post("/clips/transform-batch")
 def transformBatch(req: TransformBatchRequest):
-    """
-    Apply a batch of parameter changes and record them as a single command in CommandStack.
-    """
+     
     from backend.editor_tools.commands import TransformClipCommand
     cmd = TransformClipCommand(req.clip_id, req.before, req.after)
     engine.commandStack.execute(cmd)
