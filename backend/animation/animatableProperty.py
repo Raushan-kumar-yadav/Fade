@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 from backend.animation.scalarTrack import ScalarTrack
 from backend.animation.keyframe import Keyframe, Interpolation, makeBezierKeyframe
 from backend.animation import anim_debug as _dbg
@@ -14,7 +14,7 @@ class AnimatableProperty:
         self._track: ScalarTrack = ScalarTrack()
         # Expression system
         self._expression: str | None = None
-        self._expr_compiled = None          # compiled code object — cached on set
+        self._expr_compiled = None          # compiled code object â€” cached on set
         self._expr_error: str = ""          # last eval error message
 
     #   Control
@@ -81,7 +81,7 @@ class AnimatableProperty:
                 self._currentValue = float(result)
                 self._expr_error = ""
             except Exception as exc:
-                # Silently fall back — never break the render loop
+                # Silently fall back â€” never break the render loop
                 self._currentValue = base
                 self._expr_error = str(exc)
         else:
@@ -145,7 +145,7 @@ class AnimatableProperty:
     def expression_error(self) -> str:
         return self._expr_error
 
-    #   Serialization  
+    #   Serialization
 
     def toDict(self) -> dict:
         d: dict = {"base": self._baseValue, "animated": self._isAnimated}
@@ -212,6 +212,22 @@ class Vec2Property:
     def get(self) -> tuple[float, float]:
         return (self.x.get(), self.y.get())
 
+    @property
+    def expression(self):
+        # We return the base expression without .x (assuming it ends in .x)
+        expr = self.x.get_expression()
+        if expr and expr.endswith(".x"): return expr[:-2]
+        return expr
+
+    @expression.setter
+    def expression(self, expr):
+        if expr:
+            self.x.set_expression(f"{expr}.x")
+            self.y.set_expression(f"{expr}.y")
+        else:
+            self.x.set_expression(None)
+            self.y.set_expression(None)
+
     def setBase(self, x: float, y: float) -> None:
         self.x.setBaseValue(x)
         self.y.setBaseValue(y)
@@ -224,7 +240,7 @@ class Vec2Property:
     def __repr__(self) -> str:
         return f"Vec2Property({self.x.get():.2f}, {self.y.get():.2f})"
 
- 
+
 
     def toDict(self) -> dict:
         return {"x": self.x.toDict(), "y": self.y.toDict()}

@@ -123,16 +123,21 @@ class VideoClip(BaseClip):
 
         canvas.restore()
 
-        if getattr(self, 'trackingData', None):
-            tdata = self.trackingData.get('frames', {})
-            f_str = str(frame)
-            if f_str in tdata:
-                t = tdata[f_str]
-                cx, cy, w, h = t.get('x', 0), t.get('y', 0), t.get('w', 0), t.get('h', 0)
-                canvas.save()
-                t_paint = skia.Paint(Style=skia.Paint.kStroke_Style, Color=skia.ColorGREEN, StrokeWidth=3)
-                canvas.drawRect(skia.Rect.MakeXYWH(cx - w/2, cy - h/2, w, h), t_paint)
-                canvas.restore()
+        if self.assetId:
+            from backend.state import _library
+            asset = _library.get(self.assetId)
+            if asset and getattr(asset, "trackingResults", None):
+                asset_frame = self.sourceFrame(frame)
+                f_str = str(asset_frame)
+                for tdata in asset.trackingResults.values():
+                    frames = tdata.get('frames', {})
+                    if f_str in frames:
+                        t = frames[f_str]
+                        cx, cy, w, h = t.get('x', 0), t.get('y', 0), t.get('w', 0), t.get('h', 0)
+                        canvas.save()
+                        t_paint = skia.Paint(Style=skia.Paint.kStroke_Style, Color=skia.ColorGREEN, StrokeWidth=3)
+                        canvas.drawRect(skia.Rect.MakeXYWH(cx - w/2, cy - h/2, w, h), t_paint)
+                        canvas.restore()
 
     def _renderSolid(self, canvas, paint) -> None:
         import skia
@@ -253,7 +258,6 @@ class VideoClip(BaseClip):
             "blendMode": self.blendMode.toDict(),
             "masks": [m.toDict() for m in self.masks],
             "effects": [e.toDict() for e in self.effects],
-            "trackingData": self.trackingData,
         }
 
     @classmethod
@@ -273,7 +277,6 @@ class VideoClip(BaseClip):
         )
         # Store filepath 
         c.filepath = data.get("filepath", "")
-        c.trackingData = data.get("trackingData", None)
 
         if "transform" in data:
             c.transform = Transform.fromDict(data["transform"])

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './TrackingPanel.css';
 
 interface TrackingPanelProps {
@@ -12,17 +12,53 @@ export default function TrackingPanel({ clipId, startFrame, duration }: Tracking
   const [trackStart, setTrackStart] = useState(startFrame);
   const [trackEnd, setTrackEnd] = useState(startFrame + Math.min(30, duration));
   const [property, setProperty] = useState("position");
-  
-  // Fake ROI inputs for tracking initial bounds
+
   const [x, setX] = useState(1920/2 - 50);
   const [y, setY] = useState(1080/2 - 50);
   const [w, setW] = useState(100);
   const [h, setH] = useState(100);
 
   const [status, setStatus] = useState<string>("");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [trackingId, setTrackingId] = useState<string | null>(null);
+
+  // Poll the job API
+  useEffect(() => {
+    if (!jobId) return;
+    const port = (window as any).__FADE_PORT__ ?? 8000;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/jobs/${jobId}`);
+        if (res.ok) {
+          const job = await res.json();
+          if (job.status === "running" || job.status === "pending") {
+             setStatus(`Tracking: ${Math.round((job.progress || 0) * 100)}% - ${job.message}`);
+          } else if (job.status === "done") {
+             setStatus(`Tracking complete!`);
+             if (job.result && job.result.tracking_id) {
+               setTrackingId(job.result.tracking_id);
+             }
+             setJobId(null); // Stop polling
+          } else if (job.status === "error") {
+             setStatus(`Error: ${job.error}`);
+             setJobId(null);
+          } else if (job.status === "cancelled") {
+             setStatus(`Cancelled`);
+             setJobId(null);
+          }
+        }
+      } catch (e) {
+         // ignore network errors while polling
+      }
+    }, 500);
+
+    return () => clearInterval(interval);
+  }, [jobId]);
 
   const handleTrack = async () => {
-    setStatus("Tracking...");
+    setStatus("Starting tracking job...");
+    setTrackingId(null);
     const port = (window as any).__FADE_PORT__ ?? 8000;
     try {
       const res = await fetch(`http://127.0.0.1:${port}/tracking/track`, {
@@ -37,7 +73,8 @@ export default function TrackingPanel({ clipId, startFrame, duration }: Tracking
         })
       });
       if (res.ok) {
-        setStatus("Tracking complete!");
+        const data = await res.json();
+        setJobId(data.jobId);
       } else {
         const err = await res.json();
         setStatus(`Error: ${err.detail}`);
@@ -48,6 +85,7 @@ export default function TrackingPanel({ clipId, startFrame, duration }: Tracking
   };
 
   const handleApply = async () => {
+    if (!trackingId) return;
     setStatus("Applying...");
     const port = (window as any).__FADE_PORT__ ?? 8000;
     try {
@@ -56,8 +94,8 @@ export default function TrackingPanel({ clipId, startFrame, duration }: Tracking
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clip_id: clipId,
-          property_name: property, // 'position' or 'scale'
-          expression: 'tracking:self'
+          property_name: property,
+          expression: `this.tracking('${trackingId}')`
         })
       });
       if (res.ok) {
@@ -74,12 +112,12 @@ export default function TrackingPanel({ clipId, startFrame, duration }: Tracking
   return (
     <div className="insp-group">
       <div className="insp-group__header" onClick={() => setOpen(!open)}>
-        <span className="insp-group__toggle">{open ? '▼' : '▶'}</span>
+        <span className="insp-group__toggle">{open ? '-' : '- '}</span>
         <span className="insp-group__title">Motion Tracking</span>
       </div>
       {open && (
         <div className="insp-group__body" style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          
+
           <div style={{display: 'flex', justifyContent: 'space-between'}}>
             <label>Start Frame:</label>
             <input type="number" value={trackStart} onChange={e => setTrackStart(Number(e.target.value))} style={{width: '60px'}} />
@@ -88,7 +126,7 @@ export default function TrackingPanel({ clipId, startFrame, duration }: Tracking
             <label>End Frame:</label>
             <input type="number" value={trackEnd} onChange={e => setTrackEnd(Number(e.target.value))} style={{width: '60px'}} />
           </div>
-          
+
           <div style={{display: 'flex', justifyContent: 'space-between'}}>
             <label>Target Box (X,Y,W,H):</label>
             <div style={{display: 'flex', gap: '4px'}}>
@@ -107,11 +145,11 @@ export default function TrackingPanel({ clipId, startFrame, duration }: Tracking
             </select>
           </div>
 
-          <button onClick={handleTrack} style={{marginTop: '4px'}}>Start Tracking</button>
-          
+          <button onClick={handleTrack} disabled={jobId !== null} style={{marginTop: '4px'}}>Start Tracking</button>
+
           {status && <div style={{fontSize: '11px', color: '#888'}}>{status}</div>}
-          
-          <button onClick={handleApply} disabled={!status.includes('complete')} style={{marginTop: '4px'}}>Apply to {property}</button>
+
+          <button onClick={handleApply} disabled={!trackingId} style={{marginTop: '4px'}}>Apply to {property}</button>
 
         </div>
       )}

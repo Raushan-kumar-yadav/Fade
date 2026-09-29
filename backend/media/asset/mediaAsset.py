@@ -48,6 +48,8 @@ class MediaAsset(BaseAsset):
         self.height: int = 0
         # Audio presence  
         self._hasAudio: bool | None = None
+        # Tracking results
+        self.trackingResults: dict[str, dict] = {}
 
     @property
     def mediaType(self) -> MediaType:
@@ -72,6 +74,7 @@ class MediaAsset(BaseAsset):
             "filename": self.filename,
             "type": self._mediaType.value,
             "hasAudio": self._hasAudio if self._hasAudio is not None else False,
+            "trackingResults": self.trackingResults,
         }
 
     @classmethod
@@ -79,4 +82,6 @@ class MediaAsset(BaseAsset):
         a = cls(filepath=data["filepath"], assetId=data["assetId"])
         if "hasAudio" in data:
             a._hasAudio = data["hasAudio"]
+        if "trackingResults" in data:
+            a.trackingResults = data["trackingResults"]
         return a

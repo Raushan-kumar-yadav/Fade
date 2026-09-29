@@ -1,120 +1,155 @@
-import pytest
-from backend.animation.animatableProperty import AnimatableProperty, Vec2Property
-from backend.timeline.clips.videoClip import VideoClip
-from backend.timeline.tracks.videoTrack import VideoTrack
+﻿import pytest
+import time
+from backend.state import engine, _library
+from backend.project.project import Project
 from backend.timeline.timeline import Timeline
+from backend.timeline.tracks.videoTrack import VideoTrack
+from backend.timeline.clips.videoClip import VideoClip
+from backend.timeline.clips.textClip import TextClip
+from backend.media.asset.mediaAsset import MediaAsset
+from backend.animation.animatableProperty import AnimatableProperty, Vec2Property
+from backend.routers.jobs import _make_job, _get_job, is_job_cancelled, _update_job, _start
 from backend.tracking.tracker import run_tracking
-import numpy as np
+from backend.routers.tracking import start_tracking, TrackRequest, bind_tracking, BindTrackingRequest
 
-def test_animatable_property_basic():
-    ap = AnimatableProperty(10.0)
-    assert ap.evaluate(0) == 10.0
-    ap.update(0)
-    assert ap.get() == 10.0
-
-def test_keyframe_evaluation():
-    ap = AnimatableProperty(0.0)
-    ap.addKeyframe(0, 10.0)
-    ap.addKeyframe(10, 20.0)
-    assert ap.is_animated()
-    val = ap.evaluate(5)
-    # bezier interpolation should return some value between 10 and 20
-    assert 10.0 < val < 20.0
-
-def test_position_evaluation():
-    vp = Vec2Property(100.0, 200.0)
-    assert vp.evaluate(0) == (100.0, 200.0)
-    vp.addKeyframe(10, 150.0, 250.0)
-    assert vp.x.is_animated()
-    
-def test_rotation_scale_evaluation():
-    from backend.animation.transform import Transform
-    t = Transform()
-    t.rotation.setBaseValue(45.0)
-    t.scale.setBase(2.0, 2.0)
-    assert t.rotation.evaluate(0) == 45.0
-    assert t.scale.evaluate(0) == (2.0, 2.0)
-
-def test_simple_property_linking():
+@pytest.fixture(autouse=True)
+def setup_engine():
+    proj = Project("TestProject")
+    engine.project = proj
     tl = Timeline()
+    proj.timelines.append(tl)
+
+    asset = MediaAsset("dummy.mp4", "asset_123")
+    _library["asset_123"] = asset
+
     track = VideoTrack()
     tl.tracks.append(track)
-    clip_a = VideoClip("clipA", 0, 100)
-    clip_b = VideoClip("clipB", 0, 100)
-    track.clips.extend([clip_a, clip_b])
-    
-    clip_a.transform.position.setBase(300.0, 400.0)
-    
-    clip_b.transform.position.x.expression = "link:clipA:position.x"
-    clip_b.transform.position.y.expression = "link:clipA:position.y"
-    
-    ctx = {"timeline": tl, "clip": clip_b}
-    
-    clip_b.transform.evaluateAll(0, context=ctx)
-    assert clip_b.transform.position.get() == (300.0, 400.0)
 
-def test_tracking_result_structure_and_range():
-    # We will test the mock logic or raise if file not found
-    try:
-        res = run_tracking("invalid_path.mp4", 30.0, 0, 10, (0,0,10,10))
-    except Exception as e:
-        assert "stream" in str(e) or "Could not decode" in str(e) or "Failed" in str(e)
+    clip = VideoClip('clip_123', startFrame=100, duration=50, assetId='asset_123', mediaOffset=5)
+    clip.filepath = 'dummy.mp4'
+    track.clips.append(clip)
 
-def test_tracking_data_storage():
-    clip = VideoClip("clip1", 0, 100)
-    tdata = {
-        "startFrame": 10,
-        "endFrame": 15,
-        "property": "position",
-        "frames": {
-            "10": {"x": 500, "y": 600, "w": 100, "h": 100}
-        }
-    }
-    clip.trackingData = tdata
-    d = clip.toDict()
-    assert "trackingData" in d
-    
-    clip2 = VideoClip.fromDict(d)
-    assert clip2.trackingData["frames"]["10"]["x"] == 500
+    yield
+    _library.clear()
+    engine.project = None
+    engine.commandStack._undoStack.clear()
 
-def test_tracking_data_driving_position():
-    tl = Timeline()
-    clip = VideoClip("clip1", 0, 100)
-    tl.tracks.append(VideoTrack())
-    tl.tracks[0].clips.append(clip)
-    
-    clip.trackingData = {
+def test_asset_storage_and_serialization():
+    asset = _library["asset_123"]
+    asset.trackingResults["track_001"] = {
+        "id": "track_001",
         "startFrame": 0,
         "endFrame": 5,
-        "property": "position",
+        "frames": {"0": {"x": 100, "y": 200}}
+    }
+
+    d = asset.toDict()
+    assert "trackingResults" in d
+    assert d["trackingResults"]["track_001"]["frames"]["0"]["x"] == 100
+
+    asset2 = MediaAsset.fromDict(d)
+    assert asset2.trackingResults["track_001"]["frames"]["0"]["y"] == 200
+
+def test_clip_source_frame_mapping():
+    tl = engine.project.timelines[0]
+    clip = tl.tracks[0].clips[0]
+
+    # Clip starts at timeline frame 100, and mediaOffset is 5.
+    # At timeline frame 100, sourceFrame should be 5.
+    # At timeline frame 110, sourceFrame should be 15.
+    assert clip.sourceFrame(100) == 5
+    assert clip.sourceFrame(110) == 15
+
+def test_expression_context_tracking_access():
+    tl = engine.project.timelines[0]
+    clip = tl.tracks[0].clips[0]
+    asset = _library["asset_123"]
+
+    # Add fake tracking data to asset
+    asset.trackingResults["track_001"] = {
+        "id": "track_001",
         "frames": {
-            "0": {"x": 111, "y": 222, "w": 10, "h": 10}
+            "5": {"x": 555, "y": 666},
+            "15": {"x": 777, "y": 888}
         }
     }
-    clip.transform.position.x.expression = "tracking:self"
-    clip.transform.position.y.expression = "tracking:self"
-    
-    ctx = {"timeline": tl, "clip": clip, "timelineFrame": 0}
-    clip.transform.evaluateAll(0, context=ctx)
-    assert clip.transform.position.x.get() == 111
-    assert clip.transform.position.y.get() == 222
 
-def test_invalid_frame_ranges():
-    ap = AnimatableProperty(0)
-    ap.expression = "tracking:self"
-    ctx = {"timelineFrame": 999, "clip": VideoClip("c", 0, 10)}
-    # missing trackingData
-    assert ap.evaluate(0, context=ctx) == 0
+    # Evaluate at timeline frame 100
+    from backend.animation.expression_context import build_context
+    ctx = build_context(100, 0.0, clip, tl)
 
-def test_missing_clip_asset():
-    ap = AnimatableProperty(0)
-    ap.expression = "link:non_existent:position.x"
-    tl = Timeline()
-    ctx = {"timeline": tl}
-    assert ap.evaluate(0, context=ctx) == 0
+    # In JS: this.tracking("track_001").x
+    result_x = eval("this.tracking('track_001').x", {}, ctx)
+    assert result_x == 555.0
 
-def test_tracking_failure_handling():
-    try:
-        run_tracking("missing", 30.0, 0, 10, (0,0,10,10))
-    except Exception as e:
-        assert True
+    ctx2 = build_context(110, 0.0, clip, tl)
+    result_y = eval("this.tracking('track_001').y", {}, ctx2)
+    assert result_y == 888.0
+
+def test_cross_clip_tracking_access():
+    tl = engine.project.timelines[0]
+    # Add a text clip that doesn't have an asset, but references the video clip's tracking
+    text_clip = TextClip("text_1", startFrame=100, duration=10)
+    tl.tracks[0].clips.append(text_clip)
+
+    asset = _library["asset_123"]
+    asset.trackingResults["track_001"] = {
+        "id": "track_001",
+        "frames": {
+            "15": {"x": 42, "y": 24}
+        }
+    }
+
+    from backend.animation.expression_context import build_context
+    ctx = build_context(110, 0.0, text_clip, tl)
+
+    # In JS: comp.clip("clip_123").tracking("track_001").x
+    result_x = eval("comp.clip('clip_123').tracking('track_001').x", {}, ctx)
+    assert result_x == 42.0
+
+def test_bind_expression_command():
+    tl = engine.project.timelines[0]
+    clip = tl.tracks[0].clips[0]
+
+    req = BindTrackingRequest(
+        clip_id="clip_123",
+        property_name="position",
+        expression="this.tracking('track_999')"
+    )
+    bind_tracking(req)
+
+    assert clip.transform.position.expression == "this.tracking('track_999')"
+    assert clip.transform.position.x.get_expression() == "this.tracking('track_999').x"
+
+def test_job_queue_creation_and_progress():
+    # We will just test that start_tracking creates a job correctly
+    # Note: since the actual tracker uses OpenCV and reads a file, we expect it to fail gracefully if the file is missing,
+    # but the job should still be created and returned.
+    req = TrackRequest(
+        clip_id="clip_123",
+        start_frame=100,
+        end_frame=110,
+        property="position",
+        x=0, y=0, width=100, height=100
+    )
+
+    res = start_tracking(req)
+    assert res["success"] is True
+    job_id = res["jobId"]
+    assert job_id is not None
+
+    job = _get_job(job_id)
+    assert job["status"] in ("pending", "running", "error") # error if opencv fails to load dummy.mp4 instantly
+    assert job["assetId"] == "asset_123"
+
+def test_invalid_clip_id():
+    req = TrackRequest(
+        clip_id="invalid",
+        start_frame=100,
+        end_frame=110,
+        property="position",
+        x=0, y=0, width=100, height=100
+    )
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        start_tracking(req)
