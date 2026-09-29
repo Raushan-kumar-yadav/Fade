@@ -34,42 +34,71 @@ class BaseClip(ABC):
         """Update all animatable properties for the given timeline frame."""
         lf = self.localFrame(frame)
 
-        # Debug header  
         if _dbg.ANIM_DEBUG and frame % _dbg._LOG_EVERY_N == 0:
             print(f"[ANIM] evaluateAll  clip={self.clipId[:8]}({type(self).__name__})  "
                   f"timeline_frame={frame}  local_frame={lf}", flush=True)
 
-        self.transform.evaluateAll(lf, _clip=self, _timeline=_timeline)
+        # Resolve _timeline from engine if not provided (render path doesn't pass it)
+        if _timeline is None:
+            try:
+                from backend.state import engine as _eng
+                _timeline = _eng.activeTimeline if _eng else None
+            except Exception:
+                pass
 
-        # Old animEngine-style params 
+        # Step 1: push _anim_params keyframe values into _baseValue first.
+        # Keyframes stored at timeline frames, so evaluate with timeline frame.
         if hasattr(self, '_anim_params'):
             for key, ap in self._anim_params.items():
-                if ap.is_animated():
-                    val = ap.evaluate(frame)
-                    self.applyParam(key, val)
-                else:
-                    self.applyParam(key, ap._base[0])
- 
+                val = ap.evaluate(frame) if ap.is_animated() else ap._base[0]
+                self.applyParam(key, val)
+
+        # Step 2: transform.evaluateAll reads _baseValue, applies expressions,
+        # writes _currentValue that the renderer reads via .get().
+        self.transform.evaluateAll(lf, _clip=self, _timeline=_timeline)
+
         for effect in self.effects:
             if hasattr(effect, 'evaluateAll'):
                 effect.evaluateAll(lf)
 
+
     def applyParam(self, key: str, val: float) -> None:
-        """Apply a computed animation param to the clip's actual properties."""
-        if key == "opacity": self.transform.opacity.setBaseValue(val)
-        elif key == "pos_x": self.transform.position.setBase(val, self.transform.position.y.baseValue)
-        elif key == "pos_y": self.transform.position.setBase(self.transform.position.x.baseValue, val)
-        elif key == "scale_x": self.transform.scale.setBase(val, self.transform.scale.y.baseValue)
-        elif key == "scale_y": self.transform.scale.setBase(self.transform.scale.x.baseValue, val)
-        elif key == "rotation":self.transform.rotation.setBaseValue(val)
-        elif key == "anchor_x":self.transform.anchor.setBase(val, self.transform.anchor.y.baseValue)
-        elif key == "anchor_y":self.transform.anchor.setBase(self.transform.anchor.x.baseValue, val)
+        """Write an animated value into the correct transform property.
+        Sets both _baseValue (so transform.evaluateAll reads it) and
+        _currentValue (so .get() immediately returns the right value)."""
+        t = self.transform
+        if key == "opacity":
+            t.opacity.setBaseValue(val)
+            t.opacity._currentValue = val
+        elif key == "pos_x":
+            t.position.setBase(val, t.position.y.baseValue)
+            t.position.x._currentValue = val
+        elif key == "pos_y":
+            t.position.setBase(t.position.x.baseValue, val)
+            t.position.y._currentValue = val
+        elif key == "scale_x":
+            t.scale.setBase(val, t.scale.y.baseValue)
+            t.scale.x._currentValue = val
+        elif key == "scale_y":
+            t.scale.setBase(t.scale.x.baseValue, val)
+            t.scale.y._currentValue = val
+        elif key == "rotation":
+            t.rotation.setBaseValue(val)
+            t.rotation._currentValue = val
+        elif key == "anchor_x":
+            t.anchor.setBase(val, t.anchor.y.baseValue)
+            t.anchor.x._currentValue = val
+        elif key == "anchor_y":
+            t.anchor.setBase(t.anchor.x.baseValue, val)
+            t.anchor.y._currentValue = val
         elif key == "blend_mode":
             bm = getattr(self, "blendMode", None)
             if hasattr(bm, "setBaseValue"):
-                bm.setBaseValue(float(round(val)))   # AnimatableProperty 
+                bm.setBaseValue(float(round(val)))
+                bm._currentValue = float(round(val))
             else:
-                self.blendMode = int(round(val))     # plain int 
+                self.blendMode = int(round(val))
+
 
     #   Mask helpers  
 

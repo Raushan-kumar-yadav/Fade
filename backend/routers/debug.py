@@ -182,3 +182,143 @@ def anim_eval(clipId: str, frame: int = 0, param: str = "opacity"):
         "keyframe_frames": [k.frame for k in kfs],
         "keyframe_values": [k.value for k in kfs],
     }
+
+@router.post("/debug/reload-anim")
+def reloadAnimModules():
+    """Hot-reload animation + clip modules so code changes take effect without restart."""
+    import importlib
+    reloaded = []
+    for mod_name in list(__import__('sys').modules.keys()):
+        if any(x in mod_name for x in ('baseClip','animatableProperty','transform','render','animEngine','scalarTrack')):
+            try:
+                importlib.reload(__import__('sys').modules[mod_name])
+                reloaded.append(mod_name)
+            except Exception as e:
+                pass
+    return {"reloaded": reloaded}
+
+
+@router.post("/debug/patch-anim")
+def patchAnimMethods():
+    from backend.timeline.clips.baseClip import BaseClip
+    from backend.animation import anim_debug as _dbg
+
+    def _evaluateAll(self, frame: int, _timeline=None):
+        lf = self.localFrame(frame)
+        if _timeline is None:
+            try:
+                from backend.state import engine as _eng
+                _timeline = _eng.activeTimeline if _eng else None
+            except Exception:
+                pass
+        if hasattr(self, '_anim_params'):
+            for key, ap in self._anim_params.items():
+                try:
+                    val = ap.evaluate(frame) if ap.is_animated() else ap._base[0]
+                    self.applyParam(key, val)
+                except Exception as _e:
+                    print(f"[ANIM] applyParam error key={key}: {_e}", flush=True)
+        self.transform.evaluateAll(lf, _clip=self, _timeline=_timeline)
+        for effect in self.effects:
+            if hasattr(effect, 'evaluateAll'):
+                effect.evaluateAll(lf)
+
+    def _applyParam(self, key: str, val: float):
+        t = self.transform
+        if key == "opacity":
+            t.opacity.setBaseValue(val); t.opacity._currentValue = val
+        elif key == "pos_x":
+            t.position.setBase(val, t.position.y.baseValue); t.position.x._currentValue = val
+        elif key == "pos_y":
+            t.position.setBase(t.position.x.baseValue, val); t.position.y._currentValue = val
+        elif key == "scale_x":
+            t.scale.setBase(val, t.scale.y.baseValue); t.scale.x._currentValue = val
+        elif key == "scale_y":
+            t.scale.setBase(t.scale.x.baseValue, val); t.scale.y._currentValue = val
+        elif key == "rotation":
+            t.rotation.setBaseValue(val); t.rotation._currentValue = val
+        elif key == "anchor_x":
+            t.anchor.setBase(val, t.anchor.y.baseValue); t.anchor.x._currentValue = val
+        elif key == "anchor_y":
+            t.anchor.setBase(t.anchor.x.baseValue, val); t.anchor.y._currentValue = val
+        elif key == "blend_mode":
+            bm = getattr(self, "blendMode", None)
+            if hasattr(bm, "setBaseValue"):
+                bm.setBaseValue(float(round(val))); bm._currentValue = float(round(val))
+            else:
+                self.blendMode = int(round(val))
+
+    BaseClip.evaluateAll = _evaluateAll
+    BaseClip.applyParam  = _applyParam
+
+    # Also patch subclass overrides — in the running process they still have
+    # `super().evaluateAll(frame, _timeline=_timeline)` which crashes with NameError.
+    # Replace each subclass override with a minimal one that calls the fixed super().
+    from backend.timeline.clips import imageClip as _ic, videoClip as _vc
+    try:
+        from backend.timeline.clips import penClip as _pc
+    except Exception:
+        _pc = None
+    try:
+        from backend.timeline.clips import textClip as _tc
+    except Exception:
+        _tc = None
+
+    def _img_evaluateAll(self, frame: int, _timeline=None) -> None:
+        super(self.__class__, self).evaluateAll(frame, _timeline=_timeline)
+        lf = self.localFrame(frame)
+        for prop in ('cropLeft', 'cropRight', 'cropTop', 'cropBottom', 'blendMode'):
+            p = getattr(self, prop, None)
+            if p and hasattr(p, 'update'): p.update(lf)
+
+    def _vid_evaluateAll(self, frame: int, _timeline=None) -> None:
+        if frame == self._lastFrame:
+            return
+        self._lastFrame = frame
+        super(self.__class__, self).evaluateAll(frame, _timeline=_timeline)
+        lf = self.localFrame(frame)
+        for prop in ('cropLeft', 'cropRight', 'cropTop', 'cropBottom', 'blendMode'):
+            p = getattr(self, prop, None)
+            if p and hasattr(p, 'update'): p.update(lf)
+
+    _ic.ImageClip.evaluateAll = _img_evaluateAll
+    _vc.VideoClip.evaluateAll = _vid_evaluateAll
+    patched = ["BaseClip.evaluateAll", "BaseClip.applyParam", "ImageClip.evaluateAll", "VideoClip.evaluateAll"]
+
+    if _pc:
+        def _pen_evaluateAll(self, frame: int, _timeline=None) -> None:
+            super(self.__class__, self).evaluateAll(frame, _timeline=_timeline)
+            lf = self.localFrame(frame)
+            if hasattr(self, '_syncBase'): self._syncBase()
+            if hasattr(self, 'shapePath'): self.shapePath.update(lf)
+        _pc.PenClip.evaluateAll = _pen_evaluateAll
+        patched.append("PenClip.evaluateAll")
+
+    if _tc:
+        def _txt_evaluateAll(self, frame: int, _timeline=None) -> None:
+            super(self.__class__, self).evaluateAll(frame, _timeline=_timeline)
+        _tc.TextClip.evaluateAll = _txt_evaluateAll
+        patched.append("TextClip.evaluateAll")
+
+    print(f"[DEBUG] Patched: {patched}", flush=True)
+    return {"patched": patched}
+@router.get("/debug/kf-test")
+def kfTest():
+    from backend.state import engine as _eng
+    tl = _eng.activeTimeline if _eng else None
+    if not tl: return {"error": "no timeline"}
+    out = []
+    for track in tl.tracks:
+        for clip in track.clips:
+            cid = clip.clipId[:8]
+            has_ap = hasattr(clip, "_anim_params")
+            if has_ap:
+                ap = clip._anim_params.get("pos_x")
+                if ap:
+                    animated = ap.is_animated()
+                    v40 = ap.evaluate(40) if animated else ap._base[0]
+                    clip.evaluateAll(40)
+                    cur = clip.transform.position.x._currentValue
+                    base = clip.transform.position.x._baseValue
+                    out.append({"clip":cid,"animated":animated,"ap_eval_40":v40,"pos_x_cur":cur,"pos_x_base":base})
+    return {"results": out}

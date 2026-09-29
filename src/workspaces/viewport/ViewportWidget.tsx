@@ -355,23 +355,33 @@ export default function ViewportWidget() {
   }, []);
 
 
-  // Image comp: seek to frame 3 when entering comp or when tracks change (clip added)
-  // Clips are always forced to startFrame=0, so frame 3 always overlaps them
+  // Image comp: seek to frame 3 when entering comp or when a NEW clip is added.
+  // Guard: never seek during active playback (video indexing updates tlState.tracks
+  // without actually adding clips, which was causing mid-playback seek-to-3 resets).
+  const trackCountRef = useRef(0);
   useEffect(() => {
     if (!isImageComp) return;
-    const api = (window as any).electronAPI;
+    // Count total clips across all tracks
+    const clipCount = tlState.tracks.reduce((acc, tr) => acc + (tr.clips?.length ?? 0), 0);
+    const prev = trackCountRef.current;
+    trackCountRef.current = clipCount;
 
+    // Only fire when a clip was actually added (count went up), never during playback
+    if (clipCount <= prev && prev !== 0) return;
+    if (isPlayingRef.current) return;
+
+    const api = (window as any).electronAPI;
     const seek = async () => {
       await playbackSeek(3).catch(() => {});
       api?.renderSeek?.(3);
-      // One retry after 250ms in case the backend needed time to register the clip
-      setTimeout(() => { api?.renderSeek?.(3); }, 250);
+      setTimeout(() => { if (!isPlayingRef.current) api?.renderSeek?.(3); }, 250);
     };
-
     const t = setTimeout(seek, 80);
     return () => clearTimeout(t);
+  // Use a stable primitive (clip count) not the full tracks object, so background
+  // AI indexing mutations don't re-trigger this seek.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isImageComp, tlState.tracks]);
+  }, [isImageComp, tlState.tracks.reduce((a, tr) => a + (tr.clips?.length ?? 0), 0)]);
 
   //   Controls  
 

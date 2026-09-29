@@ -227,11 +227,9 @@ def _get_frame_data(frame: int) -> dict:
                 source_frame = 0
             
             try:
-                from backend.state import engine as _engine
-                _expr_tl = _engine.activeTimeline if _engine else None
-                clip.evaluateAll(frame, _timeline=_expr_tl)
-            except Exception:
-                pass
+                clip.evaluateAll(frame)
+            except Exception as _ee:
+                print(f"[RENDER] evaluateAll error clip={getattr(clip,'clipId','?')[:8]}: {_ee}", flush=True)
             try:
                 opacity = float(clip.transform.opacity.get())
             except Exception:

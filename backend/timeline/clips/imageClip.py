@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from backend.timeline.clips.baseClip import BaseClip
@@ -75,7 +75,7 @@ class ImageClip(BaseClip):
         self.brush_strokes: list[BrushStroke] = []
 
     def evaluateAll(self, frame: int) -> None:
-        super().evaluateAll(frame, _timeline=_timeline)
+        super().evaluateAll(frame)
         lf = self.localFrame(frame)
         self.cropLeft.update(lf)
         self.cropRight.update(lf)
