@@ -113,6 +113,47 @@ export default function ExportWorkspace() {
 
   async function startCompExport(){
     if(!selectedComp) return
+    const api=(window as any).electronAPI
+
+    if(api?.captureImage && compKind==='image'){
+      setCompProgress({done:false,error:null,path:null,percent:0,label:'Capturing frame via C++ engine…',done_pages:0,total:1,kind:'image'})
+      try{
+        const result = await api.captureImage({
+          compId: selectedComp.compId,
+          width: selectedComp.width ?? fmt.w,
+          height: selectedComp.height ?? fmt.h,
+          fps: parseFloat(fps),
+          outputPath,
+        })
+        if(result.ok){
+          setCompProgress({done:true,error:null,path:result.path??outputPath,percent:100,label:'Done',done_pages:1,total:1,kind:'image'})
+        } else {
+          setCompProgress(p=>({...p!,error:result.error??'Export failed',done:true}))
+        }
+      }catch(e:any){setCompProgress(p=>({...p!,error:e.message??'Unknown error',done:true}))}
+      return
+    }
+
+    if(api?.capturePdf && compKind==='pdf'){
+      setCompProgress({done:false,error:null,path:null,percent:0,label:'Fetching pages…',done_pages:0,total:1,kind:'pdf'})
+      try{
+        const pr = await fetch(`http://127.0.0.1:${port}/comps/${selectedComp.compId}/pdf-pages`)
+        if(!pr.ok) throw new Error('Failed to fetch PDF pages')
+        const pdata = await pr.json()
+        const pages:(Array<{compId:string;width:number;height:number}>) = pdata.pages ?? []
+        if(!pages.length) throw new Error('PDF has no pages')
+        setCompProgress(p=>({...p!,label:`Capturing ${pages.length} page(s) via C++ engine…`,total:pages.length}))
+        const result = await api.capturePdf({pdfCompId:selectedComp.compId,pages,outputPath,fps:parseFloat(fps)})
+        if(result.ok){
+          setCompProgress({done:true,error:null,path:outputPath,percent:100,label:'Done',done_pages:pages.length,total:pages.length,kind:'pdf'})
+        } else {
+          setCompProgress(p=>({...p!,error:result.error??'PDF assembly failed',done:true}))
+        }
+      }catch(e:any){setCompProgress(p=>({...p!,error:e.message??'Unknown error',done:true}))}
+      return
+    }
+
+    // Fallback: Python-only path (web/no-electron mode)
     setCompProgress({done:false,error:null,path:null,percent:0,label:'Starting…',done_pages:0,total:1,kind:compKind})
     setCompJobId(null);stopCompPoll()
     try{

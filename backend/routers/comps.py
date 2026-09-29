@@ -442,6 +442,34 @@ def _get_pdf_doc(doc_id: str):
     return tl
 
 
+
+@router.get("/comps/{compId}/pdf-pages")
+def getCompPdfPages(compId: str):
+    """Return ordered page list for a PDF comp — used by Electron export:capture-pdf."""
+    tl = engine.getTimeline(compId)
+    if tl is None:
+        raise HTTPException(404, f"Comp {compId!r} not found")
+    if getattr(tl, "kind", "video") != "pdf":
+        raise HTTPException(400, f"Comp {compId!r} is not a PDF comp")
+    doc_w = int(getattr(tl, "width",  1920))
+    doc_h = int(getattr(tl, "height", 1080))
+    page_ids = getattr(tl, "page_ids", [])
+    pages = []
+    for pid in page_ids:
+        page_tl = engine.getTimeline(pid)
+        if page_tl is None:
+            continue
+        pw = int(getattr(page_tl, "width",  doc_w))
+        ph = int(getattr(page_tl, "height", doc_h))
+        if pw != doc_w or ph != doc_h:
+            page_tl.width  = doc_w
+            page_tl.height = doc_h
+            pw, ph = doc_w, doc_h
+        pages.append({"compId": pid, "width": pw, "height": ph,
+                      "name": getattr(page_tl, "name", f"Page {len(pages)+1}")})
+    return {"compId": compId, "pages": pages}
+
+
 @router.post("/pdf-docs")
 def createPdfDoc(req: CreatePdfDocRequest):
     """Create a new PDF document with one blank first page.

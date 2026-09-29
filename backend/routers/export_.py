@@ -116,6 +116,44 @@ def clearWebcompCache():
 
 
  
+
+from pydantic import BaseModel as _PdfBM
+
+class AssemblePdfRequest(_PdfBM):
+    outputPath: str
+    pagesBase64: list  # list[str] base64-encoded PNG per page
+
+
+@router.post("/export/assemble-pdf")
+def assemblePdf(req: AssemblePdfRequest):
+    try:
+        import io, base64, os
+        from PIL import Image
+        if not req.pagesBase64:
+            return {"ok": False, "error": "No pages provided"}
+        pil_images = []
+        for i, b64 in enumerate(req.pagesBase64):
+            try:
+                img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+                pil_images.append(img)
+                print(f"[AssemblePDF] page {i+1}: {img.size}", flush=True)
+            except Exception as e:
+                print(f"[AssemblePDF] page {i+1} error: {e}", flush=True)
+        if not pil_images:
+            return {"ok": False, "error": "All pages failed to decode"}
+        os.makedirs(os.path.dirname(os.path.abspath(req.outputPath)), exist_ok=True)
+        first, rest = pil_images[0], pil_images[1:]
+        first.save(req.outputPath, "PDF", resolution=150, save_all=True, append_images=rest)
+        print(f"[AssemblePDF] Saved {len(pil_images)} pages -> {req.outputPath}", flush=True)
+        return {"ok": True, "pages": len(pil_images), "path": req.outputPath}
+    except ImportError:
+        return {"ok": False, "error": "Pillow not installed"}
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        return {"ok": False, "error": str(exc)}
+
+
+
 import uuid, time
 
 # Lightweight in-memory job store for comp export jobs

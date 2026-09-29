@@ -43,6 +43,8 @@ export interface ElectronAPI {
     total: number
   }) => void) => () => void   // WebComp pre-render progress
   cancelExport: () => void
+  captureImage: (config: { compId: string; width: number; height: number; fps: number; outputPath: string }) => Promise<{ ok: boolean; path?: string; error?: string }>
+  capturePdf: (config: { pdfCompId: string; pages: Array<{ compId: string; width: number; height: number }>; outputPath: string; fps?: number }) => Promise<{ ok: boolean; error?: string }>
 
   //     File dialogs  
   showSaveDialog: (opts?: {
@@ -116,6 +118,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   //   Export  
   startExport: (config: any): void => ipcRenderer.send('export:start', config),
+  captureImage: (config: any) => ipcRenderer.invoke('export:capture-image', config),
+  capturePdf:   (config: any) => ipcRenderer.invoke('export:capture-pdf', config),
 
   onExportProgress: (cb: (p: any) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, p: any) => cb(p)
