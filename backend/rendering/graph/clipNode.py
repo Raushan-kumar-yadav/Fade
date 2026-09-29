@@ -15,7 +15,9 @@ class ClipNode(BaseNode):
         if not self.clip.overlaps(ctx.frame):
             return RenderResult()
 
-        self.clip.evaluateAll(ctx.frame)
+        from backend.state import engine as _engine
+        _tl = _engine.activeTimeline if _engine else None
+        self.clip.evaluateAll(ctx.frame, _timeline=_tl)
         opacity = float(self.clip.transform.opacity.get())
         masks   = getattr(self.clip, "masks", [])
         if opacity <= 0.0:

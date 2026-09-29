@@ -236,7 +236,7 @@ class TextClip(BaseClip):
 
     def evaluateAll(self, frame: int) -> None:
         """Tick transform + mask path animations."""
-        super().evaluateAll(frame)
+        super().evaluateAll(frame, _timeline=_timeline)
         lf = self.localFrame(frame)
         for mask in self.masks:
             mask.evaluateAll(lf)

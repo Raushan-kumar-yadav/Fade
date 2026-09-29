@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 from backend.timeline.clips.baseClip import BaseClip
@@ -84,7 +84,7 @@ class VideoClip(BaseClip):
         self._lastFrame = frame
         
         # Call BaseClip.evaluateAll to handle 
-        super().evaluateAll(frame)
+        super().evaluateAll(frame, _timeline=_timeline)
 
         lf = self.localFrame(frame)   
         self.cropLeft.update(lf)
@@ -127,7 +127,14 @@ class VideoClip(BaseClip):
         import skia
         r, g, b, a = self.color
         paint.setColor(skia.Color(r, g, b, a))
-        canvas.drawRect(skia.Rect.MakeXYWH(0, 0, 1920, 1080), paint)
+        try:
+            from backend.state import engine as _eng
+            _cw = int(_eng.compositor.width)  if _eng.compositor else 1920
+            _ch = int(_eng.compositor.height) if _eng.compositor else 1080
+        except Exception:
+            _cw, _ch = 1920, 1080
+        canvas.drawRect(skia.Rect.MakeXYWH(0, 0, _cw, _ch), paint)
+
 
     def _renderMedia(self, canvas, paint, frame: int) -> None:
         import skia
@@ -172,7 +179,7 @@ class VideoClip(BaseClip):
                 iw = float(decoded.width)
                 ih = float(decoded.height)
 
-                # Scale to fit inside canvas preserving aspect ratio
+     
                 scale = min(cw / iw, ch / ih)
                 dw = iw * scale
                 dh = ih * scale

@@ -150,7 +150,41 @@ class Compositor:
         if width != self.width or height != self.height:
             self.width = width
             self.height = height
-            self._surface = None  # recreated 
+            self._surface = None  # recreated
+
+    def renderFullRes(
+        self,
+        timeline: "Timeline",
+        frame: int,
+        width: int,
+        height: int,
+    ) -> bytes:
+        
+        if timeline is None:
+            return b""
+
+        pw = max(2, width)
+        ph = max(2, height)
+
+         
+        saved_w, saved_h = self.width, self.height
+        saved_surf = self._surface
+
+        self.width  = pw
+        self.height = ph
+        self._surface = None  # force fresh surface at export size
+
+        try:
+            with self._renderLock:
+                self._syncClipRegistrations(timeline, frame)
+                img = self._renderFrameAtSize(timeline, frame, pw, ph, 0.0, 0.0, 1.0)
+                data = img.encodeToData(skia.kPNG, 6)
+                return bytes(data)
+        finally:
+            # Always restore — live preview is unaffected
+            self.width   = saved_w
+            self.height  = saved_h
+            self._surface = saved_surf
 
 
     @staticmethod

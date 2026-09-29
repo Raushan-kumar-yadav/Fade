@@ -58,7 +58,9 @@ def draw_pen(canvas: skia.Canvas, clip: "PenClip", frame: int) -> None:
     from backend.rendering.nodes.shapeNode import _draw_shadow, _draw_shape_path
 
     # Evaluate all animatable params so _anim_params  
-    clip.evaluateAll(frame)
+    from backend.state import engine as _engine
+    _expr_tl = _engine.activeTimeline if _engine else None
+    clip.evaluateAll(frame, _timeline=_expr_tl)
 
     if len(clip.points) < 2:
         return

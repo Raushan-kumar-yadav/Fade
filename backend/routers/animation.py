@@ -40,10 +40,7 @@ def _find_clip(clip_id: str):
 
 # Map param id 
 def _resolve_property(clip, param: str):
-    """
-    Return the AnimatableProperty for a named param on any clip.
-    Raises ValueError if param is unknown for this clip type.
-    """
+     
     t = clip.transform
     mapping = {
         "opacity": t.opacity,
@@ -256,11 +253,7 @@ def addKeyframe(clipId: str, req: AddKeyframeRequest):
 
 @router.patch("/anim/{clipId}/keyframe/{param}/{frame}")
 def updateKeyframe(clipId: str, param: str, frame: int, req: UpdateKeyframeRequest):
-    """
-    Update an existing keyframe's value and/or easing/preset in place.
-    frame = timeline frame number (not clip-local).
-    Passing preset= reshapes bezier handles based on actual segment length.
-    """
+     
     from backend.animation.keyframe import Interpolation
     from backend.animation.curve_presets import apply_preset_to_segment, CURVE_PRESETS
 
@@ -353,10 +346,7 @@ def clearAnimation(clipId: str, param: str):
 
 @router.get("/anim/{clipId}/keyframes")
 def getKeyframes(clipId: str):
-    """
-    Return all animated properties and their keyframes for a clip.
-    Also lists static properties with their current base values.
-    """
+     
     clip, _ = _find_clip(clipId)
 
     # Collect all properties  
@@ -403,10 +393,7 @@ def getKeyframes(clipId: str):
 
 @router.get("/anim/{clipId}/params")
 def getClipParams(clipId: str):
-    """
-    Return all animatable parameter IDs with current values, ranges, and animated status.
-    Call this first to discover what you can animate on a clip.
-    """
+     
     from backend.routers.clips import _clip_param_schema, _find_clip as clips_find
 
     clip, _ = _find_clip(clipId)
@@ -594,3 +581,117 @@ def moveKeyframe(clipId: str, req: MoveKeyframeRequest):
         "appliedPreset": applied_preset,
         "keyframe": _kf_to_dict(new_kf),
     }
+
+
+ 
+#  Expression endpoints
+ 
+
+class ExpressionRequest(BaseModel):
+    expression: str
+
+
+class ExpressionTestRequest(BaseModel):
+    expression: str
+    frame: int = 0
+
+
+@router.get("/clips/{clipId}/expression/{param}")
+def get_expression(clipId: str, param: str):
+    """Get the expression string set on a property (empty string if none)."""
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    expr = prop.get_expression()
+    return {
+        "clipId": clipId,
+        "param": param,
+        "expression": expr or "",
+        "hasExpression": expr is not None,
+        "error": prop.expression_error() if expr else "",
+    }
+
+
+@router.post("/clips/{clipId}/expression/{param}")
+def set_expression(clipId: str, param: str, req: ExpressionRequest):
+     
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    prop.set_expression(req.expression)
+
+    if prop.expression_error():
+        # Syntax error  
+        return {
+            "clipId": clipId,
+            "param": param,
+            "expression": req.expression,
+            "status": "syntax_error",
+            "error": prop.expression_error(),
+        }
+
+    notify("timeline")
+    return {
+        "clipId": clipId,
+        "param": param,
+        "expression": req.expression,
+        "status": "ok",
+        "error": "",
+    }
+
+
+@router.delete("/clips/{clipId}/expression/{param}")
+def clear_expression(clipId: str, param: str):
+    """Remove an expression from a clip property, reverting to keyframe control."""
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    prop.set_expression(None)
+    notify("timeline")
+    return {"clipId": clipId, "param": param, "status": "cleared"}
+
+
+@router.post("/clips/{clipId}/expression/{param}/test")
+def test_expression(clipId: str, param: str, req: ExpressionTestRequest):
+    """Evaluate an expression at a given frame without applying it.
+    Use this to preview expression output before committing.
+
+    Returns the computed value or an error string.
+    """
+    clip, _ = _find_clip(clipId)
+    try:
+        prop = _resolve_property(clip, param)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    from backend.animation.expression_context import build_context, SAFE_BUILTINS
+    import types
+
+    # Compile
+    expr = req.expression.strip()
+    try:
+        code = compile(expr, "<test>", "eval")
+    except SyntaxError as exc:
+        return {"ok": False, "error": f"SyntaxError: {exc}", "value": None}
+
+    # Get base value at this frame
+    if prop.is_animated():
+        base = prop._track.evaluateAt(req.frame, prop._baseValue)
+    else:
+        base = prop._baseValue
+
+    tl = engine.activeTimeline if engine else None
+    ctx = build_context(req.frame, base, clip, tl)
+    try:
+        result = eval(code, {"__builtins__": SAFE_BUILTINS}, ctx)
+        return {"ok": True, "value": float(result), "error": ""}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc), "value": None}

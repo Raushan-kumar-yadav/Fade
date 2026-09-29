@@ -39,7 +39,7 @@ const TimelineClip = memo(function TimelineClip({
   const [peaks, setPeaks] = useState<number[]>([]);
   const [waveLoading, setWaveLoading] = useState(false);
 
-  // Keep refs fresh so closures inside onMouseDown always read latest values
+  
   const activeCompIdRef = useRef(state.activeCompId);
   const activeCompKindRef = useRef(state.activeCompKind);
   useEffect(() => {

@@ -57,7 +57,7 @@ function tryRevealMain() {
   }
 }
 
-// Dev log window — available in ALL builds for debugging
+// Dev log window  
 function createDevLogWindow(): void {
   if (devLogWindow && !devLogWindow.isDestroyed()) {
     devLogWindow.focus()
@@ -115,7 +115,14 @@ type RenderEngine = {
 let renderEngine: RenderEngine | null = null
 
  
-let currentPreviewScale = 0.5  
+let currentPreviewScale = 0.5
+let _engineInitW = 0
+let _engineInitH = 0
+let _engineInitFps = 0
+let _engineInitScale = 0
+let _engineBusy = false
+let _resizeTimer: ReturnType<typeof setTimeout> | null = null
+let _isExporting = false   // when true, render:resize IPC is silently ignored
 
  
 const viewportFrameReadyCb = (frameNum: number) => {
@@ -176,10 +183,30 @@ function loadRenderEngine(): void {
   }
 }
 
-function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps = 30): void {
+function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps = 30, forceCold = false): void {
   if (!renderEngine) return
+  if (_engineBusy) {
+    console.log('[RenderEngine] Busy — skipping concurrent init request')
+    return
+  }
   const pw = Math.round(width * currentPreviewScale)
   const ph = Math.round(height * currentPreviewScale)
+
+  // Skip full Vulkan reinit if dimensions are unchanged
+  if (!forceCold &&
+      pw === _engineInitW && ph === _engineInitH &&
+      Math.abs(fps - _engineInitFps) < 0.01 &&
+      currentPreviewScale === _engineInitScale) {
+    return
+  }
+
+  _engineInitW = pw
+  _engineInitH = ph
+  _engineInitFps = fps
+  _engineInitScale = currentPreviewScale
+  _engineBusy = true
+
+  console.log(`[RenderEngine] Resizing to ${width}x${height} @ ${fps}fps`)
   console.log(`[RenderEngine] Init at preview res: ${pw}x${ph} (full: ${width}x${height}, scale: ${currentPreviewScale})`)
   const effectsDir = path.join(getResourcesRoot(), 'backend', 'timeline', 'effects', 'sksl').replace(/\\/g, '/')
   try {
@@ -189,6 +216,9 @@ function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps =
   } catch (e) {
     console.error('[RenderEngine] Initialize error:', e)
     renderEngine = null
+  } finally {
+     
+    setTimeout(() => { _engineBusy = false }, 400)
   }
 }
 
@@ -199,6 +229,8 @@ function initRenderEngineFullRes(pythonPort: number, width = 1920, height = 1080
   try {
     renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
     renderEngine.setFrameReadyCallback(viewportFrameReadyCb)
+    
+    _engineInitW = width; _engineInitH = height; _engineInitFps = fps; _engineInitScale = 1.0
     console.log(`[RenderEngine] Full-res init: ${width}x${height} for export`)
   } catch (e) {
     console.error('[RenderEngine] Full-res init error:', e)
@@ -308,22 +340,20 @@ function startPython(): void {
   console.log('[PY] started — pid:', pyProcess.pid, '| python:', pythonExe)
 }
 
-// ── Graceful shutdown ──────────────────────────────────────────────────────────
-// Kills the FULL process tree (backend.exe + all multiprocessing worker children).
-// On Windows a plain .kill() only signals the top-level process; child workers
-// created via multiprocessing.Process survive as orphans.
+//   Graceful shutdown  
+ 
 function killPythonTree(): void {
   const { execSync } = require('child_process') as typeof import('child_process')
   const pid = pyProcess?.pid
 
   if (process.platform === 'win32') {
-    // 1. Kill the tracked process tree by PID (covers current session)
+    //   Kill the tracked process tree  
     if (pid) {
       console.log(`[Cleanup] taskkill /F /T /PID ${pid}`)
       try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 }) } catch { /* already dead */ }
     }
-    // 2. Sweep ALL backend.exe processes by name — catches any orphans from
-    //    crashed restarts or processes whose PID we lost track of.
+    //  Sweep ALL backend.exe processes by name  
+ 
     try { execSync('taskkill /F /IM backend.exe /T', { stdio: 'ignore', timeout: 5000 }) } catch { /* none running */ }
   } else {
     // Unix: kill entire process group
@@ -336,7 +366,7 @@ function killPythonTree(): void {
 }
 
 function doCleanup(): void {
-  if (appQuitting) return   // idempotent — only run once
+  if (appQuitting) return   // idempotent 
   appQuitting  = true
   pyKilledByUs = true
   console.log('[Cleanup] Starting graceful shutdown…')
@@ -344,10 +374,10 @@ function doCleanup(): void {
   // Pause render engine first so no more callbacks fire
   try { renderEngine?.pause() } catch { /* ignore */ }
 
-  // Destroy all WebComp renderer windows
+  
   try { destroyAll() } catch { /* ignore */ }
 
-  // Close auxiliary windows so window-all-closed fires reliably
+   
   try { if (devLogWindow  && !devLogWindow.isDestroyed())  { devLogWindow.close();  devLogWindow  = null } } catch { /* ignore */ }
   try { if (splashWindow  && !splashWindow.isDestroyed())  { splashWindow.close();  splashWindow  = null } } catch { /* ignore */ }
 
@@ -461,6 +491,242 @@ ipcMain.on('render:set-preview-scale', (_, scale: number) => {
   }
 })
 
+ 
+ipcMain.on('render:resize', (_, width: number, height: number, fps: number) => {
+  if (!renderEngine || !detectedPort) return
+   
+  if (_isExporting) {
+    if (_resizeTimer !== null) { clearTimeout(_resizeTimer); _resizeTimer = null }
+    return
+  }
+  const port = detectedPort
+  if (_resizeTimer !== null) { clearTimeout(_resizeTimer); _resizeTimer = null }
+  _resizeTimer = setTimeout(() => {
+    _resizeTimer = null
+    initRenderEngine(port, width, height, fps)
+  }, 300)
+})
+
+
+// Image / PDF export  
+ 
+ 
+async function waitForFrame0(timeoutMs = 8000): Promise<void> {
+  return new Promise<void>(resolve => {
+    let settled = false
+    const done = () => { if (!settled) { settled = true; resolve() } }
+    renderEngine!.setFrameReadyCallback((_f: number) => {
+      renderEngine!.setFrameReadyCallback(viewportFrameReadyCb)
+      done()
+    })
+    setTimeout(done, timeoutMs)
+    renderEngine!.seekFrame(0)
+  })
+}
+
+ 
+async function activateCompOnPython(compId: string): Promise<void> {
+  const httpMod = require('http') as typeof import('http')
+  await new Promise<void>(resolve => {
+    const req = httpMod.request(
+      { hostname: '127.0.0.1', port: detectedPort!, path: `/comps/${compId}/activate`,
+        method: 'POST', headers: { 'Content-Length': 0 } },
+      () => resolve()
+    )
+    req.on('error', () => resolve())
+    req.end()
+  })
+ 
+  await new Promise<void>(r => setTimeout(r, 150))
+}
+ 
+async function grabFrameAsPng(width: number, height: number): Promise<Buffer | null> {
+  const { nativeImage } = await import('electron')
+  const rawBuf = renderEngine!.getSharedBuffer()
+  const needed = width * height * 4
+  if (!rawBuf || rawBuf.byteLength < needed) {
+    console.warn(`[GrabFrame] Buffer too small: ${rawBuf?.byteLength ?? 0} < ${needed}`)
+    return null
+  }
+  const rgba = Buffer.from(rawBuf, 0, needed)
+  const img = nativeImage.createFromBitmap(rgba, { width, height })
+  return img.toPNG()
+}
+
+ 
+async function restoreEngineAfterExport(prevScale: number): Promise<void> {
+  
+  if (_resizeTimer !== null) { clearTimeout(_resizeTimer); _resizeTimer = null }
+ 
+  await new Promise<void>(r => setTimeout(r, 600))
+  _isExporting = false   // allow resize IPC again
+  if (detectedPort && renderEngine) {
+ 
+    _engineInitW = 0; _engineInitH = 0  // bust cache
+    initRenderEngine(detectedPort, 1920, 1080, 30)
+  }
+  if (prevScale !== 1.0 && renderEngine) {
+    currentPreviewScale = renderEngine.setPreviewScale(prevScale)
+    const httpMod = require('http') as typeof import('http')
+    const body = JSON.stringify({ scale: prevScale })
+    const req2 = httpMod.request(
+      { hostname: '127.0.0.1', port: detectedPort!, path: '/preview/scale',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      () => {}
+    )
+    req2.on('error', () => {})
+    req2.write(body)
+    req2.end()
+  }
+  ;(renderEngine as any)?.resume?.()
+}
+
+
+// Capture a single imageComp 
+ipcMain.handle('export:capture-image', async (_event, config: {
+  compId: string; width: number; height: number; fps: number; outputPath: string
+}) => {
+  if (!renderEngine || !detectedPort) return { ok: false, error: 'Render engine not available' }
+
+  const prevScale = currentPreviewScale
+  _isExporting = true
+  if (_resizeTimer !== null) { clearTimeout(_resizeTimer); _resizeTimer = null }
+  renderEngine.pause()
+
+  try {
+    console.log(`[CaptureImage] ${config.compId} -> ${config.outputPath} (${config.width}x${config.height})`)
+
+     
+    await new Promise<void>(r => setTimeout(r, 700))
+
+    // Activate comp
+    await activateCompOnPython(config.compId)
+
+     initRenderEngineFullRes(detectedPort, config.width, config.height, config.fps ?? 30)
+
+     await new Promise<void>(r => setTimeout(r, 400))
+
+     await waitForFrame0()
+
+    //  Grab PNG
+    const png = await grabFrameAsPng(config.width, config.height)
+    if (!png) return { ok: false, error: 'Frame capture returned empty buffer' }
+
+    fs.writeFileSync(config.outputPath, png)
+    console.log(`[CaptureImage] Saved ${png.length} bytes -> ${config.outputPath}`)
+    return { ok: true, path: config.outputPath }
+
+  } catch (err: any) {
+    console.error('[CaptureImage] Error:', err)
+    return { ok: false, error: String(err) }
+  } finally {
+    await restoreEngineAfterExport(prevScale)
+  }
+})
+
+
+// Capture every page of a pdfComp  
+ipcMain.handle('export:capture-pdf', async (_event, config: {
+  pdfCompId: string;
+  pages: Array<{ compId: string; width: number; height: number }>;
+  outputPath: string;
+  fps?: number;
+}) => {
+  if (!renderEngine || !detectedPort) return { ok: false, error: 'Render engine not available' }
+
+  const prevScale = currentPreviewScale
+  _isExporting = true
+  if (_resizeTimer !== null) { clearTimeout(_resizeTimer); _resizeTimer = null }
+  renderEngine.pause()
+
+  const pagePngs: string[] = []
+
+  try {
+    if (config.pages.length === 0) return { ok: false, error: 'No pages to capture' }
+
+    const fps = config.fps ?? 30
+    const httpMod = require('http') as typeof import('http')
+
+    // Drain: preview frame loop was actively rendering — pause() stops new seeks
+    // but in-flight TCP responses keep arriving ~500ms. Let them drain before
+    // calling initialize() which tears down the live Vulkan context.
+    console.log(`[CapturePDF] Draining preview pipeline (700ms)...`)
+    await new Promise<void>(r => setTimeout(r, 700))
+
+    // Set Python preview scale to 1.0 once for all pages
+    await new Promise<void>(resolve => {
+      const body = JSON.stringify({ scale: 1.0 })
+      const req = httpMod.request(
+        { hostname: '127.0.0.1', port: detectedPort!, path: '/preview/scale',
+          method: 'POST', headers: { 'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(body) } },
+        () => resolve()
+      )
+      req.on('error', () => resolve())
+      req.write(body); req.end()
+    })
+
+ 
+    for (let i = 0; i < config.pages.length; i++) {
+      const page = config.pages[i]
+
+      // Switch Python compositor to this page
+      console.log(`[CapturePDF] Page ${i+1}/${config.pages.length}: activating ${page.compId}`)
+      await activateCompOnPython(page.compId)
+
+      //  Init C++ at full res 
+      console.log(`[CapturePDF] Page ${i+1}: init engine ${page.width}x${page.height}`)
+      initRenderEngineFullRes(detectedPort, page.width, page.height, fps)
+
+      //  Wait for new TCP connection to establish
+      await new Promise<void>(r => setTimeout(r, 400))
+
+      //  Seek frame 0  
+      
+      await waitForFrame0()
+
+      //  Grab and encode
+      const png = await grabFrameAsPng(page.width, page.height)
+      if (!png) {
+        console.warn(`[CapturePDF] Page ${i+1} returned empty buffer — skipping`)
+        continue
+      }
+      pagePngs.push(png.toString('base64'))
+      console.log(`[CapturePDF] Page ${i+1} captured: ${png.length} bytes`)
+    }
+
+    if (pagePngs.length === 0) return { ok: false, error: 'All pages returned empty frames' }
+
+    //  Send PNGs to backend for PDF assembly
+    const assembleBody = JSON.stringify({ outputPath: config.outputPath, pagesBase64: pagePngs })
+    const result = await new Promise<{ ok: boolean; error?: string }>(resolve => {
+      const req = httpMod.request(
+        { hostname: '127.0.0.1', port: detectedPort!, path: '/export/assemble-pdf',
+          method: 'POST', headers: { 'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(assembleBody) } },
+        res => {
+          let body = ''
+          res.on('data', (chunk: Buffer) => { body += chunk.toString() })
+          res.on('end', () => { try { resolve(JSON.parse(body)) } catch { resolve({ ok: res.statusCode === 200 }) } })
+        }
+      )
+      req.on('error', e => resolve({ ok: false, error: e.message }))
+      req.write(assembleBody)
+      req.end()
+    })
+
+    return result
+
+  } catch (err: any) {
+    console.error('[CapturePDF] Error:', err)
+    return { ok: false, error: String(err) }
+  } finally {
+    await restoreEngineAfterExport(prevScale)
+  }
+})
+
+
+
 //   Export IPC  
 ipcMain.on('export:start', async (_event, config) => {
   if (!renderEngine) {
@@ -573,11 +839,11 @@ ipcMain.on('export:start', async (_event, config) => {
         for (const clip of clips) {
           const asset = assetMap.get(clip.webcompId)
           wcExportClips.push({
-            webcompId:   clip.webcompId,
-            startFrame:  clip.startFrame,
-            endFrame:    clip.endFrame,
+            webcompId: clip.webcompId,
+            startFrame: clip.startFrame,
+            endFrame: clip.endFrame,
             mediaOffset: clip.mediaOffset,
-            width:  asset?.width  ?? config.width  ?? 1920,
+            width: asset?.width  ?? config.width  ?? 1920,
             height: asset?.height ?? config.height ?? 1080,
           })
         }
@@ -607,7 +873,7 @@ ipcMain.on('export:start', async (_event, config) => {
           }
         }
 
-        // 4. Capture and push every frame
+        //  Capture and push every frame
         const totalWebCompFrames = clips.reduce((s, c) => s + (c.endFrame - c.startFrame), 0)
         mainWindow?.webContents.send('export:webcomp-phase', {
           active: true, done: 0, total: totalWebCompFrames
@@ -1099,7 +1365,7 @@ app.whenReady().then(() => {
   sendSplash('Creating main window…', 20)
   createWindow()
 
-  // Dev log — auto-show in dev, available via Ctrl+Shift+L in production
+  // Dev log  
   createDevLogWindow()
   if (isDev) {
     sendDevLog('sys', 'Fade dev mode started')

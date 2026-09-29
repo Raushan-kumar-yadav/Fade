@@ -209,8 +209,18 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
     });
  
     const port = (window as any).__FADE_PORT__ ?? 8000;
-    fetch(`http://127.0.0.1:${port}/comps/${resolvedId}/activate`, { method: 'POST' }).catch(() => {});
+    fetch(`http://127.0.0.1:${port}/comps/${resolvedId}/activate`, { method: 'POST' })
+      .then(r => r.json())
+      .then((data: { width?: number; height?: number; fps?: number }) => {
+        if (data.width && data.height) {
+          window.dispatchEvent(new CustomEvent('fade:comp-resized', {
+            detail: { width: data.width, height: data.height, fps: data.fps ?? 30 }
+          }));
+        }
+      })
+      .catch(() => {});
   }, [resolvedId, resolvedName, dispatch]);
+
 
   // FlexLayout model  
   const modelRef = useRef<FlexLayout.Model>(FlexLayout.Model.fromJson(makeImageLayoutJson()));
