@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+ï»¿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSelection } from '../../context/selectionContext';
 import { inspectorApi, type ParamRow, type ClipParams, type KFDef } from '../../api/inspectorApi';
 import { maskApi, effectsApi, type MaskInfo, type EffectInfo, type EffectParamDef } from '../../api/toolsApi';
@@ -6,6 +6,7 @@ import EffectsPanel from './EffectsPanel';
 import TransitionPanel from './TransitionPanel';
 import TextInspectorPanel from './TextInspectorPanel';
 import WebCompInspectorPanel from './WebCompInspectorPanel';
+import TrackingPanel from './TrackingPanel';
 import './InspectorPanel.css';
 
 
@@ -72,7 +73,7 @@ interface KeyframeBtnProps {
 function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBtnProps) {
   return (
     <div className="insp-kf-group">
-      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onPrev} title="Previous keyframe">‹</button>
+      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onPrev} title="Previous keyframe">â€¹</button>
       <button
         className={`insp-kf-diamond${hasKf ? ' insp-kf-diamond--active' : ''}${isAnimated ? ' insp-kf-diamond--animated' : ''}`}
         onClick={onToggle}
@@ -87,7 +88,7 @@ function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBt
           />
         </svg>
       </button>
-      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onNext} title="Next keyframe">›</button>
+      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onNext} title="Next keyframe">â€º</button>
     </div>
   );
 }
@@ -247,7 +248,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     onRefresh(); load();
   }, [kfData, clipId, paramId, onRefresh, load]);
 
-  if (loading) return <div className="insp-kftrack-loading">Loading…</div>;
+  if (loading) return <div className="insp-kftrack-loading">Loadingâ€¦</div>;
 
   // Render  
   const playX = frameToX(currentFrame);
@@ -256,7 +257,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     <div className="insp-kftrack" onClick={e => e.stopPropagation()}>
       {/* Header */}
       <div className="insp-kftrack-header">
-        <span className="insp-kftrack-title">Keyframes — {label}</span>
+        <span className="insp-kftrack-title">Keyframes â€” {label}</span>
         <span className="insp-kftrack-count">{kfData.length} kf</span>
         <button className="insp-kftrack-zoom-btn" onClick={() => { setTlZoom(1); setTlPan(0); }} title="Reset zoom">?</button>
       </div>
@@ -326,7 +327,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
                 fill={col} stroke={isSel ? '#fff' : 'rgba(255,255,255,0.5)'}
                 strokeWidth={isSel ? 1.5 : 1}
               />
-              <title>Frame {kf.frame} · {kf.interp} · {kf.value.toFixed(3)}</title>
+              <title>Frame {kf.frame} Â· {kf.interp} Â· {kf.value.toFixed(3)}</title>
             </g>
           );
         })}
@@ -785,7 +786,7 @@ export default function InspectorPanel() {
     return (
       <div className="insp-empty">
         <div className="insp-empty__spinner" />
-        <div className="insp-empty__text">Loading…</div>
+        <div className="insp-empty__text">Loadingâ€¦</div>
       </div>
     );
   }
@@ -818,11 +819,12 @@ export default function InspectorPanel() {
         <div className="insp-clip-header__badge">{data.clipType.replace('Clip', '')}</div>
         <div className="insp-clip-header__name">{selected.clipName}</div>
         <div className="insp-clip-header__meta">
-          {data.duration} fr · start {data.startFrame} · track {selected.trackIndex + 1}
+          {data.duration} fr Â· start {data.startFrame} Â· track {selected.trackIndex + 1}
         </div>
       </div>
 
-      <div className="insp-groups">
+      <TrackingPanel clipId={data.clipId} startFrame={data.startFrame} duration={data.duration} />
+        <div className="insp-groups">
         {Object.entries(grouped).map(([group, params]) => {
           const { rendered, groups: vec4Groups } = extractVec4Groups(params);
           return (
@@ -971,3 +973,4 @@ function InspectorEffectsPanel({ clipId }: { clipId: string }) {
     </div>
   );
 }
+

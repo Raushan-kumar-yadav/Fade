@@ -21,6 +21,9 @@ class BaseClip(ABC):
          
         from backend.timeline.clips.textClip import MaskLayer   
         self.masks: list = []     
+        
+        # Tracking Data
+        self.trackingData: dict | None = None
 
     # geometry  
     @property
@@ -33,13 +36,14 @@ class BaseClip(ABC):
     def evaluateAll(self, frame: int) -> None:
         """Update all animatable properties for the given timeline frame."""
         lf = self.localFrame(frame)
+        context = {"clip": self, "timelineFrame": frame, "timeline": getattr(self, "timeline", None)}
 
         # Debug header  
         if _dbg.ANIM_DEBUG and frame % _dbg._LOG_EVERY_N == 0:
             print(f"[ANIM] evaluateAll  clip={self.clipId[:8]}({type(self).__name__})  "
                   f"timeline_frame={frame}  local_frame={lf}", flush=True)
 
-        self.transform.evaluateAll(lf)
+        self.transform.evaluateAll(lf, context=context)
 
         # Old animEngine-style params 
         if hasattr(self, '_anim_params'):

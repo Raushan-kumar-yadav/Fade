@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebCompSync } from './useWebCompSync';
 import {
   openPreviewSocket,
@@ -291,7 +291,7 @@ export default function ViewportWidget() {
  
   useEffect(() => {
     const handler = () => {
-      // Never seek during active playback — the backend pipeline is already
+      // Never seek during active playback â€” the backend pipeline is already
       // advancing frames. Seeking here (with stale frameNumRef=0 in non-native
       // mode) is what causes the observed loop-back to frame 0.
       if (isPlayingRef.current) return;
@@ -331,7 +331,7 @@ export default function ViewportWidget() {
   //   Controls  
 
   const togglePlay = useCallback(async () => {
-    if (isImageComp) return;  // play disabled in image comp
+    
     const api = (window as any).electronAPI;
 
     const liveFrame = frameNumRef.current ?? currentFrame;
@@ -666,7 +666,7 @@ export default function ViewportWidget() {
         {!connected && !isNativeRender && (
           <div className="vw-canvas__overlay">
             <div className="vw-canvas__spinner" />
-            <p>{retryCount === 0 ? 'Connecting to engine…' : `Engine starting… (retry ${retryCount})`}</p>
+            <p>{retryCount === 0 ? 'Connecting to engineâ€¦' : `Engine startingâ€¦ (retry ${retryCount})`}</p>
           </div>
         )}
       </div>
@@ -705,8 +705,8 @@ export default function ViewportWidget() {
             id="vw-prev-frame"
             className="vw-btn"  
             title="Previous frame"
-            disabled={isImageComp}
-            style={isImageComp ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+            
+            
             onClick={() => stepFrame(-1)}
           >
             <IconPrev />
@@ -714,9 +714,9 @@ export default function ViewportWidget() {
           <button
             id="vw-play-pause"
             className="vw-btn vw-btn--play"
-            title={isImageComp ? 'Play disabled in image comp' : (isPlaying ? 'Pause' : 'Play')}
-            disabled={isImageComp}
-            style={isImageComp ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+            title={isPlaying ? 'Pause' : 'Play'}
+            
+            
             onClick={togglePlay}
           >
             {isPlaying ? <IconPause /> : <IconPlay />}
@@ -725,8 +725,8 @@ export default function ViewportWidget() {
             id="vw-next-frame"
             className="vw-btn"
             title="Next frame"
-            disabled={isImageComp}
-            style={isImageComp ? { opacity: 0.3, cursor: 'not-allowed' } : undefined}
+            
+            
             onClick={() => stepFrame(1)}
           >
             <IconNext />
@@ -740,10 +740,10 @@ export default function ViewportWidget() {
             title="Playback speed"
             aria-label="Playback speed"
           >
-            <option value={0.25}>0.25×</option>
-            <option value={0.5}>0.5×</option>
-            <option value={1.0}>1×</option>
-            <option value={2.0}>2×</option>
+            <option value={0.25}>0.25Ã—</option>
+            <option value={0.5}>0.5Ã—</option>
+            <option value={1.0}>1Ã—</option>
+            <option value={2.0}>2Ã—</option>
           </select>
         </div>
         {/* In/Out point controls */}
@@ -751,20 +751,20 @@ export default function ViewportWidget() {
           <button
             id="vw-set-in"
             className={`vw-btn vw-inout-btn${inPoint !== null ? ' vw-inout-btn--active' : ''}`}
-            title={`Set In-point (I)${inPoint !== null ? ' — frame ' + inPoint : ''}`}
+            title={`Set In-point (I)${inPoint !== null ? ' â€” frame ' + inPoint : ''}`}
             onClick={handleSetInPoint}
           >
             IN
           </button>
           {loopActive && (
             <span className="vw-inout-label">
-              {inPoint}–{outPoint}
+              {inPoint}â€“{outPoint}
             </span>
           )}
           <button
             id="vw-set-out"
             className={`vw-btn vw-inout-btn${outPoint !== null ? ' vw-inout-btn--active' : ''}`}
-            title={`Set Out-point (O)${outPoint !== null ? ' — frame ' + outPoint : ''}`}
+            title={`Set Out-point (O)${outPoint !== null ? ' â€” frame ' + outPoint : ''}`}
             onClick={handleSetOutPoint}
           >
             OUT
@@ -776,7 +776,7 @@ export default function ViewportWidget() {
               title="Clear loop region (Alt+I or Alt+O)"
               onClick={handleClearInOut}
             >
-              ✕
+              âœ•
             </button>
           )}
         </div>
@@ -784,7 +784,7 @@ export default function ViewportWidget() {
           {/* Zoom indicator + reset */}
           <button
             className="vw-zoom-btn"
-            title="Zoom level — click to fit (or press F)"
+            title="Zoom level â€” click to fit (or press F)"
             onClick={fitToFrame}
           >
             {Math.round(vpZoom * 100)}%
@@ -807,15 +807,15 @@ export default function ViewportWidget() {
             id="vw-format-toggle"
             className={`vw-format-btn${previewFormat === 'png' ? ' vw-format-btn--png' : ''}`}
             title={previewFormat === 'jpeg'
-              ? 'Preview: JPEG (fast, no alpha) — click to switch to PNG for opacity/mask accuracy'
-              : 'Preview: PNG (alpha-correct, slower) — click to switch back to JPEG'}
+              ? 'Preview: JPEG (fast, no alpha) â€” click to switch to PNG for opacity/mask accuracy'
+              : 'Preview: PNG (alpha-correct, slower) â€” click to switch back to JPEG'}
             onClick={handleFormatToggle}
             aria-label="Toggle preview format"
           >
             {previewFormat === 'jpeg' ? 'JPG' : 'PNG'}
           </button>
           <div className={`vw-ws-dot${connected || isNativeRender ? ' vw-ws-dot--ok' : ''}`}
-               title={isNativeRender ? 'Native GPU compositor active' : connected ? 'Engine connected' : 'Connecting…'} />
+               title={isNativeRender ? 'Native GPU compositor active' : connected ? 'Engine connected' : 'Connectingâ€¦'} />
           {isNativeRender && (
             <span className="vw-gpu-badge" title="Vulkan/Skia native render active">GPU</span>
           )}
@@ -827,3 +827,4 @@ export default function ViewportWidget() {
     </div>
   );
 }
+

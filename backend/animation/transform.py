@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import math
 from backend.animation.animatableProperty import AnimatableProperty, Vec2Property
 
@@ -30,13 +30,13 @@ class Transform:
 
     #   Evaluation  
 
-    def evaluateAll(self, frame: int) -> None:
+    def evaluateAll(self, frame: int, context: dict = None) -> None:
         """Update all properties for the given (clip-local) frame."""
-        self.position.update(frame, _prefix="pos")
-        self.scale.update(frame,    _prefix="scale")
-        self.rotation.update(frame, _prop="rotation")
-        self.opacity.update(frame,  _prop="opacity")
-        self.anchor.update(frame,   _prefix="anchor")
+        self.position.update(frame, _prefix="pos", context=context)
+        self.scale.update(frame,    _prefix="scale", context=context)
+        self.rotation.update(frame, _prop="rotation", context=context)
+        self.opacity.update(frame,  _prop="opacity", context=context)
+        self.anchor.update(frame,   _prefix="anchor", context=context)
 
     #   Computed  
 

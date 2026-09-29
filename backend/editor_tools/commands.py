@@ -371,3 +371,37 @@ class TransformClipCommand(Command):
     @property
     def description(self) -> str:
         return "Transform Clip"
+class BindExpressionCommand(Command):
+    def __init__(self, clip_id: str, property_name: str, before_expr: str | None, after_expr: str | None):
+        self.clip_id = clip_id
+        self.property_name = property_name
+        self.before = before_expr
+        self.after = after_expr
+        
+    @property
+    def undoDescription(self) -> str:
+        return f"Undo bind {self.property_name}"
+        
+    @property
+    def redoDescription(self) -> str:
+        return f"Redo bind {self.property_name}"
+        
+    def _apply(self, expr: str | None):
+        from backend.state import engine
+        for tl in [engine.rootTimeline] + [c.timeline for c in getattr(engine, "comps", {}).values() if hasattr(c, "timeline")]:
+            if not tl: continue
+            clip, _ = tl.findClip(self.clip_id)
+            if clip:
+                prop_parts = self.property_name.split(".")
+                obj = clip.transform
+                for p in prop_parts[:-1]:
+                    obj = getattr(obj, p)
+                final_prop = getattr(obj, prop_parts[-1])
+                final_prop.expression = expr
+                return
+
+    def execute(self):
+        self._apply(self.after)
+        
+    def undo(self):
+        self._apply(self.before)

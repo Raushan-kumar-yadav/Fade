@@ -336,9 +336,11 @@ app.include_router(scene_tools.router)  # scene search / clip description tools
 app.include_router(virality.router)  # virality predictor + social connections
 app.include_router(image_tools.router)
 from backend.routers import pii
+from backend.routers import tracking
 app.include_router(pii.router)
+app.include_router(tracking.router)
 
- 
+
 # PII Detection + Sanitization router
 try:
     from backend.routers import pii as _pii_router_mod
