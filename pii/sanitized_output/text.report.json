@@ -1,0 +1,80 @@
+[
+  {
+    "type": "EMAIL"
+  },
+  {
+    "type": "PHONE"
+  },
+  {
+    "type": "AADHAAR"
+  },
+  {
+    "type": "PAN"
+  },
+  {
+    "type": "IPV4"
+  },
+  {
+    "type": "SECRET"
+  },
+  {
+    "type": "AWS_KEY"
+  },
+  {
+    "type": "CREDIT_CARD"
+  },
+  {
+    "type": "EMAIL"
+  },
+  {
+    "type": "PHONE"
+  },
+  {
+    "type": "AADHAAR"
+  },
+  {
+    "type": "PAN"
+  },
+  {
+    "type": "IPV4"
+  },
+  {
+    "type": "SECRET"
+  },
+  {
+    "type": "AWS_KEY"
+  },
+  {
+    "type": "CREDIT_CARD"
+  },
+  {
+    "type": "EMAIL"
+  },
+  {
+    "type": "PHONE"
+  },
+  {
+    "type": "AADHAAR"
+  },
+  {
+    "type": "PAN"
+  },
+  {
+    "type": "IPV4"
+  },
+  {
+    "type": "SECRET"
+  },
+  {
+    "type": "AWS_KEY"
+  },
+  {
+    "type": "CREDIT_CARD"
+  },
+  {
+    "type": "AWS_KEY"
+  },
+  {
+    "type": "CREDIT_CARD"
+  }
+]

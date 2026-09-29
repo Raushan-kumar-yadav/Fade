@@ -1,7 +1,7 @@
 import os
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from backend.state import engine, _library
 from backend.media.asset.mediaAsset import MediaAsset
@@ -139,18 +139,29 @@ def _import_file(filepath: str) -> dict:
 @router.get("/library/assets")
 def listAssets():
     from backend.media.asset.baseAsset import MediaType
+    from backend.pii import security as _pii_sec
     return [
         {
-            "assetId":  a.assetId,
-            "filename": os.path.basename(a.filepath),
-            "filepath": a.filepath,
-            "type": a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType),
+            "assetId":       a.assetId,
+            "filename":      os.path.basename(a.filepath),
+            "filepath":      a.filepath,
+            "type":          a.mediaType.value if hasattr(a.mediaType, 'value') else str(a.mediaType),
+            "securityState": _pii_sec.get_state(a.assetId),
         }
         for a in _library.values()
-         
+
         if getattr(a, 'mediaType', None) != MediaType.webcomp
     ]
 
+
+@router.get("/library/raw/{asset_id}")
+def get_raw_asset(asset_id: str):
+    """Serve the raw asset file for frontend Blob/File generation."""
+    from fastapi.responses import FileResponse
+    asset = _library.get(asset_id)
+    if not asset or not os.path.exists(asset.filepath):
+        raise HTTPException(404, "Asset not found")
+    return FileResponse(asset.filepath)
 
 @router.get("/library/assets/rich")
 def listAssetsRich():
@@ -259,19 +270,21 @@ def listAssetsRich():
         idx_status = _index_status(a.assetId)
         tx_status  = _transcript_status(a.assetId)
 
+        from backend.pii import security as _pii_sec
         entry = {
-            "assetId": a.assetId,
-            "filename": os.path.basename(a.filepath),
-            "filepath": a.filepath,
-            "type": mtype,
-            "durationFrames":  dur_frames,
-            "durationSec": dur_sec,
-            "fps": round(asset_fps, 3),
-            "width": getattr(a, 'width',    0),
-            "height": getattr(a, 'height',   0),
-            "hasAudio": bool(getattr(a, 'hasAudio', False)),
-            "indexStatus": idx_status,
+            "assetId":          a.assetId,
+            "filename":         os.path.basename(a.filepath),
+            "filepath":         a.filepath,
+            "type":             mtype,
+            "durationFrames":   dur_frames,
+            "durationSec":      dur_sec,
+            "fps":              round(asset_fps, 3),
+            "width":            getattr(a, 'width',    0),
+            "height":           getattr(a, 'height',   0),
+            "hasAudio":         bool(getattr(a, 'hasAudio', False)),
+            "indexStatus":      idx_status,
             "transcriptStatus": tx_status,
+            "securityState":    _pii_sec.get_state(a.assetId),
         }
 
         # Enrich with indexed content
@@ -314,6 +327,16 @@ def listAssetsRich():
 
 
 
+
+@router.post("/library/upload")
+async def upload_asset(file: UploadFile = File(...)):
+    """Uploads a raw file (e.g. sanitized output) directly to the library."""
+    downloads_dir = _resolve_download_dir("uploads")
+    os.makedirs(downloads_dir, exist_ok=True)
+    out_path = os.path.join(downloads_dir, file.filename or "upload.bin")
+    with open(out_path, "wb") as f:
+        f.write(await file.read())
+    return _import_file(out_path)
 
 @router.post("/library/import")
 def importAsset(req: ImportRequest):

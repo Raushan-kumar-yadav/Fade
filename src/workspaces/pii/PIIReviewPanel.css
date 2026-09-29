@@ -1,0 +1,134 @@
+.pii-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 12px;
+  background-color: #1e1e1e;
+  color: #d4d4d4;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  box-sizing: border-box;
+}
+
+.pii-panel h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  color: #ffffff;
+  border-bottom: 1px solid #333;
+  padding-bottom: 8px;
+}
+
+.pii-status {
+  font-size: 12px;
+  margin-bottom: 12px;
+  color: #888;
+}
+
+.pii-error {
+  color: #ff5555;
+  background-color: #3a1c1c;
+  padding: 8px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+.pii-list {
+  flex: 1 1 auto;
+  min-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.pii-item {
+  padding: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: background-color 0.2s;
+}
+
+.pii-item:hover {
+  background-color: #2a2a2a;
+}
+
+.pii-item.selected {
+  background-color: #37373d;
+  border-left: 3px solid #007acc;
+}
+
+.pii-item label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  cursor: pointer;
+}
+
+.pii-item input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.pii-type {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pii-conf {
+  font-size: 11px;
+  color: #888;
+}
+
+.pii-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #333;
+  padding-top: 12px;
+}
+
+.pii-btn {
+  background-color: #333;
+  color: #fff;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background-color 0.2s;
+}
+
+.pii-btn:hover {
+  background-color: #444;
+}
+
+.pii-btn.primary {
+  background-color: #007acc;
+}
+
+.pii-btn.primary:hover {
+  background-color: #0098ff;
+}
+
+.pii-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pii-delete-btn {
+  background: transparent;
+  color: #888;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 8px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.pii-delete-btn:hover {
+  color: #ff5555;
+}
