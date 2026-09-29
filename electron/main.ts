@@ -199,11 +199,11 @@ function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps =
     return
   }
 
-  _engineInitW     = pw
-  _engineInitH     = ph
-  _engineInitFps   = fps
+  _engineInitW = pw
+  _engineInitH = ph
+  _engineInitFps = fps
   _engineInitScale = currentPreviewScale
-  _engineBusy      = true
+  _engineBusy = true
 
   console.log(`[RenderEngine] Resizing to ${width}x${height} @ ${fps}fps`)
   console.log(`[RenderEngine] Init at preview res: ${pw}x${ph} (full: ${width}x${height}, scale: ${currentPreviewScale})`)
@@ -339,22 +339,20 @@ function startPython(): void {
   console.log('[PY] started — pid:', pyProcess.pid, '| python:', pythonExe)
 }
 
-// ── Graceful shutdown ──────────────────────────────────────────────────────────
-// Kills the FULL process tree (backend.exe + all multiprocessing worker children).
-// On Windows a plain .kill() only signals the top-level process; child workers
-// created via multiprocessing.Process survive as orphans.
+//   Graceful shutdown  
+ 
 function killPythonTree(): void {
   const { execSync } = require('child_process') as typeof import('child_process')
   const pid = pyProcess?.pid
 
   if (process.platform === 'win32') {
-    // 1. Kill the tracked process tree by PID (covers current session)
+    //   Kill the tracked process tree  
     if (pid) {
       console.log(`[Cleanup] taskkill /F /T /PID ${pid}`)
       try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 }) } catch { /* already dead */ }
     }
-    // 2. Sweep ALL backend.exe processes by name — catches any orphans from
-    //    crashed restarts or processes whose PID we lost track of.
+    //  Sweep ALL backend.exe processes by name  
+ 
     try { execSync('taskkill /F /IM backend.exe /T', { stdio: 'ignore', timeout: 5000 }) } catch { /* none running */ }
   } else {
     // Unix: kill entire process group
@@ -367,7 +365,7 @@ function killPythonTree(): void {
 }
 
 function doCleanup(): void {
-  if (appQuitting) return   // idempotent — only run once
+  if (appQuitting) return   // idempotent 
   appQuitting  = true
   pyKilledByUs = true
   console.log('[Cleanup] Starting graceful shutdown…')
@@ -506,22 +504,26 @@ ipcMain.on('render:resize', (_, width: number, height: number, fps: number) => {
 })
 
 
-//   Image / PDF export — C++ hijack (same mechanism as video export)
-//
-// We reinit C++ at full res, seekFrame(0), grab RGBA, encode to PNG.
-// For PDF we capture each page and send PNGs to Python for assembly.
 
-async function captureCompFrame(
-  compId: string,
-  width: number,
-  height: number,
-  fps: number,
-): Promise<Buffer | null> {
-  if (!renderEngine || !detectedPort) return null
-  const { nativeImage } = await import('electron')
+// Image / PDF export  
+ 
+ 
+async function waitForFrame0(timeoutMs = 8000): Promise<void> {
+  return new Promise<void>(resolve => {
+    let settled = false
+    const done = () => { if (!settled) { settled = true; resolve() } }
+    renderEngine!.setFrameReadyCallback((_f: number) => {
+      renderEngine!.setFrameReadyCallback(viewportFrameReadyCb)
+      done()
+    })
+    setTimeout(done, timeoutMs)
+    renderEngine!.seekFrame(0)
+  })
+}
+
+ 
+async function activateCompOnPython(compId: string): Promise<void> {
   const httpMod = require('http') as typeof import('http')
-
-  // 1. Activate the comp so Python switches to it
   await new Promise<void>(resolve => {
     const req = httpMod.request(
       { hostname: '127.0.0.1', port: detectedPort!, path: `/comps/${compId}/activate`,
@@ -531,41 +533,16 @@ async function captureCompFrame(
     req.on('error', () => resolve())
     req.end()
   })
-  await new Promise<void>(r => setTimeout(r, 80))
-
-  // 2. Reinit C++ at full native resolution
-  initRenderEngineFullRes(detectedPort, width, height, fps)
-
-  // 3. Set Python preview scale to 1.0
-  await new Promise<void>(resolve => {
-    const body = JSON.stringify({ scale: 1.0 })
-    const req = httpMod.request(
-      { hostname: '127.0.0.1', port: detectedPort!, path: '/preview/scale',
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
-      () => resolve()
-    )
-    req.on('error', () => resolve())
-    req.write(body)
-    req.end()
-  })
-
-  // 4. Seek frame 0, wait for frameReady (8 s safety timeout)
-  await new Promise<void>(resolve => {
-    let settled = false
-    const done = () => { if (!settled) { settled = true; resolve() } }
-    renderEngine!.setFrameReadyCallback((_f: number) => {
-      renderEngine!.setFrameReadyCallback(viewportFrameReadyCb)
-      done()
-    })
-    setTimeout(done, 8000)
-    renderEngine!.seekFrame(0)
-  })
-
-  // 5. Read RGBA buffer and encode to PNG via nativeImage
-  const rawBuf = renderEngine.getSharedBuffer()
+ 
+  await new Promise<void>(r => setTimeout(r, 150))
+}
+ 
+async function grabFrameAsPng(width: number, height: number): Promise<Buffer | null> {
+  const { nativeImage } = await import('electron')
+  const rawBuf = renderEngine!.getSharedBuffer()
   const needed = width * height * 4
   if (!rawBuf || rawBuf.byteLength < needed) {
-    console.warn(`[CaptureFrame] Buffer too small: ${rawBuf?.byteLength} < ${needed}`)
+    console.warn(`[GrabFrame] Buffer too small: ${rawBuf?.byteLength ?? 0} < ${needed}`)
     return null
   }
   const rgba = Buffer.from(rawBuf, 0, needed)
@@ -573,28 +550,73 @@ async function captureCompFrame(
   return img.toPNG()
 }
 
+ 
+async function restoreEngineAfterExport(prevScale: number): Promise<void> {
+ 
+  if (_resizeTimer !== null) { clearTimeout(_resizeTimer); _resizeTimer = null }
+ 
+  await new Promise<void>(r => setTimeout(r, 600))
+  if (detectedPort && renderEngine) {
+ 
+    _engineInitW = 0; _engineInitH = 0  // bust cache
+    initRenderEngine(detectedPort, 1920, 1080, 30)
+  }
+  if (prevScale !== 1.0 && renderEngine) {
+    currentPreviewScale = renderEngine.setPreviewScale(prevScale)
+    const httpMod = require('http') as typeof import('http')
+    const body = JSON.stringify({ scale: prevScale })
+    const req2 = httpMod.request(
+      { hostname: '127.0.0.1', port: detectedPort!, path: '/preview/scale',
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+      () => {}
+    )
+    req2.on('error', () => {})
+    req2.write(body)
+    req2.end()
+  }
+  ;(renderEngine as any)?.resume?.()
+}
 
-// Capture a single imageComp → save as PNG
+
+// Capture a single imageComp -> save as PNG
 ipcMain.handle('export:capture-image', async (_event, config: {
   compId: string; width: number; height: number; fps: number; outputPath: string
 }) => {
-  if (!renderEngine) return { ok: false, error: 'Render engine not available' }
+  if (!renderEngine || !detectedPort) return { ok: false, error: 'Render engine not available' }
+
   const prevScale = currentPreviewScale
+  // Cancel any pending debounce resize so it doesn't interfere
+  if (_resizeTimer !== null) { clearTimeout(_resizeTimer); _resizeTimer = null }
   renderEngine.pause()
+
   try {
     console.log(`[CaptureImage] ${config.compId} -> ${config.outputPath} (${config.width}x${config.height})`)
-    const png = await captureCompFrame(config.compId, config.width, config.height, config.fps ?? 30)
+
+    //   Activate comp
+    await activateCompOnPython(config.compId)
+
+    //  Init C++ at full resolution (one time)
+    initRenderEngineFullRes(detectedPort, config.width, config.height, config.fps ?? 30)
+
+    //  Wait for TCP to connect and settle
+    await new Promise<void>(r => setTimeout(r, 300))
+
+    //  Seek frame 0 and wait for render
+    await waitForFrame0()
+
+    //  Grab PNG
+    const png = await grabFrameAsPng(config.width, config.height)
     if (!png) return { ok: false, error: 'Frame capture returned empty buffer' }
+
     fs.writeFileSync(config.outputPath, png)
     console.log(`[CaptureImage] Saved ${png.length} bytes -> ${config.outputPath}`)
     return { ok: true, path: config.outputPath }
+
   } catch (err: any) {
     console.error('[CaptureImage] Error:', err)
     return { ok: false, error: String(err) }
   } finally {
-    if (detectedPort) initRenderEngine(detectedPort, 1920, 1080, 30)
-    if (prevScale !== 1.0 && renderEngine) currentPreviewScale = renderEngine.setPreviewScale(prevScale)
-    ;(renderEngine as any)?.resume?.()
+    await restoreEngineAfterExport(prevScale)
   }
 })
 
@@ -607,27 +629,75 @@ ipcMain.handle('export:capture-pdf', async (_event, config: {
   fps?: number;
 }) => {
   if (!renderEngine || !detectedPort) return { ok: false, error: 'Render engine not available' }
+
   const prevScale = currentPreviewScale
+  // Cancel any pending debounce resize so it doesn't interfere
+  if (_resizeTimer !== null) { clearTimeout(_resizeTimer); _resizeTimer = null }
   renderEngine.pause()
+
   const pagePngs: string[] = []
+
   try {
+    if (config.pages.length === 0) return { ok: false, error: 'No pages to capture' }
+
+    // Use dimensions from first page  
+    const { width, height } = config.pages[0]
+    const fps = config.fps ?? 30
+
+    //  Init C++ engine at full resolution — ONCE for all pages
+    console.log(`[CapturePDF] Init full-res ${width}x${height} for ${config.pages.length} page(s)`)
+    initRenderEngineFullRes(detectedPort, width, height, fps)
+
+    //  Wait for TCP reconnect to settle
+    await new Promise<void>(r => setTimeout(r, 400))
+
+    //   Set Python preview scale to 1.0
+    const httpMod = require('http') as typeof import('http')
+    await new Promise<void>(resolve => {
+      const body = JSON.stringify({ scale: 1.0 })
+      const req = httpMod.request(
+        { hostname: '127.0.0.1', port: detectedPort!, path: '/preview/scale',
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } },
+        () => resolve()
+      )
+      req.on('error', () => resolve())
+      req.write(body)
+      req.end()
+    })
+
+    //  Per-page: activate  
     for (let i = 0; i < config.pages.length; i++) {
       const page = config.pages[i]
-      console.log(`[CapturePDF] Page ${i+1}/${config.pages.length}: ${page.compId} (${page.width}x${page.height})`)
-      const png = await captureCompFrame(page.compId, page.width, page.height, config.fps ?? 30)
-      if (!png) { console.warn(`[CapturePDF] Page ${i+1} empty - skipping`); continue }
+      console.log(`[CapturePDF] Page ${i+1}/${config.pages.length}: activating ${page.compId}`)
+
+      // Activate this page comp on Python
+      await activateCompOnPython(page.compId)
+
+      // Seek frame 0 and wait for the render
+      await waitForFrame0()
+
+      // Grab PNG
+      const png = await grabFrameAsPng(page.width, page.height)
+      if (!png) {
+        console.warn(`[CapturePDF] Page ${i+1} returned empty buffer — skipping`)
+        continue
+      }
       pagePngs.push(png.toString('base64'))
+      console.log(`[CapturePDF] Page ${i+1} captured: ${png.length} bytes`)
     }
+
     if (pagePngs.length === 0) return { ok: false, error: 'All pages returned empty frames' }
-    const httpMod = require('http') as typeof import('http')
+
+    // 5. Send PNGs to backend for PDF assembly
     const assembleBody = JSON.stringify({ outputPath: config.outputPath, pagesBase64: pagePngs })
     const result = await new Promise<{ ok: boolean; error?: string }>(resolve => {
       const req = httpMod.request(
         { hostname: '127.0.0.1', port: detectedPort!, path: '/export/assemble-pdf',
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(assembleBody) } },
+          method: 'POST', headers: { 'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(assembleBody) } },
         res => {
           let body = ''
-          res.on('data', (c: Buffer) => { body += c.toString() })
+          res.on('data', (chunk: Buffer) => { body += chunk.toString() })
           res.on('end', () => { try { resolve(JSON.parse(body)) } catch { resolve({ ok: res.statusCode === 200 }) } })
         }
       )
@@ -635,16 +705,17 @@ ipcMain.handle('export:capture-pdf', async (_event, config: {
       req.write(assembleBody)
       req.end()
     })
+
     return result
+
   } catch (err: any) {
     console.error('[CapturePDF] Error:', err)
     return { ok: false, error: String(err) }
   } finally {
-    if (detectedPort) initRenderEngine(detectedPort, 1920, 1080, 30)
-    if (prevScale !== 1.0 && renderEngine) currentPreviewScale = renderEngine.setPreviewScale(prevScale)
-    ;(renderEngine as any)?.resume?.()
+    await restoreEngineAfterExport(prevScale)
   }
 })
+
 
 
 //   Export IPC  
@@ -759,11 +830,11 @@ ipcMain.on('export:start', async (_event, config) => {
         for (const clip of clips) {
           const asset = assetMap.get(clip.webcompId)
           wcExportClips.push({
-            webcompId:   clip.webcompId,
-            startFrame:  clip.startFrame,
-            endFrame:    clip.endFrame,
+            webcompId: clip.webcompId,
+            startFrame: clip.startFrame,
+            endFrame: clip.endFrame,
             mediaOffset: clip.mediaOffset,
-            width:  asset?.width  ?? config.width  ?? 1920,
+            width: asset?.width  ?? config.width  ?? 1920,
             height: asset?.height ?? config.height ?? 1080,
           })
         }
@@ -1285,7 +1356,7 @@ app.whenReady().then(() => {
   sendSplash('Creating main window…', 20)
   createWindow()
 
-  // Dev log — auto-show in dev, available via Ctrl+Shift+L in production
+  // Dev log  
   createDevLogWindow()
   if (isDev) {
     sendDevLog('sys', 'Fade dev mode started')
