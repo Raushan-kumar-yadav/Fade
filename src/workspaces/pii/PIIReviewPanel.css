@@ -116,3 +116,19 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.pii-delete-btn {
+  background: transparent;
+  color: #888;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 8px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.pii-delete-btn:hover {
+  color: #ff5555;
+}

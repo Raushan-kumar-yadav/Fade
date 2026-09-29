@@ -115,6 +115,16 @@ export default function PIIReviewPanel({ assetId, assetType }: PIIReviewPanelPro
     setStatus('REVIEWING');
   };
 
+  const removeRedaction = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!piiContext) return;
+    piiContext.setDetections(piiContext.detections.filter(d => d.id !== id));
+    if (piiContext.selectedId === id) {
+      piiContext.setSelectedId(null);
+    }
+    setStatus('REVIEWING');
+  };
+
   const handleSanitize = async () => {
     if (!piiContext || !file) return;
     setStatus('SANITIZING');
@@ -191,6 +201,7 @@ export default function PIIReviewPanel({ assetId, assetType }: PIIReviewPanelPro
               <span className="pii-type">{det.type}</span>
               {det.confidence && <span className="pii-conf">{Math.round(det.confidence * 100)}%</span>}
             </label>
+            <button className="pii-delete-btn" onClick={(e) => removeRedaction(det.id, e)} title="Remove">×</button>
           </div>
         ))}
       </div>
