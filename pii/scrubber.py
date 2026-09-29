@@ -74,7 +74,11 @@ def scrub_text(text, mode="pseudonym", use_ner=True):
     out.append(text[last:])
     return "".join(out), [{"type": l, "start": s, "end": e} for s, e, l in spans]
 
+<<<<<<< HEAD
 OCR_SCALE = 2   # small text (e.g. screen recordings) is missed at 1x
+=======
+OCR_SCALE = 1   # Changed to 1x for performance based on user override
+>>>>>>> origin/feature/image-editor-backend
 
 def _ocr_boxes(img):
     import pytesseract
