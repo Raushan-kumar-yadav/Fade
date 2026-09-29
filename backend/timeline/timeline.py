@@ -94,10 +94,14 @@ class Timeline:
             "timelineId": self.timelineId,
             "name": self.name,
             "kind" : getattr(self,"kind" , "video"),
+            "isHidden":  getattr(self, "isHidden",  False),
+            "isDefault": getattr(self, "isDefault", False),
             "page_ids": list(getattr(self, "page_ids", [])),
             "playheadFrame": self.playheadFrame,
             "width": getattr(self, "width", 1920),
             "height": getattr(self, "height", 1080),
+            "fps": getattr(self, "fps", 30.0),
+            "totalFrames": getattr(self, "totalFrames", 900),
             "tracks": [t.toDict() for t in self.tracks],
             "transitions": [t.toDict() for t in self.transitions],
         }
@@ -118,8 +122,14 @@ class Timeline:
         t = cls(name=data["name"])
         t.timelineId = data["timelineId"]
         t.playheadFrame = data.get("playheadFrame", 0)
-        t.kind = data.get("kind","video")
-        t.page_ids = list(data.get("page_ids", []))
+        t.kind      = data.get("kind", "video")
+        t.isHidden  = data.get("isHidden",  False)
+        t.isDefault = data.get("isDefault", False)
+        t.page_ids  = list(data.get("page_ids", []))
+        t.totalFrames = data.get("totalFrames", 900)
+        t.fps       = data.get("fps", 30.0)
+        t.width     = data.get("width", 1920)
+        t.height    = data.get("height", 1080)
 
         for trackData in data.get("tracks", []):
             trackType = trackData.get("type", "video")

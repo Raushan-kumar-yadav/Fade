@@ -169,10 +169,20 @@ def saveProject(req: SaveRequest):
 
     tl = engine.activeTimeline
     proj_dict = engine.project.toDict()
-    if tl is not None:
-        proj_dict["timeline"] = tl.toDict()
 
-    #   Regular media assets 
+    # Serialize ALL timelines (root + all comps + PDF pages)
+    # Old format only saved the active timeline as "timeline" -> all comps lost.
+    # New format saves the full list under "timelines"; "timeline" kept for
+    # backward-compat readers and as a quick root-timeline fallback.
+    all_timelines = getattr(engine.project, "timelines", [])
+    proj_dict["timelines"] = [t.toDict() for t in all_timelines]
+    if tl is not None:
+        proj_dict["timeline"] = tl.toDict()   # backward compat: active/root timeline
+
+    # Save which comp was active so load can restore the same view
+    proj_dict["activeCompId"] = engine._active_comp_id   # None = root
+
+    #   Regular media assets
     media_assets = {
         asset_id: asset.filepath
         for asset_id, asset in _library.items()
@@ -181,22 +191,31 @@ def saveProject(req: SaveRequest):
     }
     proj_dict["assets"] = media_assets
 
-    # ── Safety guard: don't overwrite a real project with empty in-memory state ──
-    # This prevents the crash-restart-save race where the backend restarts with
-    # no project loaded (0 clips, 0 media) and then Ctrl+S overwrites good data.
-    clip_count_now = 0
-    if tl:
-        for track in tl.tracks:
-            clip_count_now += len(track.clips)
+    # Safety guard: don't overwrite a real project with empty in-memory state.
+    # Count clips across ALL timelines (not just active) so projects that use
+    # comps (root has zero clips) are not falsely blocked.
+    clip_count_now = sum(
+        len(track.clips)
+        for timeline in all_timelines
+        for track in timeline.tracks
+    )
     if clip_count_now == 0 and len(media_assets) == 0 and anchor_path.exists():
         try:
             import json as _json_check
             existing = _json_check.loads(anchor_path.read_text(encoding="utf-8"))
-            existing_clips = sum(len(t.get("clips", [])) for t in existing.get("timeline", {}).get("tracks", []))
+            # Count clips in all saved timelines (new format) or single timeline (old)
+            existing_tl_list = existing.get("timelines", [existing.get("timeline", {})])
+            if isinstance(existing_tl_list, dict):
+                existing_tl_list = [existing_tl_list]
+            existing_clips = sum(
+                len(t.get("clips", []))
+                for tl_d in existing_tl_list
+                for t in (tl_d.get("tracks", []) if isinstance(tl_d, dict) else [])
+            )
             existing_media = len(existing.get("assets", {}))
             if existing_clips > 0 or existing_media > 0:
                 print(
-                    f"[Project] ⚠ Save blocked — backend has empty state "
+                    f"[Project] Save blocked — backend has empty state "
                     f"but disk has {existing_clips} clips / {existing_media} assets. "
                     f"Reload the project first.",
                     flush=True,
@@ -328,15 +347,15 @@ def loadProject(req: LoadRequest):
     proj = engine.loadProject(str(anchor_path))
     proj.filePath = str(anchor_path)
 
-    tl_data = data.get("timeline")
-    if tl_data:
-        
-        _AUDIO_EXTS = (".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a")
+    #   Helper: scrub ghost video-clips pointing at audio files  
+    _AUDIO_EXTS = (".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a")
+
+    def _scrub_ghost_audio_clips(tl_data: dict) -> int:
         scrubbed = 0
         for track_d in tl_data.get("tracks", []):
             if track_d.get("type") != "video":
                 continue
-            clean_clips = []
+            clean = []
             for clip_d in track_d.get("clips", []):
                 clip_type = clip_d.get("type") or clip_d.get("clipType", "")
                 fp = clip_d.get("filepath", "")
@@ -344,24 +363,59 @@ def loadProject(req: LoadRequest):
                     scrubbed += 1
                     print(f"[Project] Scrubbed ghost video clip on audio file: {os.path.basename(fp)}", flush=True)
                     continue
-                clean_clips.append(clip_d)
-            track_d["clips"] = clean_clips
-        if scrubbed:
-            print(f"[Project] Removed {scrubbed} ghost video clip(s) pointing to audio files.", flush=True)
+                clean.append(clip_d)
+            track_d["clips"] = clean
+        return scrubbed
 
-        tl = Timeline.fromDict(tl_data)
-        for ti, track in enumerate(tl.tracks):
+ 
+    def _wire_timeline_clips(restored_tl, project_fps: float) -> None:
+        for ti, track in enumerate(restored_tl.tracks):
             for clip in track.clips:
-                # Wire decoder scheduler for video clips
                 if hasattr(clip, "setScheduler") and engine.scheduler:
-                    clip.setScheduler(engine.scheduler, proj.fps if proj else 30.0)
-                # Register the clip asset  
-                if hasattr(clip, "assetId") and clip.assetId and engine.scheduler:
-                    asset = None  
-                    _clipTrackMap[clip.clipId] = ti
+                    clip.setScheduler(engine.scheduler, project_fps)
+                _clipTrackMap[clip.clipId] = ti
+
+ 
+    timelines_data = data.get("timelines", [])
+
+    if timelines_data:
+        # New multi-timeline format
+        restored_timelines = []
+        total_scrubbed = 0
+        for tl_d in timelines_data:
+            total_scrubbed += _scrub_ghost_audio_clips(tl_d)
+            restored_tl = Timeline.fromDict(tl_d)
+            _wire_timeline_clips(restored_tl, proj.fps if proj else 30.0)
+            restored_timelines.append(restored_tl)
+        if total_scrubbed:
+            print(f"[Project] Removed {total_scrubbed} ghost video clip(s) pointing to audio files.", flush=True)
+        proj.timelines = restored_timelines
+        tl = proj.timelines[0] if proj.timelines else None
+        print(f"[Project] Restored {len(restored_timelines)} timeline(s) from new format.", flush=True)
+
+    elif data.get("timeline"):
+        # Backward-compat: old single-timeline format
+        tl_data = data["timeline"]
+        _scrub_ghost_audio_clips(tl_data)
+        tl = Timeline.fromDict(tl_data)
+        _wire_timeline_clips(tl, proj.fps if proj else 30.0)
         proj.timelines = [tl]
+        print("[Project] Restored 1 timeline from legacy format.", flush=True)
+
     else:
         tl = engine.activeTimeline
+
+    # Restore active comp (which page/comp was open when the project was saved)
+    saved_active_comp_id = data.get("activeCompId")
+    if saved_active_comp_id and proj.timelines:
+        # Verify the comp actually exists before restoring
+        if engine.getTimeline(saved_active_comp_id) is not None:
+            engine._active_comp_id = saved_active_comp_id
+            print(f"[Project] Restored active comp: {saved_active_comp_id[:8]}", flush=True)
+        else:
+            engine._active_comp_id = None
+    # tl = the root timeline for downstream code that still references it
+    tl = engine.activeTimeline
 
     saved_dl_path = data.get("mediaDownloadPath", "")
     if saved_dl_path and hasattr(proj, "settings") and proj.settings is not None:
@@ -435,15 +489,16 @@ def loadProject(req: LoadRequest):
         _library[asset_id] = asset
         wc_restored += 1
         print(f"[Project] WebComp restored: {asset.name} ({asset_id[-8:]})", flush=True)
-
-    # Scan timeline for any unlisted clips  
-    if tl:
-        for track in tl.tracks:
+ 
+    for _scan_tl in getattr(proj, "timelines", [tl] if tl else []):
+        if _scan_tl is None:
+            continue
+        for track in _scan_tl.tracks:
             for clip in track.clips:
                 if getattr(clip, "webcompId", None):
                     continue
                 aid = getattr(clip, "assetId", "")
-                fp = getattr(clip, "filepath", "")
+                fp  = getattr(clip, "filepath", "")
                 if not aid:
                     continue
                 registered = _register(aid, fp)
@@ -456,16 +511,19 @@ def loadProject(req: LoadRequest):
                         "filename_hint": hint,
                     })
 
-    #   Wire decoder scheduler  
-    if tl and engine.scheduler:
-        for track in tl.tracks:
-            for clip in track.clips:
-                aid = getattr(clip, "assetId", "")
-                if aid and aid in _library:
-                    try:
-                        engine.scheduler.registerClip(clip.clipId, _library[aid])
-                    except Exception as e:
-                        print(f"[Project] scheduler.registerClip failed for {aid[:8]}: {e}", flush=True)
+ 
+    if engine.scheduler:
+        for _sched_tl in getattr(proj, "timelines", [tl] if tl else []):
+            if _sched_tl is None:
+                continue
+            for track in _sched_tl.tracks:
+                for clip in track.clips:
+                    aid = getattr(clip, "assetId", "")
+                    if aid and aid in _library:
+                        try:
+                            engine.scheduler.registerClip(clip.clipId, _library[aid])
+                        except Exception as e:
+                            print(f"[Project] scheduler.registerClip failed for {aid[:8]}: {e}", flush=True)
 
     #   Check and submit 
     try:
@@ -508,13 +566,20 @@ def loadProject(req: LoadRequest):
     except Exception as _ie:
         print(f"[Project] Semantic index check failed (non-fatal): {_ie}", flush=True)
 
-    #   Count clips + effects
-    clip_count = sum(len(t.clips) for t in tl.tracks) if tl else 0
+    #   Count clips + effects across ALL timelines
+    clip_count = sum(
+        len(track.clips)
+        for _cnt_tl in getattr(proj, "timelines", [tl] if tl else [])
+        if _cnt_tl is not None
+        for track in _cnt_tl.tracks
+    )
     effect_count = sum(
-        len(getattr(c, "effects", []))
-        for t in tl.tracks for c in t.clips
-    ) if tl else 0
-
+        len(getattr(clip, "effects", []))
+        for _cnt_tl in getattr(proj, "timelines", [tl] if tl else [])
+        if _cnt_tl is not None
+        for track in _cnt_tl.tracks
+        for clip in track.clips
+    )
     for fp in missing:
         print(f"[Project] WARNING: asset file missing: {fp}", flush=True)
     if offline_assets:
