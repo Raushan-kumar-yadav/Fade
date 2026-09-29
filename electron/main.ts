@@ -461,6 +461,16 @@ ipcMain.on('render:set-preview-scale', (_, scale: number) => {
   }
 })
 
+// Re-initialize the C++ render engine when the active composition changes dimensions.
+// This ensures the viewport canvas aspect ratio and pixel buffer match the comp's native size.
+ipcMain.on('render:resize', (_, width: number, height: number, fps: number) => {
+  if (!renderEngine || !detectedPort) return
+  console.log(`[RenderEngine] Resizing to ${width}x${height} @ ${fps}fps`)
+  initRenderEngine(detectedPort, width, height, fps)
+})
+
+
+
 //   Export IPC  
 ipcMain.on('export:start', async (_event, config) => {
   if (!renderEngine) {

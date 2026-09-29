@@ -22,6 +22,9 @@ class InOutRequest(BaseModel):
 def _playback_state() -> dict:
     """Snapshot of current playback state for SSE push."""
     prj = engine.project
+    tl = engine.activeTimeline
+    comp_w = int(getattr(tl, "width",  prj.width  if prj else 1920)) if tl else (int(prj.width) if prj else 1920)
+    comp_h = int(getattr(tl, "height", prj.height if prj else 1080)) if tl else (int(prj.height) if prj else 1080)
     return {
         "playing": engine._playing,
         "frame": engine.currentFrame,
@@ -30,6 +33,8 @@ def _playback_state() -> dict:
         "speed": engine._speed,
         "inPoint": engine._inPoint,
         "outPoint": engine._outPoint,
+        "width": comp_w,
+        "height": comp_h,
     }
 
 
@@ -57,6 +62,9 @@ def seek(req: SeekRequest):
 @router.get("/playback/state")
 def playbackState():
     prj = engine.project
+    tl = engine.activeTimeline
+    comp_w = int(getattr(tl, "width",  prj.width  if prj else 1920)) if tl else (int(prj.width) if prj else 1920)
+    comp_h = int(getattr(tl, "height", prj.height if prj else 1080)) if tl else (int(prj.height) if prj else 1080)
     return {
         "frame": engine.currentFrame,
         "playing": engine._playing,
@@ -65,6 +73,8 @@ def playbackState():
         "speed": engine._speed,
         "inPoint": engine._inPoint,
         "outPoint": engine._outPoint,
+        "width": comp_w,
+        "height": comp_h,
     }
 
 

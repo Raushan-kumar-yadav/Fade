@@ -1141,7 +1141,19 @@ export default function LibraryPanel({ onAddToTimeline }: {
   }, [state.activeCompId, dispatch]);
 
   const handleEnterComp = useCallback((comp: CompMeta) => {
-    dispatch({ type: 'ENTER_COMP', compId: comp.compId, compName: comp.name, kind: comp.kind ?? 'video' });
+    const kind = comp.kind ?? 'video';
+    dispatch({ type: 'ENTER_COMP', compId: comp.compId, compName: comp.name, kind });
+    if (kind === 'pdf') {
+      // Tell App.tsx to switch the PDF workspace to this doc
+      window.dispatchEvent(new CustomEvent('fade:enter-pdf-doc', {
+        detail: { docId: comp.compId, name: comp.name },
+      }));
+    } else if (kind === 'image') {
+      // Tell App.tsx to switch the Image workspace to this comp
+      window.dispatchEvent(new CustomEvent('fade:enter-image-comp', {
+        detail: { compId: comp.compId, name: comp.name },
+      }));
+    }
   }, [dispatch]);
 
   const handleAddCompToTimeline = useCallback(async (comp: CompMeta) => {

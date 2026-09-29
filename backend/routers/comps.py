@@ -208,12 +208,37 @@ def activateComp(compId: str):
     if compId == "root":
         engine.setActiveComp(None)
         root = engine.project.timelines[0] if engine.project.timelines else None
-        return {"activeCompId": root.timelineId if root else None}
+        # Restore project-level dimensions
+        if engine.compositor and engine.project:
+            engine.compositor.resize(int(engine.project.width), int(engine.project.height))
+        from backend.routers.render import _bust_frame_cache
+        _bust_frame_cache()
+        from backend.events import notify
+        notify("comp-resized", {
+            "compId": root.timelineId if root else None,
+            "width": int(engine.project.width),
+            "height": int(engine.project.height),
+            "fps": float(getattr(root, 'fps', engine.project.fps) if root else engine.project.fps),
+        })
+        return {"activeCompId": root.timelineId if root else None,
+                "width": int(engine.project.width), "height": int(engine.project.height),
+                "fps": float(getattr(root, 'fps', engine.project.fps) if root else engine.project.fps)}
     tl = engine.getTimeline(compId)
     if tl is None:
         raise HTTPException(404, f"Composition {compId!r} not found")
     engine.setActiveComp(compId)
-    return {"activeCompId": compId}
+     
+    comp_w = int(getattr(tl, "width",  engine.project.width  if engine.project else 1920))
+    comp_h = int(getattr(tl, "height", engine.project.height if engine.project else 1080))
+    if engine.compositor:
+        engine.compositor.resize(comp_w, comp_h)
+     
+    from backend.routers.render import _bust_frame_cache
+    _bust_frame_cache()
+    from backend.events import notify
+    comp_fps = float(getattr(tl, 'fps', 30))
+    notify("comp-resized", {"compId": compId, "width": comp_w, "height": comp_h, "fps": comp_fps})
+    return {"activeCompId": compId, "width": comp_w, "height": comp_h, "fps": comp_fps}
 
 
 @router.post("/comps/{compId}/ensure-tracks")
@@ -380,7 +405,7 @@ def moveLayer(compId: str, req: MoveLayerRequest):
     if src == dst:
         return {"status": "ok"}
 
-    # Move the layer from src position to dst position
+ 
     layer = tracks.pop(src)
     tracks.insert(dst, layer)
 
@@ -388,12 +413,7 @@ def moveLayer(compId: str, req: MoveLayerRequest):
     return {"status": "ok", "fromIndex": src, "toIndex": dst}
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-#  PDF DOCUMENT ROUTES
-#  A PDF document is a Timeline with kind="pdf" whose page_ids list holds
-#  ordered imageComp IDs (each page = a Timeline with kind="image").
-# ═══════════════════════════════════════════════════════════════════════════════
-
+ 
 class CreatePdfDocRequest(BaseModel):
     name: str = "Untitled Document"
     width: int = 1920
@@ -401,14 +421,14 @@ class CreatePdfDocRequest(BaseModel):
 
 
 class ReorderPagesRequest(BaseModel):
-    page_ids: list[str]   # full ordered list of compIds
+    page_ids: list[str]   
 
 
 def _make_image_comp(name: str, width: int, height: int, hidden: bool = True):
     """Create a new image composition (PDF page) and return it."""
     comp = engine.createComposition(name=name, width=width, height=height, fps=30, total_frames=1)
     comp.kind = "image"
-    comp.isHidden = hidden   # PDF page comps are hidden from the library by default
+    comp.isHidden = hidden   
     comp.isDefault = False
     return comp
 
@@ -429,7 +449,7 @@ def createPdfDoc(req: CreatePdfDocRequest):
     if engine.project is None:
         raise HTTPException(400, "No active project")
 
-    # Dedup guard: if any PDF doc already exists, return the first one.
+ 
     for tl in engine.project.timelines:
         if getattr(tl, "kind", "video") == "pdf":
             return {
@@ -486,14 +506,25 @@ def listPdfDocs():
 def getPdfPages(docId: str):
     """Get ordered list of pages for a PDF document."""
     doc = _get_pdf_doc(docId)
+    doc_w = int(getattr(doc, "width",  1920))
+    doc_h = int(getattr(doc, "height", 1080))
+
     pages = []
     for idx, comp_id in enumerate(doc.page_ids):
         comp = engine.getTimeline(comp_id)
+        if comp is not None:
+        
+            if int(getattr(comp, "width", 0)) != doc_w or int(getattr(comp, "height", 0)) != doc_h:
+                comp.width  = doc_w
+                comp.height = doc_h
+                print(f"[AutoRepair] Page {comp.name} resized to {doc_w}x{doc_h}", flush=True)
         pages.append({
             "index": idx,
             "pageId": comp_id,
             "compId": comp_id,
             "name": comp.name if comp else f"Page {idx + 1}",
+            "width": doc_w,
+            "height": doc_h,
             "exists": comp is not None,
         })
     return {"docId": docId, "pages": pages}
@@ -507,7 +538,10 @@ def addPdfPage(docId: str):
     doc = _get_pdf_doc(docId)
     page_num = len(doc.page_ids) + 1
     doc_name = doc.name
-    page = _make_image_comp(f"{doc_name} — Page {page_num}", 1920, 1080)
+    # Inherit parent PDF doc's dimensions so every page matches the doc canvas size
+    doc_w = int(getattr(doc, "width",  1920))
+    doc_h = int(getattr(doc, "height", 1080))
+    page = _make_image_comp(f"{doc_name} \u2014 Page {page_num}", doc_w, doc_h)
     doc.page_ids.append(page.timelineId)
     from backend.events import notify; notify("comps")
     return {
@@ -516,6 +550,7 @@ def addPdfPage(docId: str):
         "compId": page.timelineId,
         "name": page.name,
     }
+
 
 
 @router.delete("/pdf-docs/{docId}/pages/{pageId}")
@@ -529,7 +564,6 @@ def deletePdfPage(docId: str, pageId: str):
     if len(doc.page_ids) <= 1:
         raise HTTPException(400, "Cannot delete the last page")
     doc.page_ids.remove(pageId)
-    # Also remove the imageComp timeline
     engine.deleteComposition(pageId)
     from backend.events import notify; notify("comps")
     return {"status": "ok", "docId": docId, "deletedPageId": pageId}
@@ -539,9 +573,34 @@ def deletePdfPage(docId: str, pageId: str):
 def reorderPdfPages(docId: str, req: ReorderPagesRequest):
     """Reorder pages by providing the new complete ordered list of compIds."""
     doc = _get_pdf_doc(docId)
-    # Validate — must be same set
     if set(req.page_ids) != set(doc.page_ids):
         raise HTTPException(400, "page_ids must contain the same pages, just reordered")
     doc.page_ids = list(req.page_ids)
     from backend.events import notify; notify("comps")
     return {"status": "ok", "pageIds": doc.page_ids}
+
+
+@router.post("/pdf-docs-repair-sizes")
+def repairPdfPageSizes():
+    """Fix any PDF page comps whose width/height does not match their parent doc."""
+    if engine.project is None:
+        raise HTTPException(400, "No active project")
+    fixed = []
+    for tl in engine.project.timelines:
+        if getattr(tl, "kind", "video") != "pdf":
+            continue
+        doc_w = int(getattr(tl, "width",  1920))
+        doc_h = int(getattr(tl, "height", 1080))
+        for pid in getattr(tl, "page_ids", []):
+            page = engine.getTimeline(pid)
+            if page is None:
+                continue
+            page_w = int(getattr(page, "width",  1920))
+            page_h = int(getattr(page, "height", 1080))
+            if page_w != doc_w or page_h != doc_h:
+                page.width  = doc_w
+                page.height = doc_h
+                fixed.append({"pageId": pid, "newWidth": doc_w, "newHeight": doc_h})
+                print(f"[RepairPageSizes] {page.name}: {page_w}x{page_h} -> {doc_w}x{doc_h}", flush=True)
+    from backend.events import notify; notify("comps")
+    return {"fixed": fixed, "count": len(fixed)}

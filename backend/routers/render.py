@@ -169,7 +169,13 @@ def _build_comp_frame_descriptor(
     }
 
 
-_frame_cache_project: tuple = (None, 30.0, 1920, 1080) 
+_frame_cache_project: tuple = (None, 30.0, 1920, 1080, None)   # (proj, fps, w, h, comp_id)
+
+
+def _bust_frame_cache() -> None:
+    """Invalidate the dimension cache so the next _get_frame_data call re-reads the active comp."""
+    global _frame_cache_project
+    _frame_cache_project = (None, 30.0, 1920, 1080, None)
 
 
 def _get_frame_data(frame: int) -> dict:
@@ -179,15 +185,20 @@ def _get_frame_data(frame: int) -> dict:
         return {"frame": frame, "fps": 30.0, "width": 1920, "height": 1080, "clips": []}
 
     proj = engine.project
-    # Cache fps/width/height  
-    if proj is not _frame_cache_project[0]:
+    active_id = getattr(engine, '_active_comp_id', None)
+    # Cache fps/width/height keyed by (project, active_comp_id)
+    if proj is not _frame_cache_project[0] or active_id != _frame_cache_project[4]:
+     
+        comp_w = int(getattr(tl, "width",  proj.width  if proj else 1920))
+        comp_h = int(getattr(tl, "height", proj.height if proj else 1080))
         _frame_cache_project = (
             proj,
             float(proj.fps) if proj else 30.0,
-            int(proj.width) if proj else 1920,
-            int(proj.height) if proj else 1080,
+            comp_w,
+            comp_h,
+            active_id,
         )
-    _, fps, width, height = _frame_cache_project
+    _, fps, width, height, _ = _frame_cache_project
 
     clips_out = []
     for track in reversed(tl.tracks):

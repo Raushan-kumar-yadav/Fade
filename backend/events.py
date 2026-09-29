@@ -1,4 +1,4 @@
- 
+
 from __future__ import annotations
 
 import asyncio
@@ -11,6 +11,12 @@ _subscribers: list[asyncio.Queue] = []
  
 _loop: asyncio.AbstractEventLoop | None = None
 
+# Per-scope last-notify time for deduplication.
+# comp-resized events fired < 100ms apart are collapsed to prevent storms.
+_DEDUP_SCOPES = {"comp-resized"}
+_last_notify: dict[str, float] = {}
+_DEDUP_INTERVAL = 0.10  # seconds
+
 
 def notify(scope: str, data: dict | None = None) -> None:
     """Push an SSE event to all subscribers.
@@ -18,6 +24,13 @@ def notify(scope: str, data: dict | None = None) -> None:
     Safe to call from ANY thread — uses call_soon_threadsafe when called from
     outside the event loop (e.g. worker download threads, worker_bus drain thread).
     """
+    # Deduplication: skip if the same scope was sent within the dedup interval.
+    if scope in _DEDUP_SCOPES:
+        now = time.monotonic()
+        if now - _last_notify.get(scope, 0.0) < _DEDUP_INTERVAL:
+            return
+        _last_notify[scope] = now
+
     payload = json.dumps({"scope": scope, "ts": time.time(), **(data or {})})
 
      
@@ -26,7 +39,6 @@ def notify(scope: str, data: dict | None = None) -> None:
     except RuntimeError:
         running_loop = None
 
-    dead: list[asyncio.Queue] = []
     for q in list(_subscribers):
         try:
             if running_loop is not None:
@@ -39,18 +51,15 @@ def notify(scope: str, data: dict | None = None) -> None:
                 # Fallback: best-effort direct put  
                 q.put_nowait(payload)
         except (asyncio.QueueFull, RuntimeError):
-            dead.append(q)
-    for q in dead:
-        try:
-            _subscribers.remove(q)
-        except ValueError:
+            # Queue full: silently drop this message — the subscriber is still alive.
+            # Do NOT remove the subscriber (old behaviour killed SSE connections).
             pass
 
 
 async def event_stream() -> AsyncIterator[str]:
     """Async generator that yields SSE-formatted messages."""
     global _loop
-    q: asyncio.Queue = asyncio.Queue(maxsize=128)
+    q: asyncio.Queue = asyncio.Queue(maxsize=256)  # doubled from 128
     _loop = asyncio.get_running_loop()   
     _subscribers.append(q)
      

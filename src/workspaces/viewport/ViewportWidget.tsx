@@ -119,7 +119,38 @@ export default function ViewportWidget() {
     });
   }, []);
 
-   
+  // Listen for comp dimension changes (from any source: page selection, SSE, activateComp)
+  // Re-initialize the C++ render engine at the new size and update the safe-area box.
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleCompResized = (e: Event) => {
+      const { width, height, fps = 30 } = (e as CustomEvent<{ width: number; height: number; fps?: number }>).detail;
+      if (!width || !height) return;
+
+      // Update safe-area box + logical dims immediately
+      nativeWidthRef.current  = width;
+      nativeHeightRef.current = height;
+      setNativeDims({ w: width, h: height });
+
+      // Debounce the expensive C++ reinit: multiple rapid events (SSE + activateComp
+      // response arriving together) must not each trigger a full C++ re-initialization.
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        api?.resizeRenderEngine?.(width, height, fps);
+        window.dispatchEvent(new CustomEvent('fade:render-now'));
+      }, 300);
+    };
+
+    window.addEventListener('fade:comp-resized', handleCompResized);
+    return () => {
+      window.removeEventListener('fade:comp-resized', handleCompResized);
+      if (resizeTimer) clearTimeout(resizeTimer);
+    };
+  }, []);
+
   useEffect(() => {
     if (!isNativeRender) return;
     const api = (window as any).electronAPI;
@@ -129,32 +160,31 @@ export default function ViewportWidget() {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-       
       const buf: ArrayBuffer | null = await api.getRenderBuffer();
       if (!buf) return;
 
-       
+      // Physical pixel dims from C++ buffer — separate from logical comp dims (nativeWidthRef)
       const stats = await api.getRenderStats();
-      const w = stats?.width  ?? nativeWidthRef.current;
-      const h = stats?.height ?? nativeHeightRef.current;
-      const needed = w * h * 4;
+      const physW = stats?.width  ?? nativeWidthRef.current;
+      const physH = stats?.height ?? nativeHeightRef.current;
+      const needed = physW * physH * 4;
       if (buf.byteLength < needed) return;
 
-      if (canvas.width !== w)  canvas.width  = w;
-      if (canvas.height !== h) canvas.height = h;
-      nativeWidthRef.current  = w;
-      nativeHeightRef.current = h;
+      // Paint at physical size — DO NOT overwrite nativeWidthRef (logical comp dims)
+      if (canvas.width  !== physW) canvas.width  = physW;
+      if (canvas.height !== physH) canvas.height = physH;
+      // nativeWidthRef / nativeHeightRef intentionally NOT updated here.
+      // They track the comp's logical dimensions (set by fade:comp-resized).
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
       const rgba = new Uint8ClampedArray(buf, 0, needed);
-      ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
+      ctx.putImageData(new ImageData(rgba, physW, physH), 0, 0);
 
       frameNumRef.current = frameNum;
       window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
       audioRef.current?.tick(frameNum);
-       
       audioRef.current?.syncToFrame(frameNum);
 
       if (frameNum !== lastStateFrameRef.current) {
@@ -254,20 +284,38 @@ export default function ViewportWidget() {
         window.dispatchEvent(new CustomEvent('fade:render-now'));
       });
 
+      // Update canvas dimensions when backend signals comp-resized.
+      // The SSE stream uses named events (event: comp-resized) so we listen
+      // on 'comp-resized', not 'message'.
+      es.addEventListener('comp-resized', (ev: MessageEvent) => {
+        try {
+          const data = JSON.parse(ev.data);
+          if (data.width && data.height) {
+            window.dispatchEvent(new CustomEvent('fade:comp-resized', {
+              detail: { width: data.width, height: data.height, fps: data.fps ?? 30 }
+            }));
+          }
+        } catch { /* ignore */ }
+      });
+
        fallbackId = setInterval(async () => {
         try {
           const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
           if (!r.ok) return;
           const data = await r.json();
-          setConnected(true);  // also mark connected on first successful poll
+          setConnected(true);
           setIsPlaying(data.playing);
           setFps(data.fps);
           setTotalFrames(data.totalFrames ?? 1800);
           if (data.speed    !== undefined) setSpeed(data.speed);
           if (data.inPoint  !== undefined) setInPoint(data.inPoint);
           if (data.outPoint !== undefined) setOutPoint(data.outPoint);
+          // NOTE: dimension changes are handled exclusively by activateComp response
+          // and SSE comp-resized events. Do NOT trigger fade:comp-resized here —
+          // that caused an infinite resize loop (onFrameReady overwrote nativeWidthRef
+          // with the preview-scale buffer size, making the poll fire every 2s forever).
         } catch { /* backend restarting */ }
-      }, 2000); 
+      }, 2000);
     }
 
     const knownPort: number | null = (window as any).__FADE_PORT__;
@@ -473,7 +521,15 @@ export default function ViewportWidget() {
 
   useEffect(() => { fitToFrame(); }, [fitToFrame]);
 
-   
+  // Re-fit viewport whenever comp dimensions change (e.g. portrait PDF page vs landscape video)
+  const prevNativeDims = useRef({ w: 1920, h: 1080 });
+  useEffect(() => {
+    if (nativeDims.w !== prevNativeDims.current.w || nativeDims.h !== prevNativeDims.current.h) {
+      prevNativeDims.current = nativeDims;
+      fitToFrame();
+    }
+  }, [nativeDims, fitToFrame]);
+
   const handleWheel = useCallback((e: WheelEvent) => {
     if (!e.ctrlKey && !spaceDown.current) return;
     e.preventDefault();
@@ -587,6 +643,8 @@ export default function ViewportWidget() {
           style={{
             transform: `translate(${vpPan.x}px, ${vpPan.y}px) scale(${vpZoom})`,
             transformOrigin: 'center center',
+            width: `${nativeDims.w}px`,
+            height: `${nativeDims.h}px`,
           }}
         >
           <canvas
@@ -594,7 +652,9 @@ export default function ViewportWidget() {
             className="vw-canvas__el"
             width={nativeDims.w}
             height={nativeDims.h}
+            style={{ width: `${nativeDims.w}px`, height: `${nativeDims.h}px` }}
           />
+
           {/* Pen / Mask overlay   */}
           {activeTool === 'shape:path' && (
             penOutputMode === 'mask' && selected?.type === 'clip' ? (
