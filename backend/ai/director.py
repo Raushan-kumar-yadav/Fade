@@ -1,15 +1,4 @@
-"""
-backend/ai/director.py
-======================
-Multi-agent parallel composition director.
-
-When a user supplies assets + a high-level intent, the Director:
-  1. Parses the intent into 3 comp-specific sub-prompts
-  2. Creates 3 compositions (image / video / pdf)
-  3. Launches 3 asyncio tasks, each running an independent LangGraph agent
-  4. Streams per-agent progress via notify("agent_progress", {...})
-  5. After all finish -> optionally exports each comp
-"""
+ 
 from __future__ import annotations
 
 import asyncio
@@ -18,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Literal, AsyncIterator, Optional
 
 
-# ── Per-comp tool sets ────────────────────────────────────────────────────────
+#   Per-comp tool sets  
 
 def _build_tool_set(comp_type: str) -> list:
     """Return the appropriate filtered tool list for a comp type."""
@@ -57,7 +46,7 @@ def _build_tool_set(comp_type: str) -> list:
     return [t for t in ALL_TOOLS if getattr(t, "name", None) in name_set]
 
 
-# ── Comp-scoped system prompt ─────────────────────────────────────────────────
+#   Comp-scoped system prompt  
 
 def _comp_system(comp_type: str, comp_id: str, intent: str) -> str:
     labels = {
@@ -95,7 +84,7 @@ def _split_intent(intent: str, assets: list[str]) -> dict[str, str]:
     }
 
 
-# ── Tool labels for SSE ───────────────────────────────────────────────────────
+#   Tool labels for SSE  
 
 _TOOL_LABELS: dict[str, str] = {
     "get_timeline_state": "Reading timeline…",
@@ -126,21 +115,21 @@ _TOOL_LABELS: dict[str, str] = {
 }
 
 
-# ── Agent job ─────────────────────────────────────────────────────────────────
+#   Agent job  
 
 @dataclass
 class AgentJob:
     job_id:    str
     comp_type: str
     comp_id:   str
-    intent:    str
-    status:    str = "pending"   # pending | running | done | error
-    error:     str = ""
-    result:    dict = field(default_factory=dict)
-    task:      Optional[asyncio.Task] = None
+    intent: str
+    status: str = "pending"   # pending | running | done | error
+    error: str = ""
+    result: dict = field(default_factory=dict)
+    task: Optional[asyncio.Task] = None
 
 
-# ── Session registry ──────────────────────────────────────────────────────────
+#   Session registry  
 
 @dataclass
 class DirectorSession:
@@ -156,7 +145,7 @@ def get_session(session_id: str) -> Optional[DirectorSession]:
     return _sessions.get(session_id)
 
 
-# ── Per-agent async runner ────────────────────────────────────────────────────
+#   Per-agent async runner  
 
 async def _run_agent_job(job: AgentJob, port: int, session: DirectorSession) -> None:
     from backend.events import notify
@@ -170,12 +159,12 @@ async def _run_agent_job(job: AgentJob, port: int, session: DirectorSession) -> 
     def _emit(phase: str, label: str, progress: int = 0, **extra):
         notify("agent_progress", {
             "session_id": session.session_id,
-            "job_id":     job.job_id,
-            "comp_type":  job.comp_type,
-            "comp_id":    job.comp_id,
-            "phase":      phase,
-            "label":      label,
-            "progress":   progress,
+            "job_id": job.job_id,
+            "comp_type": job.comp_type,
+            "comp_id": job.comp_id,
+            "phase": phase,
+            "label": label,
+            "progress": progress,
             **extra,
         })
 
@@ -221,17 +210,17 @@ async def _run_agent_job(job: AgentJob, port: int, session: DirectorSession) -> 
         print(f"[Director] {job.comp_type} agent ERROR: {exc}", flush=True)
 
 
-# ── Director ──────────────────────────────────────────────────────────────────
+#   Director  
 
 class Director:
     """Launch and coordinate parallel agents for image, video, and PDF comps."""
 
     async def run(
         self,
-        assets:        list[str],
-        intent:        str,
-        port:          int = 8000,
-        comp_types:    list[str] | None = None,
+        assets: list[str],
+        intent: str,
+        port: int = 8000,
+        comp_types: list[str] | None = None,
         publish_after: bool = False,
     ) -> AsyncIterator[dict]:
         from backend.state import engine
@@ -249,7 +238,7 @@ class Director:
         _DIM: dict[str, tuple[int, int]] = {
             "image": (1080, 1080),
             "video": (1920, 1080),
-            "pdf":   (2480, 3508),
+            "pdf": (2480, 3508),
         }
 
         # Create one comp per requested type
@@ -296,10 +285,10 @@ class Director:
         error_n = sum(1 for j in session.jobs if j.status == "error")
 
         yield {
-            "type":       "all_done",
+            "type": "all_done",
             "session_id": session_id,
-            "done":       done_n,
-            "errors":     error_n,
+            "done": done_n,
+            "errors": error_n,
             "jobs": [
                 {"job_id": j.job_id, "comp_type": j.comp_type,
                  "comp_id": j.comp_id, "status": j.status, "error": j.error}
@@ -309,9 +298,9 @@ class Director:
 
         notify("agent_progress", {
             "session_id": session_id,
-            "phase":      "all_done",
-            "label":      f"All agents finished — {done_n} done, {error_n} errors",
-            "progress":   100,
+            "phase": "all_done",
+            "label": f"All agents finished — {done_n} done, {error_n} errors",
+            "progress": 100,
         })
 
     def cancel(self, session_id: str) -> bool:

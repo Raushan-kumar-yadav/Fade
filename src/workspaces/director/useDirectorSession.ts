@@ -1,6 +1,4 @@
-// useDirectorSession.ts
-// Manages connection to /ai/director/run SSE stream + state for all agent jobs.
-
+ 
 import { useState, useRef, useCallback } from "react";
 
 export type AgentStatus = "pending" | "running" | "done" | "error" | "cancelled";
@@ -9,17 +7,17 @@ export interface AgentState {
   job_id:    string;
   comp_type: "image" | "video" | "pdf";
   comp_id:   string;
-  status:    AgentStatus;
-  label:     string;
+  status: AgentStatus;
+  label: string;
   progress:  number;
-  thinking:  string;   // last N chars of token stream
-  error:     string;
+  thinking: string;   // last N chars of token stream
+  error: string;
 }
 
 export interface DirectorSessionState {
   session_id:  string | null;
-  phase:       "idle" | "running" | "done" | "error";
-  agents:      Record<string, AgentState>;   // keyed by comp_type
+  phase: "idle" | "running" | "done" | "error";
+  agents: Record<string, AgentState>;   // keyed by comp_type
   overallPct:  number;
 }
 
@@ -38,7 +36,7 @@ export function useDirectorSession() {
     try {
       const data = JSON.parse(raw);
 
-      // Session created — initialise agent cards
+      // Session created  
       if (data.type === "session_created") {
         setSession(prev => {
           const agents: Record<string, AgentState> = { ...prev.agents };
@@ -166,12 +164,12 @@ export function useDirectorSession() {
 
 function _phaseToStatus(phase: string, current: AgentStatus): AgentStatus {
   switch (phase) {
-    case "start":     return "running";
+    case "start": return "running";
     case "thinking":  return "running";
-    case "tool":      return "running";
-    case "done":      return "done";
-    case "error":     return "error";
+    case "tool": return "running";
+    case "done": return "done";
+    case "error": return "error";
     case "cancelled": return "cancelled";
-    default:          return current;
+    default: return current;
   }
 }

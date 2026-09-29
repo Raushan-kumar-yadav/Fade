@@ -44,7 +44,7 @@ _PREFERRED_MODELS = [
     "mistral:latest",
 ]
 
-# Vision / embedding models that do NOT support tool/function calling.
+ 
 _NO_TOOLS_MODELS = [
     "moondream", "moondream2", "llava", "llava-phi3", "llava-llama3",
     "bakllava", "minicpm-v", "deepseek-vl", "internvl", "qwen-vl",
@@ -182,7 +182,7 @@ def _build_llm():
             temperature=0,
             api_key=key,
             base_url=base_url,
-            timeout=60,  # free models can be slow; fail fast instead of hanging forever
+            timeout=60,   
         )
 
     elif provider == "openrouter":
@@ -203,8 +203,7 @@ def _build_llm():
         )
 
     elif provider == "llamacpp":
-        # llama.cpp server (local or Tailscale) — OpenAI-compatible API
-        # Start server with: llama-server -m model.gguf --port 8080 --jinja -fa -ngl 99
+         
         from langchain_openai import ChatOpenAI
         base_url = (
             os.environ.get("LLAMACPP_BASE_URL", "http://localhost:8080/v1")
@@ -760,33 +759,17 @@ WORKFLOW:
 Current project context will be injected by the router.
 """
 
-# ---------------------------------------------------------------------------
-#  Context-window guard — trim messages to stay within the model's ctx limit
-# ---------------------------------------------------------------------------
-
-# Conservative budget: leave ~20 K tokens headroom for system prompt +
-# tool schemas + the model's reply.  62 976 is the Gemma-27B ctx shown in
-# the error; we default to 40 000 so even smaller local models are safe.
-_CTX_BUDGET_CHARS = int(os.environ.get("FADE_CTX_BUDGET_CHARS", 40_000 * 4))  # ~40 K tokens
-_MAX_TOOL_RESULT_CHARS = 3_000   # truncate individual tool outputs beyond this
+ 
+_CTX_BUDGET_CHARS = int(os.environ.get("FADE_CTX_BUDGET_CHARS", 40_000 * 4))  
+_MAX_TOOL_RESULT_CHARS = 3_000    
 
 
 def _trim_messages(messages: list) -> list:
-    """Trim a message list so its estimated token count fits inside the budget.
-
-    Strategy:
-    1. Always keep the first message (SystemMessage).
-    2. Truncate any ToolMessage / AIMessage whose content exceeds
-       _MAX_TOOL_RESULT_CHARS (long ChromaDB dumps, timeline JSON, etc.).
-    3. Drop the *oldest* non-system messages one by one until the total
-       estimated character count is within _CTX_BUDGET_CHARS.
-    4. Always keep the most-recent HumanMessage so the model knows what
-       the user actually asked.
-    """
+     
     if not messages:
         return messages
 
-    # Step 1: truncate oversized individual messages
+    # truncate oversized individual messages
     trimmed: list = []
     for msg in messages:
         content = getattr(msg, "content", "") or ""
@@ -800,7 +783,7 @@ def _trim_messages(messages: list) -> list:
             )
         trimmed.append(msg)
 
-    # Step 2: drop oldest non-system messages until we fit
+    #  drop oldest non-system messages until we fit
     def _total_chars(msgs: list) -> int:
         total = 0
         for m in msgs:
@@ -884,9 +867,7 @@ def build_agent(port: int = 8000, tools_override=None, system_override: str = ""
                 f"[AI Agent] Context trimmed: {len(raw_messages)} → {len(messages)} messages",
                 flush=True,
             )
-        # Retry on transient proxy/network disconnects (e.g. Tabi dropping the
-        # streaming connection mid-response with RemoteProtocolError) AND on
-        # upstream HTTP 5xx errors from the LLM provider (e.g. TokenRouter 500).
+         
         _MAX_RETRIES = 4
         for _attempt in range(_MAX_RETRIES):
             try:

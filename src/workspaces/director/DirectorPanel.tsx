@@ -1,30 +1,29 @@
-// DirectorPanel.tsx — Multi-Agent Parallel Composition Director
-
+ 
 import React, { useState, useCallback } from "react";
 import "./DirectorPanel.css";
 import { useDirectorSession, AgentState } from "./useDirectorSession";
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+//   Constants  
 
 const COMP_TYPES = [
-  { id: "image", label: "Image",   icon: "🖼️",  hint: "Social poster" },
-  { id: "video", label: "Video",   icon: "🎬",  hint: "Edited reel" },
-  { id: "pdf",   label: "PDF",     icon: "📄",  hint: "Carousel doc" },
+  { id: "image", label: "Image", icon: "🖼️",  hint: "Social poster" },
+  { id: "video", label: "Video", icon: "🎬",  hint: "Edited reel" },
+  { id: "pdf",   label: "PDF", icon: "📄",  hint: "Carousel doc" },
 ];
 
 const STATUS_ICONS: Record<string, string> = {
-  pending:   "○",
-  running:   "◎",
-  done:      "✓",
-  error:     "✕",
+  pending: "○",
+  running: "◎",
+  done: "✓",
+  error: "✕",
   cancelled: "⊘",
 };
 
-// ── Agent Card ────────────────────────────────────────────────────────────────
+//   Agent Card  
 
 interface AgentCardProps {
-  info:       { id: string; label: string; icon: string };
-  state:      AgentState | undefined;
+  info: { id: string; label: string; icon: string };
+  state: AgentState | undefined;
   onViewComp: (compId: string) => void;
 }
 
@@ -77,12 +76,12 @@ const AgentCard: React.FC<AgentCardProps> = ({ info, state, onViewComp }) => {
   );
 };
 
-// ── Director Panel ────────────────────────────────────────────────────────────
+//   Director Panel  
 
 interface DirectorPanelProps {
-  /** Called when the user clicks "View Comp" — switch the editor to that comp */
+  /** Called when the user clicks "View Comp"  */
   onActivateComp?: (compId: string) => void;
-  /** assetIds pre-seeded from library "Send to Director" */
+ 
   initialAssets?: string[];
 }
 
@@ -90,8 +89,8 @@ const DirectorPanel: React.FC<DirectorPanelProps> = ({
   onActivateComp,
   initialAssets = [],
 }) => {
-  const [intent,    setIntent]    = useState("");
-  const [assets,    setAssets]    = useState<string[]>(initialAssets);
+  const [intent, setIntent] = useState("");
+  const [assets, setAssets] = useState<string[]>(initialAssets);
   const [assetInput, setAssetInput] = useState("");
   const [compTypes, setCompTypes] = useState<string[]>(["image", "video", "pdf"]);
 
@@ -100,7 +99,7 @@ const DirectorPanel: React.FC<DirectorPanelProps> = ({
   const isRunning = session.phase === "running";
   const isDone    = session.phase === "done";
 
-  // ── Asset management ──────────────────────────────────────────────────────
+  //   Asset management  
   const addAsset = useCallback(() => {
     const id = assetInput.trim();
     if (id && !assets.includes(id)) setAssets(prev => [...prev, id]);
@@ -111,20 +110,20 @@ const DirectorPanel: React.FC<DirectorPanelProps> = ({
     setAssets(prev => prev.filter(a => a !== id));
   }, []);
 
-  // ── Comp type toggle ──────────────────────────────────────────────────────
+  //   Comp type toggle  
   const toggleType = useCallback((id: string) => {
     setCompTypes(prev =>
       prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
     );
   }, []);
 
-  // ── Launch ────────────────────────────────────────────────────────────────
+  //   Launch  
   const handleLaunch = useCallback(() => {
     if (!intent.trim() || compTypes.length === 0) return;
     launch(assets, intent.trim(), compTypes);
   }, [intent, assets, compTypes, launch]);
 
-  // ── View comp ─────────────────────────────────────────────────────────────
+  //   View comp  
   const handleViewComp = useCallback((compId: string) => {
     // Call the global activate_comp API directly
     fetch("http://localhost:8000/comps/activate", {
@@ -135,7 +134,7 @@ const DirectorPanel: React.FC<DirectorPanelProps> = ({
     onActivateComp?.(compId);
   }, [onActivateComp]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  //   Render  
   const activeAgents = COMP_TYPES.filter(c => compTypes.includes(c.id));
   const allDone = isDone || (
     activeAgents.length > 0 &&
