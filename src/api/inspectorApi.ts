@@ -1,4 +1,4 @@
-/** inspectorApi.ts — typed client for Inspector param + keyframe routes */
+ 
 
 function port(): number { return (window as any).__FADE_PORT__ ?? 8000; }
 const base = () => `http://127.0.0.1:${port()}`;
@@ -21,7 +21,7 @@ async function del(path: string): Promise<void> {
   await fetch(`${base()}${path}`, { method: 'DELETE' });
 }
 
-//   Types  
+//   Types
 
 export type InterpMode = 'constant' | 'linear' | 'bezier' | 'ease_in' | 'ease_out' | 'ease_both';
 export type ParamType  = 'float' | 'int' | 'toggle' | 'vec2' | 'vec3' | 'vec4';
@@ -38,6 +38,10 @@ export interface ParamRow {
   isAnimated:  boolean;
   hasKeyframe: boolean;
   keyframes:   number[];
+  // Expression state (batch-loaded with params, no extra requests needed)
+  hasExpression:   boolean;
+  expression:      string;
+  expressionError: string;
 }
 
 export interface ClipParams {
@@ -65,7 +69,7 @@ export interface KFListResult {
   components: number;
 }
 
-//   API calls  
+//   API calls
 
 export const inspectorApi = {
   getParams: (clipId: string, frame: number): Promise<ClipParams> =>
@@ -78,7 +82,7 @@ export const inspectorApi = {
     post(`/clips/${clipId}/keyframes/${key}`, kf),
 
   listKeyframes: (clipId: string, key: string): Promise<KFListResult> =>
-    get(`/clips/${clipId}/keyframes/${key}`), 
+    get(`/clips/${clipId}/keyframes/${key}`),
 
   removeKeyframe: (clipId: string, key: string, frame: number) =>
     del(`/clips/${clipId}/keyframes/${key}/${frame}`),

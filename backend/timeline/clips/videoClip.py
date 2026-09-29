@@ -84,7 +84,7 @@ class VideoClip(BaseClip):
         self._lastFrame = frame
         
         # Call BaseClip.evaluateAll to handle 
-        super().evaluateAll(frame)
+        super().evaluateAll(frame, _timeline=_timeline)
 
         lf = self.localFrame(frame)   
         self.cropLeft.update(lf)

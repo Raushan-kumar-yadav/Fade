@@ -87,10 +87,25 @@ class AnimatableProperty:
         else:
             self._currentValue = base
 
-    def evaluate(self, frame: int, _prop: str = "?") -> float:
+    def evaluate(self, frame: int, _prop: str = "?",
+                 _clip=None, _timeline=None) -> float:
+        """Return the value at *frame* without mutating _currentValue.
+        Applies expression if one is active (used for Inspector display value).
+        """
         if not self._isAnimated or self._track.empty():
-            return self._baseValue
-        return self._track.evaluateAt(frame, self._baseValue)
+            base = self._baseValue
+        else:
+            base = self._track.evaluateAt(frame, self._baseValue)
+
+        if self._expr_compiled is not None:
+            try:
+                from backend.animation.expression_context import build_context, SAFE_BUILTINS
+                ctx    = build_context(frame, base, _clip, _timeline)
+                result = eval(self._expr_compiled, {"__builtins__": SAFE_BUILTINS}, ctx)
+                return float(result)
+            except Exception:
+                return base  # fall back silently
+        return base
 
     def is_animated(self) -> bool:
         return self._isAnimated and not self._track.empty()

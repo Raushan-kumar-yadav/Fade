@@ -1,22 +1,13 @@
-"""
-backend/animation/expression_context.py
-========================================
-Safe evaluation sandbox for per-property expressions.
-
-Usage inside AnimatableProperty.update():
-    from backend.animation.expression_context import build_context, SAFE_BUILTINS
-    ctx = build_context(frame, base_value, clip, timeline)
-    result = eval(compiled_expr, {"__builtins__": SAFE_BUILTINS}, ctx)
-"""
+ 
 
 from __future__ import annotations
 import math
 import random
 from typing import Any
 
-# ---------------------------------------------------------------------------
-#  Safe built-ins whitelist — no file I/O, no imports, no exec
-# ---------------------------------------------------------------------------
+ 
+#  Safe built-ins whitelist  
+ 
 
 SAFE_BUILTINS: dict = {
     "abs":   abs,
@@ -35,9 +26,9 @@ SAFE_BUILTINS: dict = {
 }
 
 
-# ---------------------------------------------------------------------------
-#  Wiggle — smooth random oscillation (simplified Perlin-style)
-# ---------------------------------------------------------------------------
+ 
+#  Wiggle — smooth random oscillation  
+ 
 
 def _make_wiggle():
     _cache: dict[tuple, float] = {}
@@ -48,18 +39,8 @@ def _make_wiggle():
         return (h / 0xFFFFFFFF) * 2.0 - 1.0
 
     def wiggle(freq: float, amp: float, seed: int = 0) -> float:
-        """Return a smoothly-varying random value at the current *time*.
-
-        This function is injected into every expression context, so the
-        caller should not pass ``time`` explicitly — it is captured by
-        closure when the context is built.
-
-        Args:
-            freq: Oscillation frequency in Hz (cycles per second).
-            amp:  Amplitude (peak deviation from 0).
-            seed: Optional integer seed for independent noise streams.
-        """
-        # ``time`` is injected via closure in build_context
+         
+ 
         t = _time_ref[0]
         x = t * freq
         xi = int(x)
@@ -76,9 +57,9 @@ def _make_wiggle():
 _wiggle_fn, _time_ref_global = _make_wiggle()
 
 
-# ---------------------------------------------------------------------------
-#  CompProxy — lets expressions reference other clips by id
-# ---------------------------------------------------------------------------
+ 
+#  CompProxy  
+ 
 
 class _ClipProxy:
     """Lightweight read-only view of another clip's current transform values."""
@@ -145,9 +126,9 @@ class _CompProxy:
         raise AttributeError("CompProxy is read-only.")
 
 
-# ---------------------------------------------------------------------------
+ 
 #  Context builder
-# ---------------------------------------------------------------------------
+ 
 
 def build_context(
     frame: int,
@@ -155,22 +136,10 @@ def build_context(
     clip: Any,
     timeline: Any,
 ) -> dict:
-    """Build the expression evaluation namespace for one property at one frame.
-
-    Variables available inside expressions
-    --------------------------------------
-    frame      – current timeline frame (int)
-    time       – current time in seconds (float)
-    fps        – project fps (float)
-    duration   – clip duration in frames (int)
-    value      – keyframe-interpolated value *before* the expression ran
-    this       – the clip object (read-only use recommended)
-    comp       – CompProxy for this timeline; use comp.clip("id").pos_x etc.
-    sin/cos/tan/pi/abs/min/max/clamp/lerp/wiggle – math helpers
-    """
-    fps      = float(getattr(timeline, "fps", 30.0)) if timeline else 30.0
-    t        = frame / fps
-    dur      = int(getattr(clip, "duration", 1)) if clip else 1
+     
+    fps = float(getattr(timeline, "fps", 30.0)) if timeline else 30.0
+    t = frame / fps
+    dur = int(getattr(clip, "duration", 1)) if clip else 1
 
     # Update time reference used by wiggle closure
     _time_ref_global[0] = t
@@ -188,34 +157,34 @@ def build_context(
 
     return {
         # Time
-        "frame":      frame,
-        "time":       t,
-        "fps":        fps,
-        "duration":   dur,
+        "frame": frame,
+        "time": t,
+        "fps": fps,
+        "duration": dur,
         # Self
-        "value":      base_value,
-        "this":       clip,
+        "value": base_value,
+        "this": clip,
         # Comp access
-        "comp":       _CompProxy(timeline) if timeline else None,
-        # Math
-        "sin":        math.sin,
-        "cos":        math.cos,
-        "tan":        math.tan,
-        "atan2":      math.atan2,
-        "sqrt":       math.sqrt,
-        "pi":         math.pi,
-        "tau":        math.tau,
-        "e":          math.e,
-        "floor":      math.floor,
-        "ceil":       math.ceil,
-        "abs":        abs,
-        "min":        min,
-        "max":        max,
-        "round":      round,
-        "clamp":      clamp,
-        "lerp":       lerp,
+        "comp": _CompProxy(timeline) if timeline else None,
+        #  
+        "sin": math.sin,
+        "cos": math.cos,
+        "tan": math.tan,
+        "atan2": math.atan2,
+        "sqrt": math.sqrt,
+        "pi": math.pi,
+        "tau": math.tau,
+        "e": math.e,
+        "floor": math.floor,
+        "ceil": math.ceil,
+        "abs": abs,
+        "min": min,
+        "max": max,
+        "round": round,
+        "clamp": clamp,
+        "lerp": lerp,
         "smoothstep": smoothstep,
-        "wiggle":     _wiggle_fn,
-        # Expose random for staggered offsets (seeded via clip id for stability)
+        "wiggle": _wiggle_fn,
+        # Expose random for staggered offsets 
         "index":      hash(getattr(clip, "clipId", "")) % 1000 if clip else 0,
     }

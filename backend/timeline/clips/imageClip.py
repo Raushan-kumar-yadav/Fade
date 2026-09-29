@@ -75,7 +75,7 @@ class ImageClip(BaseClip):
         self.brush_strokes: list[BrushStroke] = []
 
     def evaluateAll(self, frame: int) -> None:
-        super().evaluateAll(frame)
+        super().evaluateAll(frame, _timeline=_timeline)
         lf = self.localFrame(frame)
         self.cropLeft.update(lf)
         self.cropRight.update(lf)
