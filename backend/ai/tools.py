@@ -4217,3 +4217,109 @@ ALL_TOOLS.extend([
     play, pause, set_playback_speed, set_in_out_points,
     transform_batch,
 ])
+
+
+# ── Director coordination tools ───────────────────────────────────────────────
+
+@tool
+def list_platform_presets() -> str:
+    """List all available social media platform presets with dimensions and duration limits.
+    Use this before creating compositions for a campaign to know the correct dimensions.
+    """
+    from backend.ai.platform_presets import list_presets_summary
+    return list_presets_summary()
+
+
+@tool
+def dispatch_task(
+    agent_type: str,
+    job: str,
+    comp_id: str = "",
+    platform: str = "",
+    create_comp_name: str = "",
+) -> str:
+    """Dispatch a task to a specialized agent (video / image / audio / pdf).
+
+    Use this from the Director to assign work to sub-agents.
+    The task is queued and picked up automatically.
+
+    Args:
+        agent_type: One of video, image, audio, pdf.
+        job: Natural language instruction for the agent.
+        comp_id: Existing composition ID to work in (optional).
+        platform: Platform preset key e.g. youtube, instagram_story, tiktok (optional).
+        create_comp_name: Name for the new composition to create if comp_id is empty (optional).
+    """
+    import asyncio
+    import concurrent.futures
+    from backend.ai.task_queue import get_task_queue
+    from backend.ai.platform_presets import get_preset
+
+    valid_types = ("video", "image", "audio", "pdf")
+    if agent_type not in valid_types:
+        return "Invalid agent_type '{}'. Must be one of: {}".format(agent_type, valid_types)
+
+    resolved_comp_id = comp_id or None
+    if not resolved_comp_id and create_comp_name:
+        preset = get_preset(platform) if platform else None
+        if preset:
+            w, h, fps = preset["width"], preset["height"], preset["fps"]
+        else:
+            w, h, fps = 1920, 1080, 30
+        result = _post("/comps/create", {"name": create_comp_name, "width": w, "height": h, "fps": fps})
+        resolved_comp_id = result.get("compId") or result.get("comp_id")
+        if not resolved_comp_id:
+            return "Failed to create composition '{}': {}".format(create_comp_name, result)
+
+    queue = get_task_queue()
+
+    def _run():
+        return asyncio.run(queue.push(
+            agent_type=agent_type,
+            job=job,
+            comp_id=resolved_comp_id,
+            platform=platform or None,
+        ))
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                task_id = pool.submit(_run).result(timeout=10)
+        else:
+            task_id = loop.run_until_complete(queue.push(
+                agent_type=agent_type, job=job,
+                comp_id=resolved_comp_id, platform=platform or None,
+            ))
+    except RuntimeError:
+        task_id = _run()
+
+    comp_info = " (comp: {})".format(resolved_comp_id) if resolved_comp_id else ""
+    platform_info = " [{}]".format(platform) if platform else ""
+    return "Task {} dispatched to {} agent{}{}.\nJob: {}\nUse get_campaign_status() to monitor progress.".format(
+        task_id, agent_type, platform_info, comp_info, job
+    )
+
+
+@tool
+def get_campaign_status() -> str:
+    """Get the current status of all dispatched agent tasks for the active campaign."""
+    import asyncio
+    import concurrent.futures
+    from backend.ai.task_queue import get_task_queue
+    queue = get_task_queue()
+
+    def _run():
+        return asyncio.run(queue.summary())
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(_run).result(timeout=10)
+        return loop.run_until_complete(queue.summary())
+    except RuntimeError:
+        return _run()
+
+
+ALL_TOOLS.extend([list_platform_presets, dispatch_task, get_campaign_status])

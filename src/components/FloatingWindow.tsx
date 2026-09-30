@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect, type ReactNode } from 'react'
 import './FloatingWindow.css'
+import FloatingAIChat from '../workspaces/FloatingAIChat'
 
 export interface FloatingWindowProps {
   id: string
@@ -56,6 +57,7 @@ export default function FloatingWindow({
     snap: null,
   })
   const [zIndex, setZIndex] = useState(1000)
+  const [aiOpen, setAiOpen] = useState(false)
   const ref    = useRef<HTMLDivElement>(null)
   const drag   = useRef<{ ox: number; oy: number; wx: number; wy: number } | null>(null)
   const resize = useRef<{ ox: number; oy: number; ow: number; oh: number; dir: string } | null>(null)
@@ -167,6 +169,15 @@ export default function FloatingWindow({
         <span className="fw-icon">{icon}</span>
         <span className="fw-title">{title}</span>
         <div className="fw-controls">
+          {/* Per-window AI chat toggle */}
+          <button
+            className="fw-btn fw-btn--ai"
+            title="Toggle AI Assistant"
+            onMouseDown={e => e.stopPropagation()}
+            onClick={() => setAiOpen(v => !v)}
+          >
+            {aiOpen ? '✕' : '🤖'}
+          </button>
           <button
             className="fw-btn fw-btn--min"
             title="Minimize"
@@ -194,6 +205,13 @@ export default function FloatingWindow({
       {!win.minimized && (
         <div className="fw-body">
           {children}
+          {/* Contained AI chat — stays inside this window */}
+          {aiOpen && (
+            <FloatingAIChat
+              contained
+              onClose={() => setAiOpen(false)}
+            />
+          )}
         </div>
       )}
 

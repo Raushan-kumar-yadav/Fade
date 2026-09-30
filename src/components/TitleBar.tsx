@@ -295,41 +295,7 @@ export default function TitleBar({
             key={id}
             className={`titlebar__tab${active === id ? ' titlebar__tab--active' : ''}`}
             onClick={() => onTab(id)}
-            title={label + " (right-click to detach)"}
-            onContextMenu={e => {
-              e.preventDefault()
-              const menu = document.createElement("div")
-              Object.assign(menu.style, {
-                position:"fixed", left:e.clientX+"px", top:e.clientY+"px",
-                background:"#1e1e2e", border:"1px solid rgba(255,255,255,0.12)",
-                borderRadius:"8px", padding:"4px", zIndex:"99999",
-                boxShadow:"0 8px 32px rgba(0,0,0,0.7)",
-                fontFamily:"Inter,sans-serif", fontSize:"12px",
-              })
-              const btn = document.createElement("button")
-              btn.textContent = `⊞  Open "${label}" as floating window`
-              Object.assign(btn.style, {
-                display:"block", width:"100%", padding:"7px 14px",
-                background:"none", border:"none", color:"rgba(255,255,255,0.85)",
-                cursor:"pointer", textAlign:"left", borderRadius:"5px",
-                whiteSpace:"nowrap",
-              })
-              btn.onmouseenter = () => { btn.style.background = "rgba(124,111,255,0.2)" }
-              btn.onmouseleave = () => { btn.style.background = "none" }
-              btn.onclick = () => {
-                window.dispatchEvent(new CustomEvent("fade:detach-tab", { detail: { tabId: id } }))
-                if (document.body.contains(menu)) document.body.removeChild(menu)
-              }
-              menu.appendChild(btn)
-              document.body.appendChild(menu)
-              const dismiss = (ev: MouseEvent) => {
-                if (!menu.contains(ev.target as Node)) {
-                  if (document.body.contains(menu)) document.body.removeChild(menu)
-                  document.removeEventListener("mousedown", dismiss)
-                }
-              }
-              document.addEventListener("mousedown", dismiss)
-            }}
+            title={label}
           >
             {label}
           </button>

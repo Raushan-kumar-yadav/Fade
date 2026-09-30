@@ -72,9 +72,9 @@ function makeDefaultModel() {
 }
 
 // VideoWorkspace  
-export default function VideoWorkspace() {
+export default function VideoWorkspace({ floatingMode = false }: { floatingMode?: boolean }) {
   return (
-    <TimelineProvider>
+    <TimelineProvider floatingMode={floatingMode}>
       <div className="video-ws">
         <WorkspaceInner />
       </div>

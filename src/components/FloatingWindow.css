@@ -110,6 +110,9 @@
 .fw-btn--close { background: rgba(255,80,80,0.12);   color: #ff6060; }
 .fw-btn--close:hover { background: rgba(255,80,80,0.28); }
 
+.fw-btn--ai { background: rgba(124,111,255,0.14); color: #a090ff; font-size: 13px; }
+.fw-btn--ai:hover { background: rgba(124,111,255,0.30); }
+
 /* ── Body ────────────────────────────────────────────────────────────────── */
 
 .fw-body {
@@ -118,6 +121,8 @@
   display: flex;
   flex-direction: column;
   position: relative;
+  /* Creates a new stacking context — position:absolute children stay inside */
+  transform: translateZ(0);
 }
 
 /* ── Resize handles ──────────────────────────────────────────────────────── */

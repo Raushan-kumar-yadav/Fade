@@ -16,7 +16,6 @@ import { SelectionContext, type SelectedItem } from './context/selectionContext'
 import ToolboxWidget from './workspaces/tools/ToolboxWidget'
 import FloatingAIChat from './workspaces/FloatingAIChat'
 import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
-import WindowManager from './components/WindowManager'
 import DraggableAIButton from './components/DraggableAIButton'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
@@ -136,20 +135,16 @@ export default function App() {
   const [brushColor, setBrushColor] = useState<[number, number, number, number]>([1, 1, 1, 1])
   const [brushSize, setBrushSize] = useState<number>(10)
 
-  // Global AI chat widget  
+  // Global AI chat widget
   const [aiOpen, setAiOpen] = useState(false)
 
-  // Any workspace can dispatch ' 
+
+  // Any workspace can toggle AI via custom event
   useEffect(() => {
     const h = () => setAiOpen(v => !v)
     window.addEventListener('fade:ai-toggle', h)
     return () => window.removeEventListener('fade:ai-toggle', h)
   }, [])
-
-  // Auto-show on AI tab 
-  useEffect(() => {
-    if (activeTab === 'ai') setAiOpen(true)
-  }, [activeTab])
 
   // When a clip is selected, push to backend so AI tools can read it
   const setSelected = useCallback((item: SelectedItem | null) => {
@@ -297,6 +292,7 @@ export default function App() {
           />
           <main className="app-workspace">
            
+            {/* Image workspace — stays mounted for independent viewport */}
             <div style={{
               display: isImageTab ? 'flex' : 'none',
               width: '100%', height: '100%',
@@ -308,7 +304,7 @@ export default function App() {
               />
             </div>
 
-            {/* PdfWorkspace  */}
+            {/* PDF workspace — stays mounted */}
             <div style={{
               display: isPdfTab ? 'flex' : 'none',
               width: '100%', height: '100%',
@@ -316,6 +312,7 @@ export default function App() {
               <PdfWorkspace docId={pdfDocId} docName={pdfDocName} />
             </div>
 
+            {/* Other workspaces */}
             {!isImageTab && !isPdfTab && Workspace && <Workspace />}
           </main>
 
@@ -325,16 +322,14 @@ export default function App() {
             <ToolboxWidget onClose={() => setShowToolbox(false)} />
           )}
 
-          {/* AI chat — visible on ALL tabs */}
+          {/* AI chat — one instance per agent tab (key forces remount → reads correct history slot) */}
           <div style={{ display: aiOpen ? 'contents' : 'none' }}>
-            <FloatingAIChat onClose={() => setAiOpen(false)} />
+            <FloatingAIChat key={activeTab} agentId={activeTab} onClose={() => setAiOpen(false)} />
           </div>
 
-          {/* Draggable AI button — visible on all tabs, position persists in localStorage */}
           {!aiOpen && <DraggableAIButton onClick={() => setAiOpen(true)} />}
 
-          {/* Floating detached workspace windows */}
-          <WindowManager />
+
 
           {showSettings && (
             <SettingsPanel onClose={() => setShowSettings(false)} />

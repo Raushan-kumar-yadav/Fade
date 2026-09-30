@@ -23,19 +23,52 @@ interface AgentStatus {
 
 const uid = () => Math.random().toString(36).slice(2, 9)
 
-// Persistent module-level store  
-
-const _WELCOME: Message = {
-  id: 'welcome',
-  role: 'ai',
-  text: "Hi! I'm your AI Director. Ask me to apply effects, download media, create news videos, animate clips, or anything else.",
+ 
+const _WELCOME_TEXTS: Record<string, string> = {
+  video: "üé¨ Hi! I'm your **Video Agent**. I can edit the timeline, place clips, add effects, transitions, text overlays, animations, and export your video. What would you like to create?",
+  image: "üñºÔ∏è Hi! I'm your **Image Agent**. I can create and edit image compositions, add layers, apply filters, generate images, and adjust any visual element. What would you like to design?",
+  audio: "üéµ Hi! I'm your **Audio Agent**. I can adjust volumes, generate voiceovers (TTS), transcribe speech, remove silence, and manage your audio tracks. How can I help?",
+  pdf: "üìÑ Hi! I'm your **Doc Agent**. I can create PDF documents, add pages, populate them with content, and export reports. What document shall we build?",
+  director: "üéØ Hi! I'm the **Director**. Give me a high-level brief ‚Äî like 'make a social media campaign using these clips' ‚Äî and I'll plan the work, create compositions for each platform, and dispatch tasks to the specialized agents. What's the goal?",
+  home: "ü§ñ Hi! I'm your **AI Assistant**. I can help you search for content, answer questions about your project, and guide you to the right workspace. What do you need?",
+  ai: "ü§ñ Hi! I'm your **AI Assistant**. How can I help you today?",
+  export: "üì¶ Hi! I'm your **Export Agent**. I can configure export settings, start renders, and monitor export progress. What format do you need?",
 }
 
-let _persistedMessages: Message[]                       = [_WELCOME]
-let _persistedHistory: { role: string; text: string }[] = []
-let _persistedInput: string                             = ''
+function makeWelcome(agentId: string): Message {
+  const text = _WELCOME_TEXTS[agentId] ?? _WELCOME_TEXTS.video
+  return { id: 'welcome', role: 'ai', text }
+}
+
+const _storeMessages: Map<string, Message[]> = new Map()
+const _storeHistory: Map<string, { role: string; text: string }[]> = new Map()
+const _storeInput: Map<string, string> = new Map()
+
+function getStore(agentId: string) {
+  if (!_storeMessages.has(agentId)) _storeMessages.set(agentId, [makeWelcome(agentId)])
+  if (!_storeHistory.has(agentId)) _storeHistory.set(agentId,  [])
+  if (!_storeInput.has(agentId)) _storeInput.set(agentId, '')
+  return {
+    messages: _storeMessages.get(agentId)!,
+    history:  _storeHistory.get(agentId)!,
+    input:    _storeInput.get(agentId)!,
+  }
+}
 
 // Tool icon map  
+
+// Agent identity metadata  
+const AGENT_META: Record<string, { name: string; emoji: string; color: string }> = {
+  video: { name: 'Video Agent', emoji: 'üé¨', color: '#7c6fff' },
+  image: { name: 'Image Agent', emoji: 'üñºÔ∏è',  color: '#ff6b9d' },
+  audio: { name: 'Audio Agent', emoji: 'üéµ', color: '#00d4aa' },
+  pdf: { name: 'Doc Agent', emoji: 'üìÑ', color: '#f59e0b' },
+  director: { name: 'Director', emoji: 'üéØ', color: '#e879f9' },
+  home: { name: 'AI Assistant', emoji: 'ü§ñ', color: '#6b7280' },
+  ai: { name: 'AI Assistant', emoji: 'ü§ñ', color: '#6b7280' },
+  export: { name: 'Export Agent', emoji: 'üì¶', color: '#3b82f6' },
+  global: { name: 'AI Director', emoji: 'ü§ñ', color: '#7c6fff' },
+}
 
 const TOOL_ICONS: Record<string, string> = {
   get_timeline_state: '??',
@@ -120,12 +153,12 @@ function SelectedClipBadge() {
   return (
     <div className="fchat__clip-badge">
       <span className="fchat__clip-dot" />
-      Clip on track {clip.trackIndex} ó AI can apply effects
+      Clip on track {clip.trackIndex} ÔøΩ AI can apply effects
     </div>
   )
 }
 
-// Single status bar ó the ONLY status indicator in the whole widget
+// Single status bar ÔøΩ the ONLY status indicator in the whole widget
 
 function StatusBar({ status }: { status: AgentStatus }) {
   if (status.phase === 'idle') return null
@@ -173,7 +206,7 @@ function Bubble({ msg }: { msg: Message }) {
   if (msg.role === 'tool_result') {
     const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '?'
     const MAX = 200
-    const preview = msg.text.length > MAX ? msg.text.slice(0, MAX) + 'Ö' : msg.text
+    const preview = msg.text.length > MAX ? msg.text.slice(0, MAX) + 'ÔøΩ' : msg.text
     const truncated = msg.text.length > MAX
     return (
       <div className="fchat__tool-card fchat__tool-card--result">
@@ -206,37 +239,38 @@ function Bubble({ msg }: { msg: Message }) {
 
 // Main FloatingAIChat
 
-interface Props { onClose: () => void }
+interface Props { onClose: () => void; contained?: boolean; agentId?: string }
 
-export default function FloatingAIChat({ onClose }: Props) {
+export default function FloatingAIChat({ onClose, contained = false, agentId = 'global' }: Props) {
   const port = usePort()
 
-  const [messages, setMessages] = useState<Message[]>(_persistedMessages)
-  const [input,    setInput]    = useState(_persistedInput)
+  const store = getStore(agentId)
+  const [messages, setMessages] = useState<Message[]>(() => getStore(agentId).messages)
+  const [input,    setInput]    = useState(() => getStore(agentId).input)
   const [busy,     setBusy]     = useState(false)
   const [status,   setStatus]   = useState<AgentStatus>({ phase: 'idle', label: '' })
 
   // Widget position & size
-  const [pos,  setPos]  = useState({ x: window.innerWidth - 440, y: 72 })
+  const [pos,  setPos]  = useState(() => contained ? { x: 20, y: 50 } : { x: window.innerWidth - 440, y: 72 })
   const [size, setSize] = useState({ w: 420, h: 520 })
 
   const bottomRef  = useRef<HTMLDivElement>(null)
   const abortRef   = useRef<AbortController | null>(null)
-  const historyRef = useRef(_persistedHistory)
+  const historyRef = useRef(getStore(agentId).history)
   const inputRef   = useRef<HTMLTextAreaElement>(null)
   const dragRef    = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
   const resizeRef  = useRef<{ sx: number; sy: number; ow: number; oh: number } | null>(null)
 
-  // Sync persistent store
-  useEffect(() => { _persistedMessages = messages }, [messages])
-  useEffect(() => { _persistedInput    = input    }, [input])
+  // Sync per-agent store
+  useEffect(() => { _storeMessages.set(agentId, messages) }, [agentId, messages])
+  useEffect(() => { _storeInput.set(agentId, input)       }, [agentId, input])
 
   const scrollBottom = useCallback(() => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 40)
   }, [])
 
   const appendMsg = useCallback((msg: Message) => {
-    setMessages(prev => { const n = [...prev, msg]; _persistedMessages = n; return n })
+    setMessages(prev => { const n = [...prev, msg]; return n })
     scrollBottom()
   }, [scrollBottom])
 
@@ -244,7 +278,7 @@ export default function FloatingAIChat({ onClose }: Props) {
     setMessages(prev => {
       const copy = [...prev]
       copy[copy.length - 1] = { ...copy[copy.length - 1], ...patch }
-      _persistedMessages = copy
+      
       return copy
     })
   }, [])
@@ -261,13 +295,13 @@ export default function FloatingAIChat({ onClose }: Props) {
   async function send() {
     const text = input.trim()
     if (!text || busy) return
-    setInput(''); _persistedInput = ''
+    setInput('')
     setBusy(true)
-    setStatus({ phase: 'thinking', label: 'ThinkingÖ' })
+    setStatus({ phase: 'thinking', label: 'ThinkingÔøΩ' })
 
     appendMsg({ id: uid(), role: 'user', text })
     historyRef.current = [...historyRef.current, { role: 'user', text }]
-    _persistedHistory = historyRef.current
+    _storeHistory.set(agentId, historyRef.current)
 
     const aiId = uid()
     appendMsg({ id: aiId, role: 'ai', text: '', streaming: true })
@@ -278,7 +312,7 @@ export default function FloatingAIChat({ onClose }: Props) {
       const res = await fetch(`http://127.0.0.1:${port}/ai/chat`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: text, history: historyRef.current.slice(-20), port }),
+        body:    JSON.stringify({ message: text, history: historyRef.current.slice(-20), port, agent: agentId }),
         signal:  abortRef.current.signal,
       })
       const reader  = res.body!.getReader()
@@ -293,7 +327,7 @@ export default function FloatingAIChat({ onClose }: Props) {
             const evt = JSON.parse(line.slice(6))
 
             if (evt.type === 'status') {
-              // Label comes directly from backend ó never hardcoded here
+              // Label comes directly from backend ÔøΩ never hardcoded here
               setStatus({ phase: evt.phase as Phase, label: evt.label, tool: evt.tool })
 
             } else if (evt.type === 'token') {
@@ -305,7 +339,7 @@ export default function FloatingAIChat({ onClose }: Props) {
               setMessages(prev => {
                 const last = prev[prev.length - 1]
                 if (last?.role === 'ai' && !last.text) {
-                  const n = prev.slice(0, -1); _persistedMessages = n; return n
+                  const n = prev.slice(0, -1); return n
                 }
                 return prev
               })
@@ -316,7 +350,7 @@ export default function FloatingAIChat({ onClose }: Props) {
               appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
               aiText = ''
               dispatchToolEvents(evt.name)
-              // Export tool ó dispatch overlay event
+              // Export tool ÔøΩ dispatch overlay event
               if (evt.name === 'export_video' && typeof evt.content === 'string') {
                 const m = evt.content.match(/EXPORT_JOB_ID:([\w-]+)/)
                 if (m) {
@@ -328,7 +362,7 @@ export default function FloatingAIChat({ onClose }: Props) {
               patchLast({ streaming: false })
               setMessages(prev => {
                 const f = prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai')
-                _persistedMessages = f; return f
+                return f
               })
 
             } else if (evt.type === 'error') {
@@ -343,7 +377,7 @@ export default function FloatingAIChat({ onClose }: Props) {
     }
 
     historyRef.current = [...historyRef.current, { role: 'ai', text: aiText }]
-    _persistedHistory = historyRef.current
+    _storeHistory.set(agentId, historyRef.current)
     setStatus({ phase: 'idle', label: '' })
     setBusy(false)
   }
@@ -406,20 +440,20 @@ export default function FloatingAIChat({ onClose }: Props) {
 
   return (
     <div
-      className={`fchat ${busy ? 'fchat--busy' : ''}`}
+      className={`fchat ${busy ? 'fchat--busy' : ''}${contained ? ' fchat--contained' : ''}`}
       style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
     >
-      {/* Header ó drag to move */}
+      {/* Header ‚Äî drag to move */}
       <div className="fchat__header" onMouseDown={onHeaderMouseDown}>
         <span className="fchat__title">
-          {/* Single static green online dot ó no animation, no phase colour */}
+          {/* Agent identity dot */}
           <span className="fchat__online-dot" />
-          AI Director
+          {AGENT_META[agentId]?.emoji ?? 'ü§ñ'} {AGENT_META[agentId]?.name ?? 'AI Director'}
         </span>
         <button className="fchat__close" onClick={onClose} title="Close">?</button>
       </div>
 
-      {/* ONE status indicator ó shown only while busy, labels from backend */}
+      {/* ONE status indicator ÔøΩ shown only while busy, labels from backend */}
       <StatusBar status={status} />
 
       <SelectedClipBadge />
@@ -436,7 +470,7 @@ export default function FloatingAIChat({ onClose }: Props) {
           <textarea
             ref={inputRef}
             className="fchat__input"
-            placeholder={busy ? 'AI is workingÖ' : 'Ask AI to edit, download media, create videosÖ'}
+            placeholder={busy ? 'AI is workingÔøΩ' : 'Ask AI to edit, download media, create videosÔøΩ'}
             value={input}
             rows={2}
             onChange={e => setInput(e.target.value)}
@@ -445,12 +479,12 @@ export default function FloatingAIChat({ onClose }: Props) {
           />
         </div>
         {busy
-          ? <button className="fchat__send fchat__send--stop" onClick={stop} title="Stop">¶</button>
+          ? <button className="fchat__send fchat__send--stop" onClick={stop} title="Stop">ÔøΩ</button>
           : <button className="fchat__send" onClick={send} title="Send (Enter)">?</button>
         }
       </div>
 
-      {/* Resize handle ó bottom-right corner */}
+      {/* Resize handle ÔøΩ bottom-right corner */}
       <div className="fchat__resize-handle" onMouseDown={onResizeMouseDown} />
     </div>
   )

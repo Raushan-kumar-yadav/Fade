@@ -24,6 +24,7 @@ interface ImageWorkspaceProps {
   compId: string | null;
   compName: string;
   onBack?: () => void; // kept for compat but no longer rendered
+  floatingMode?: boolean;
 }
 
  
@@ -86,9 +87,9 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
 });
 //   Export  
 
-export default function ImageWorkspace({ compId, compName, onBack }: ImageWorkspaceProps) {
+export default function ImageWorkspace({ compId, compName, onBack, floatingMode = false }: ImageWorkspaceProps) {
   return (
-    <TimelineProvider>
+    <TimelineProvider floatingMode={floatingMode}>
       <div className="video-ws image-ws-mode">
         <ImageWorkspaceInner compId={compId} compName={compName} />
       </div>

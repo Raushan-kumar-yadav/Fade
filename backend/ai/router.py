@@ -95,6 +95,7 @@ class ChatRequest(BaseModel):
     message: str
     history: list[dict] = []
     port: int = 8000
+    agent: str = "video"   # agent type: video | image | audio | pdf | director | home
 
 class TranscribeRequest(BaseModel):
     assetId: str
@@ -155,11 +156,13 @@ async def ai_restart():
     import os
     try:
         from backend.ai.agent import _reset_agent
+        from backend.ai.agent_registry import reset_all as _reset_registry
         _reset_agent()
+        _reset_registry()
         provider = os.environ.get("FADE_AI_PROVIDER", "ollama")
         model = os.environ.get("FADE_AI_MODEL", "")
         return {"ok": True, "provider": provider, "model": model,
-                "message": f"Agent will restart with provider '{provider}' on next message."}
+                "message": f"All agents will restart with provider '{provider}' on next message."}
     except Exception as e:
         return {"ok": False, "message": str(e)}
 
@@ -171,8 +174,8 @@ async def ai_chat(req: ChatRequest):
 
     async def event_stream():
         try:
-            from backend.ai.agent import get_agent
-            agent = get_agent(req.port)
+            from backend.ai.agent_registry import get_specialized_agent
+            agent = get_specialized_agent(req.agent, req.port)
 
             # Rebuild history  
             messages = []

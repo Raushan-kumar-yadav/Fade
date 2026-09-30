@@ -493,7 +493,7 @@ interface TimelineContextValue {
 const TimelineCtx = createContext<TimelineContextValue | null>(null);
 
 //   Provider
-export function TimelineProvider({ children }: { children: ReactNode }) {
+export function TimelineProvider({ children, floatingMode = false }: { children: ReactNode; floatingMode?: boolean }) {
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   // Keep refs so async callbacks always read latest values without stale closures
   const stateRef = React.useRef<TimelineState>(state);
@@ -510,8 +510,10 @@ export function TimelineProvider({ children }: { children: ReactNode }) {
     const base = `http://127.0.0.1:${port}`;
     const compId = state.activeCompId ?? 'root';
 
-    // Tell backend which comp is active
-    fetch(`${base}/comps/${compId}/activate`, { method: 'POST' }).catch(() => {});
+    // Tell backend which comp is active — skip when floating to avoid overwriting the main view's active comp
+    if (!floatingMode) {
+      fetch(`${base}/comps/${compId}/activate`, { method: 'POST' }).catch(() => {});
+    }
 
     // For a comp (non-root): ensure it has tracks before fetching state
     const ensureAndFetch = async () => {
