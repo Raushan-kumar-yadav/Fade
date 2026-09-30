@@ -87,13 +87,32 @@ def _ocr_boxes(img):
     except ImportError:
         logger.warning(
             "[PII] pytesseract not installed — OCR-based text detection skipped. "
-            "Install with: pip install pytesseract  (and install Tesseract-OCR binary)"
+            "Install with: pip install pytesseract"
         )
         return [], []
-    from PIL import Image
     import os
-    if os.name == 'nt' and os.path.exists(r'C:\Program Files\Tesseract-OCR\tesseract.exe'):
-        pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    from PIL import Image
+
+    # --- locate Tesseract binary ---
+    _TESS_CANDIDATES = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        r'C:\Users\raush\AppData\Local\Programs\Tesseract-OCR\tesseract.exe',
+    ]
+    for candidate in _TESS_CANDIDATES:
+        if os.path.exists(candidate):
+            pytesseract.pytesseract.tesseract_cmd = candidate
+            break
+
+    # --- point to AIModels/tessdata so eng.traineddata is found ---
+    _AIMODELS_TESSDATA = os.path.join(
+        os.path.dirname(__file__),  # pii/
+        '..', 'AIModels', 'tessdata'
+    )
+    _AIMODELS_TESSDATA = os.path.normpath(_AIMODELS_TESSDATA)
+    if os.path.isdir(_AIMODELS_TESSDATA):
+        os.environ.setdefault('TESSDATA_PREFIX', _AIMODELS_TESSDATA)
+
     big = img.convert("L").resize((img.width * OCR_SCALE, img.height * OCR_SCALE), Image.LANCZOS)
     d = pytesseract.image_to_data(big, output_type=Output.DICT)
     lines = {}
