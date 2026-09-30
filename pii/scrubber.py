@@ -1,4 +1,7 @@
-import re, hashlib, functools
+import re, hashlib, functools, logging
+
+logger = logging.getLogger(__name__)
+
 
 SALT = "fade-demo-salt"
 
@@ -78,8 +81,15 @@ OCR_SCALE = 2   # small text (e.g. screen recordings) is missed at 1x
 
 
 def _ocr_boxes(img):
-    import pytesseract
-    from pytesseract import Output
+    try:
+        import pytesseract
+        from pytesseract import Output
+    except ImportError:
+        logger.warning(
+            "[PII] pytesseract not installed — OCR-based text detection skipped. "
+            "Install with: pip install pytesseract  (and install Tesseract-OCR binary)"
+        )
+        return [], []
     from PIL import Image
     import os
     if os.name == 'nt' and os.path.exists(r'C:\Program Files\Tesseract-OCR\tesseract.exe'):
