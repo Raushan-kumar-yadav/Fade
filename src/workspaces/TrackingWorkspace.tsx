@@ -66,10 +66,11 @@ function extractVideoClips(data: any): ClipMeta[] {
   const clips: ClipMeta[] = []
   ;(data?.tracks ?? []).forEach((tr: any) => {
     ;(tr?.clips ?? []).forEach((c: any) => {
-      const p = c.mediaPath ?? c.assetPath ?? c.filePath ?? ''
+      // backend serializes as 'filepath'; frontend state may use camelCase variants
+      const p = c.filepath ?? c.mediaPath ?? c.assetPath ?? c.filePath ?? ''
       if (p && (c.type === 'video' || c.clipType === 'video' || !c.type)) {
         clips.push({
-          clipId: c.clipId,
+          clipId: c.clipId ?? c.id,
           name: c.name ?? c.clipId?.slice(0, 8) ?? 'Clip',
           videoPath: p,
           startFrame: c.startFrame ?? 0,
