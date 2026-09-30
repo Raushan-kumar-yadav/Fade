@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import json
 import os
@@ -3186,33 +3186,29 @@ def blur_tracked_region(
     Use for: "blur the face", "hide the email", "pixelate the phone number"
     """
     try:
-        # Get track metadata
-        import requests
-        r = requests.get(f"http://localhost:7860/tracking/track/{track_id}", timeout=5)
-        r.raise_for_status()
-        track = r.json()
+        # Get track metadata from in-process service (no HTTP hop needed)
+        from backend.tracking.service import get_track
+        track_data = get_track(track_id)
+        if not track_data:
+            return f"Track {track_id!r} not found. Run start_tracking first."
 
-        from_frame = track.get("from_frame", 0)
-        to_frame   = track.get("to_frame", 300)
-        duration   = to_frame - from_frame
+        from_frame = track_data.get("from_frame", 0)
+        to_frame   = track_data.get("to_frame", 300)
+        duration   = max(1, to_frame - from_frame)
 
-        # Find a free overlay track
-        overlay = _post("/timeline/find-free-overlay-track", {
-            "startFrame": from_frame, "endFrame": to_frame
-        })
-        track_idx = overlay.get("track_index", 1)
-
-        # Create a shape clip (rect) on the overlay track
-        shape = _post("/clips/add-shape", {
-            "trackIndex": track_idx,
+        # Create a rect ShapeClip — /clips/shape auto-picks the top empty track
+        shape = _post("/clips/shape", {
             "startFrame": from_frame,
             "duration": duration,
-            "shapeType": "rect",
-            "fillColor": [0, 0, 0, 0],     # transparent fill
-            "strokeWidth": 0,
+            "style": {
+                "shapeType": "rect",
+                "fillColor": [0, 0, 0, 0],
+                "strokeWidth": 0,
+                "w": 100,
+                "h": 100,
+            },
         })
         shape_clip_id = shape.get("clipId", "")
-
         if not shape_clip_id:
             return "Failed to create blur rect shape clip."
 
@@ -3222,7 +3218,7 @@ def blur_tracked_region(
             "params": {"radius": blur_strength}
         })
 
-        # Set expressions to follow the track
+        # Set position/size expressions — correct route: POST /clips/{id}/expression/{param}
         exprs = {
             "pos_x":   f'track("{track_id}", frame, "cx") - comp_w / 2',
             "pos_y":   f'track("{track_id}", frame, "cy") - comp_h / 2',
@@ -3230,9 +3226,7 @@ def blur_tracked_region(
             "shape_h": f'track("{track_id}", frame, "h") * {scale}',
         }
         for param, expr in exprs.items():
-            _post(f"/clips/{shape_clip_id}/set-expression", {
-                "param": param, "expression": expr
-            })
+            _post(f"/clips/{shape_clip_id}/expression/{param}", {"expression": expr})
 
         return (
             f"Blur rect created and linked to track.\n"
@@ -3280,10 +3274,9 @@ def link_track_to_clip(
             else:
                 exprs[prop] = f'track("{track_id}", frame, "cx")'  # generic
 
+        # Correct route: POST /clips/{id}/expression/{param}
         for param, expr in exprs.items():
-            _post(f"/clips/{target_clip_id}/set-expression", {
-                "param": param, "expression": expr
-            })
+            _post(f"/clips/{target_clip_id}/expression/{param}", {"expression": expr})
 
         return (
             f"Linked track {track_id} to clip {target_clip_id}.\n"
