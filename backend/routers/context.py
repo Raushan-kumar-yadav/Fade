@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -34,7 +34,7 @@ def _get_chroma_chunks(asset_id: str) -> list[dict]:
 
 
 def _get_image_description(asset_id: str) -> str:
-    """Fetch the stored image description from the image_assets ChromaDB collection."""
+    """Fetch stored image description from ChromaDB; returns '' if not indexed."""
     try:
         from backend.ai.VideoSemantic.indexer import _img_col
         result = _img_col.get(where={"assetId": asset_id}, include=["documents"])
@@ -43,6 +43,33 @@ def _get_image_description(asset_id: str) -> str:
     except Exception:
         pass
     return ""
+
+
+def _image_file_meta(filepath: str) -> dict:
+    """Return basic image metadata (dims, size) without heavy AI — fast fallback."""
+    meta: dict = {}
+    if not filepath or not os.path.isfile(filepath):
+        return meta
+    try:
+        meta["fileSizeKB"] = round(os.path.getsize(filepath) / 1024, 1)
+        meta["extension"] = os.path.splitext(filepath)[1].lower().lstrip(".")
+    except Exception:
+        pass
+    try:
+        import skia
+        img = skia.Image.open(filepath)
+        if img:
+            meta["width"] = img.width()
+            meta["height"] = img.height()
+    except Exception:
+        try:
+            # PIL fallback
+            from PIL import Image as _PIL
+            with _PIL.open(filepath) as im:
+                meta["width"], meta["height"] = im.size
+        except Exception:
+            pass
+    return meta
 
 
 def _get_transcript(asset_id: str, filepath: str) -> list[dict]:
@@ -173,6 +200,7 @@ def _build_clip_description(clip_obj, fps: float = 30.0) -> dict:
         "duration": duration_f,
         "startSec": start_sec,
         "endSec": end_sec,
+        "about": f"{clip_type} clip at {start_sec}s, duration {round(end_sec - start_sec, 2)}s",
     }
 
     if clip_type == "video":
@@ -253,12 +281,26 @@ def _build_clip_description(clip_obj, fps: float = 30.0) -> dict:
         asset = _lib.get(asset_id)
         filepath = getattr(asset, "filepath", "") if asset else ""
         description = _get_image_description(asset_id)
+        file_meta = _image_file_meta(filepath) if filepath else {}
+        fname = os.path.basename(filepath) if filepath else ""
+        if description:
+            about = description[:200]
+        elif file_meta:
+            w = file_meta.get("width", "?")
+            h = file_meta.get("height", "?")
+            kb = file_meta.get("fileSizeKB", "?")
+            about = f"Image '{fname}' ({w}x{h}, {kb} KB)"
+        else:
+            about = f"Image file '{fname}' (not yet indexed)"
         return {
             **base,
             "assetId": asset_id,
             "filepath": filepath,
-            "description": description or "(not yet indexed â€” run vision indexing first)",
+            "filename": fname,
+            "about": about,
+            "description": description or "(not yet indexed — run vision indexing first)",
             "indexed": bool(description),
+            "fileMeta": file_meta,
         }
 
     if clip_type == "text":

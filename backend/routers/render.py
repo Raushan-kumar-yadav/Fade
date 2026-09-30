@@ -10,7 +10,7 @@ router = APIRouter()
 
 def _build_comp_frame_descriptor(
     comp_id: str,
-    inner_frame: int,
+    inner_frame: int,   
     fps: float,
     width: int,
     height: int,

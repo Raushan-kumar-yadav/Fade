@@ -3929,3 +3929,291 @@ def test_expression(clip_id: str, param: str, expression: str, frame: int = 0) -
 EXPRESSION_TOOLS = [set_expression, clear_expression, test_expression]
 ALL_TOOLS.extend(EXPRESSION_TOOLS)
 
+
+# === Viewport & Visual Context ===
+
+import base64 as _b64
+
+@tool
+def get_current_viewport_image(width: int = 640, height: int = 360) -> str:
+    """Capture the current canvas frame as a base64 PNG — lets the agent SEE the viewport.
+
+    Call this to visually verify edits: layout, text, colors, effects.
+    Vision-capable models interpret the returned data URI directly.
+
+    Args:
+        width:  Thumbnail width px (default 640).
+        height: Thumbnail height px (default 360).
+
+    Returns:
+        JSON with current frame number and "image" as data:image/png;base64 URI.
+    """
+    try:
+        state = _get("/playback/state")
+        frame = state.get("frame", 0)
+        r = httpx.get(f"{_base()}/render/thumbnail/{frame}",
+                      params={"w": width, "h": height}, timeout=15)
+        r.raise_for_status()
+        b64 = _b64.b64encode(r.content).decode()
+        return json.dumps({"frame": frame, "width": width, "height": height,
+                           "image": f"data:image/png;base64,{b64}"})
+    except Exception as e:
+        return f"Viewport capture failed: {e}"
+
+
+@tool
+def get_viewport_at_frame(frame: int, width: int = 640, height: int = 360) -> str:
+    """Render a specific timeline frame as a base64 PNG.
+
+    Args:
+        frame:  Timeline frame number.
+        width:  Image width px (default 640).
+        height: Image height px (default 360).
+    """
+    try:
+        r = httpx.get(f"{_base()}/render/thumbnail/{frame}",
+                      params={"w": width, "h": height}, timeout=15)
+        r.raise_for_status()
+        b64 = _b64.b64encode(r.content).decode()
+        return json.dumps({"frame": frame,
+                           "image": f"data:image/png;base64,{b64}"})
+    except Exception as e:
+        return f"Frame render failed: {e}"
+
+
+@tool
+def get_comp_thumbnail(comp_id: str, width: int = 480, height: int = 270) -> str:
+    """Render frame 0 of a composition as a base64 PNG image.
+
+    Args:
+        comp_id: Composition ID (list_compositions()).
+        width:   Thumbnail width px (default 480).
+        height:  Thumbnail height px (default 270).
+    """
+    try:
+        r = httpx.get(f"{_base()}/render/comps/{comp_id}/thumbnail",
+                      params={"w": width, "h": height}, timeout=15)
+        r.raise_for_status()
+        b64 = _b64.b64encode(r.content).decode()
+        return json.dumps({"compId": comp_id,
+                           "image": f"data:image/png;base64,{b64}"})
+    except Exception as e:
+        return f"Comp thumbnail failed: {e}"
+
+
+# === Clip & Comp About ===
+
+@tool
+def get_comp_about(comp_id: str) -> str:
+    """Concise human-readable summary of what a composition contains.
+
+    Returns layer types/names/text without raw transform data — LLM-friendly.
+
+    Args:
+        comp_id: Composition ID (list_compositions()).
+    """
+    try:
+        r = _get(f"/comps/{comp_id}/state")
+        tl = r.get("timeline", r)
+        fps = float(tl.get("fps", 30))
+        name = tl.get("name", comp_id[:8])
+        tracks = tl.get("tracks", [])
+        lines = [f"Comp: '{name}' ({comp_id[:8]}...)  FPS={fps}"]
+        total = 0
+        for tr in tracks:
+            clips = tr.get("clips", [])
+            if not clips:
+                continue
+            lines.append(f"  Track '{tr.get('name','?')}' [{tr.get('kind','video')}]:")
+            for c in clips:
+                ctype = c.get("type", "?")
+                cid = c.get("clipId", "")[:8]
+                start = round(c.get("startFrame", 0) / fps, 2)
+                dur = round(c.get("durationFrames", c.get("duration", 0)) / fps, 2)
+                hint = ""
+                if c.get("text"):
+                    hint = f' "{c["text"][:40]}"'
+                elif c.get("name"):
+                    hint = f' ({c["name"]})'
+                lines.append(f"    [{cid}...] {ctype} @{start}s {dur}s{hint}")
+                total += 1
+        lines.append(f"  Total: {total} clip(s)")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not describe comp {comp_id}: {e}"
+
+
+@tool
+def get_clip_about(clip_id: str) -> str:
+    """Concise semantic summary of what a clip contains — works for all clip types.
+
+    Returns only relevant content: text string, image description, scene count,
+    transcript snippet, etc. No raw transform/keyframe data.
+
+    Args:
+        clip_id: The clipId of the clip.
+    """
+    try:
+        r = _get(f"/context/clip/{clip_id}/describe")
+        ctype = r.get("clipType", "?")
+        cid = r.get("clipId", clip_id)[:8]
+        start = r.get("startSec", 0)
+        dur = round(r.get("endSec", 0) - start, 2)
+        lines = [f"[{cid}...] type={ctype} @{start}s dur={dur}s"]
+        if ctype == "video":
+            lines.append(f"  file={os.path.basename(r.get('filepath','?'))}")
+            tl2 = r.get("timeline", [])
+            lines.append(f"  indexed_scenes={len(tl2)}")
+            if tl2:
+                lines.append(f"  first: {str(tl2[0].get('scene', tl2[0].get('speech','')))[:100]}")
+        elif ctype == "image":
+            lines.append(f"  file={os.path.basename(r.get('filepath','?'))}")
+            desc = r.get("description", "")
+            if desc and "not yet indexed" not in desc:
+                lines.append(f"  vision: {desc[:150]}")
+            else:
+                lines.append("  vision: not indexed")
+        elif ctype == "text":
+            lines.append(f'  text="{r.get("text","")[:80]}"')
+            s = r.get("style", {})
+            if s.get("fontFamily"):
+                lines.append(f"  font={s['fontFamily']} {s.get('fontSize','?')}px color={s.get('color','?')}")
+        elif ctype in ("shape","rectangle","ellipse","triangle","line"):
+            s = r.get("style", {})
+            lines.append(f"  shape={r.get('shapeType', ctype)} fill={s.get('fill','?')}")
+        elif ctype == "audio":
+            lines.append(f"  file={os.path.basename(r.get('filepath','?'))}")
+            segs = r.get("transcript", [])
+            if segs:
+                lines.append(f'  transcript[0]="{segs[0].get("text","")[:80]}"')
+        elif ctype == "webcomp":
+            lines.append(f"  component={r.get('name','?')}")
+            params = r.get("runtimeParams", {})
+            if params:
+                lines.append(f"  params={json.dumps(params)[:120]}")
+        elif ctype in ("comp","composition"):
+            nested = r.get("nestedTracks", [])
+            total = sum(len(t.get("clips",[])) for t in nested)
+            lines.append(f"  nested_tracks={len(nested)} total_clips={total}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not describe clip {clip_id}: {e}"
+
+
+# === PDF Summaries ===
+
+@tool
+def get_pdf_page_summary(doc_id: str, page_id: str) -> str:
+    """Text summary of all layers on a specific PDF document page.
+
+    Returns layer type, text content, and rough position.
+    Use before editing a page to understand its structure.
+
+    Args:
+        doc_id:  PDF document ID (list_pdf_docs()).
+        page_id: Page/comp ID (list_pdf_pages() -> pageId field).
+    """
+    try:
+        tl_r = _get(f"/comps/{page_id}/state")
+        tl_d = tl_r.get("timeline", tl_r)
+        tracks = tl_d.get("tracks", [])
+        lines = [f"PDF page [{page_id[:8]}...] layers:"]
+        n = 0
+        for tr in tracks:
+            for c in tr.get("clips", []):
+                n += 1
+                ctype = c.get("type","?")
+                cid = c.get("clipId","")[:8]
+                desc = f"  L{n} [{cid}...] {ctype}"
+                if c.get("text"):
+                    desc += f': "{c["text"][:60]}"'
+                elif c.get("name"):
+                    desc += f' ({c["name"]})'
+                t2 = c.get("transform",{})
+                pos = t2.get("position",{})
+                if pos:
+                    def _v(p): return p.get("base",0) if isinstance(p,dict) else p
+                    desc += f" pos=({round(_v(pos.get('x',0)))},{round(_v(pos.get('y',0)))})"
+                lines.append(desc)
+        if n == 0:
+            lines.append("  (empty page)")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not read page {page_id}: {e}"
+
+
+@tool
+def get_pdf_doc_summary(doc_id: str) -> str:
+    """Complete layer-by-layer summary of all pages in a PDF document.
+
+    Returns page count, dimensions, and content hints per layer — LLM-optimized.
+
+    Args:
+        doc_id: PDF document ID (list_pdf_docs()).
+    """
+    try:
+        pages_r = _get(f"/pdf-docs/{doc_id}/pages")
+        pages = pages_r.get("pages", [])
+        if not pages:
+            return f"PDF doc {doc_id[:8]}... has no pages."
+        lines = [f"PDF doc {doc_id[:8]}... - {len(pages)} page(s):"]
+        for p in pages:
+            pid = p.get("pageId", p.get("compId",""))
+            idx = p.get("index",0)+1
+            name = p.get("name", f"Page {idx}")
+            lines.append(f"\n  Page {idx}: '{name}' [{pid[:8]}...] {p.get('width',0)}x{p.get('height',0)}")
+            try:
+                tl_r2 = _get(f"/comps/{pid}/state")
+                tracks2 = tl_r2.get("timeline", tl_r2).get("tracks",[])
+                hints = []
+                for tr in tracks2:
+                    for c in tr.get("clips",[]):
+                        ct = c.get("type","?")
+                        txt = c.get("text","")
+                        hints.append(f'{ct}:"{txt[:25]}"' if txt else ct)
+                lines.append(f"    {len(hints)} layer(s): {', '.join(hints[:8])}")
+            except Exception:
+                lines.append("    (layers unavailable)")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not summarize PDF doc {doc_id}: {e}"
+
+
+# === Register all tools ===
+
+VIEWPORT_TOOLS = [get_current_viewport_image, get_viewport_at_frame, get_comp_thumbnail]
+ALL_TOOLS.extend(VIEWPORT_TOOLS)
+
+ABOUT_TOOLS = [get_comp_about, get_clip_about]
+ALL_TOOLS.extend(ABOUT_TOOLS)
+
+PDF_SUMMARY_TOOLS = [get_pdf_page_summary, get_pdf_doc_summary]
+ALL_TOOLS.extend(PDF_SUMMARY_TOOLS)
+
+# Previously defined but unregistered tools - now fully exposed to the agent
+ALL_TOOLS.extend([
+    get_timeline_range,
+    create_webcomp, list_webcomps, list_webcomp_templates,
+    add_webcomp_to_timeline, get_webcomp_clip_info,
+    read_webcomp_file, edit_webcomp_file, set_webcomp_params,
+    set_webcomp_transform, set_webcomp_opacity, delete_webcomp,
+    reload_webcomp, update_webcomp_meta,
+    get_timeline_context, get_clip_context, get_asset_context,
+    search_video_scenes, get_index_status,
+    add_video_clip_by_scene, add_image_clip_by_scene,
+    get_clip_info, remove_clip, list_timeline_clips,
+    generate_captions, remove_silence, get_transcript, get_clip_params,
+    animate_property, remove_keyframe, clear_animation, get_keyframes,
+    set_text_content, list_curve_presets, apply_curve_preset, move_keyframe,
+    list_kokoro_voices, generate_tts, check_job_status, cancel_job,
+    stop_indexing, export_video,
+    set_clip_volume, mute_clip, get_clip_volume,
+    solo_track, lock_track, move_track,
+    add_mask, update_mask, remove_mask, list_masks,
+    add_svg_clip, crop_canvas,
+    rename_composition, get_comp_layers, update_comp_layer, move_comp_layer,
+    create_pdf_doc, list_pdf_docs, list_pdf_pages,
+    add_pdf_page, delete_pdf_page, reorder_pdf_pages,
+    play, pause, set_playback_speed, set_in_out_points,
+    transform_batch,
+])
