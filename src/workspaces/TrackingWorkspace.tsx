@@ -46,7 +46,7 @@ interface Props {
   fps?: number
 }
 
-/* ── API ────────────────────────────────────────────────────────────────── */
+/*   API   */
 function base() {
   return `http://localhost:${(window as any).__FADE_PORT__ ?? 8000}`
 }
@@ -61,7 +61,7 @@ const api = {
   cancelJob: (jobId: string) => fetch(`${base()}/tracking/cancel/${jobId}`, { method: 'POST' }).then(r => r.json()),
 }
 
-/* ── helpers ────────────────────────────────────────────────────────────── */
+/*   helpers   */
 function extractVideoClips(data: any): ClipMeta[] {
   const clips: ClipMeta[] = []
   ;(data?.tracks ?? []).forEach((tr: any) => {
@@ -82,40 +82,40 @@ function extractVideoClips(data: any): ClipMeta[] {
   return clips
 }
 
-/* ── component ──────────────────────────────────────────────────────────── */
+/*   component   */
 export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }: Props) {
 
-  /* ── clip state ─── */
-  const [videoClips, setVideoClips]   = useState<ClipMeta[]>([])
-  const [selClipId, setSelClipId]     = useState<string>(selectedClipId ?? '')
-  const [selClip, setSelClip]         = useState<ClipMeta | null>(null)
+  /*   clip state   */
+  const [videoClips, setVideoClips] = useState<ClipMeta[]>([])
+  const [selClipId, setSelClipId] = useState<string>(selectedClipId ?? '')
+  const [selClip, setSelClip] = useState<ClipMeta | null>(null)
 
-  /* ── image assets (for Image / Person reference) ─── */
+  /*   image assets */
   const [imageAssets, setImageAssets] = useState<AssetMeta[]>([])
-  const [refAssetId, setRefAssetId]   = useState<string>('')   // picked image/person asset
+  const [refAssetId, setRefAssetId]   = useState<string>('')  
 
-  /* ── form ─── */
-  const [mode, setMode]               = useState<DetectionMode>('face')
-  const [fromFrame, setFromFrame]     = useState(0)
-  const [toFrame, setToFrame]         = useState(totalFrames)
-  const [label, setLabel]             = useState('')
+  /*   form   */
+  const [mode, setMode] = useState<DetectionMode>('face')
+  const [fromFrame, setFromFrame] = useState(0)
+  const [toFrame, setToFrame] = useState(totalFrames)
+  const [label, setLabel] = useState('')
   const [textPattern, setTextPattern] = useState('email|phone')
   const [manualBbox, setManualBbox]   = useState('')
 
-  /* ── jobs & tracks ─── */
-  const [activeJob, setActiveJob]     = useState<JobState | null>(null)
-  const [tracks, setTracks]           = useState<TrackSummary[]>([])
-  const [error, setError]             = useState<string | null>(null)
-  const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null)
+  /*   jobs & tracks   */
+  const [activeJob, setActiveJob] = useState<JobState | null>(null)
+  const [tracks, setTracks] = useState<TrackSummary[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  /* ── load video clips from timeline ─── */
+  /*   load video clips from timeline   */
   const loadClips = useCallback(() => {
     api.timelineState()
       .then(d => setVideoClips(extractVideoClips(d)))
       .catch(() => {})
   }, [])
 
-  /* ── load image assets from library ─── */
+  /*   load image assets from library   */
   const loadImageAssets = useCallback(() => {
     api.assets()
       .then((arr: AssetMeta[]) =>
@@ -126,12 +126,12 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
 
   useEffect(() => { loadClips(); loadImageAssets() }, [loadClips, loadImageAssets])
 
-  /* ── when selectedClipId prop changes (clip selected in timeline) ─── */
+  /*   when selectedClipId prop changes   */
   useEffect(() => {
     if (selectedClipId) setSelClipId(selectedClipId)
   }, [selectedClipId])
 
-  /* ── resolve selClip from id ─── */
+  /*   resolve selClip from id   */
   useEffect(() => {
     const c = videoClips.find(v => v.clipId === selClipId) ?? null
     setSelClip(c)
@@ -141,7 +141,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
     }
   }, [selClipId, videoClips])
 
-  /* ── load existing tracks when clip changes ─── */
+  /*   load existing tracks when clip changes   */
   const refreshTracks = useCallback(() => {
     if (!selClipId) return
     api.listTracks(selClipId).then(d => setTracks(d.tracks ?? [])).catch(() => {})
@@ -149,7 +149,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
 
   useEffect(() => { refreshTracks() }, [refreshTracks])
 
-  /* ── poll active job ─── */
+  /*   poll active job   */
   useEffect(() => {
     if (!activeJob?.job_id || activeJob.done) return
     pollRef.current = setInterval(async () => {
@@ -165,11 +165,11 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
     return () => clearInterval(pollRef.current!)
   }, [activeJob?.job_id, activeJob?.done, refreshTracks])
 
-  /* ── start tracking ─── */
+  /*   start tracking   */
   const handleStart = async () => {
     setError(null)
     if (!selClipId || !selClip) { setError('Select a clip from the timeline first.'); return }
-    if (!selClip.videoPath)     { setError('Selected clip has no video path.'); return }
+    if (!selClip.videoPath) { setError('Selected clip has no video path.'); return }
 
     const refAsset = imageAssets.find(a => a.assetId === refAssetId)
 
@@ -232,7 +232,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
 
   const isRunning = !!(activeJob && !activeJob.done)
 
-  /* ── ref image/person picker ─── */
+  /*   ref image/person picker   */
   const RefAssetPicker = ({ label: lbl }: { label: string }) => (
     <div className="tr-field-group">
       <label className="tr-label">{lbl}</label>
@@ -258,7 +258,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
     </div>
   )
 
-  /* ── mode-specific UI ─── */
+  /*   mode-specific UI   */
   const ModeParams = () => {
     if (mode === 'text') return (
       <div className="tr-field-group">
@@ -298,7 +298,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
     )
   }
 
-  /* ── render ─────────────────────────────────────────────────────────── */
+  /*   render   */
   return (
     <div className="tr-workspace">
 
@@ -314,7 +314,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         </div>
       </div>
 
-      {/* ── clip selector ── */}
+      {/*   clip selector   */}
       <div className="tr-field-group">
         <label className="tr-label">Clip to track</label>
         {videoClips.length > 0 ? (
@@ -348,7 +348,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         )}
       </div>
 
-      {/* ── frame range ── */}
+      {/*   frame range   */}
       <div className="tr-row">
         <div className="tr-field-group tr-field-group--half">
           <label className="tr-label">Start frame</label>
@@ -368,7 +368,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         </div>
       </div>
 
-      {/* ── label ── */}
+      {/*   label   */}
       <div className="tr-field-group">
         <label className="tr-label">Track label <span className="tr-optional">(optional)</span></label>
         <input
@@ -379,7 +379,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         />
       </div>
 
-      {/* ── detection mode tabs ── */}
+      {/*   detection mode tabs   */}
       <div className="tr-field-group">
         <label className="tr-label">Detection mode</label>
         <div className="tr-mode-tabs">
@@ -395,13 +395,13 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         </div>
       </div>
 
-      {/* ── mode-specific params ── */}
+      {/*   mode-specific params   */}
       <ModeParams />
 
-      {/* ── error ── */}
+      {/*   error   */}
       {error && <div className="tr-error">{error}</div>}
 
-      {/* ── start / cancel button ── */}
+      {/*   start / cancel button   */}
       {isRunning ? (
         <button className="tr-btn-cancel-big" onClick={handleCancel}>
           Cancel Tracking
@@ -475,7 +475,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         </div>
       )}
 
-      {/* ── expression hint ── */}
+      {/*   expression hint   */}
       {tracks.length > 0 && (
         <details className="tr-expr-hint">
           <summary>Use in expressions</summary>
