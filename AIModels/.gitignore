@@ -22,3 +22,9 @@ sentence_transformers/
 !.gitignore
 !README.md
 !*/
+
+# Large model weights (download via download_models.py)
+*.pt
+*.pth
+*.onnx
+*.bin

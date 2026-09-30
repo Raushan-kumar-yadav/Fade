@@ -12,11 +12,30 @@ Returns a list of (x, y, w, h) bounding boxes in pixel coordinates.
 """
 from __future__ import annotations
 import logging
+import os
 import re
+import sys
 from pathlib import Path
 from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
+
+# ── PyInstaller-safe model directory ─────────────────────────────────────────
+# Dev:    <repo>/AIModels/
+# Frozen: <bundle>/_MEIPASS/AIModels/
+def _resolve_models_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        # Running as a PyInstaller bundle
+        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    else:
+        # Dev: go up two levels from backend/tracking/ to repo root
+        base = Path(__file__).parent.parent.parent
+    d = base / "AIModels"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+MODELS_DIR = _resolve_models_dir()
+logger.info("[detector] MODELS_DIR = %s", MODELS_DIR)
 
 class BBox(NamedTuple):
     x: float
@@ -79,7 +98,9 @@ def _get_yolo():
     if _yolo_model is None:
         try:
             from ultralytics import YOLO
-            _yolo_model = YOLO("yolov8n.pt")   # downloads automatically ~6 MB
+            # Use bundled model; fall back to auto-download if missing
+            model_path = MODELS_DIR / "yolov8n.pt"
+            _yolo_model = YOLO(str(model_path) if model_path.exists() else "yolov8n.pt")
         except ImportError:
             logger.warning("[tracker] ultralytics not installed: pip install ultralytics")
         except Exception as e:
@@ -113,7 +134,14 @@ def _get_ocr():
     if _ocr_reader is None:
         try:
             import easyocr
-            _ocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+            # Use AIModels/ as the model storage directory so no internet download at runtime
+            _ocr_reader = easyocr.Reader(
+                ["en"],
+                gpu=False,
+                verbose=False,
+                model_storage_directory=str(MODELS_DIR),
+                download_enabled=True,   # allow download if model is somehow missing
+            )
         except ImportError:
             logger.warning("[tracker] easyocr not installed: pip install easyocr")
         except Exception as e:
