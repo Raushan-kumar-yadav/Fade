@@ -146,9 +146,9 @@ private:
 
 struct ClipState {
   std::unique_ptr<ClipDecoder> decoder;
-  std::mutex decoderMutex; // one decode at a time per clip
+  std::mutex decoderMutex;
   int64_t lastDecoded = -1;
-  bool isImage = false; // static image: skip pump, always return frame 0
+  bool isImage = false;
 };
 
 class MiniScheduler {
@@ -173,7 +173,7 @@ public:
   }
 
   void registerImage(const std::string &clipId, const std::string &filepath) {
-    // Decode once with stb_image — never use FFmpeg for static images.
+    // Decode once with stb_image
     std::lock_guard<std::mutex> lock(m_clipsMutex);
     if (m_clips.count(clipId))
       return;
@@ -238,22 +238,17 @@ public:
     if (toFetch.empty())
       return;
 
-    // Log only the first frame to reduce noise
     std::cout << "[SCHED] Prefetch queued clipId="
               << clipId.substr(clipId.rfind('/') + 1)
-              << " frame=" << toFetch.front()
-              << "+" << toFetch.size() << "\n";
+              << " frame=" << toFetch.front() << "+" << toFetch.size() << "\n";
 
-    // Submit ONE task per call that decodes ALL frames sequentially (ascending).
-    // A single task per clip avoids out-of-order seeks caused by the thread pool
-    // picking tasks in arbitrary order.
     m_pool.enqueue([this, clipId, frames = std::move(toFetch)]() {
       ClipState *state = nullptr;
       {
         std::lock_guard<std::mutex> lock(m_clipsMutex);
         auto it = m_clips.find(clipId);
         if (it == m_clips.end()) {
-          // clip unregistered — clear pending
+          // clip unregistered
           std::lock_guard<std::mutex> plock(m_pendingMutex);
           for (int64_t f : frames)
             m_pending.erase({clipId, f});
@@ -275,7 +270,7 @@ public:
         auto result = state->decoder->decodeFrame(frame);
         if (!result.rgba.empty()) {
           auto entry = std::make_shared<CachedEntry>();
-          entry->rgba  = std::move(result.rgba);
+          entry->rgba = std::move(result.rgba);
           entry->width = result.width;
           entry->height = result.height;
           m_cache.put(key, entry);
@@ -287,7 +282,6 @@ public:
       }
     });
   }
-
 
   CachedFrameData tryGetCachedFrame(const std::string &clipId, int64_t frame) {
     // For static images,

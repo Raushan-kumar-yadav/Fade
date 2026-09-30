@@ -7,10 +7,7 @@ import { TimelineProvider } from './timeline/TimelineContext'
 import { addClipToTimeline, type AssetItem } from '../api/useApi'
 import './AIWorkspace.css'
 
-// AI Workspace — Library panel (left) + live viewport (right).
-// TimelineProvider is required here because LibraryPanel calls useTimeline() internally.
-// (VideoWorkspace has its own provider — the two share a backend but maintain separate UI state.)
-
+ 
 export default function AIWorkspace() {
 
   const handleAddToTimeline = useCallback(async (asset: AssetItem, trackIndex = 0) => {
@@ -22,7 +19,7 @@ export default function AIWorkspace() {
     <TimelineProvider>
       <div className="ai-ws">
         <Allotment>
-          {/* Library panel — collapsible, default 280px */}
+          {/* Library panel ï¿½ collapsible, default 280px */}
           <Allotment.Pane minSize={200} maxSize={400} preferredSize={280} snap>
             <div className="ai-library-pane">
               <LibraryPanel onAddToTimeline={handleAddToTimeline} />

@@ -66,8 +66,8 @@ const layoutJson: FlexLayout.IJsonModel = {
   },
 }
 
- 
 const LAYOUT_DEBOUNCE_MS = 500
+const LAYOUT_VERSION = 3  // bump when tabs are added/removed
 
 function makeDefaultModel() {
   return FlexLayout.Model.fromJson(layoutJson)
@@ -100,20 +100,24 @@ function WorkspaceInner() {
     api?.layoutLoad?.().then((json: string | null) => {
       if (!json) return
       try {
-        modelRef.current = FlexLayout.Model.fromJson(JSON.parse(json))
-        forceUpdate() 
+        const saved = JSON.parse(json)
+        if (saved.__v !== LAYOUT_VERSION) {
+          console.log('[Layout] version mismatch — using default layout')
+          return
+        }
+        modelRef.current = FlexLayout.Model.fromJson(saved)
+        forceUpdate()
       } catch (e) {
         console.warn('[Layout] saved layout invalid, using default', e)
       }
     }).catch(() => {})
- 
   }, [])
 
   // Save layout debounced on every model change
   const onModelChange = useCallback((model: FlexLayout.Model) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
-      const json = JSON.stringify(model.toJson())
+      const json = JSON.stringify({ __v: LAYOUT_VERSION, ...model.toJson() })
       api?.layoutSave?.(json).catch(() => {})
     }, LAYOUT_DEBOUNCE_MS)
   }, [api])

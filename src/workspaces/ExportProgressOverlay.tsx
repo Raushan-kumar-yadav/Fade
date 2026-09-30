@@ -203,7 +203,7 @@ export default function ExportProgressOverlay() {
         <button className="exp-ov__cancel" onClick={cancel}>Cancel</button>
       )}
 
-      {/* ── Integrity Registration Section ────────────────────────────── */}
+      {/*   Integrity Registration Section   */}
       {done && !hasError && progress?.path && (
         <div className="exp-ov__integrity">
           {integrity.phase === 'idle' && (
@@ -285,7 +285,7 @@ export default function ExportProgressOverlay() {
           )}
         </div>
       )}
-      {/* ─────────────────────────────────────────────────────────────── */}
+       
     </div>
   )
 }
