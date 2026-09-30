@@ -16,6 +16,7 @@ import EraserToolPanel from './tools/EraserToolPanel'
 import ShapeToolPanel from './tools/ShapeToolPanel'
 import TransitionPanel from './inspector/TransitionPanel'
 import CompositionsPanel from './compositions/CompositionsPanel'
+import TrackingWorkspace from './TrackingWorkspace'
 
 
 
@@ -47,10 +48,11 @@ const layoutJson: FlexLayout.IJsonModel = {
             weight: 30,
             selected: 0,
             children: [
-              { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
-              { type: 'tab', name: 'Effects', component: 'effects', enableClose: false },
-              { type: 'tab', name: 'Transitions',  component: 'transitions',  enableClose: false },
-              { type: 'tab', name: 'Tools', component: 'tools', enableClose: false },
+              { type: 'tab', name: 'Inspector',  component: 'inspector',  enableClose: false },
+              { type: 'tab', name: 'Effects',     component: 'effects',    enableClose: false },
+              { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
+              { type: 'tab', name: 'Tools',       component: 'tools',      enableClose: false },
+              { type: 'tab', name: 'Tracking',    component: 'tracking',   enableClose: false },
             ],
           },
         ],
@@ -162,6 +164,18 @@ function WorkspaceInner() {
       case 'transitions': return <TransitionPanel />
       case 'tools': return toolPanel
       case 'compositions': return <CompositionsPanel />
+      case 'tracking': {
+        const selClipId = state.tracks
+          .flatMap(t => t.clips)
+          .find(c => c.isSelected)?.id ?? null
+        return (
+          <TrackingWorkspace
+            selectedClipId={selClipId}
+            totalFrames={state.totalFrames}
+            fps={state.fps}
+          />
+        )
+      }
       default: return <div className="vp" />
     }
   }

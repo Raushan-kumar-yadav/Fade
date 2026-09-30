@@ -17,6 +17,7 @@ import TextToolPanel from './tools/TextToolPanel';
 import BrushToolPanel from './tools/BrushToolPanel';
 import EraserToolPanel from './tools/EraserToolPanel';
 import ShapeToolPanel from './tools/ShapeToolPanel';
+import TrackingWorkspace from './TrackingWorkspace';
 
 //   Props  
 
@@ -66,10 +67,11 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
             weight: 30,
             selected: 0,
             children: [
-              { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
-              { type: 'tab', name: 'Effects', component: 'effects', enableClose: false },
+              { type: 'tab', name: 'Inspector',  component: 'inspector',  enableClose: false },
+              { type: 'tab', name: 'Effects',     component: 'effects',    enableClose: false },
               { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
-              { type: 'tab', name: 'Tools', component: 'tools', enableClose: false },
+              { type: 'tab', name: 'Tools',       component: 'tools',      enableClose: false },
+              { type: 'tab', name: 'Tracking',    component: 'tracking',   enableClose: false },
             ],
           },
         ],
@@ -262,6 +264,18 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
         return <TransitionPanel />;
       case 'tools':
         return toolPanel;
+      case 'tracking': {
+        const selClipId = state.tracks
+          .flatMap(t => t.clips)
+          .find(c => c.isSelected)?.id ?? null;
+        return (
+          <TrackingWorkspace
+            selectedClipId={selClipId}
+            totalFrames={state.totalFrames}
+            fps={state.fps}
+          />
+        );
+      }
       default:
         return <div className="vp" />;
     }
