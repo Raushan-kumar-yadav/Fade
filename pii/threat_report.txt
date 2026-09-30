@@ -1,4 +1,0 @@
-Analyst: Rahul Sharma (rahul.sharma@example.com, +91 9876543210)
-Aadhaar: 2345 6789 0123   PAN: ABCDE1234F
-Attacker C2 at 192.168.10.45 used password=Hunter2!Secret
-AWS key AKIAIOSFODNN7EXAMPLE, card 4111 1111 1111 1111

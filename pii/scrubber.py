@@ -77,7 +77,7 @@ def scrub_text(text, mode="pseudonym", use_ner=True):
     out.append(text[last:])
     return "".join(out), [{"type": l, "start": s, "end": e} for s, e, l in spans]
 
-OCR_SCALE = 2   # small text (e.g. screen recordings) is missed at 1x
+OCR_SCALE = 2   
 
 
 def _ocr_boxes(img):
@@ -93,14 +93,14 @@ def _ocr_boxes(img):
     import os
     from PIL import Image
 
-    #   locate Tesseract — prefer portable copy bundled in AIModels/tesseract/
+     
     _REPO_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
     _PORTABLE  = os.path.join(_REPO_ROOT, 'AIModels', 'tesseract', 'tesseract.exe')
     if os.path.isfile(_PORTABLE):
         pytesseract.pytesseract.tesseract_cmd = _PORTABLE
-    # else: use whatever 'tesseract' is on PATH (Linux / macOS / system install)
+    
 
-    #   point TESSDATA_PREFIX to AIModels/tessdata/ so eng.traineddata is found
+     
     _TESSDATA = os.path.join(_REPO_ROOT, 'AIModels', 'tessdata')
     if os.path.isdir(_TESSDATA):
         os.environ.setdefault('TESSDATA_PREFIX', _TESSDATA)

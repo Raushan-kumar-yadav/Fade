@@ -1,17 +1,4 @@
-"""
-backend/pii/sanitizer.py
-========================
-Sanitization layer — accepts the FINAL RedactionRequest from FADE and applies it.
-
-The sanitizer NEVER re-detects PII.  It operates exclusively on the redactions
-the user has approved (which may differ from the original detections: moved,
-resized, added, or removed).
-
-Exports:
-    sanitize_text(text, redactions)        -> str
-    sanitize_image(in_path, redactions)    -> bytes  (PNG)
-    sanitize_video(in_path, redactions)    -> bytes  (MP4)
-"""
+ 
 from __future__ import annotations
 
 import hashlib
@@ -30,25 +17,12 @@ def _pseudonym(value: str, label: str) -> str:
     return f"[{label}_{h}]"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+ 
 # TEXT
-# ─────────────────────────────────────────────────────────────────────────────
+ 
 
 def sanitize_text(text: str, redactions: list[dict[str, Any]]) -> str:
-    """Apply final FADE redactions to plain text.
-
-    Each redaction must have:
-        {
-            "enabled": bool,
-            "action":  "redact" | "pseudonymize",
-            "start":   int,
-            "end":     int,
-            "type":    str,
-        }
-
-    Disabled redactions are skipped (user unchecked them in FADE).
-    Overlapping ranges are merged to avoid double-processing.
-    """
+     
     # Filter enabled only, sort by start offset
     active = sorted(
         [r for r in redactions if r.get("enabled", True)],
@@ -76,24 +50,12 @@ def sanitize_text(text: str, redactions: list[dict[str, Any]]) -> str:
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+ 
 # IMAGE
-# ─────────────────────────────────────────────────────────────────────────────
+ 
 
 def sanitize_image(in_path: str | Path, redactions: list[dict[str, Any]]) -> bytes:
-    """Apply final FADE redactions to an image.
-
-    Each redaction must have:
-        {
-            "enabled": bool,
-            "action":  "redact",            # image only supports 'redact'
-            "bbox":    {"x", "y", "width", "height"},
-            "coordinateSpace": "source",
-        }
-
-    Returns PNG bytes of the redacted image.
-    The source file is NOT modified.
-    """
+     
     from PIL import Image, ImageDraw  # pylint: disable=import-outside-toplevel
 
     img = Image.open(in_path).convert("RGB")
@@ -119,26 +81,13 @@ def sanitize_image(in_path: str | Path, redactions: list[dict[str, Any]]) -> byt
     return buf.getvalue()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+  
 # VIDEO
-# ─────────────────────────────────────────────────────────────────────────────
+ 
 
 def sanitize_video(in_path: str | Path, redactions: list[dict[str, Any]]) -> bytes:
-    """Apply final FADE redactions to a video.
-
-    Each redaction must have:
-        {
-            "enabled": bool,
-            "frames": {"<frame_num>": {"x", "y", "width", "height"}},
-        }
-
-    The sanitizer draws black rectangles on exactly the frames/bboxes
-    the user approved in FADE.  It does NOT re-run detection.
-
-    Returns the MP4 bytes of the redacted video.
-    The source file is NOT modified.
-    """
-    import cv2, shutil, subprocess, os  # pylint: disable=import-outside-toplevel
+     
+    import cv2, shutil, subprocess, os  
 
     active = [r for r in redactions if r.get("enabled", True)]
 
