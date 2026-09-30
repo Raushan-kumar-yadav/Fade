@@ -290,9 +290,9 @@ def pii_register_sanitized(req: RegisterSanitizedRequest) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
+ 
 # GET /pii/security-state/{asset_id}
-# ---------------------------------------------------------------------------
+ 
 
 @router.get("/security-state/{asset_id}")
 def pii_security_state(asset_id: str) -> dict[str, Any]:
@@ -315,3 +315,201 @@ def pii_security_state(asset_id: str) -> dict[str, Any]:
         "originalAssetId":  _sec.get_original(asset_id),
     }
 
+
+ 
+# POST /pii/detect-by-id  
+ 
+
+class DetectByIdRequest(BaseModel):
+    asset_id: str
+    use_ner: bool = True
+
+
+@router.post("/detect-by-id")
+def pii_detect_by_id(req: DetectByIdRequest) -> dict[str, Any]:
+    """Detect PII in a library asset by asset_id — no file upload required.
+
+    The agent calls this with just an asset_id. The backend resolves the
+    filepath from the library and runs detection server-side.
+
+    Returns:
+        { assetId, assetType, filename, detections: [...] }
+    """
+    from backend.state import _library
+
+    asset = _library.get(req.asset_id)
+    if asset is None:
+        raise HTTPException(404, f"Asset '{req.asset_id}' not found in library")
+
+    filepath: str = getattr(asset, "filepath", "") or ""
+    if not filepath or not Path(filepath).exists():
+        raise HTTPException(422, f"Asset '{req.asset_id}' has no accessible file at '{filepath}'")
+
+    asset_type = _asset_type(filepath)
+    if asset_type == "unknown":
+        raise HTTPException(415, f"Unsupported file type: {Path(filepath).suffix}")
+
+    filename = Path(filepath).name
+    logger.info("[/pii/detect-by-id] %s  (%s, type=%s)", req.asset_id[:8], filename, asset_type)
+
+    if asset_type == "text":
+        text = Path(filepath).read_text(encoding="utf-8", errors="ignore")
+        detections = detect_text(text, use_ner=req.use_ner)
+    elif asset_type == "image":
+        detections = detect_image(filepath)
+    else:
+        detections = detect_video(filepath)
+
+    return {
+        "assetId": req.asset_id,
+        "assetType": asset_type,
+        "filename": filename,
+        "detections": detections,
+    }
+
+
+ 
+# POST /pii/sanitize-by-id  
+ 
+
+class SanitizeByIdRequest(BaseModel):
+    asset_id: str
+    """Library asset_id of the original file."""
+    auto_redact_all: bool = True
+    """If True, auto-detect + redact everything (agent default).
+    If False, provide redactions list manually."""
+    redactions: list[dict[str, Any]] = []
+    """Optional manual redaction list (same schema as /pii/sanitize)."""
+
+
+@router.post("/sanitize-by-id")
+def pii_sanitize_by_id(req: SanitizeByIdRequest) -> dict[str, Any]:
+    """Full PII sanitization pipeline — no file upload needed.
+
+    Steps (all server-side):
+      1. Resolve filepath from library.
+      2. Run detection if auto_redact_all=True.
+      3. Sanitize → write sanitized file.
+      4. Register sanitized file as a new library asset.
+      5. Swap all timeline clip references + mark security states.
+
+    Returns:
+        { originalAssetId, sanitizedAssetId, clipsSwapped, detectionCount, sanitizedFilename }
+    """
+    import uuid
+    import shutil
+    from backend.state import _library, engine
+    from backend.pii import security as _sec
+    from backend.events import notify
+
+    asset = _library.get(req.asset_id)
+    if asset is None:
+        raise HTTPException(404, f"Asset '{req.asset_id}' not found in library")
+
+    filepath: str = getattr(asset, "filepath", "") or ""
+    if not filepath or not Path(filepath).exists():
+        raise HTTPException(422, f"Asset '{req.asset_id}' has no accessible file")
+
+    asset_type = _asset_type(filepath)
+    if asset_type == "unknown":
+        raise HTTPException(415, f"Unsupported file type: {Path(filepath).suffix}")
+
+    logger.info("[/pii/sanitize-by-id] asset=%s type=%s", req.asset_id[:8], asset_type)
+
+    # 2 — detect or use provided redactions
+    if req.auto_redact_all:
+        if asset_type == "text":
+            redactions = detect_text(Path(filepath).read_text(encoding="utf-8", errors="ignore"))
+        elif asset_type == "image":
+            redactions = detect_image(filepath)
+        else:
+            redactions = detect_video(filepath)
+        for r in redactions:
+            r["enabled"] = True
+    else:
+        redactions = req.redactions
+
+    enabled = [r for r in redactions if r.get("enabled", True)]
+    logger.info("[/pii/sanitize-by-id] %d redaction(s)", len(enabled))
+
+    # 3 — sanitize
+    suffix = Path(filepath).suffix
+    out_suffix = ".png" if asset_type == "image" else suffix
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_in:
+        import shutil as _sh
+        _sh.copy2(filepath, tmp_in.name)
+        tmp_in_path = tmp_in.name
+
+    try:
+        if asset_type == "text":
+            text = Path(filepath).read_text(encoding="utf-8", errors="ignore")
+            out_bytes = sanitize_text(text, enabled).encode("utf-8")
+        elif asset_type == "image":
+            out_bytes = sanitize_image(tmp_in_path, enabled)
+        else:
+            out_bytes = sanitize_video(tmp_in_path, enabled)
+    finally:
+        try:
+            os.unlink(tmp_in_path)
+        except OSError:
+            pass
+
+    # 4 — save sanitized file next to original
+    san_stem = f"sanitized_{Path(filepath).stem}"
+    san_dest = Path(filepath).parent / f"{san_stem}{out_suffix}"
+    counter = 1
+    while san_dest.exists():
+        san_dest = Path(filepath).parent / f"{san_stem}_{counter}{out_suffix}"
+        counter += 1
+    san_dest.write_bytes(out_bytes)
+
+    # Register in library using the library router helper if available
+    san_asset_id = uuid.uuid4().hex[:12]
+    try:
+        from backend.routers.library import _register_file
+        san_asset_id = _register_file(str(san_dest))
+    except Exception:
+        try:
+            from backend.library import Asset
+            _library[san_asset_id] = Asset(
+                assetId=san_asset_id, filepath=str(san_dest),
+                filename=san_dest.name, type=asset_type,
+            )
+        except Exception as e:
+            logger.warning("[/pii/sanitize-by-id] library registration fallback failed: %s", e)
+
+    # 5 — swap timeline clips + mark security states
+    _sec.mark(req.asset_id,  "RESTRICTED")
+    _sec.mark(san_asset_id,  "SANITIZED")
+    _sec.link(req.asset_id,  san_asset_id)
+
+    swapped = 0
+    timelines = getattr(getattr(engine, "project", None), "timelines", []) or []
+    if not timelines and getattr(engine, "activeTimeline", None):
+        timelines = [engine.activeTimeline]
+
+    for tl in timelines:
+        for track in getattr(tl, "tracks", []):
+            for clip in getattr(track, "clips", []):
+                if getattr(clip, "assetId", None) == req.asset_id:
+                    clip.assetId = san_asset_id
+                    if hasattr(clip, "filepath"):
+                        clip.filepath = str(san_dest)
+                    swapped += 1
+
+    notify("timeline")
+    notify("library")
+
+    logger.info(
+        "[/pii/sanitize-by-id] done: original=%s RESTRICTED | sanitized=%s SANITIZED | clips=%d",
+        req.asset_id[:8], san_asset_id[:8], swapped,
+    )
+
+    return {
+        "originalAssetId":   req.asset_id,
+        "sanitizedAssetId":  san_asset_id,
+        "clipsSwapped":      swapped,
+        "detectionCount":    len(enabled),
+        "sanitizedFilename": san_dest.name,
+    }

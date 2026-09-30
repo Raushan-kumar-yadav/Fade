@@ -159,6 +159,17 @@ export default function PIIReviewPanel({ assetId, assetType }: PIIReviewPanelPro
     }
   };
 
+  if (!assetId) {
+    return (
+      <div className="pii-panel">
+        <h3>PII REVIEW</h3>
+        <p style={{ color: '#94a3b8', marginTop: 12, fontSize: 13 }}>
+          Select a clip on the timeline to scan it for PII.
+        </p>
+      </div>
+    );
+  }
+
   if (!file) {
     return (
       <div className="pii-panel">

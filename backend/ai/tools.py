@@ -4615,3 +4615,106 @@ ALL_TOOLS.extend([list_platform_presets, dispatch_task, get_campaign_status])
 TRACKING_TOOLS = [start_tracking, get_tracking_progress, list_tracks, blur_tracked_region, link_track_to_clip]
 ALL_TOOLS.extend(TRACKING_TOOLS)
 
+
+# ---------------------------------------------------------------------------
+# PII Tools  -  let the agent scan and sanitize assets for personal data
+# ---------------------------------------------------------------------------
+
+@tool
+def scan_asset_for_pii(asset_id: str) -> str:
+    """Scan a library asset for Personally Identifiable Information (PII).
+
+    Detects faces, license plates, emails, phone numbers, names, and other
+    PII in images, videos, and text files without modifying the original.
+
+    Args:
+        asset_id: The library asset ID to scan (from list_library_assets).
+
+    Returns:
+        A human-readable summary of detected PII with counts and types.
+    """
+    try:
+        result = _post("/pii/detect-by-id", {"asset_id": asset_id, "use_ner": True})
+        detections = result.get("detections", [])
+        if not detections:
+            return f"No PII detected in asset {asset_id} ({result.get('filename', '')})."
+        counts: dict[str, int] = {}
+        for d in detections:
+            t = d.get("type", "UNKNOWN")
+            counts[t] = counts.get(t, 0) + 1
+        summary = ", ".join(f"{v}x {k}" for k, v in counts.items())
+        return (
+            f"Found {len(detections)} PII item(s) in {result.get('filename', asset_id)}: {summary}. "
+            f"Asset type: {result.get('assetType')}. "
+            f"Call sanitize_asset_pii(asset_id='{asset_id}') to redact them."
+        )
+    except Exception as e:
+        return f"PII scan failed for asset {asset_id}: {e}"
+
+
+@tool
+def sanitize_asset_pii(asset_id: str, auto_redact_all: bool = True) -> str:
+    """Sanitize a library asset by redacting all detected PII.
+
+    This runs the full pipeline server-side:
+      1. Detects PII in the asset.
+      2. Produces a sanitized copy (faces blurred, text redacted, etc.).
+      3. Registers the sanitized copy in the library.
+      4. Swaps ALL timeline clips that referenced the original to the sanitized version.
+      5. Marks the original as RESTRICTED and the sanitized copy as SANITIZED.
+
+    The original file is NOT deleted — it is marked RESTRICTED so AI tools
+    will not use it again.
+
+    Args:
+        asset_id:        Library asset ID to sanitize.
+        auto_redact_all: If True (default), auto-detect and redact all PII.
+
+    Returns:
+        A summary of the sanitization result including clips swapped.
+    """
+    try:
+        result = _post_long(
+            "/pii/sanitize-by-id",
+            {"asset_id": asset_id, "auto_redact_all": auto_redact_all},
+            timeout=300,
+        )
+        return (
+            f"Sanitization complete for asset {asset_id[:8]}. "
+            f"Redacted {result.get('detectionCount', 0)} PII item(s). "
+            f"Sanitized file: '{result.get('sanitizedFilename')}' "
+            f"(new asset ID: {result.get('sanitizedAssetId', '')[:8]}). "
+            f"Timeline clips updated: {result.get('clipsSwapped', 0)}. "
+            f"Original asset is now RESTRICTED."
+        )
+    except Exception as e:
+        return f"PII sanitization failed for asset {asset_id}: {e}"
+
+
+@tool
+def get_asset_pii_state(asset_id: str) -> str:
+    """Get the PII security state of a library asset.
+
+    Returns whether the asset is clean (NONE), contains known PII (RESTRICTED),
+    or has already been sanitized (SANITIZED).
+
+    Args:
+        asset_id: Library asset ID to check.
+    """
+    try:
+        result = _get(f"/pii/security-state/{asset_id}")
+        state = result.get("securityState", "UNKNOWN")
+        san_id = result.get("sanitizedAssetId")
+        orig_id = result.get("originalAssetId")
+        msg = f"Asset {asset_id[:8]} security state: {state}."
+        if san_id:
+            msg += f" Sanitized copy available: {san_id[:8]}."
+        if orig_id:
+            msg += f" This is a sanitized copy of original: {orig_id[:8]}."
+        return msg
+    except Exception as e:
+        return f"Could not fetch PII state for {asset_id}: {e}"
+
+
+PII_TOOLS = [scan_asset_for_pii, sanitize_asset_pii, get_asset_pii_state]
+ALL_TOOLS.extend(PII_TOOLS)
