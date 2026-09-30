@@ -1,10 +1,27 @@
-﻿ 
+"""
+perceptual.py - Perceptual video hashing for Fade artifact integrity.
+Uses `videohash` which extracts frames, builds a wavelet-based 64-bit hash.
+Survives: H.264/H.265 re-encode, platform upload, resize, bitrate change.
+Fails on: >10deg rotation, reversed playback, >30% crop.
+"""
 from __future__ import annotations
 import logging
 
 logger = logging.getLogger(__name__)
 
 PHASH_THRESHOLD = 10  # Hamming bits. <= 10 = same video (tuned for platform re-encode)
+
+# ── Pillow 10+ compatibility ──────────────────────────────────────────────────
+# PIL.Image.ANTIALIAS was removed in Pillow 10.0.0 (replaced by LANCZOS).
+# videohash (and ImageHash) still reference it at call time, so we patch the
+# PIL.Image module object globally — this affects all code in this process.
+try:
+    import PIL.Image as _pil_img
+    if not hasattr(_pil_img, "ANTIALIAS"):
+        _pil_img.ANTIALIAS = _pil_img.LANCZOS  # type: ignore[attr-defined]
+except Exception:
+    pass
+# ─────────────────────────────────────────────────────────────────────────────
 
 try:
     from videohash import VideoHash as _VideoHash
@@ -22,6 +39,13 @@ def compute_phash(video_path: str) -> str | None:
     """
     if not _VIDEOHASH_AVAILABLE:
         return None
+    # Re-apply patch here too in case PIL was reloaded between calls
+    try:
+        import PIL.Image as _pi
+        if not hasattr(_pi, "ANTIALIAS"):
+            _pi.ANTIALIAS = _pi.LANCZOS  # type: ignore[attr-defined]
+    except Exception:
+        pass
     try:
         vh = _VideoHash(path=video_path)
         return vh.hash_hex
