@@ -405,11 +405,11 @@ async def ai_create_video(req: CreateVideoRequest):
 # Director - multi-agent parallel composition
 
 class DirectorRequest(BaseModel):
-    assets:        list[str] = []
-    intent:        str = ""
-    comp_types:    list[str] = ["image", "video", "pdf"]
+    assets: list[str] = []
+    intent: str = ""
+    comp_types: list[str] = ["image", "video", "pdf"]
     publish_after: bool = False
-    port:          int = 8000
+    port: int = 8000
 
 
 @ai_router.post("/director/run")
