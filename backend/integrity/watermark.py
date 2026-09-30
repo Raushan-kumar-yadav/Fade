@@ -1,18 +1,4 @@
-﻿"""
-watermark.py - Invisible DWT-DCT watermark embed/extract for Fade artifact integrity.
-
-Uses `invisible-watermark` (imwatermark) library:
-  pip install invisible-watermark
-
-Strategy:
-  - Embed 4 bytes (32 bits) of artifact_id into every Nth frame (frequency domain)
-  - Extract by sampling evenly-spaced frames + majority vote across samples
-  - Blind extraction: does NOT need the original video
-
-Robustness:
-  - Survives H.264/H.265 re-encode, YouTube/TikTok upload, resize, moderate crop
-  - May not survive very aggressive Instagram compression (<15s Reels)
-"""
+﻿ 
 from __future__ import annotations
 import logging
 from collections import Counter

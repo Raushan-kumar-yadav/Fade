@@ -1,10 +1,17 @@
-﻿ 
+ 
 from __future__ import annotations
 import logging
 import os
 import sqlite3
 import time
 from pathlib import Path
+
+try:
+    import httpx as _httpx
+    _HTTPX_OK = True
+except ImportError:
+    _HTTPX_OK = False
+
 
 from backend.integrity.echo_integrity import (
     Integrity, LocalLedger, sha256_file
@@ -23,6 +30,56 @@ _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 def _get_svc() -> Integrity:
     ledger = LocalLedger(_DATA_DIR / "ledger.jsonl")
+
+
+def _publish_to_server(payload: dict) -> None:
+   
+    if not _HTTPX_OK:
+        logger.warning("[integrity] httpx not installed — skipping server publish")
+        return
+
+    server_url = os.environ.get("VERIFICATION_SERVER_URL", "").rstrip("/")
+    api_key    = os.environ.get("VERIFICATION_SERVER_KEY", "")
+
+    if not server_url:
+        logger.debug("[integrity] VERIFICATION_SERVER_URL not set — skipping publish")
+        return
+
+    if not api_key:
+        logger.warning("[integrity] VERIFICATION_SERVER_KEY not set — skipping publish")
+        return
+
+    endpoint = f"{server_url}/registerContent"
+    headers  = {"X-API-Key": api_key, "Content-Type": "application/json"}
+
+    try:
+        resp = _httpx.post(
+            endpoint,
+            json=payload,
+            headers=headers,
+            timeout=15,          # don't hang the export flow
+        )
+        if resp.status_code == 200:
+            logger.info("[integrity] Published to server OK: artifact_id=%s", payload.get("artifact_id"))
+        elif resp.status_code == 409:
+            logger.info("[integrity] Artifact already on server (409) — skipping")
+        else:
+            logger.warning(
+                "[integrity] Server returned %d for artifact %s: %s",
+                resp.status_code, payload.get("artifact_id"), resp.text[:200]
+            )
+    except _httpx.TimeoutException:
+        logger.warning("[integrity] Server publish timed out (artifact_id=%s) — local record kept",
+                       payload.get("artifact_id"))
+    except _httpx.ConnectError as e:
+        logger.warning("[integrity] Cannot reach server %s: %s — local record kept", server_url, e)
+    except Exception as e:
+        logger.warning("[integrity] Unexpected error publishing to server: %s", e)
+
+
+def _get_svc() -> Integrity:
+    ledger = LocalLedger(_DATA_DIR / "ledger.jsonl")
+
     svc = Integrity(_DATA_DIR / "registry.db", ledger)
     _extend_db(svc.db)
     return svc
@@ -36,6 +93,21 @@ def _extend_db(db: sqlite3.Connection) -> None:
             db.commit()
         except sqlite3.OperationalError:
             pass  # already exists
+
+
+_VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".avi", ".ts", ".flv"}
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"}
+_PDF_EXTS   = {".pdf"}
+
+def _guess_content_type(path: str) -> str:
+    ext = Path(path).suffix.lower()
+    if ext in _VIDEO_EXTS:
+        return "video"
+    if ext in _IMAGE_EXTS:
+        return "image"
+    if ext in _PDF_EXTS:
+        return "pdf"
+    return "video"  # default
 
 
 class ArtifactIntegrityService:
@@ -83,7 +155,7 @@ class ArtifactIntegrityService:
         # Seal Merkle tree and anchor root to ledger
         batch = svc.seal()
 
-        return {
+        result = {
             "artifact_id": artifact_id,
             "sha256": rec["sha256"],
             "filename": rec["filename"],
@@ -92,10 +164,29 @@ class ArtifactIntegrityService:
             "phash_available": phash is not None,
             "wm_id": wm_id,
             "wm_available": wm_ok,
-            "watermarked_output_path":  watermarked_output_path if wm_ok else None,
+            "watermarked_output_path": watermarked_output_path if wm_ok else None,
             "batch": batch,
             "registered_at": rec["registered_at"],
         }
+
+        # Auto-publish proof bundle to hosted verification server
+        # Reads VERIFICATION_SERVER_URL + VERIFICATION_SERVER_KEY from env.
+        # Non-blocking: errors are logged but never propagate.
+        _publish_to_server({
+            "artifact_id":  artifact_id,
+            "sha256": rec["sha256"],
+            "phash": phash,
+            "wm_id":         wm_id,
+            "merkle_proof":  batch.get("proof") if batch else None,
+            "merkle_root":   batch.get("root")  if batch else None,
+            "ledger_tx":     batch.get("tx")    if batch else None,
+            "filename":      rec["filename"],
+            "content_type":  _guess_content_type(rec["filename"] or video_path),
+            "size_bytes":    rec["size"],
+        })
+
+        return result
+
 
     def verify_video(self, video_path: str) -> dict:
          
