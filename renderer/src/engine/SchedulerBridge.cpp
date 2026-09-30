@@ -219,54 +219,75 @@ public:
         return;
     }
 
+    // Collect frames that are NOT already cached or pending, in ascending order
+    std::vector<int64_t> toFetch;
     for (int offset = 1; offset <= radius; ++offset) {
       int64_t frame = anchor + offset;
       CacheKey key{clipId, frame};
-
       if (m_cache.get(key))
         continue;
-
       {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
         if (m_pending.count(key))
           continue;
         m_pending.insert(key);
       }
+      toFetch.push_back(frame);
+    }
 
-      std::cout << "[SCHED] Prefetch queued clipId="
-                << clipId.substr(clipId.rfind('/') + 1) << " frame=" << frame
-                << "\n";
+    if (toFetch.empty())
+      return;
 
-      m_pool.enqueue([this, clipId, frame, key]() {
-        ClipState *state = nullptr;
-        {
-          std::lock_guard<std::mutex> lock(m_clipsMutex);
-          auto it = m_clips.find(clipId);
-          if (it == m_clips.end()) {
-            std::lock_guard<std::mutex> plock(m_pendingMutex);
-            m_pending.erase(key);
-            return;
-          }
-          state = it->second.get();
+    // Log only the first frame to reduce noise
+    std::cout << "[SCHED] Prefetch queued clipId="
+              << clipId.substr(clipId.rfind('/') + 1)
+              << " frame=" << toFetch.front()
+              << "+" << toFetch.size() << "\n";
+
+    // Submit ONE task per call that decodes ALL frames sequentially (ascending).
+    // A single task per clip avoids out-of-order seeks caused by the thread pool
+    // picking tasks in arbitrary order.
+    m_pool.enqueue([this, clipId, frames = std::move(toFetch)]() {
+      ClipState *state = nullptr;
+      {
+        std::lock_guard<std::mutex> lock(m_clipsMutex);
+        auto it = m_clips.find(clipId);
+        if (it == m_clips.end()) {
+          // clip unregistered — clear pending
+          std::lock_guard<std::mutex> plock(m_pendingMutex);
+          for (int64_t f : frames)
+            m_pending.erase({clipId, f});
+          return;
         }
+        state = it->second.get();
+      }
 
-        std::lock_guard<std::mutex> dlock(state->decoderMutex);
+      // Decode all frames in strict ascending order under the clip's mutex
+      std::lock_guard<std::mutex> dlock(state->decoderMutex);
+      for (int64_t frame : frames) {
+        CacheKey key{clipId, frame};
+        // Skip if another task already populated the cache
+        if (m_cache.get(key)) {
+          std::lock_guard<std::mutex> plock(m_pendingMutex);
+          m_pending.erase(key);
+          continue;
+        }
         auto result = state->decoder->decodeFrame(frame);
         if (!result.rgba.empty()) {
           auto entry = std::make_shared<CachedEntry>();
-          entry->rgba = std::move(result.rgba);
+          entry->rgba  = std::move(result.rgba);
           entry->width = result.width;
           entry->height = result.height;
           m_cache.put(key, entry);
         }
-
         {
           std::lock_guard<std::mutex> plock(m_pendingMutex);
           m_pending.erase(key);
         }
-      });
-    }
+      }
+    });
   }
+
 
   CachedFrameData tryGetCachedFrame(const std::string &clipId, int64_t frame) {
     // For static images,
