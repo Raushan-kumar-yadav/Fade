@@ -21,7 +21,16 @@
   border-bottom: 1px solid #1e2030;
 }
 
+/* SVG icon in header */
+.tr-icon-svg {
+  width: 32px;
+  height: 32px;
+  stroke: #7c6eff;
+  flex-shrink: 0;
+}
+
 .tr-icon { font-size: 28px; }
+
 
 .tr-title {
   margin: 0;
@@ -91,6 +100,38 @@
   color: #7eb8ff;
 }
 
+.tr-hint--warn {
+  background: #1f1810;
+  border: 1px solid #60400e;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #ffb347;
+}
+
+/* Optional label suffix */
+.tr-optional {
+  font-weight: 400;
+  color: #4a4e6a;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Clip info badge shown when a clip is auto-selected */
+.tr-clip-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: #161f36;
+  border: 1px solid #1e3060;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #7eb8ff;
+}
+.tr-clip-badge svg { flex-shrink: 0; stroke: #7eb8ff; }
+.tr-clip-badge__meta { margin-left: auto; color: #4a4e6a; font-size: 11px; }
+
+
 /*   Mode tabs   */
 .tr-mode-tabs {
   display: flex;
@@ -142,15 +183,30 @@
   letter-spacing: 0.3px;
 }
 
-.tr-btn-start:hover:not(.tr-btn-start--disabled) {
+.tr-btn-start:hover:not(:disabled) {
   opacity: 0.9;
   transform: translateY(-1px);
 }
 
-.tr-btn-start--disabled {
-  opacity: 0.5;
+.tr-btn-start:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* Large cancel button (replaces start while running) */
+.tr-btn-cancel-big {
+  background: transparent;
+  border: 1px solid #ff4d6a66;
+  color: #ff7191;
+  border-radius: 10px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.tr-btn-cancel-big:hover { background: #ff4d6a15; }
+
 
 /*   Job card   */
 .tr-job-card {
@@ -174,6 +230,8 @@
 }
 
 .tr-job-label { font-weight: 600; font-size: 13px; }
+.tr-job-pct   { font-size: 12px; color: #9fa3bb; }
+
 
 .tr-btn-cancel {
   background: transparent;
