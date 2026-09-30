@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+﻿import { useState, useRef, useEffect, useCallback } from 'react'
 import './FloatingAIChat.css'
 
 // Types
@@ -351,10 +351,16 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               aiText = ''
               dispatchToolEvents(evt.name)
               // Export tool � dispatch overlay event
-              if (evt.name === 'export_video' && typeof evt.content === 'string') {
-                const m = evt.content.match(/EXPORT_JOB_ID:([\w-]+)/)
-                if (m) {
-                  window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: m[1] } }))
+              if ((evt.name === 'export_video' || evt.name === 'set_integrity_registration') && typeof evt.content === 'string') {
+                // Export job signal -> show ExportProgressOverlay
+                const mJob = evt.content.match(/EXPORT_JOB_ID:([\w-]+)/)
+                if (mJob) {
+                  window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: mJob[1] } }))
+                }
+                // Integrity toggle signal -> set checkbox in ExportWorkspace
+                const mInt = evt.content.match(/INTEGRITY_ENABLED:([01])/)
+                if (mInt) {
+                  window.dispatchEvent(new CustomEvent('fade:integrity-toggle', { detail: { enabled: mInt[1] === '1' } }))
                 }
               }
 

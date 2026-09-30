@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import './ExportWorkspace.css'
 import { exportApi, type ExportProgress } from '../api/toolsApi'
 
@@ -94,6 +94,17 @@ export default function ExportWorkspace() {
       runIntegrity(filePath)
     }
   }, [compProgress?.done, compProgress?.path, progress?.done, progress?.path, integrityEnabled, iState.phase, runIntegrity])
+
+  // Listen for agent commands: set_integrity_registration / export_video(register_integrity=True)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const enabled = (e as CustomEvent<{ enabled: boolean }>).detail.enabled
+      setIntegrityEnabled(enabled)
+      setIState({ phase: 'idle' })
+    }
+    window.addEventListener('fade:integrity-toggle', handler)
+    return () => window.removeEventListener('fade:integrity-toggle', handler)
+  }, [])
 
 
   const fetchComps = async () => {

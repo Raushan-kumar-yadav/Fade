@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import json
 import os
@@ -2939,14 +2939,19 @@ def export_video(
     output_path: str = "",
     preset: str = "medium",
     crf: int = 22,
+    register_integrity: bool = False,
 ) -> str:
     """Export the current timeline to a video file.
 
     format: one of mp4-1080, mp4-4k, mp4-720, shorts, reels, webm, gif.
     fps: frames per second (default 30).
     output_path: absolute path for the output file; auto-generated if empty.
-    preset: FFmpeg encoding speed preset (ultrafast … veryslow).
+    preset: FFmpeg encoding speed preset (ultrafast ... veryslow).
     crf: constant rate factor quality (0 = lossless, 51 = worst; default 22).
+    register_integrity: if True, automatically enable integrity verification for
+                        this export. Fade will embed an invisible watermark, compute
+                        SHA-256 + perceptual hash, anchor to ledger, and publish to
+                        the verification server after export completes.
     Returns a status string with the output path on success.
     """
     # Normalise format alias
@@ -2983,22 +2988,68 @@ def export_video(
     try:
         result = _post("/export/start", body)
     except Exception as exc:
-        return f"❌ Export failed to start: {exc}"
+        return f"Export failed to start: {exc}"
 
     job_id = result.get("jobId", "")
     total  = result.get("total", 0)
 
+    integrity_line = ""
+    if register_integrity:
+        # Parsed by FloatingAIChat.tsx: sets integrityEnabled=true in ExportWorkspace
+        integrity_line = "\nINTEGRITY_ENABLED:1"
+
     return (
-        f"✅ Export started!\n"
-        f"  Format: {fmt_id} ({w}×{h} @ {fps}fps)\n"
+        f"Export started!\n"
+        f"  Format: {fmt_id} ({w}x{h} @ {fps}fps)\n"
         f"  Frames: {total}\n"
         f"  Job ID: {job_id}\n"
         f"  Output: {output_path}\n\n"
-        f"EXPORT_JOB_ID:{job_id}"   
+        f"EXPORT_JOB_ID:{job_id}"
+        f"{integrity_line}"
     )
 
 
-EXPORT_TOOLS = [export_video]
+@tool
+def set_integrity_registration(enabled: bool = True) -> str:
+    """Enable or disable the 'Register for Integrity Verification' checkbox in the
+    Export workspace.
+
+    When enabled=True (default):
+      - The integrity checkbox is turned ON for the next export.
+      - After export completes, Fade will automatically:
+          1. Compute SHA-256 exact hash
+          2. Compute perceptual hash (survives platform re-encoding)
+          3. Embed invisible DWT-DCT watermark into the video/image
+          4. Anchor all hashes to the local ledger
+          5. Publish proof bundle to the hosted verification server
+      - The user sees a status card with Artifact ID + proof download.
+
+    When enabled=False:
+      - The integrity checkbox is turned OFF.
+      - Export completes with no integrity registration.
+
+    Use this tool BEFORE calling export_video, or at any time to inform the user
+    of the current integrity setting. Alternatively, pass register_integrity=True
+    directly to export_video to do both in one call.
+
+    enabled: True to enable integrity registration, False to disable.
+    Returns: confirmation string with UI signal.
+    """
+    if enabled:
+        return (
+            "Integrity verification registration ENABLED.\n"
+            "The next export will be automatically hashed, watermarked, and registered on the ledger.\n\n"
+            "INTEGRITY_ENABLED:1"
+        )
+    else:
+        return (
+            "Integrity verification registration DISABLED.\n"
+            "The next export will complete without integrity registration.\n\n"
+            "INTEGRITY_ENABLED:0"
+        )
+
+
+EXPORT_TOOLS = [export_video, set_integrity_registration]
 ALL_TOOLS.extend(EXPORT_TOOLS)
 
 
