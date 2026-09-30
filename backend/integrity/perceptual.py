@@ -1,9 +1,4 @@
-﻿"""
-perceptual.py - Perceptual video hashing for Fade artifact integrity.
-Uses `videohash` which extracts frames, builds a wavelet-based 64-bit hash.
-Survives: H.264/H.265 re-encode, platform upload, resize, bitrate change.
-Fails on: >10deg rotation, reversed playback, >30% crop.
-"""
+﻿ 
 from __future__ import annotations
 import logging
 
