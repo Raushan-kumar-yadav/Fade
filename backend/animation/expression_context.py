@@ -69,11 +69,12 @@ class _PointProxy:
 
 class _ClipProxy:
     """Lightweight read-only view of another clip's current transform values."""
-    __slots__ = ("_clip", "_frame")
+    __slots__ = ("_clip", "_frame", "_eval_clip")
 
-    def __init__(self, clip, frame) -> None:
+    def __init__(self, clip, frame, eval_clip=None) -> None:
         object.__setattr__(self, "_clip", clip)
         object.__setattr__(self, "_frame", frame)
+        object.__setattr__(self, "_eval_clip", eval_clip)
 
     def tracking(self, tracking_id: str):
         from backend.state import _library
@@ -88,8 +89,66 @@ class _ClipProxy:
         # Map frame to asset time
         asset_frame = self._clip.sourceFrame(self._frame) if hasattr(self._clip, "sourceFrame") else self._frame
         point = tdata.get("frames", {}).get(str(asset_frame))
+        
         if point:
-            return _PointProxy(point.get("x", 0.0), point.get("y", 0.0))
+            import math
+            x_native = float(point.get("x", 0.0))
+            y_native = float(point.get("y", 0.0))
+            
+            # Map from native space to composition space
+            t = self._clip.transform
+            cw = float(getattr(t, '_projectWidth', 1920))
+            ch = float(getattr(t, '_projectHeight', 1080))
+            
+            iw = float(getattr(asset, 'width', 1920) or 1920)
+            ih = float(getattr(asset, 'height', 1080) or 1080)
+            
+            # VideoClip scales to fit
+            scale = min(cw / iw, ch / ih) if (iw > 0 and ih > 0) else 1.0
+            dw = iw * scale
+            dh = ih * scale
+            dx = (cw - dw) / 2.0
+            dy = (ch - dh) / 2.0
+            
+            # Local coordinate on the canvas
+            local_x = x_native * scale + dx
+            local_y = y_native * scale + dy
+            
+            # Map to global space based on the clip's transform
+            tx, ty = t.position.get()
+            sx, sy = t.scale.get()
+            deg = t.rotation.get()
+            ax, ay = t.anchor.get()
+            
+            cx = cw * 0.5 + ax
+            cy = ch * 0.5 + ay
+            
+            px = local_x - ax - cx
+            py = local_y - ay - cy
+            
+            px *= sx
+            py *= sy
+            
+            rad = math.radians(deg)
+            cos_val = math.cos(rad)
+            sin_val = math.sin(rad)
+            rot_x = px * cos_val - py * sin_val
+            rot_y = px * sin_val + py * cos_val
+            
+
+            global_x = rot_x + tx + cx
+            global_y = rot_y + ty + cy
+            
+            eval_clip = getattr(self, "_eval_clip", None)
+            if eval_clip:
+                cname = type(eval_clip).__name__
+                if cname in ("VideoClip", "ImageClip", "WebCompClip", "CompClip", "AudioClip"):
+                    global_x -= cw * 0.5
+                    global_y -= ch * 0.5
+            
+            return _PointProxy(global_x, global_y)
+
+            
         return _PointProxy(0.0, 0.0)
 
     # Convenience: expr can do  comp.clip("id").pos_x
@@ -128,11 +187,12 @@ class _ClipProxy:
 
 class _CompProxy:
     """Wraps a timeline to expose .clip(id) in expressions."""
-    __slots__ = ('_timeline', '_frame')
+    __slots__ = ('_timeline', '_frame', '_eval_clip')
 
-    def __init__(self, timeline, frame) -> None:
+    def __init__(self, timeline, frame, eval_clip=None) -> None:
         object.__setattr__(self, '_timeline', timeline)
         object.__setattr__(self, '_frame', frame)
+        object.__setattr__(self, '_eval_clip', eval_clip)
 
     def clip(self, clip_id: str) -> _ClipProxy:
         """Get a read-only proxy for a clip by its clipId."""
@@ -145,7 +205,7 @@ class _CompProxy:
             c = None
         if c is None:
             raise KeyError(f"Clip '{clip_id}' not found in timeline")
-        return _ClipProxy(c, object.__getattribute__(self, '_frame'))
+        return _ClipProxy(c, object.__getattribute__(self, '_frame'), object.__getattribute__(self, '_eval_clip'))
 
     def __setattr__(self, name, value):
         raise AttributeError("CompProxy is read-only.")
@@ -190,7 +250,7 @@ def build_context(
         "value": base_value,
         "this": _ClipProxy(clip, frame) if clip else None,
         # Comp access
-        "comp": _CompProxy(timeline, frame) if timeline else None,
+        "comp": _CompProxy(timeline, frame, clip) if timeline else None,
         #
         "sin": math.sin,
         "cos": math.cos,

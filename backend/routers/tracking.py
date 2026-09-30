@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from backend.state import engine, _library
 from backend.events import notify
@@ -7,6 +7,12 @@ from backend.history.commandStack import CommandStack
 from backend.editor_tools.commands import BindExpressionCommand
 from backend.routers.jobs import _make_job, _update_job, _start, is_job_cancelled
 import uuid
+
+import base64
+import numpy as np
+import cv2
+from backend.media.decoder.videoDecoder import VideoDecoder
+from backend.tracking.target_detector import find_text_target, find_image_target
 
 router = APIRouter(tags=["tracking"])
 
@@ -19,6 +25,16 @@ class TrackRequest(BaseModel):
     y: float
     width: float
     height: float
+    target_text: str | None = None
+    target_type: str | None = None
+
+
+class DetectTargetRequest(BaseModel):
+    clip_id: str
+    frame: int
+    target_type: str
+    target_text: str | None = None
+    reference_image: str | None = None
 
 class BindTrackingRequest(BaseModel):
     clip_id: str
@@ -40,7 +56,10 @@ def _find_clip(clip_id: str):
             return clip, tl
     return None, None
 
-def _run_tracking_job(job_id: str, filepath: str, fps: float, start_asset_frame: int, end_asset_frame: int, initial_bbox: tuple, asset_id: str):
+def _run_tracking_job(job_id: str, filepath: str, fps: float, start_asset_frame: int, end_asset_frame: int,
+                      initial_bbox: tuple, asset_id: str,
+                      target_text: str | None = None, target_type: str | None = None,
+                      property_name: str | None = None, source_clip_id: str | None = None):
     _update_job(job_id, status="running", progress=0.01, message="Initializing Tracker...")
 
     total_frames = max(1, end_asset_frame - start_asset_frame + 1)
@@ -69,7 +88,12 @@ def _run_tracking_job(job_id: str, filepath: str, fps: float, start_asset_frame:
                 "id": tracking_id,
                 "startFrame": start_asset_frame,
                 "endFrame": end_asset_frame,
-                "frames": frames_data
+                "frames": frames_data,
+                # metadata for UI history
+                "targetText": target_text,
+                "targetType": target_type,
+                "property": property_name,
+                "sourceClipId": source_clip_id,
             }
 
             _update_job(job_id, status="done", progress=1.0, message="Tracking Complete!", result={"tracking_id": tracking_id})
@@ -105,9 +129,11 @@ def start_tracking(req: TrackRequest):
     job = _make_job("tracking", label, clip.assetId)
     notify("job", job)
 
-    _start(_run_tracking_job, job["jobId"], clip.filepath, fps, start_asset_frame, end_asset_frame, initial_bbox, clip.assetId)
+    _start(_run_tracking_job, job["jobId"], clip.filepath, fps, start_asset_frame, end_asset_frame,
+           initial_bbox, clip.assetId,
+           req.target_text, req.target_type, req.property, req.clip_id)
 
-    return {"success": True, "jobId": job["jobId"], "label": label, "status": "pending"}
+    return {"success": True, "jobId": job["jobId"], "label": label, "status": "pending", "clipId": req.clip_id}
 
 @router.post("/tracking/bind")
 def bind_tracking(req: BindTrackingRequest):
@@ -144,3 +170,77 @@ def get_asset_tracking(asset_id: str):
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
     return getattr(asset, "trackingResults", {})
+
+
+@router.get("/tracking/clip/{clip_id}/results")
+def get_clip_tracking_results(clip_id: str):
+    """Return summary of all tracking results for the asset backing this clip.
+    Does NOT include per-frame data to keep the response small for the UI."""
+    clip, tl = _find_clip(clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    asset = _library.get(clip.assetId)
+    if not asset:
+        return {}
+    results = getattr(asset, "trackingResults", {})
+    return {
+        tid: {
+            "id": tid,
+            "startFrame": r.get("startFrame"),
+            "endFrame": r.get("endFrame"),
+            "frameCount": len(r.get("frames", {})),
+            "targetText": r.get("targetText"),
+            "targetType": r.get("targetType"),
+            "property": r.get("property"),
+            "sourceClipId": r.get("sourceClipId", clip_id),
+        }
+        for tid, r in results.items()
+    }
+
+
+@router.post("/tracking/detect-target")
+def detect_target(req: DetectTargetRequest):
+    clip, tl = _find_clip(req.clip_id)
+    if not clip:
+        raise HTTPException(status_code=404, detail="Clip not found")
+    asset = _library.get(clip.assetId)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+        
+    decoder = VideoDecoder(asset.filepath, 30.0, scale_factor=1.0)
+    frame = decoder.decodeFrame(req.frame)
+    decoder.close()
+    
+    if not frame or not frame.valid:
+        raise HTTPException(status_code=400, detail="Could not decode frame")
+        
+    arr = np.frombuffer(frame.dataRGBA, dtype=np.uint8).reshape((frame.height, frame.width, 4))
+    bgr = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+    
+    if req.target_type == "text":
+        if not req.target_text:
+            raise HTTPException(status_code=400, detail="target_text required")
+        res = find_text_target(bgr, req.target_text)
+        if not res["found"]:
+            raise HTTPException(status_code=404, detail=res.get("message", "Target not found"))
+        return res
+        
+    elif req.target_type == "image":
+        if not req.reference_image:
+            raise HTTPException(status_code=400, detail="reference_image required")
+        try:
+            base64_data = req.reference_image
+            if "," in base64_data:
+                base64_data = base64_data.split(",")[1]
+            img_data = base64.b64decode(base64_data)
+            nparr = np.frombuffer(img_data, np.uint8)
+            ref_img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid reference image: {str(e)}")
+            
+        res = find_image_target(bgr, ref_img)
+        if not res["found"]:
+            raise HTTPException(status_code=404, detail=res.get("message", "Target not found"))
+        return res
+    else:
+        raise HTTPException(status_code=400, detail="Invalid target_type")

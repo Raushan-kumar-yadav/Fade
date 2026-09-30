@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 import time
 from backend.state import engine, _library
 from backend.project.project import Project
@@ -153,3 +153,118 @@ def test_invalid_clip_id():
     from fastapi import HTTPException
     with pytest.raises(HTTPException):
         start_tracking(req)
+
+def test_clip_results_summary_endpoint():
+    from backend.routers.tracking import get_clip_tracking_results
+    asset = _library["asset_123"]
+    if not hasattr(asset, "trackingResults"):
+        asset.trackingResults = {}
+    asset.trackingResults["track_002"] = {
+        "id": "track_002",
+        "startFrame": 0,
+        "endFrame": 5,
+        "frames": {"0": {"x": 100, "y": 200}},
+        "targetText": "hello",
+        "targetType": "text",
+        "property": "position",
+        "sourceClipId": "clip_123"
+    }
+    
+    results = get_clip_tracking_results("clip_123")
+    assert "track_002" in results
+    summary = results["track_002"]
+    assert summary["targetText"] == "hello"
+    assert summary["targetType"] == "text"
+    assert summary["frameCount"] == 1
+    assert "frames" not in summary
+
+
+def test_tracking_global_projection():
+    from backend.timeline.clips.textClip import TextClip
+    from backend.media.asset.mediaAsset import MediaAsset
+    # Native asset is 1280x720
+    asset = _library["asset_123"]
+    asset.width = 1280
+    asset.height = 720
+    
+    # Tracked point at (100, 200) in native space
+    asset.trackingResults["track_001"] = {
+        "id": "track_001",
+        "frames": {
+            "10": {"x": 100, "y": 200},
+            "11": {"x": 110, "y": 210}  # scrub movement
+        }
+    }
+    
+    tl = engine.project.timelines[0]
+    tl.tracks[0].clips.clear()
+    
+    # Video clip with custom transform
+    vclip = VideoClip("clip_vid", startFrame=10, duration=10, assetId="asset_123")
+    # MediaOffset is 0. sourceFrame(10) = 0. We need sourceFrame(10) to map to asset frame 10.
+    vclip.mediaOffset = 10
+    
+    # Give the video clip a transform
+    vclip.transform.position.setBase(100.0, 50.0)
+    
+    vclip.transform.scale.setBase(2.0, 2.0)
+    
+    tl.tracks[0].clips.append(vclip)
+    
+    tclip = TextClip("text_1", startFrame=10, duration=10)
+    tl.tracks[0].clips.append(tclip)
+    
+    from backend.animation.expression_context import build_context
+    ctx = build_context(10, 0.0, tclip, tl)
+    result_x = eval("comp.clip('clip_vid').tracking('track_001').x", {}, ctx)
+    result_y = eval("comp.clip('clip_vid').tracking('track_001').y", {}, ctx)
+    
+    assert result_x == -560.0
+    assert result_y == 110.0
+    
+    # 2) Scrubbing evaluation changes coordinates
+    ctx2 = build_context(11, 0.0, tclip, tl)
+    result_x2 = eval("comp.clip('clip_vid').tracking('track_001').x", {}, ctx2)
+    assert result_x2 == -530.0
+
+
+
+
+
+
+def test_tracking_video_clip_projection():
+    from backend.timeline.clips.videoClip import VideoClip
+    from backend.media.asset.mediaAsset import MediaAsset
+    asset = MediaAsset("test.mp4", "asset_123")
+    asset.width = 1280
+    asset.height = 720
+    _library["asset_123"] = asset
+    
+    asset.trackingResults["track_001"] = {
+        "id": "track_001",
+        "frames": {
+            "10": {"x": 100, "y": 200},
+            "11": {"x": 110, "y": 210}
+        }
+    }
+    
+    tl = engine.project.timelines[0]
+    tl.tracks[0].clips.clear()
+    
+    vclip = VideoClip("clip_vid", startFrame=10, duration=10, assetId="asset_123")
+    vclip.mediaOffset = 10
+    vclip.transform.position.setBase(100.0, 50.0)
+    vclip.transform.scale.setBase(2.0, 2.0)
+    tl.tracks[0].clips.append(vclip)
+    
+    target_vid = VideoClip('target', startFrame=10, duration=10)
+    tl.tracks[0].clips.append(target_vid)
+    
+    from backend.animation.expression_context import build_context
+    ctx = build_context(10, 0.0, target_vid, tl)
+    
+    result_x = eval('comp.clip(\"clip_vid\").tracking(\"track_001\").x', {}, ctx)
+    result_y = eval('comp.clip(\"clip_vid\").tracking(\"track_001\").y', {}, ctx)
+    
+    assert result_x == -560.0 - 960.0
+    assert result_y == 110.0 - 540.0
