@@ -1,20 +1,4 @@
-"""
-FADE — Platform Connections / Integrations Router
-==================================================
-
-Provides a clean, secure API for connecting and disconnecting provider accounts
-(YouTube, Instagram, LinkedIn, Gmail).
-
-Security contract:
- - Raw OAuth access_token and refresh_token are NEVER returned to the frontend.
- - The frontend only sees: provider, connected, accountName, connectedAt, configured.
- - All secrets come from environment variables — never from React state.
- - Tokens are logged only at DEBUG level and only their lengths, never their values.
-
-Storage: shares the existing `virality.db` SQLite database that the virality
-router already owns, so there is no duplicate state.  The DB is initialised by
-`virality.py` on startup; we only need to ensure LinkedIn and Gmail rows exist.
-"""
+ 
 from __future__ import annotations
 
 import os
@@ -35,7 +19,7 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
 
-# ── Shared DB (same file as virality.py) ─────────────────────────────────────
+# Shared DB  
 
 _DB_PATH = Path(__file__).resolve().parent.parent.parent / "virality.db"
 _db_lock = threading.Lock()
@@ -57,7 +41,7 @@ def _ensure_provider_rows() -> None:
     """Guarantee that rows for all four providers exist in the connections table.
     This is idempotent; virality.py already seeds youtube and instagram."""
     with _db() as conn:
-        # Extend the table with connected_at column if it was not created yet.
+ 
         try:
             conn.execute(
                 "ALTER TABLE connections ADD COLUMN connected_at TEXT DEFAULT ''"
@@ -75,7 +59,7 @@ def _ensure_provider_rows() -> None:
 _ensure_provider_rows()
 
 
-# ── Environment helpers ───────────────────────────────────────────────────────
+#   Environment helpers  
 
 def _env(key: str, default: str = "") -> str:
     """Read an env variable, reloading .env on each call is intentionally
@@ -95,23 +79,23 @@ def _is_configured(provider: str) -> bool:
     return all(_env(k) for k in required)
 
 
-# ── Dynamic redirect URI (respects BACKEND_PORT env var) ─────────────────────
+ 
 
 def _redirect_uri(provider: str) -> str:
     port = int(os.environ.get("BACKEND_PORT", 8000))
     return f"http://127.0.0.1:{port}/integrations/{provider}/callback"
 
 
-# ── Provider OAuth URL builders ───────────────────────────────────────────────
+#   Provider OAuth URL builders  
 
 def _youtube_auth_url() -> str:
     params = urllib.parse.urlencode({
-        "client_id":     _env("GOOGLE_CLIENT_ID"),
-        "redirect_uri":  _env("GOOGLE_REDIRECT_URI"),
+        "client_id": _env("GOOGLE_CLIENT_ID"),
+        "redirect_uri": _env("GOOGLE_REDIRECT_URI"),
         "response_type": "code",
-        "scope":         "https://www.googleapis.com/auth/youtube",
-        "access_type":   "offline",
-        "prompt":        "consent",
+        "scope": "https://www.googleapis.com/auth/youtube",
+        "access_type": "offline",
+        "prompt": "consent",
     })
     return f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
 
@@ -123,12 +107,12 @@ def _gmail_auth_url() -> str:
         "https://www.googleapis.com/auth/userinfo.profile",
     ])
     params = urllib.parse.urlencode({
-        "client_id":     _env("GMAIL_CLIENT_ID"),
+        "client_id": _env("GMAIL_CLIENT_ID"),
         "redirect_uri":  _redirect_uri("gmail"),
         "response_type": "code",
-        "scope":         scopes,
+        "scope": scopes,
         "access_type":   "offline",
-        "prompt":        "consent",
+        "prompt": "consent",
     })
     return f"https://accounts.google.com/o/oauth2/v2/auth?{params}"
 
@@ -137,10 +121,10 @@ def _linkedin_auth_url() -> str:
     scopes = "openid profile email w_member_social"
     params = urllib.parse.urlencode({
         "response_type": "code",
-        "client_id":     _env("LINKEDIN_CLIENT_ID"),
-        "redirect_uri":  _redirect_uri("linkedin"),
-        "scope":         scopes,
-        "state":         "fade-linkedin-oauth",
+        "client_id": _env("LINKEDIN_CLIENT_ID"),
+        "redirect_uri": _redirect_uri("linkedin"),
+        "scope": scopes,
+        "state": "fade-linkedin-oauth",
     })
     return f"https://www.linkedin.com/oauth/v2/authorization?{params}"
 
@@ -152,23 +136,23 @@ def _instagram_auth_url() -> str:
     """
     scopes = "instagram_business_basic,instagram_business_content_publish"
     params = urllib.parse.urlencode({
-        "client_id":     _env("INSTAGRAM_APP_ID"),
-        "redirect_uri":  _env("INSTAGRAM_REDIRECT_URI", _redirect_uri("instagram")),
-        "scope":         scopes,
+        "client_id": _env("INSTAGRAM_APP_ID"),
+        "redirect_uri": _env("INSTAGRAM_REDIRECT_URI", _redirect_uri("instagram")),
+        "scope": scopes,
         "response_type": "code",
     })
     return f"https://www.instagram.com/oauth/authorize?{params}"
 
 
 _AUTH_URL_BUILDERS = {
-    "youtube":   _youtube_auth_url,
-    "gmail":     _gmail_auth_url,
-    "linkedin":  _linkedin_auth_url,
+    "youtube": _youtube_auth_url,
+    "gmail": _gmail_auth_url,
+    "linkedin": _linkedin_auth_url,
     "instagram": _instagram_auth_url,
 }
 
 
-# ── Token exchange helpers ────────────────────────────────────────────────────
+# Token exchange helpers  
 
 def _post_form(url: str, data: dict) -> dict:
     """POST application/x-www-form-urlencoded and return JSON response."""
@@ -196,11 +180,11 @@ def _api_get(url: str, access_token: str) -> dict:
 def _exchange_youtube(code: str) -> dict:
     """Exchange code, return {access_token, refresh_token, channel_id, channel_name}."""
     token_data = _post_form("https://oauth2.googleapis.com/token", {
-        "code":          code,
-        "client_id":     _env("GOOGLE_CLIENT_ID"),
+        "code": code,
+        "client_id": _env("GOOGLE_CLIENT_ID"),
         "client_secret": _env("GOOGLE_CLIENT_SECRET"),
-        "redirect_uri":  _env("GOOGLE_REDIRECT_URI"),
-        "grant_type":    "authorization_code",
+        "redirect_uri": _env("GOOGLE_REDIRECT_URI"),
+        "grant_type": "authorization_code",
     })
     access_token  = token_data.get("access_token", "")
     refresh_token = token_data.get("refresh_token", "")
@@ -221,10 +205,10 @@ def _exchange_youtube(code: str) -> dict:
         print(f"[Integrations] YouTube channel fetch warning: {exc}", flush=True)
 
     return {
-        "access_token":  access_token,
+        "access_token": access_token,
         "refresh_token": refresh_token,
-        "channel_id":    channel_id,
-        "channel_name":  channel_name,
+        "channel_id": channel_id,
+        "channel_name": channel_name,
     }
 
 
@@ -232,7 +216,7 @@ def _exchange_gmail(code: str) -> dict:
     """Exchange code, return {access_token, refresh_token, channel_name (email)}."""
     token_data = _post_form("https://oauth2.googleapis.com/token", {
         "code":          code,
-        "client_id":     _env("GMAIL_CLIENT_ID"),
+        "client_id": _env("GMAIL_CLIENT_ID"),
         "client_secret": _env("GMAIL_CLIENT_SECRET"),
         "redirect_uri":  _redirect_uri("gmail"),
         "grant_type":    "authorization_code",
@@ -254,7 +238,7 @@ def _exchange_gmail(code: str) -> dict:
     return {
         "access_token":  access_token,
         "refresh_token": refresh_token,
-        "channel_id":    account_email,   # reuse channel_id col for email
+        "channel_id": account_email,   # reuse channel_id col for email
         "channel_name":  account_email,
     }
 
@@ -264,11 +248,11 @@ def _exchange_linkedin(code: str) -> dict:
     token_data = _post_form(
         "https://www.linkedin.com/oauth/v2/accessToken",
         {
-            "code":          code,
-            "client_id":     _env("LINKEDIN_CLIENT_ID"),
+            "code": code,
+            "client_id": _env("LINKEDIN_CLIENT_ID"),
             "client_secret": _env("LINKEDIN_CLIENT_SECRET"),
-            "redirect_uri":  _redirect_uri("linkedin"),
-            "grant_type":    "authorization_code",
+            "redirect_uri": _redirect_uri("linkedin"),
+            "grant_type": "authorization_code",
         },
     )
     access_token = token_data.get("access_token", "")
@@ -289,8 +273,8 @@ def _exchange_linkedin(code: str) -> dict:
     return {
         "access_token":  access_token,
         "refresh_token": "",          # LinkedIn short-lived tokens; no refresh
-        "channel_id":    display_name,
-        "channel_name":  display_name,
+        "channel_id": display_name,
+        "channel_name": display_name,
     }
 
 
@@ -301,23 +285,23 @@ def _exchange_instagram(code: str) -> dict:
     short_data = _post_form(
         "https://api.instagram.com/oauth/access_token",
         {
-            "client_id":     _env("INSTAGRAM_APP_ID"),
+            "client_id": _env("INSTAGRAM_APP_ID"),
             "client_secret": _env("INSTAGRAM_APP_SECRET"),
-            "grant_type":    "authorization_code",
+            "grant_type": "authorization_code",
             "redirect_uri":  _env("INSTAGRAM_REDIRECT_URI", _redirect_uri("instagram")),
-            "code":          code,
+            "code": code,
         },
     )
     short_token = short_data.get("access_token", "")
     user_id     = str(short_data.get("user_id", ""))
 
-    # Step 2: exchange for long-lived token (~60 days)
+    #   exchange for long-lived token 
     long_token = short_token
     try:
         params = urllib.parse.urlencode({
-            "grant_type":       "ig_exchange_token",
-            "client_secret":    _env("INSTAGRAM_APP_SECRET"),
-            "access_token":     short_token,
+            "grant_type": "ig_exchange_token",
+            "client_secret": _env("INSTAGRAM_APP_SECRET"),
+            "access_token": short_token,
         })
         req = urllib.request.Request(
             f"https://graph.instagram.com/access_token?{params}"
@@ -343,20 +327,20 @@ def _exchange_instagram(code: str) -> dict:
     return {
         "access_token":  long_token,
         "refresh_token": "",
-        "channel_id":    user_id,
+        "channel_id": user_id,
         "channel_name":  username,
     }
 
 
 _TOKEN_EXCHANGERS = {
-    "youtube":   _exchange_youtube,
-    "gmail":     _exchange_gmail,
-    "linkedin":  _exchange_linkedin,
+    "youtube": _exchange_youtube,
+    "gmail": _exchange_gmail,
+    "linkedin": _exchange_linkedin,
     "instagram": _exchange_instagram,
 }
 
 
-# ── DB helpers ────────────────────────────────────────────────────────────────
+#   DB helpers  
 
 def _store_connection(provider: str, tokens: dict) -> None:
     """Persist tokens to DB. Never logs token values."""
@@ -408,7 +392,7 @@ def _get_safe_status(provider: str) -> dict:
 
     if row is None:
         return {
-            "provider":    provider,
+            "provider": provider,
             "connected":   False,
             "configured":  _is_configured(provider),
             "accountName": None,
@@ -424,7 +408,7 @@ def _get_safe_status(provider: str) -> dict:
     }
 
 
-# ── HTML response pages ───────────────────────────────────────────────────────
+#   HTML response pages  
 
 _SUCCESS_HTML = """<!DOCTYPE html>
 <html>
@@ -488,7 +472,7 @@ _PROVIDER_LABELS = {
 }
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+#   Routes  
 
 @router.get("")
 def list_connections():

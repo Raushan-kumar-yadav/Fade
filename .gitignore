@@ -86,3 +86,9 @@ AIModels/tesseract/
 # PII CLI output (saved next to originals, never tracked)
 pii/sanitized_output/
 **/sanitized_*.report.json
+
+# Build artifacts — never commit
+out.js
+out.css
+dom.html
+test.png
