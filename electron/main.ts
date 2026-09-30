@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import path from 'path'
 import fs from 'fs'
@@ -1359,7 +1359,20 @@ ipcMain.handle('dialog:open', async (_event, opts) => {
   return result.canceled ? undefined : result.filePaths[0]
 })
 
- 
+// OAuth: open URLs in system browser (not Electron renderer).
+// Only allows http/https to prevent protocol abuse.
+ipcMain.handle('shell:open-external', async (_event, url: string) => {
+  if (typeof url !== 'string') return false
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false
+    await shell.openExternal(url)
+    return true
+  } catch {
+    return false
+  }
+})
+
 
 app.whenReady().then(() => {
   createSplash()

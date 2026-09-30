@@ -522,3 +522,218 @@
   transition: opacity 0.15s;
 }
 .sp-rz--se:hover::after { opacity: 1; }
+
+/* ── Connections tab ──────────────────────────────────────── */
+
+.sp-connections-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Provider card */
+.sp-conn-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 11px;
+  transition: border-color 0.18s, background 0.18s;
+  position: relative;
+  overflow: hidden;
+}
+
+.sp-conn-card:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.1);
+}
+
+/* Connected card gets a subtle green tint */
+.sp-conn-card--connected {
+  border-color: rgba(0,212,170,0.25);
+  background: rgba(0,212,170,0.04);
+}
+.sp-conn-card--connected:hover {
+  border-color: rgba(0,212,170,0.35);
+  background: rgba(0,212,170,0.07);
+}
+
+/* Not-configured card: muted */
+.sp-conn-card--unconfigured {
+  opacity: 0.55;
+}
+
+/* Thin left accent bar */
+.sp-conn-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 10px; bottom: 10px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: transparent;
+  transition: background 0.18s;
+}
+.sp-conn-card--connected::before { background: #00d4aa; }
+
+/* Logo / icon circle */
+.sp-conn-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.06);
+}
+.sp-conn-logo--youtube   { background: rgba(255,0,0,0.12); }
+.sp-conn-logo--instagram { background: rgba(200,75,200,0.12); }
+.sp-conn-logo--linkedin  { background: rgba(0,119,181,0.15); }
+.sp-conn-logo--gmail     { background: rgba(234,67,53,0.12); }
+
+/* Info block */
+.sp-conn-info {
+  flex: 1;
+  min-width: 0;
+}
+.sp-conn-name {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0f0f2;
+  margin-bottom: 3px;
+}
+.sp-conn-desc {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: rgba(255,255,255,0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Status badge */
+.sp-conn-badge {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sp-conn-badge--connected {
+  background: rgba(0,212,170,0.15);
+  color: #00d4aa;
+  border: 1px solid rgba(0,212,170,0.3);
+}
+.sp-conn-badge--disconnected {
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.sp-conn-badge--connecting {
+  background: rgba(108,99,255,0.12);
+  color: #a89fff;
+  border: 1px solid rgba(108,99,255,0.3);
+  animation: sp-pulse 1.2s infinite;
+}
+.sp-conn-badge--error {
+  background: rgba(255,100,100,0.1);
+  color: #ff9999;
+  border: 1px solid rgba(255,100,100,0.25);
+}
+.sp-conn-badge--unconfigured {
+  background: rgba(255,255,255,0.03);
+  color: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Actions */
+.sp-conn-actions {
+  display: flex;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.sp-conn-btn {
+  padding: 6px 14px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.7);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.sp-conn-btn:hover {
+  background: rgba(108,99,255,0.18);
+  border-color: rgba(108,99,255,0.5);
+  color: #c4bcff;
+}
+.sp-conn-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.sp-conn-btn--connect {
+  background: rgba(108,99,255,0.15);
+  border-color: rgba(108,99,255,0.4);
+  color: #a89fff;
+}
+.sp-conn-btn--connect:hover {
+  background: rgba(108,99,255,0.28);
+  border-color: rgba(108,99,255,0.65);
+  color: #fff;
+}
+
+.sp-conn-btn--disconnect {
+  background: rgba(255,80,80,0.08);
+  border-color: rgba(255,80,80,0.25);
+  color: rgba(255,140,140,0.85);
+}
+.sp-conn-btn--disconnect:hover {
+  background: rgba(255,80,80,0.18);
+  border-color: rgba(255,80,80,0.5);
+  color: #ff9999;
+}
+
+/* Account name under the description when connected */
+.sp-conn-account {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  color: #00d4aa;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Error message under card */
+.sp-conn-error {
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  color: rgba(255,130,130,0.85);
+  margin-top: 2px;
+}
+
+/* Section intro hint */
+.sp-conn-intro {
+  font-family: 'Inter', sans-serif;
+  font-size: 12.5px;
+  color: rgba(255,255,255,0.38);
+  line-height: 1.55;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: rgba(108,99,255,0.06);
+  border: 1px solid rgba(108,99,255,0.15);
+  border-radius: 8px;
+}

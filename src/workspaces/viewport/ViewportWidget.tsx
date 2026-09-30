@@ -12,6 +12,8 @@ import { useTimeline } from '../timeline/TimelineContext';
 import OverlayCanvas from './OverlayCanvas';
 import TransformGizmo from './TransformGizmo';
 import BrushOverlay from './BrushOverlay';
+import PIIOverlay from '../pii/PIIOverlay';
+import { usePII } from '../../context/piiContext';
 import { AudioEngine, type AudioClipInfo } from './audioEngine';
 import './ViewportWidget.css';
 
@@ -58,6 +60,7 @@ const IconFullscreen = () => (
 //   Component  
 
 export default function ViewportWidget() {
+  const piiState = usePII();
   const { state: tlState } = useTimeline();
   const isImageComp = tlState.activeCompKind === 'image';
 
@@ -714,6 +717,18 @@ export default function ViewportWidget() {
               mode={activeTool as 'brush' | 'eraser'}
               width={1920}
               height={1080}
+            />
+          )}
+
+          {/* PII Review overlay */}
+          {piiState && (
+            <PIIOverlay 
+              detections={piiState.detections}
+              selectedId={piiState.selectedId}
+              onSelect={piiState.setSelectedId}
+              onUpdateDetection={piiState.updateDetection}
+              width={nativeDims.w}
+              height={nativeDims.h}
             />
           )}
         </div>{/* /vw-stage */}
