@@ -108,6 +108,7 @@ from backend.routers import (
     debug,
     virality,
     image_tools,
+    integrations,
 )
 
 
@@ -335,6 +336,7 @@ app.include_router(debug.router)    # animation diagnostics: /debug/anim-*
 app.include_router(scene_tools.router)  # scene search / clip description tools
 app.include_router(virality.router)  # virality predictor + social connections
 app.include_router(image_tools.router)
+app.include_router(integrations.router)  # platform connections (YouTube, Instagram, LinkedIn, Gmail)
 from backend.routers import pii
 app.include_router(pii.router)
 

@@ -170,17 +170,39 @@ async function postEnvSettings(updates: Record<string, string>): Promise<EnvSett
 
 //   Tab IDs  
 
-type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'agent' | 'generators' | 'apis';
+type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'agent' | 'generators' | 'apis' | 'connections';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: 'cache',      icon: '⚡', label: 'Cache'       },
-  { id: 'decoder',    icon: '🎞', label: 'Decoder'     },
-  { id: 'output',     icon: '🖼', label: 'Output'      },
-  { id: 'ai',         icon: '🔍', label: 'Indexing'    },
-  { id: 'agent',      icon: '🤖', label: 'Agent AI'    },
-  { id: 'generators', icon: '✨', label: 'Generators'  },
-  { id: 'apis',       icon: '🔑', label: 'API Keys'    },
+  { id: 'cache',       icon: '⚡', label: 'Cache'       },
+  { id: 'decoder',     icon: '🎞', label: 'Decoder'     },
+  { id: 'output',      icon: '🖼', label: 'Output'      },
+  { id: 'ai',          icon: '🔍', label: 'Indexing'    },
+  { id: 'agent',       icon: '🤖', label: 'Agent AI'    },
+  { id: 'generators',  icon: '✨', label: 'Generators'  },
+  { id: 'apis',        icon: '🔑', label: 'API Keys'    },
+  { id: 'connections', icon: '🔗', label: 'Connections' },
 ];
+
+// ── Connections types ────────────────────────────────────────────────────────
+
+type ConnStatus = 'idle' | 'connecting' | 'disconnecting' | 'error';
+
+interface ConnectionInfo {
+  provider:    string;
+  connected:   boolean;
+  configured:  boolean;
+  accountName: string | null;
+  connectedAt: string | null;
+}
+
+const PROVIDER_META: Record<string, { label: string; icon: string; logoClass: string; description: string }> = {
+  youtube:   { label: 'YouTube',   icon: '▶',  logoClass: 'sp-conn-logo--youtube',   description: 'Upload and publish videos to your channel' },
+  instagram: { label: 'Instagram', icon: '📷', logoClass: 'sp-conn-logo--instagram', description: 'Publish reels and posts to your profile' },
+  linkedin:  { label: 'LinkedIn',  icon: '💼', logoClass: 'sp-conn-logo--linkedin',  description: 'Share posts and articles with your network' },
+  gmail:     { label: 'Gmail',     icon: '✉',  logoClass: 'sp-conn-logo--gmail',     description: 'Send emails from your authorized account' },
+};
+
+const PROVIDER_ORDER = ['youtube', 'instagram', 'linkedin', 'gmail'];
 
 const GEMINI_VOICES = [
   'Zephyr','Puck','Charon','Kore','Fenrir','Leda','Orus','Aoede',
@@ -288,6 +310,35 @@ const INIT_H = Math.round(window.innerHeight * 0.82);
 const MIN_W  = 520;
 const MIN_H  = 400;
 
+// ── Connection API helpers (defined outside component, hoisted) ───────────────
+
+async function fetchConnections(port: number): Promise<ConnectionInfo[]> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/integrations`);
+    return r.ok ? r.json() : [];
+  } catch { return []; }
+}
+
+async function openConnectUrl(port: number, provider: string): Promise<{ url?: string; error?: string }> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/integrations/${provider}/connect`);
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      return { error: j.detail || `Could not get authorization URL for ${provider}.` };
+    }
+    return r.json();
+  } catch (e: any) {
+    return { error: e?.message || 'Could not reach FADE backend.' };
+  }
+}
+
+async function disconnectProvider(port: number, provider: string): Promise<boolean> {
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/integrations/${provider}/disconnect`, { method: 'POST' });
+    return r.ok;
+  } catch { return false; }
+}
+
 export default function SettingsPanel({ onClose }: Props) {
   const [s, setS] = useState<Settings | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);
@@ -305,6 +356,81 @@ export default function SettingsPanel({ onClose }: Props) {
     startX: number; startY: number;
     startW: number; startH: number;
   } | null>(null);
+
+  // ── Connections state ──────────────────────────────────────────────────────
+  const [connections, setConnections] = useState<ConnectionInfo[]>([]);
+  const [connBusy, setConnBusy] = useState<Record<string, ConnStatus>>({});
+  const [connErrors, setConnErrors] = useState<Record<string, string>>({});
+
+  const setProviderBusy = useCallback((provider: string, status: ConnStatus) => {
+    setConnBusy(prev => ({ ...prev, [provider]: status }));
+  }, []);
+
+  const setProviderError = useCallback((provider: string, msg: string) => {
+    setConnErrors(prev => ({ ...prev, [provider]: msg }));
+  }, []);
+
+  const clearProviderError = useCallback((provider: string) => {
+    setConnErrors(prev => { const n = { ...prev }; delete n[provider]; return n; });
+  }, []);
+
+  const reloadConnections = useCallback(async () => {
+    const port = getPort();
+    if (!port) return;
+    const data = await fetchConnections(port);
+    if (data.length > 0) setConnections(data);
+  }, []);
+
+  // Poll for connection changes while on the Connections tab (catches OAuth callbacks)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (tab !== 'connections') {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+    reloadConnections();
+    pollRef.current = setInterval(reloadConnections, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [tab, reloadConnections]);
+
+  const handleConnect = useCallback(async (provider: string) => {
+    const port = getPort();
+    if (!port) return;
+    clearProviderError(provider);
+    setProviderBusy(provider, 'connecting');
+    const result = await openConnectUrl(port, provider);
+    if (result.error) {
+      setProviderError(provider, result.error);
+      setProviderBusy(provider, 'error');
+      return;
+    }
+    if (result.url) {
+      // Open in system browser via Electron shell (secure, no Node access in renderer)
+      // Falls back to window.open in dev/browser mode.
+      const eApi = (window as any).electronAPI;
+      if (eApi?.shellOpenExternal) {
+        await eApi.shellOpenExternal(result.url);
+      } else {
+        window.open(result.url, '_blank', 'noopener,noreferrer');
+      }
+    }
+    // Keep 'connecting' badge — the poll will update when callback fires
+  }, [clearProviderError, setProviderBusy, setProviderError]);
+
+  const handleDisconnect = useCallback(async (provider: string) => {
+    const port = getPort();
+    if (!port) return;
+    clearProviderError(provider);
+    setProviderBusy(provider, 'disconnecting');
+    const ok = await disconnectProvider(port, provider);
+    if (!ok) {
+      setProviderError(provider, `Failed to disconnect ${provider}. Please try again.`);
+      setProviderBusy(provider, 'error');
+    } else {
+      setProviderBusy(provider, 'idle');
+    }
+    await reloadConnections();
+  }, [clearProviderError, setProviderBusy, setProviderError, reloadConnections]);
 
   useEffect(() => {
     fetchSettings().then(setS);
@@ -467,7 +593,7 @@ export default function SettingsPanel({ onClose }: Props) {
 
           {/* Right content */}
           <div className="sp-content">
-            {!s && tab !== 'ai' && tab !== 'generators' && tab !== 'apis' && (
+            {!s && tab !== 'ai' && tab !== 'generators' && tab !== 'apis' && tab !== 'connections' && (
               <p className="sp-loading">Connecting to engine…</p>
             )}
 
@@ -1598,11 +1724,119 @@ export default function SettingsPanel({ onClose }: Props) {
                       ))}
                     </div>
 
-                    <div className="sp-hint sp-hint--warn">
+                     <div className="sp-hint sp-hint--warn">
                       ⚠ Restart the AI agent after changing provider or keys for changes to take full effect.
                     </div>
                   </>
                 )}
+              </>
+            )}
+
+            {/* ── Connections tab ── */}
+            {tab === 'connections' && (
+              <>
+                <p className="sp-conn-intro">
+                  Connect your accounts so FADE can publish generated content on your behalf.
+                  Credentials are stored securely on your device — your tokens are never sent to the FADE UI.
+                </p>
+
+                <div className="sp-connections-grid">
+                  {PROVIDER_ORDER.map(provider => {
+                    const meta = PROVIDER_META[provider];
+                    if (!meta) return null;
+
+                    const info = connections.find(c => c.provider === provider);
+                    const busy = connBusy[provider] ?? 'idle';
+                    const errMsg = connErrors[provider] ?? '';
+                    const isConnected  = info?.connected ?? false;
+                    const isConfigured = info?.configured ?? false;
+
+                    // Compute UX state
+                    let cardState: 'connected' | 'disconnected' | 'connecting' | 'disconnecting' | 'error' | 'unconfigured';
+                    if (!isConfigured) cardState = 'unconfigured';
+                    else if (busy === 'connecting')    cardState = 'connecting';
+                    else if (busy === 'disconnecting') cardState = 'disconnecting';
+                    else if (busy === 'error')         cardState = 'error';
+                    else if (isConnected)              cardState = 'connected';
+                    else                               cardState = 'disconnected';
+
+                    const badgeText: Record<typeof cardState, string> = {
+                      connected:     'Connected ✓',
+                      disconnected:  'Not Connected',
+                      connecting:    'Connecting…',
+                      disconnecting: 'Disconnecting…',
+                      error:         'Error',
+                      unconfigured:  'Not Configured',
+                    };
+
+                    const isBusy = busy === 'connecting' || busy === 'disconnecting';
+
+                    return (
+                      <div
+                        key={provider}
+                        className={`sp-conn-card sp-conn-card--${cardState === 'connected' ? 'connected' : cardState === 'unconfigured' ? 'unconfigured' : ''}`}
+                      >
+                        {/* Logo */}
+                        <div className={`sp-conn-logo ${meta.logoClass}`}>
+                          {meta.icon}
+                        </div>
+
+                        {/* Info */}
+                        <div className="sp-conn-info">
+                          <div className="sp-conn-name">{meta.label}</div>
+                          {cardState === 'connected' && info?.accountName ? (
+                            <div className="sp-conn-account">✓ {info.accountName}</div>
+                          ) : (
+                            <div className="sp-conn-desc">
+                              {cardState === 'unconfigured'
+                                ? 'Add credentials in API Keys tab to enable'
+                                : meta.description}
+                            </div>
+                          )}
+                          {errMsg && <div className="sp-conn-error">⚠ {errMsg}</div>}
+                        </div>
+
+                        {/* Badge */}
+                        <span className={`sp-conn-badge sp-conn-badge--${cardState}`}>
+                          {badgeText[cardState]}
+                        </span>
+
+                        {/* Actions */}
+                        <div className="sp-conn-actions">
+                          {cardState === 'connected' || cardState === 'disconnecting' ? (
+                            <button
+                              className="sp-conn-btn sp-conn-btn--disconnect"
+                              disabled={isBusy}
+                              onClick={() => handleDisconnect(provider)}
+                            >
+                              {busy === 'disconnecting' ? 'Disconnecting…' : 'Disconnect'}
+                            </button>
+                          ) : cardState === 'unconfigured' ? (
+                            <button
+                              className="sp-conn-btn"
+                              disabled
+                            >
+                              Setup Required
+                            </button>
+                          ) : (
+                            <button
+                              className="sp-conn-btn sp-conn-btn--connect"
+                              disabled={isBusy}
+                              onClick={() => handleConnect(provider)}
+                            >
+                              {busy === 'connecting' ? 'Opening…' : 'Connect'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="sp-hint" style={{ marginTop: 14 }}>
+                  💡 OAuth uses your system browser. After authorizing, return to FADE — the card updates automatically.
+                  Connection credentials are stored locally in <code>virality.db</code>.
+                </div>
               </>
             )}
           </div>

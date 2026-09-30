@@ -74,6 +74,8 @@ export interface ElectronAPI {
   webcompReload: (webcompId: string) => void
   webcompDestroy: (webcompId: string) => void
   webcompPushToNative: (webcompId: string, localFrame: number, width: number, height: number, timelineFrame?: number) => Promise<boolean>
+  // Shell / system browser
+  shellOpenExternal: (url: string) => Promise<boolean>
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -171,5 +173,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   webcompPushToNative: (id: string, localFrame: number, w: number, h: number, timelineFrame?: number): Promise<boolean> =>
     ipcRenderer.invoke('webcomp:push-to-native', id, localFrame, w, h, timelineFrame),
+
+  // Shell / system browser — used by OAuth connect flow
+  shellOpenExternal: (url: string): Promise<boolean> =>
+    ipcRenderer.invoke('shell:open-external', url),
 
 } satisfies ElectronAPI)
