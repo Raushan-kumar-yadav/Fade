@@ -3929,3 +3929,97 @@ def test_expression(clip_id: str, param: str, expression: str, frame: int = 0) -
 EXPRESSION_TOOLS = [set_expression, clear_expression, test_expression]
 ALL_TOOLS.extend(EXPRESSION_TOOLS)
 
+
+# ---------------------------------------------------------------------------
+#  Tracking Tools  (added for object/video tracking feature)
+# ---------------------------------------------------------------------------
+
+@tool
+def start_tracking(
+    clip_id: str,
+    start_frame: int,
+    end_frame: int,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+) -> str:
+    """Start a background tracking job for an object in a video clip.
+    Returns a job ID that can be polled with get_job(job_id).
+
+    Args:
+        clip_id:     The clipId of the video clip to track.
+        start_frame: First timeline frame to track from.
+        end_frame:   Last timeline frame to track to.
+        x, y:        Top-left corner of the initial bounding box (composition pixels).
+        width, height: Size of the initial bounding box.
+
+    Returns:
+        JSON with jobId and initial status.
+    """
+    return str(_post('/tracking/track', {
+        'clip_id': clip_id,
+        'start_frame': start_frame,
+        'end_frame': end_frame,
+        'property': 'position',
+        'x': x,
+        'y': y,
+        'width': width,
+        'height': height,
+    }))
+
+
+@tool
+def get_job(job_id: str) -> str:
+    """Check the status of a background FADE job (tracking, render, export, etc.).
+    Returns job details including status, progress (0-100), and result payload.
+
+    Args:
+        job_id: The jobId returned by start_tracking or another async tool.
+
+    Returns:
+        JSON with status, progress, and result.
+    """
+    return str(_get(f'/jobs/{job_id}'))
+
+
+@tool
+def get_asset_tracking_data(asset_id: str) -> str:
+    """Return all tracking results stored on a media asset.
+    Each entry has a tracking_id and per-frame (x, y) coordinates.
+
+    Args:
+        asset_id: The assetId of the MediaAsset.
+
+    Returns:
+        JSON with a list of tracking results and their tracking_ids.
+    """
+    return str(_get(f'/tracking/asset/{asset_id}'))
+
+
+@tool
+def apply_tracking_expression(
+    clip_id: str,
+    property_name: str,
+    tracking_id: str,
+) -> str:
+    """Bind a tracking result to a property on any clip using the expression engine.
+    The property will automatically follow the tracked object across frames.
+
+    Args:
+        clip_id:       The clipId of the target clip (can differ from the tracked clip).
+        property_name: Property path to bind, e.g. 'position'.
+        tracking_id:   The tracking_id returned by start_tracking.
+
+    Returns:
+        Confirmation message.
+    """
+    return str(_post('/tracking/bind', {
+        'clip_id': clip_id,
+        'property_name': property_name,
+        'expression': f"this.tracking('{tracking_id}')",
+    }))
+
+
+TRACKING_TOOLS = [start_tracking, get_job, get_asset_tracking_data, apply_tracking_expression]
+ALL_TOOLS.extend(TRACKING_TOOLS)

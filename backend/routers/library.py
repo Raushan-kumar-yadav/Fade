@@ -1,7 +1,7 @@
 import os
 import uuid
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from backend.state import engine, _library
 from backend.media.asset.mediaAsset import MediaAsset
@@ -151,6 +151,15 @@ def listAssets():
         if getattr(a, 'mediaType', None) != MediaType.webcomp
     ]
 
+
+@router.get("/library/raw/{asset_id}")
+def get_raw_asset(asset_id: str):
+    """Serve the raw asset file for frontend Blob/File generation."""
+    from fastapi.responses import FileResponse
+    asset = _library.get(asset_id)
+    if not asset or not os.path.exists(asset.filepath):
+        raise HTTPException(404, "Asset not found")
+    return FileResponse(asset.filepath)
 
 @router.get("/library/assets/rich")
 def listAssetsRich():
@@ -314,6 +323,16 @@ def listAssetsRich():
 
 
 
+
+@router.post("/library/upload")
+async def upload_asset(file: UploadFile = File(...)):
+    """Uploads a raw file (e.g. sanitized output) directly to the library."""
+    downloads_dir = _resolve_download_dir("uploads")
+    os.makedirs(downloads_dir, exist_ok=True)
+    out_path = os.path.join(downloads_dir, file.filename or "upload.bin")
+    with open(out_path, "wb") as f:
+        f.write(await file.read())
+    return _import_file(out_path)
 
 @router.post("/library/import")
 def importAsset(req: ImportRequest):

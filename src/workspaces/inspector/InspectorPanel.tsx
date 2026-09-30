@@ -7,6 +7,7 @@ import EffectsPanel from './EffectsPanel';
 import TransitionPanel from './TransitionPanel';
 import TextInspectorPanel from './TextInspectorPanel';
 import WebCompInspectorPanel from './WebCompInspectorPanel';
+import TrackingPanel from './TrackingPanel';
 import './InspectorPanel.css';
 
 
@@ -856,14 +857,33 @@ function ParamRowWidget({ param, clipId, currentFrame, onChange, onRefresh }: Pa
             step="any"
           />
         ) : (
-          <button
-            className={`insp-row__val${hasExpr ? ' insp-row__val--expr' : ''}`}
-            onClick={() => hasExpr ? setShowExpr(true) : setEditing(true)}
-            title={hasExpr ? 'Expression active — click to edit' : 'Click to enter value'}
-          >
-            {hasExpr ? 'ƒ(x)' : fmtVal(localVal)}
-          </button>
-        )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                className={`insp-row__val${hasExpr ? ' insp-row__val--expr' : ''}`}
+                onClick={() => hasExpr ? setShowExpr(true) : setEditing(true)}
+                title={hasExpr ? 'Expression active - click to edit' : 'Click to enter value'}
+              >
+                {hasExpr ? 'fx' : fmtVal(localVal)}
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowExpr(true); }}
+                title="Add/Edit Expression"
+                style={{
+                  background: hasExpr ? '#6366f1' : 'transparent',
+                  border: '1px solid ' + (hasExpr ? '#6366f1' : '#333'),
+                  color: hasExpr ? '#fff' : '#888',
+                  cursor: 'pointer',
+                  borderRadius: '3px',
+                  padding: '1px 4px',
+                  fontSize: '9px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+              >
+                fx
+              </button>
+            </div>
+          )}
       </div>
 
       {/* Inline Expression Editor */}
@@ -1130,13 +1150,7 @@ export default function InspectorPanel() {
     || (selected.type === 'clip' && selected.clipType === 'text');
 
   if (isText) {
-    return (
-      <TextInspectorPanel
-        clipId={data.clipId}
-        clipName={selected.type === 'clip' ? selected.clipName : ''}
-        trackIndex={selected.type === 'clip' ? selected.trackIndex : 0}
-      />
-    );
+    // Rendered below instead of early return so generic Transform params are visible
   }
 
   // WebComp clips ? generic params  
@@ -1190,6 +1204,23 @@ export default function InspectorPanel() {
             </div>
           );
         })}
+
+        {isText && (
+          <TextInspectorPanel
+            clipId={data.clipId}
+            clipName={selected.type === 'clip' ? selected.clipName : ''}
+            trackIndex={selected.type === 'clip' ? selected.trackIndex : 0}
+          />
+        )}
+
+        {/* Motion Tracking section - video clips only */}
+        {(data.clipType === 'VideoClip' || (data.clipType ?? '').toLowerCase().includes('video')) && (
+          <TrackingPanel
+            clipId={data.clipId}
+            startFrame={data.startFrame ?? 0}
+            duration={data.duration ?? 30}
+          />
+        )}
 
         {/* Masks section */}
         <MasksPanel clipId={data.clipId} />
@@ -1304,3 +1335,6 @@ function InspectorEffectsPanel({ clipId }: { clipId: string }) {
     </div>
   );
 }
+
+
+
