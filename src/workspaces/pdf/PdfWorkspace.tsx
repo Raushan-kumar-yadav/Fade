@@ -105,7 +105,7 @@ interface PdfWorkspaceProps {
 export default function PdfWorkspace({ docId, docName }: PdfWorkspaceProps) {
   return (
     <TimelineProvider>
-      <div className="video-ws image-ws-mode">
+      <div className="video-ws image-ws-mode pdf-ws-mode">
         <PdfWorkspaceInner docId={docId ?? null} docName={docName ?? 'Untitled Document'} />
       </div>
     </TimelineProvider>
