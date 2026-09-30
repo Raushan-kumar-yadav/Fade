@@ -17,34 +17,6 @@ import TextToolPanel from './tools/TextToolPanel';
 import BrushToolPanel from './tools/BrushToolPanel';
 import EraserToolPanel from './tools/EraserToolPanel';
 import ShapeToolPanel from './tools/ShapeToolPanel';
-import PIIReviewPanel from './pii/PIIReviewPanel';
-import { PIIProvider, usePII } from '../context/piiContext';
-
-function PIIReviewPanelWrapper() {
-  const { state } = useTimeline();
-  const piiContext = usePII();
-  const selectedClip = state.tracks.flatMap(t => t.clips).find(c => c.isSelected);
-  const activeAssetId = selectedClip?.assetId || null;
-
-  // Ensure ghost boxes don't float in the viewport if the user deselects the clip
-  useEffect(() => {
-    if (piiContext) {
-      piiContext.setDetections([]);
-      piiContext.setSelectedId(null);
-    }
-  }, [activeAssetId]);
-
-  if (!activeAssetId) {
-    return <div style={{ padding: '12px', color: '#888' }}>Please select a clip on the timeline to review PII.</div>;
-  }
-
-  return (
-    <PIIReviewPanel 
-      assetId={activeAssetId} 
-      assetType="image"
-    />
-  );
-}
 
 //   Props  
 
@@ -52,6 +24,7 @@ interface ImageWorkspaceProps {
   compId: string | null;
   compName: string;
   onBack?: () => void; // kept for compat but no longer rendered
+  floatingMode?: boolean;
 }
 
  
@@ -94,7 +67,6 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
             selected: 0,
             children: [
               { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
-              { type: 'tab', name: 'PII Review', component: 'pii', enableClose: false },
               { type: 'tab', name: 'Effects', component: 'effects', enableClose: false },
               { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
               { type: 'tab', name: 'Tools', component: 'tools', enableClose: false },
@@ -115,14 +87,12 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
 });
 //   Export  
 
-export default function ImageWorkspace({ compId, compName, onBack }: ImageWorkspaceProps) {
+export default function ImageWorkspace({ compId, compName, onBack, floatingMode = false }: ImageWorkspaceProps) {
   return (
-    <TimelineProvider>
-      <PIIProvider>
-        <div className="video-ws image-ws-mode">
-          <ImageWorkspaceInner compId={compId} compName={compName} />
-        </div>
-      </PIIProvider>
+    <TimelineProvider floatingMode={floatingMode}>
+      <div className="video-ws image-ws-mode">
+        <ImageWorkspaceInner compId={compId} compName={compName} />
+      </div>
     </TimelineProvider>
   );
 }
@@ -276,8 +246,6 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
         );
       case 'inspector':
         return <InspectorPanel />;
-      case 'pii':
-        return <PIIReviewPanelWrapper />;
       case 'effects':
         return <EffectsPanel />;
       case 'transitions':

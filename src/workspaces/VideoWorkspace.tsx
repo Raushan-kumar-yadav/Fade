@@ -16,29 +16,6 @@ import EraserToolPanel from './tools/EraserToolPanel'
 import ShapeToolPanel from './tools/ShapeToolPanel'
 import TransitionPanel from './inspector/TransitionPanel'
 import CompositionsPanel from './compositions/CompositionsPanel'
-import PIIReviewPanel from './pii/PIIReviewPanel'
-import { PIIProvider, usePII } from '../context/piiContext'
-
-function PIIReviewPanelWrapper() {
-  const { state } = useTimeline();
-  const piiContext = usePII();
-  const selectedClip = state.tracks.flatMap(t => t.clips).find(c => c.isSelected);
-  const activeAssetId = selectedClip?.assetId || null;
-
-  React.useEffect(() => {
-    if (piiContext) {
-      piiContext.setDetections([]);
-      piiContext.setSelectedId(null);
-    }
-  }, [activeAssetId]);
-
-  if (!activeAssetId) {
-    return <div style={{ padding: '12px', color: '#888' }}>Please select a clip on the timeline to review PII.</div>;
-  }
-
-  const assetType = selectedClip?.type === 'video' ? 'video' : 'image';
-  return <PIIReviewPanel assetId={activeAssetId} assetType={assetType} />;
-}
 
 
 
@@ -71,7 +48,6 @@ const layoutJson: FlexLayout.IJsonModel = {
             selected: 0,
             children: [
               { type: 'tab', name: 'Inspector', component: 'inspector', enableClose: false },
-              { type: 'tab', name: 'PII Review', component: 'pii', enableClose: false },
               { type: 'tab', name: 'Effects', component: 'effects', enableClose: false },
               { type: 'tab', name: 'Transitions',  component: 'transitions',  enableClose: false },
               { type: 'tab', name: 'Tools', component: 'tools', enableClose: false },
@@ -96,25 +72,14 @@ function makeDefaultModel() {
 }
 
 // VideoWorkspace  
-export default function VideoWorkspace() {
+export default function VideoWorkspace({ floatingMode = false }: { floatingMode?: boolean }) {
   return (
-    <TimelineProvider>
-      <PIIProvider>
-        <div className="video-ws">
-          {/* AI Director toggle button */}
-          <button
-          className="video-ws__ai-btn"
-          onClick={() => window.dispatchEvent(new CustomEvent('fade:ai-toggle'))}
-          title="Toggle AI Director"
-        >
-          🤖
-        </button>
-
+    <TimelineProvider floatingMode={floatingMode}>
+      <div className="video-ws">
         <WorkspaceInner />
       </div>
-    </PIIProvider>
-  </TimelineProvider>
-)
+    </TimelineProvider>
+  )
 }
 
 // Inner component  
@@ -193,7 +158,6 @@ function WorkspaceInner() {
         <div className="vp vp--timeline"><Timeline /></div>
       )
       case 'inspector': return <InspectorPanel />
-      case 'pii': return <PIIReviewPanelWrapper />
       case 'effects': return <EffectsPanel />
       case 'transitions': return <TransitionPanel />
       case 'tools': return toolPanel

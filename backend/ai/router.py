@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from backend.ai.prompt_shield import shield_prompt
 
 ai_router = APIRouter(tags=["ai"])
 
@@ -95,6 +96,7 @@ class ChatRequest(BaseModel):
     message: str
     history: list[dict] = []
     port: int = 8000
+    agent: str = "video"   # agent type: video | image | audio | pdf | director | home
 
 class TranscribeRequest(BaseModel):
     assetId: str
@@ -155,11 +157,13 @@ async def ai_restart():
     import os
     try:
         from backend.ai.agent import _reset_agent
+        from backend.ai.agent_registry import reset_all as _reset_registry
         _reset_agent()
+        _reset_registry()
         provider = os.environ.get("FADE_AI_PROVIDER", "ollama")
         model = os.environ.get("FADE_AI_MODEL", "")
         return {"ok": True, "provider": provider, "model": model,
-                "message": f"Agent will restart with provider '{provider}' on next message."}
+                "message": f"All agents will restart with provider '{provider}' on next message."}
     except Exception as e:
         return {"ok": False, "message": str(e)}
 
@@ -171,8 +175,17 @@ async def ai_chat(req: ChatRequest):
 
     async def event_stream():
         try:
-            from backend.ai.agent import get_agent
-            agent = get_agent(req.port)
+            # ── Prompt-injection shield ──────────────────────────────
+            ok, safe_message, err = shield_prompt(req.message)
+            if not ok:
+                yield f"data: {json.dumps({'type': 'error', 'message': err})}\n\n"
+                return
+            # Use sanitized message (may differ from original if injection was found)
+            scanned_message = safe_message
+            # ─────────────────────────────────────────────────────────
+
+            from backend.ai.agent_registry import get_specialized_agent
+            agent = get_specialized_agent(req.agent, req.port)
 
             # Rebuild history  
             messages = []
@@ -181,7 +194,7 @@ async def ai_chat(req: ChatRequest):
                     messages.append(HumanMessage(content=h["text"]))
                 else:
                     messages.append(AIMessage(content=h["text"]))
-            messages.append(HumanMessage(content=req.message))
+            messages.append(HumanMessage(content=scanned_message))
 
             # Emit initial thinking status
             yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking…'})}\n\n"
@@ -402,11 +415,11 @@ async def ai_create_video(req: CreateVideoRequest):
 # Director - multi-agent parallel composition
 
 class DirectorRequest(BaseModel):
-    assets:        list[str] = []
-    intent:        str = ""
-    comp_types:    list[str] = ["image", "video", "pdf"]
+    assets: list[str] = []
+    intent: str = ""
+    comp_types: list[str] = ["image", "video", "pdf"]
     publish_after: bool = False
-    port:          int = 8000
+    port: int = 8000
 
 
 @ai_router.post("/director/run")

@@ -1,4 +1,4 @@
- 
+﻿ 
 
 from __future__ import annotations
 import math
@@ -155,7 +155,18 @@ def build_context(
         t2 = max(0.0, min(1.0, (t_ - lo) / (hi - lo) if hi != lo else 0.0))
         return t2 * t2 * (3.0 - 2.0 * t2)
 
-    return {
+    
+    # Canvas dimensions (for track() coordinate conversion)
+    _comp_w = int(getattr(timeline, "width",  1920)) if timeline else 1920
+    _comp_h = int(getattr(timeline, "height", 1080)) if timeline else 1080
+
+    def track(track_id, frame_, field):
+        try:
+            from backend.tracking.service import interpolate_at
+            return interpolate_at(track_id, int(frame_), field)
+        except Exception:
+            return 0.0
+return {
         # Time
         "frame": frame,
         "time": t,
@@ -166,6 +177,11 @@ def build_context(
         "this": clip,
         # Comp access
         "comp": _CompProxy(timeline) if timeline else None,
+        # Canvas dimensions
+        "comp_w": _comp_w,
+        "comp_h": _comp_h,
+        # Tracking
+        "track": track,
         #  
         "sin": math.sin,
         "cos": math.cos,
@@ -186,5 +202,5 @@ def build_context(
         "smoothstep": smoothstep,
         "wiggle": _wiggle_fn,
         # Expose random for staggered offsets 
-        "index":      hash(getattr(clip, "clipId", "")) % 1000 if clip else 0,
+        "index": hash(getattr(clip, "clipId", "")) % 1000 if clip else 0,
     }

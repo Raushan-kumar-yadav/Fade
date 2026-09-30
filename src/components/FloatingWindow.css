@@ -1,0 +1,142 @@
+/* ── FloatingWindow ───────────────────────────────────────────────────────── */
+
+.fw-window {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  background: #14141c;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 10px;
+  box-shadow:
+    0 24px 80px rgba(0,0,0,0.70),
+    0 0 0 1px rgba(255,255,255,0.04) inset;
+  overflow: hidden;
+  contain: layout;
+  transition: box-shadow 0.15s ease;
+  min-width: 240px;
+}
+
+.fw-window:hover {
+  box-shadow:
+    0 28px 90px rgba(0,0,0,0.80),
+    0 0 0 1px rgba(255,255,255,0.06) inset;
+}
+
+.fw-window--maximized {
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+.fw-window--minimized {
+  overflow: visible;
+  background: rgba(20,20,28,0.95);
+  border-radius: 8px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.fw-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 12px;
+  height: 36px;
+  min-height: 36px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--fw-accent, #7c6fff) 18%, #1a1a26 82%),
+    #1a1a26 60%
+  );
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  cursor: move;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.fw-window--maximized .fw-header {
+  cursor: default;
+}
+
+.fw-icon {
+  font-size: 14px;
+  opacity: 0.75;
+  flex-shrink: 0;
+}
+
+.fw-title {
+  flex: 1;
+  font-family: 'Inter', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+
+.fw-controls {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.fw-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, opacity 0.12s;
+  opacity: 0.65;
+  font-family: monospace;
+  flex-shrink: 0;
+}
+
+.fw-btn:hover { opacity: 1; }
+
+.fw-btn--min  { background: rgba(255,220,60,0.15);  color: #ffd83c; }
+.fw-btn--min:hover  { background: rgba(255,220,60,0.30); }
+
+.fw-btn--max  { background: rgba(50,220,100,0.12);  color: #32dc64; }
+.fw-btn--max:hover  { background: rgba(50,220,100,0.28); }
+
+.fw-btn--close { background: rgba(255,80,80,0.12);   color: #ff6060; }
+.fw-btn--close:hover { background: rgba(255,80,80,0.28); }
+
+.fw-btn--ai { background: rgba(124,111,255,0.14); color: #a090ff; font-size: 13px; }
+.fw-btn--ai:hover { background: rgba(124,111,255,0.30); }
+
+/* ── Body ────────────────────────────────────────────────────────────────── */
+
+.fw-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  /* Creates a new stacking context — position:absolute children stay inside */
+  transform: translateZ(0);
+}
+
+/* ── Resize handles ──────────────────────────────────────────────────────── */
+
+.fw-resize {
+  position: absolute;
+  z-index: 10;
+}
+
+.fw-resize--n  { top: 0; left: 6px; right: 6px; height: 4px; cursor: n-resize;  }
+.fw-resize--s  { bottom: 0; left: 6px; right: 6px; height: 4px; cursor: s-resize; }
+.fw-resize--e  { right: 0; top: 6px; bottom: 6px; width: 4px; cursor: e-resize; }
+.fw-resize--w  { left: 0; top: 6px; bottom: 6px; width: 4px; cursor: w-resize;  }
+.fw-resize--ne { top: 0; right: 0; width: 8px; height: 8px; cursor: ne-resize; }
+.fw-resize--nw { top: 0; left: 0; width: 8px; height: 8px; cursor: nw-resize;  }
+.fw-resize--se { bottom: 0; right: 0; width: 8px; height: 8px; cursor: se-resize; }
+.fw-resize--sw { bottom: 0; left: 0; width: 8px; height: 8px; cursor: sw-resize;  }

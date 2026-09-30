@@ -1,3 +1,6 @@
+# Local research / external repos (not part of this project)
+cyberSecurityRepos/
+
 # Dependencies  
 node_modules/
 .venv/

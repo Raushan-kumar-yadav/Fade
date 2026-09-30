@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 from dataclasses import dataclass, field
 from backend.timeline.clips.baseClip import BaseClip
@@ -79,7 +79,7 @@ class PenClip(BaseClip):
      
 
     def evaluateAll(self, frame: int) -> None:
-        super().evaluateAll(frame, _timeline=_timeline)
+        super().evaluateAll(frame)
         lf = self.localFrame(frame)
          
         self._syncBase()

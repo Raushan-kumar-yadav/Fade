@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+﻿import { useState, useEffect, useRef, useCallback } from 'react'
 import './ExportProgressOverlay.css'
 
 interface ExportProgress {
@@ -12,13 +12,46 @@ interface ExportProgress {
   status?: string
 }
 
+type IntegrityState =
+  | { phase: 'idle' }
+  | { phase: 'registering' }
+  | { phase: 'done'; artifactId: string; tx: string | null; wmPath: string | null }
+  | { phase: 'error'; message: string }
+
 const PORT = () => (window as any).__FADE_PORT__ ?? 8000
+
+async function registerIntegrity(videoPath: string): Promise<{ artifactId: string; tx: string | null; wmPath: string | null }> {
+  const r = await fetch(`http://127.0.0.1:${PORT()}/integrity/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ video_path: videoPath }),
+  })
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}))
+    throw new Error(d.detail ?? `Server error ${r.status}`)
+  }
+  const d = await r.json()
+  return {
+    artifactId: d.artifact_id,
+    tx: d.batch?.tx ?? null,
+    wmPath: d.watermarked_output_path ?? null,
+  }
+}
+
+function downloadProof(artifactId: string) {
+  const url = `http://127.0.0.1:${PORT()}/integrity/proof/${artifactId}`
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${artifactId}.proof.json`
+  a.click()
+}
 
 export default function ExportProgressOverlay() {
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState<ExportProgress | null>(null)
   const [visible, setVisible] = useState(false)
   const [dismissing, setDismissing] = useState(false)
+  const [integrity, setIntegrity] = useState<IntegrityState>({ phase: 'idle' })
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const elecClean  = useRef<(() => void) | null>(null)
@@ -36,6 +69,7 @@ export default function ExportProgressOverlay() {
       setJobId(null)
       setProgress(null)
       setDismissing(false)
+      setIntegrity({ phase: 'idle' })
     }, 500)
   }, [])
 
@@ -64,6 +98,7 @@ export default function ExportProgressOverlay() {
       setJobId(jid)
       setVisible(true)
       setDismissing(false)
+      setIntegrity({ phase: 'idle' })
       setProgress({ jobId: jid, frame: 0, total: 0, percent: 0, done: false, error: null, path: null })
 
       const elec = (window as any).electronAPI
@@ -110,6 +145,17 @@ export default function ExportProgressOverlay() {
   const done = progress?.done    ?? false
   const hasError = !!progress?.error
 
+  const handleRegister = async () => {
+    if (!progress?.path) return
+    setIntegrity({ phase: 'registering' })
+    try {
+      const result = await registerIntegrity(progress.path)
+      setIntegrity({ phase: 'done', ...result })
+    } catch (err: any) {
+      setIntegrity({ phase: 'error', message: err.message ?? 'Registration failed' })
+    }
+  }
+
   return (
     <div className={`exp-ov ${dismissing ? 'exp-ov--out' : 'exp-ov--in'}`}>
       {/* Header row */}
@@ -118,7 +164,7 @@ export default function ExportProgressOverlay() {
           {hasError ? '?' : done ? '?' : '??'}
         </span>
         <span className="exp-ov__title">
-          {hasError ? 'Export failed' : done ? 'Export complete' : 'Exporting�'}
+          {hasError ? 'Export failed' : done ? 'Export complete' : 'Exporting.'}
         </span>
         {(done || hasError) && (
           <button className="exp-ov__close" onClick={dismiss} aria-label="Close">?</button>
@@ -138,7 +184,7 @@ export default function ExportProgressOverlay() {
           <span className="exp-ov__error-msg">{progress?.error}</span>
         ) : done ? (
           <span className="exp-ov__done-msg">
-            Saved successfully � closing in 4 s
+            Saved successfully closing in 4 s
             {progress?.path && <><br /><code className="exp-ov__path">{progress.path}</code></>}
           </span>
         ) : (
@@ -156,6 +202,90 @@ export default function ExportProgressOverlay() {
       {!done && !hasError && (
         <button className="exp-ov__cancel" onClick={cancel}>Cancel</button>
       )}
+
+      {/* ── Integrity Registration Section ────────────────────────────── */}
+      {done && !hasError && progress?.path && (
+        <div className="exp-ov__integrity">
+          {integrity.phase === 'idle' && (
+            <>
+              <div className="exp-ov__integrity-title">
+                <span className="exp-ov__integrity-shield">&#x1F512;</span>
+                Register for Integrity Verification?
+              </div>
+              <div className="exp-ov__integrity-steps">
+                <span>&#x2022; SHA-256 exact fingerprint</span>
+                <span>&#x2022; Perceptual hash (survives re-encoding)</span>
+                <span>&#x2022; Invisible watermark embedded in pixels</span>
+              </div>
+              <div className="exp-ov__integrity-actions">
+                <button className="exp-ov__integrity-btn exp-ov__integrity-btn--primary" onClick={handleRegister}>
+                  Register + Watermark
+                </button>
+                <button className="exp-ov__integrity-btn exp-ov__integrity-btn--skip" onClick={dismiss}>
+                  Skip
+                </button>
+              </div>
+            </>
+          )}
+
+          {integrity.phase === 'registering' && (
+            <div className="exp-ov__integrity-progress">
+              <span className="exp-ov__integrity-spinner" />
+              <span className="exp-ov__integrity-registering-text">
+                Hashing &bull; Computing fingerprint &bull; Embedding watermark&hellip;
+              </span>
+            </div>
+          )}
+
+          {integrity.phase === 'done' && (
+            <div className="exp-ov__integrity-result">
+              <div className="exp-ov__integrity-ok">&#x2705; Registered on tamper-evident ledger</div>
+              <div className="exp-ov__integrity-meta">
+                <span className="exp-ov__integrity-label">Artifact ID</span>
+                <code className="exp-ov__integrity-value">{integrity.artifactId}</code>
+              </div>
+              {integrity.tx && (
+                <div className="exp-ov__integrity-meta">
+                  <span className="exp-ov__integrity-label">Ledger TX</span>
+                  <code className="exp-ov__integrity-value" title={integrity.tx}>
+                    {integrity.tx.slice(0, 20)}&hellip;
+                  </code>
+                </div>
+              )}
+              <div className="exp-ov__integrity-proof-btns">
+                <button
+                  className="exp-ov__integrity-btn exp-ov__integrity-btn--proof"
+                  onClick={() => downloadProof(integrity.artifactId)}
+                >
+                  &#x2B07; Download Proof JSON
+                </button>
+                {integrity.wmPath && (
+                  <button
+                    className="exp-ov__integrity-btn exp-ov__integrity-btn--wm"
+                    onClick={() => {
+                      const elec = (window as any).electronAPI
+                      if (elec?.showItemInFolder) elec.showItemInFolder(integrity.wmPath)
+                    }}
+                    title={integrity.wmPath}
+                  >
+                    &#x1F4C2; Open Watermarked Copy
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {integrity.phase === 'error' && (
+            <div className="exp-ov__integrity-error">
+              <span>&#x26A0;&#xFE0F; Registration failed: {integrity.message}</span>
+              <button className="exp-ov__integrity-btn exp-ov__integrity-btn--retry" onClick={handleRegister}>
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {/* ─────────────────────────────────────────────────────────────── */}
     </div>
   )
 }

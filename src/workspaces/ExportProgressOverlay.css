@@ -174,3 +174,153 @@
   color: #fca5a5;
   background: rgba(252, 165, 165, 0.07);
 }
+
+/* ── Integrity Registration Section ──────────────────────────────────────── */
+.exp-ov__integrity {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+}
+
+.exp-ov__integrity-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+  margin-bottom: 8px;
+}
+.exp-ov__integrity-shield {
+  font-size: 16px;
+  filter: drop-shadow(0 0 6px rgba(99,179,237,0.7));
+}
+
+.exp-ov__integrity-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10.5px;
+  color: #94a3b8;
+  margin-bottom: 10px;
+  padding-left: 4px;
+}
+
+.exp-ov__integrity-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Shared button base */
+.exp-ov__integrity-btn {
+  border: none;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.exp-ov__integrity-btn:hover  { opacity: 0.88; }
+.exp-ov__integrity-btn:active { transform: scale(0.96); }
+
+.exp-ov__integrity-btn--primary {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #fff;
+  flex: 1;
+}
+.exp-ov__integrity-btn--skip {
+  background: rgba(255,255,255,0.07);
+  color: #94a3b8;
+}
+.exp-ov__integrity-btn--proof {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #fff;
+  flex: 1;
+}
+.exp-ov__integrity-btn--wm {
+  background: rgba(255,255,255,0.08);
+  color: #cbd5e1;
+  flex: 1;
+}
+.exp-ov__integrity-btn--retry {
+  background: rgba(239,68,68,0.2);
+  color: #fca5a5;
+  border: 1px solid rgba(239,68,68,0.3);
+  margin-left: 8px;
+}
+
+/* Registering spinner state */
+.exp-ov__integrity-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.exp-ov__integrity-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(99,179,237,0.25);
+  border-top-color: #63b3ed;
+  border-radius: 50%;
+  animation: exp-ov-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes exp-ov-spin {
+  to { transform: rotate(360deg); }
+}
+.exp-ov__integrity-registering-text {
+  font-size: 11px;
+  color: #93c5fd;
+}
+
+/* Done state */
+.exp-ov__integrity-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.exp-ov__integrity-ok {
+  font-size: 12px;
+  font-weight: 600;
+  color: #34d399;
+  margin-bottom: 2px;
+}
+.exp-ov__integrity-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+}
+.exp-ov__integrity-label {
+  color: #64748b;
+  min-width: 72px;
+  flex-shrink: 0;
+}
+.exp-ov__integrity-value {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 10.5px;
+  color: #93c5fd;
+  background: rgba(99,179,237,0.08);
+  border-radius: 4px;
+  padding: 1px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+.exp-ov__integrity-proof-btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* Error state */
+.exp-ov__integrity-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #fca5a5;
+}
+/* ─────────────────────────────────────────────────────────────────────────── */

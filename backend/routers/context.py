@@ -1,5 +1,4 @@
  
-
 from __future__ import annotations
 import os
 from pathlib import Path
@@ -10,26 +9,7 @@ from backend.state import engine, _library
 router = APIRouter(prefix="/context", tags=["context"])
 
 _FPS_DEFAULT = 30.0
-_SEMANTIC_INTERVAL = 2.0   # seconds
-
-_PII_BLOCKED_MSG = (
-    "Security review required. This asset has not been approved for AI/external "
-    "processing. Open the PII Review panel, review detections, and click "
-    "Confirm & Sanitize to approve it."
-)
-
-
-def _pii_security_check(asset_id: str) -> None:
-    """Raise HTTP 403 if the asset is RESTRICTED (original before PII sanitization)."""
-    try:
-        from backend.pii import security as _sec
-        if _sec.get_state(asset_id) == "RESTRICTED":
-            raise HTTPException(status_code=403, detail=_PII_BLOCKED_MSG)
-    except HTTPException:
-        raise
-    except Exception:
-        pass  # security module import failure is non-fatal; don't crash AI tools
-
+_SEMANTIC_INTERVAL = 2.0   # seconds  
 
 
 #   helpers  
@@ -54,7 +34,7 @@ def _get_chroma_chunks(asset_id: str) -> list[dict]:
 
 
 def _get_image_description(asset_id: str) -> str:
-    """Fetch the stored image description from the image_assets ChromaDB collection."""
+    """Fetch stored image description from ChromaDB; returns '' if not indexed."""
     try:
         from backend.ai.VideoSemantic.indexer import _img_col
         result = _img_col.get(where={"assetId": asset_id}, include=["documents"])
@@ -63,6 +43,33 @@ def _get_image_description(asset_id: str) -> str:
     except Exception:
         pass
     return ""
+
+
+def _image_file_meta(filepath: str) -> dict:
+    """Return basic image metadata (dims, size) without heavy AI — fast fallback."""
+    meta: dict = {}
+    if not filepath or not os.path.isfile(filepath):
+        return meta
+    try:
+        meta["fileSizeKB"] = round(os.path.getsize(filepath) / 1024, 1)
+        meta["extension"] = os.path.splitext(filepath)[1].lower().lstrip(".")
+    except Exception:
+        pass
+    try:
+        import skia
+        img = skia.Image.open(filepath)
+        if img:
+            meta["width"] = img.width()
+            meta["height"] = img.height()
+    except Exception:
+        try:
+            # PIL fallback
+            from PIL import Image as _PIL
+            with _PIL.open(filepath) as im:
+                meta["width"], meta["height"] = im.size
+        except Exception:
+            pass
+    return meta
 
 
 def _get_transcript(asset_id: str, filepath: str) -> list[dict]:
@@ -193,6 +200,7 @@ def _build_clip_description(clip_obj, fps: float = 30.0) -> dict:
         "duration": duration_f,
         "startSec": start_sec,
         "endSec": end_sec,
+        "about": f"{clip_type} clip at {start_sec}s, duration {round(end_sec - start_sec, 2)}s",
     }
 
     if clip_type == "video":
@@ -273,12 +281,26 @@ def _build_clip_description(clip_obj, fps: float = 30.0) -> dict:
         asset = _lib.get(asset_id)
         filepath = getattr(asset, "filepath", "") if asset else ""
         description = _get_image_description(asset_id)
+        file_meta = _image_file_meta(filepath) if filepath else {}
+        fname = os.path.basename(filepath) if filepath else ""
+        if description:
+            about = description[:200]
+        elif file_meta:
+            w = file_meta.get("width", "?")
+            h = file_meta.get("height", "?")
+            kb = file_meta.get("fileSizeKB", "?")
+            about = f"Image '{fname}' ({w}x{h}, {kb} KB)"
+        else:
+            about = f"Image file '{fname}' (not yet indexed)"
         return {
             **base,
             "assetId": asset_id,
             "filepath": filepath,
-            "description": description or "(not yet indexed â€” run vision indexing first)",
+            "filename": fname,
+            "about": about,
+            "description": description or "(not yet indexed — run vision indexing first)",
             "indexed": bool(description),
+            "fileMeta": file_meta,
         }
 
     if clip_type == "text":
@@ -408,25 +430,6 @@ def get_timeline_context(format: str = "json"):
     for clip in clips:
         if not clip["assetId"] or not clip["filepath"]:
             continue
-        # AI security gate: skip RESTRICTED assets silently (don't expose filepath)
-        try:
-            from backend.pii import security as _sec
-            if _sec.get_state(clip["assetId"]) == "RESTRICTED":
-                results.append({
-                    **clip,
-                    "context": {
-                        "assetId": clip["assetId"],
-                        "filepath": "[RESTRICTED — PII review required]",
-                        "indexed": False,
-                        "semantic_chunks": 0,
-                        "transcript_segments": 0,
-                        "timeline": [],
-                        "_securityState": "RESTRICTED",
-                    },
-                })
-                continue
-        except Exception:
-            pass
         ctx = _build_asset_context(
             asset_id = clip["assetId"],
             filepath = clip["filepath"],
@@ -469,9 +472,6 @@ def get_clip_context(clip_id: str, format: str = "json"):
     if not clip["filepath"]:
         raise HTTPException(422, f"Clip '{clip_id}' has no filepath (asset may be missing)")
 
-    # AI security gate
-    _pii_security_check(clip["assetId"])
-
     ctx = _build_asset_context(
         asset_id = clip["assetId"],
         filepath = clip["filepath"],
@@ -506,9 +506,6 @@ def get_asset_context(asset_id: str, format: str = "json"):
     asset = _library.get(asset_id)
     if not asset:
         raise HTTPException(404, f"Asset '{asset_id}' not in library")
-
-    # AI security gate
-    _pii_security_check(asset_id)
 
     filepath = getattr(asset, "filepath", "")
     ctx = _build_asset_context(asset_id=asset_id, filepath=filepath)

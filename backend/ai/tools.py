@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import json
 import os
@@ -2939,14 +2939,19 @@ def export_video(
     output_path: str = "",
     preset: str = "medium",
     crf: int = 22,
+    register_integrity: bool = False,
 ) -> str:
     """Export the current timeline to a video file.
 
     format: one of mp4-1080, mp4-4k, mp4-720, shorts, reels, webm, gif.
     fps: frames per second (default 30).
     output_path: absolute path for the output file; auto-generated if empty.
-    preset: FFmpeg encoding speed preset (ultrafast … veryslow).
+    preset: FFmpeg encoding speed preset (ultrafast ... veryslow).
     crf: constant rate factor quality (0 = lossless, 51 = worst; default 22).
+    register_integrity: if True, automatically enable integrity verification for
+                        this export. Fade will embed an invisible watermark, compute
+                        SHA-256 + perceptual hash, anchor to ledger, and publish to
+                        the verification server after export completes.
     Returns a status string with the output path on success.
     """
     # Normalise format alias
@@ -2983,22 +2988,312 @@ def export_video(
     try:
         result = _post("/export/start", body)
     except Exception as exc:
-        return f"❌ Export failed to start: {exc}"
+        return f"Export failed to start: {exc}"
 
     job_id = result.get("jobId", "")
     total  = result.get("total", 0)
 
+    integrity_line = ""
+    if register_integrity:
+        # Parsed by FloatingAIChat.tsx: sets integrityEnabled=true in ExportWorkspace
+        integrity_line = "\nINTEGRITY_ENABLED:1"
+
     return (
-        f"✅ Export started!\n"
-        f"  Format: {fmt_id} ({w}×{h} @ {fps}fps)\n"
+        f"Export started!\n"
+        f"  Format: {fmt_id} ({w}x{h} @ {fps}fps)\n"
         f"  Frames: {total}\n"
         f"  Job ID: {job_id}\n"
         f"  Output: {output_path}\n\n"
-        f"EXPORT_JOB_ID:{job_id}"   
+        f"EXPORT_JOB_ID:{job_id}"
+        f"{integrity_line}"
     )
 
 
-EXPORT_TOOLS = [export_video]
+@tool
+def set_integrity_registration(enabled: bool = True) -> str:
+    """Enable or disable the 'Register for Integrity Verification' checkbox in the
+    Export workspace.
+
+    When enabled=True (default):
+      - The integrity checkbox is turned ON for the next export.
+      - After export completes, Fade will automatically:
+          1. Compute SHA-256 exact hash
+          2. Compute perceptual hash (survives platform re-encoding)
+          3. Embed invisible DWT-DCT watermark into the video/image
+          4. Anchor all hashes to the local ledger
+          5. Publish proof bundle to the hosted verification server
+      - The user sees a status card with Artifact ID + proof download.
+
+    When enabled=False:
+      - The integrity checkbox is turned OFF.
+      - Export completes with no integrity registration.
+
+    Use this tool BEFORE calling export_video, or at any time to inform the user
+    of the current integrity setting. Alternatively, pass register_integrity=True
+    directly to export_video to do both in one call.
+
+    enabled: True to enable integrity registration, False to disable.
+    Returns: confirmation string with UI signal.
+    """
+    if enabled:
+        return (
+            "Integrity verification registration ENABLED.\n"
+            "The next export will be automatically hashed, watermarked, and registered on the ledger.\n\n"
+            "INTEGRITY_ENABLED:1"
+        )
+    else:
+        return (
+            "Integrity verification registration DISABLED.\n"
+            "The next export will complete without integrity registration.\n\n"
+            "INTEGRITY_ENABLED:0"
+        )
+
+
+
+# ── Tracking Tools ──────────────────────────────────────────────────────────
+
+@tool
+def start_tracking(
+    clip_id: str,
+    video_path: str,
+    from_frame: int = 0,
+    to_frame: int = -1,
+    detection_mode: str = "face",
+    label: str = "",
+    text_pattern: str = "email|phone",
+    template_path: str = "",
+    initial_bbox: list = [],
+) -> str:
+    """Start object tracking on a video clip.
+
+    clip_id: the clip to track (from get_timeline_state)
+    video_path: absolute path to the video file
+    from_frame: start tracking from this frame (default 0)
+    to_frame: stop tracking at this frame (-1 = clip end)
+    detection_mode: "face" | "person" | "text" | "image" | "manual"
+      - face   -> MediaPipe face detection
+      - person -> YOLOv8n person detection
+      - text   -> EasyOCR + regex (use text_pattern for email/phone)
+      - image  -> template matching against template_path asset
+      - manual -> use initial_bbox directly (user drew a region)
+    label: friendly name for this track (e.g. "speaker_face")
+    text_pattern: regex or shorthand "email|phone" for text mode
+    template_path: path to reference image for image mode
+    initial_bbox: [x, y, w, h] in pixels for manual mode
+
+    Returns job_id. Use get_tracking_progress(job_id) to poll.
+    """
+    import json
+    body = {
+        "clip_id": clip_id,
+        "video_path": video_path,
+        "from_frame": from_frame,
+        "to_frame": to_frame,
+        "detection_mode": detection_mode,
+        "label": label or detection_mode,
+        "text_pattern": text_pattern,
+        "template_path": template_path or None,
+        "initial_bbox": initial_bbox or None,
+    }
+    try:
+        result = _post("/tracking/start", body)
+        job_id = result.get("job_id", "")
+        return (
+            f"Tracking started!\n"
+            f"  Mode: {detection_mode}\n"
+            f"  Frames: {from_frame} to {to_frame if to_frame >= 0 else 'end'}\n"
+            f"  Job ID: {job_id}\n\n"
+            f"TRACKING_JOB_ID:{job_id}"
+        )
+    except Exception as e:
+        return f"Failed to start tracking: {e}"
+
+
+@tool
+def get_tracking_progress(job_id: str) -> str:
+    """Check the progress of a tracking job.
+
+    job_id: the job ID returned by start_tracking.
+    Returns current percent, status, and track_id when done.
+    """
+    try:
+        import requests
+        r = requests.get(f"http://localhost:7860/tracking/progress/{job_id}", timeout=5)
+        r.raise_for_status()
+        job = r.json()
+        if job.get("done"):
+            track_id = job.get("track_id", "")
+            return (
+                f"Tracking complete!\n"
+                f"  Track ID: {track_id}\n"
+                f"  Frames tracked: {job.get('current_frame', '?')}\n"
+                f"  Status: {job.get('status')}"
+            )
+        elif job.get("error"):
+            return f"Tracking failed: {job['error']}"
+        else:
+            return (
+                f"Tracking in progress...\n"
+                f"  {job.get('percent', 0)}% complete\n"
+                f"  Frame: {job.get('current_frame', 0)}"
+            )
+    except Exception as e:
+        return f"Failed to get tracking progress: {e}"
+
+
+@tool
+def list_tracks(clip_id: str) -> str:
+    """List all completed tracks for a given clip.
+
+    clip_id: the clip whose tracks to list.
+    Returns track IDs, labels, and frame ranges.
+    """
+    try:
+        import requests
+        r = requests.get(f"http://localhost:7860/tracking/tracks/{clip_id}", timeout=5)
+        r.raise_for_status()
+        tracks = r.json().get("tracks", [])
+        if not tracks:
+            return f"No tracks found for clip {clip_id}."
+        lines = [f"Found {len(tracks)} track(s) for clip {clip_id}:"]
+        for t in tracks:
+            lines.append(
+                f"  - {t['label']} | track_id={t['track_id']} | "
+                f"frames {t['from_frame']}-{t['to_frame']} | "
+                f"{t['frame_count']} tracked frames"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Failed to list tracks: {e}"
+
+
+@tool
+def blur_tracked_region(
+    source_clip_id: str,
+    track_id: str,
+    blur_strength: int = 25,
+    scale: float = 1.15,
+) -> str:
+    """Create a blur rectangle that automatically follows a tracked region.
+
+    source_clip_id: the clip that was tracked
+    track_id: the track UUID (from list_tracks or get_tracking_progress)
+    blur_strength: gaussian blur radius 1-50 (default 25)
+    scale: how much larger than the detection bbox (1.15 = 15% padding)
+
+    Creates a ShapeClip with expressions that make it follow the tracked
+    target frame by frame, plus a GaussianBlur effect.
+    Use for: "blur the face", "hide the email", "pixelate the phone number"
+    """
+    try:
+        # Get track metadata
+        import requests
+        r = requests.get(f"http://localhost:7860/tracking/track/{track_id}", timeout=5)
+        r.raise_for_status()
+        track = r.json()
+
+        from_frame = track.get("from_frame", 0)
+        to_frame   = track.get("to_frame", 300)
+        duration   = to_frame - from_frame
+
+        # Find a free overlay track
+        overlay = _post("/timeline/find-free-overlay-track", {
+            "startFrame": from_frame, "endFrame": to_frame
+        })
+        track_idx = overlay.get("track_index", 1)
+
+        # Create a shape clip (rect) on the overlay track
+        shape = _post("/clips/add-shape", {
+            "trackIndex": track_idx,
+            "startFrame": from_frame,
+            "duration": duration,
+            "shapeType": "rect",
+            "fillColor": [0, 0, 0, 0],     # transparent fill
+            "strokeWidth": 0,
+        })
+        shape_clip_id = shape.get("clipId", "")
+
+        if not shape_clip_id:
+            return "Failed to create blur rect shape clip."
+
+        # Add GaussianBlur effect
+        _post(f"/effects/{shape_clip_id}/add", {
+            "effectId": "GaussianBlur",
+            "params": {"radius": blur_strength}
+        })
+
+        # Set expressions to follow the track
+        exprs = {
+            "pos_x":   f'track("{track_id}", frame, "cx") - comp_w / 2',
+            "pos_y":   f'track("{track_id}", frame, "cy") - comp_h / 2',
+            "shape_w": f'track("{track_id}", frame, "w") * {scale}',
+            "shape_h": f'track("{track_id}", frame, "h") * {scale}',
+        }
+        for param, expr in exprs.items():
+            _post(f"/clips/{shape_clip_id}/set-expression", {
+                "param": param, "expression": expr
+            })
+
+        return (
+            f"Blur rect created and linked to track.\n"
+            f"  Blur clip ID: {shape_clip_id}\n"
+            f"  Track ID: {track_id}\n"
+            f"  Frames: {from_frame}-{to_frame}\n"
+            f"  The blur rect will follow the tracked target every frame."
+        )
+    except Exception as e:
+        return f"Failed to create blur rect: {e}"
+
+
+@tool
+def link_track_to_clip(
+    track_id: str,
+    target_clip_id: str,
+    properties: list = ["pos_x", "pos_y"],
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    scale_factor: float = 1.0,
+) -> str:
+    """Link a tracking track to any clip property via expressions.
+
+    track_id: the track UUID
+    target_clip_id: clip to add tracking expressions to
+    properties: list of properties to link. Options:
+      pos_x, pos_y, scale_x, scale_y, rotation, opacity,
+      shape_w, shape_h, font_size
+    offset_x, offset_y: pixel offset from tracked center
+    scale_factor: multiply tracked dimensions by this factor
+
+    Example: link a logo clip to follow a face track.
+    """
+    try:
+        exprs = {}
+        for prop in properties:
+            if prop == "pos_x":
+                exprs[prop] = f'track("{track_id}", frame, "cx") - comp_w/2 + {offset_x}'
+            elif prop == "pos_y":
+                exprs[prop] = f'track("{track_id}", frame, "cy") - comp_h/2 + {offset_y}'
+            elif prop == "shape_w":
+                exprs[prop] = f'track("{track_id}", frame, "w") * {scale_factor}'
+            elif prop == "shape_h":
+                exprs[prop] = f'track("{track_id}", frame, "h") * {scale_factor}'
+            else:
+                exprs[prop] = f'track("{track_id}", frame, "cx")'  # generic
+
+        for param, expr in exprs.items():
+            _post(f"/clips/{target_clip_id}/set-expression", {
+                "param": param, "expression": expr
+            })
+
+        return (
+            f"Linked track {track_id} to clip {target_clip_id}.\n"
+            f"  Properties: {', '.join(properties)}\n"
+            f"  The clip will now follow the tracked target every frame."
+        )
+    except Exception as e:
+        return f"Failed to link track to clip: {e}"
+
+EXPORT_TOOLS = [export_video, set_integrity_registration]
 ALL_TOOLS.extend(EXPORT_TOOLS)
 
 
@@ -3928,4 +4223,402 @@ def test_expression(clip_id: str, param: str, expression: str, frame: int = 0) -
 
 EXPRESSION_TOOLS = [set_expression, clear_expression, test_expression]
 ALL_TOOLS.extend(EXPRESSION_TOOLS)
+
+
+# === Viewport & Visual Context ===
+
+import base64 as _b64
+
+@tool
+def get_current_viewport_image(width: int = 640, height: int = 360) -> str:
+    """Capture the current canvas frame as a base64 PNG — lets the agent SEE the viewport.
+
+    Call this to visually verify edits: layout, text, colors, effects.
+    Vision-capable models interpret the returned data URI directly.
+
+    Args:
+        width:  Thumbnail width px (default 640).
+        height: Thumbnail height px (default 360).
+
+    Returns:
+        JSON with current frame number and "image" as data:image/png;base64 URI.
+    """
+    try:
+        state = _get("/playback/state")
+        frame = state.get("frame", 0)
+        r = httpx.get(f"{_base()}/render/thumbnail/{frame}",
+                      params={"w": width, "h": height}, timeout=15)
+        r.raise_for_status()
+        b64 = _b64.b64encode(r.content).decode()
+        return json.dumps({"frame": frame, "width": width, "height": height,
+                           "image": f"data:image/png;base64,{b64}"})
+    except Exception as e:
+        return f"Viewport capture failed: {e}"
+
+
+@tool
+def get_viewport_at_frame(frame: int, width: int = 640, height: int = 360) -> str:
+    """Render a specific timeline frame as a base64 PNG.
+
+    Args:
+        frame:  Timeline frame number.
+        width:  Image width px (default 640).
+        height: Image height px (default 360).
+    """
+    try:
+        r = httpx.get(f"{_base()}/render/thumbnail/{frame}",
+                      params={"w": width, "h": height}, timeout=15)
+        r.raise_for_status()
+        b64 = _b64.b64encode(r.content).decode()
+        return json.dumps({"frame": frame,
+                           "image": f"data:image/png;base64,{b64}"})
+    except Exception as e:
+        return f"Frame render failed: {e}"
+
+
+@tool
+def get_comp_thumbnail(comp_id: str, width: int = 480, height: int = 270) -> str:
+    """Render frame 0 of a composition as a base64 PNG image.
+
+    Args:
+        comp_id: Composition ID (list_compositions()).
+        width:   Thumbnail width px (default 480).
+        height:  Thumbnail height px (default 270).
+    """
+    try:
+        r = httpx.get(f"{_base()}/render/comps/{comp_id}/thumbnail",
+                      params={"w": width, "h": height}, timeout=15)
+        r.raise_for_status()
+        b64 = _b64.b64encode(r.content).decode()
+        return json.dumps({"compId": comp_id,
+                           "image": f"data:image/png;base64,{b64}"})
+    except Exception as e:
+        return f"Comp thumbnail failed: {e}"
+
+
+# === Clip & Comp About ===
+
+@tool
+def get_comp_about(comp_id: str) -> str:
+    """Concise human-readable summary of what a composition contains.
+
+    Returns layer types/names/text without raw transform data — LLM-friendly.
+
+    Args:
+        comp_id: Composition ID (list_compositions()).
+    """
+    try:
+        r = _get(f"/comps/{comp_id}/state")
+        tl = r.get("timeline", r)
+        fps = float(tl.get("fps", 30))
+        name = tl.get("name", comp_id[:8])
+        tracks = tl.get("tracks", [])
+        lines = [f"Comp: '{name}' ({comp_id[:8]}...)  FPS={fps}"]
+        total = 0
+        for tr in tracks:
+            clips = tr.get("clips", [])
+            if not clips:
+                continue
+            lines.append(f"  Track '{tr.get('name','?')}' [{tr.get('kind','video')}]:")
+            for c in clips:
+                ctype = c.get("type", "?")
+                cid = c.get("clipId", "")[:8]
+                start = round(c.get("startFrame", 0) / fps, 2)
+                dur = round(c.get("durationFrames", c.get("duration", 0)) / fps, 2)
+                hint = ""
+                if c.get("text"):
+                    hint = f' "{c["text"][:40]}"'
+                elif c.get("name"):
+                    hint = f' ({c["name"]})'
+                lines.append(f"    [{cid}...] {ctype} @{start}s {dur}s{hint}")
+                total += 1
+        lines.append(f"  Total: {total} clip(s)")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not describe comp {comp_id}: {e}"
+
+
+@tool
+def get_clip_about(clip_id: str) -> str:
+    """Concise semantic summary of what a clip contains — works for all clip types.
+
+    Returns only relevant content: text string, image description, scene count,
+    transcript snippet, etc. No raw transform/keyframe data.
+
+    Args:
+        clip_id: The clipId of the clip.
+    """
+    try:
+        r = _get(f"/context/clip/{clip_id}/describe")
+        ctype = r.get("clipType", "?")
+        cid = r.get("clipId", clip_id)[:8]
+        start = r.get("startSec", 0)
+        dur = round(r.get("endSec", 0) - start, 2)
+        lines = [f"[{cid}...] type={ctype} @{start}s dur={dur}s"]
+        if ctype == "video":
+            lines.append(f"  file={os.path.basename(r.get('filepath','?'))}")
+            tl2 = r.get("timeline", [])
+            lines.append(f"  indexed_scenes={len(tl2)}")
+            if tl2:
+                lines.append(f"  first: {str(tl2[0].get('scene', tl2[0].get('speech','')))[:100]}")
+        elif ctype == "image":
+            lines.append(f"  file={os.path.basename(r.get('filepath','?'))}")
+            desc = r.get("description", "")
+            if desc and "not yet indexed" not in desc:
+                lines.append(f"  vision: {desc[:150]}")
+            else:
+                lines.append("  vision: not indexed")
+        elif ctype == "text":
+            lines.append(f'  text="{r.get("text","")[:80]}"')
+            s = r.get("style", {})
+            if s.get("fontFamily"):
+                lines.append(f"  font={s['fontFamily']} {s.get('fontSize','?')}px color={s.get('color','?')}")
+        elif ctype in ("shape","rectangle","ellipse","triangle","line"):
+            s = r.get("style", {})
+            lines.append(f"  shape={r.get('shapeType', ctype)} fill={s.get('fill','?')}")
+        elif ctype == "audio":
+            lines.append(f"  file={os.path.basename(r.get('filepath','?'))}")
+            segs = r.get("transcript", [])
+            if segs:
+                lines.append(f'  transcript[0]="{segs[0].get("text","")[:80]}"')
+        elif ctype == "webcomp":
+            lines.append(f"  component={r.get('name','?')}")
+            params = r.get("runtimeParams", {})
+            if params:
+                lines.append(f"  params={json.dumps(params)[:120]}")
+        elif ctype in ("comp","composition"):
+            nested = r.get("nestedTracks", [])
+            total = sum(len(t.get("clips",[])) for t in nested)
+            lines.append(f"  nested_tracks={len(nested)} total_clips={total}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not describe clip {clip_id}: {e}"
+
+
+# === PDF Summaries ===
+
+@tool
+def get_pdf_page_summary(doc_id: str, page_id: str) -> str:
+    """Text summary of all layers on a specific PDF document page.
+
+    Returns layer type, text content, and rough position.
+    Use before editing a page to understand its structure.
+
+    Args:
+        doc_id:  PDF document ID (list_pdf_docs()).
+        page_id: Page/comp ID (list_pdf_pages() -> pageId field).
+    """
+    try:
+        tl_r = _get(f"/comps/{page_id}/state")
+        tl_d = tl_r.get("timeline", tl_r)
+        tracks = tl_d.get("tracks", [])
+        lines = [f"PDF page [{page_id[:8]}...] layers:"]
+        n = 0
+        for tr in tracks:
+            for c in tr.get("clips", []):
+                n += 1
+                ctype = c.get("type","?")
+                cid = c.get("clipId","")[:8]
+                desc = f"  L{n} [{cid}...] {ctype}"
+                if c.get("text"):
+                    desc += f': "{c["text"][:60]}"'
+                elif c.get("name"):
+                    desc += f' ({c["name"]})'
+                t2 = c.get("transform",{})
+                pos = t2.get("position",{})
+                if pos:
+                    def _v(p): return p.get("base",0) if isinstance(p,dict) else p
+                    desc += f" pos=({round(_v(pos.get('x',0)))},{round(_v(pos.get('y',0)))})"
+                lines.append(desc)
+        if n == 0:
+            lines.append("  (empty page)")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not read page {page_id}: {e}"
+
+
+@tool
+def get_pdf_doc_summary(doc_id: str) -> str:
+    """Complete layer-by-layer summary of all pages in a PDF document.
+
+    Returns page count, dimensions, and content hints per layer — LLM-optimized.
+
+    Args:
+        doc_id: PDF document ID (list_pdf_docs()).
+    """
+    try:
+        pages_r = _get(f"/pdf-docs/{doc_id}/pages")
+        pages = pages_r.get("pages", [])
+        if not pages:
+            return f"PDF doc {doc_id[:8]}... has no pages."
+        lines = [f"PDF doc {doc_id[:8]}... - {len(pages)} page(s):"]
+        for p in pages:
+            pid = p.get("pageId", p.get("compId",""))
+            idx = p.get("index",0)+1
+            name = p.get("name", f"Page {idx}")
+            lines.append(f"\n  Page {idx}: '{name}' [{pid[:8]}...] {p.get('width',0)}x{p.get('height',0)}")
+            try:
+                tl_r2 = _get(f"/comps/{pid}/state")
+                tracks2 = tl_r2.get("timeline", tl_r2).get("tracks",[])
+                hints = []
+                for tr in tracks2:
+                    for c in tr.get("clips",[]):
+                        ct = c.get("type","?")
+                        txt = c.get("text","")
+                        hints.append(f'{ct}:"{txt[:25]}"' if txt else ct)
+                lines.append(f"    {len(hints)} layer(s): {', '.join(hints[:8])}")
+            except Exception:
+                lines.append("    (layers unavailable)")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Could not summarize PDF doc {doc_id}: {e}"
+
+
+# === Register all tools ===
+
+VIEWPORT_TOOLS = [get_current_viewport_image, get_viewport_at_frame, get_comp_thumbnail]
+ALL_TOOLS.extend(VIEWPORT_TOOLS)
+
+ABOUT_TOOLS = [get_comp_about, get_clip_about]
+ALL_TOOLS.extend(ABOUT_TOOLS)
+
+PDF_SUMMARY_TOOLS = [get_pdf_page_summary, get_pdf_doc_summary]
+ALL_TOOLS.extend(PDF_SUMMARY_TOOLS)
+
+# Previously defined but unregistered tools - now fully exposed to the agent
+ALL_TOOLS.extend([
+    get_timeline_range,
+    create_webcomp, list_webcomps, list_webcomp_templates,
+    add_webcomp_to_timeline, get_webcomp_clip_info,
+    read_webcomp_file, edit_webcomp_file, set_webcomp_params,
+    set_webcomp_transform, set_webcomp_opacity, delete_webcomp,
+    reload_webcomp, update_webcomp_meta,
+    get_timeline_context, get_clip_context, get_asset_context,
+    search_video_scenes, get_index_status,
+    add_video_clip_by_scene, add_image_clip_by_scene,
+    get_clip_info, remove_clip, list_timeline_clips,
+    generate_captions, remove_silence, get_transcript, get_clip_params,
+    animate_property, remove_keyframe, clear_animation, get_keyframes,
+    set_text_content, list_curve_presets, apply_curve_preset, move_keyframe,
+    list_kokoro_voices, generate_tts, check_job_status, cancel_job,
+    stop_indexing, export_video,
+    set_clip_volume, mute_clip, get_clip_volume,
+    solo_track, lock_track, move_track,
+    add_mask, update_mask, remove_mask, list_masks,
+    add_svg_clip, crop_canvas,
+    rename_composition, get_comp_layers, update_comp_layer, move_comp_layer,
+    create_pdf_doc, list_pdf_docs, list_pdf_pages,
+    add_pdf_page, delete_pdf_page, reorder_pdf_pages,
+    play, pause, set_playback_speed, set_in_out_points,
+    transform_batch,
+])
+
+
+# ── Director coordination tools ───────────────────────────────────────────────
+
+@tool
+def list_platform_presets() -> str:
+    """List all available social media platform presets with dimensions and duration limits.
+    Use this before creating compositions for a campaign to know the correct dimensions.
+    """
+    from backend.ai.platform_presets import list_presets_summary
+    return list_presets_summary()
+
+
+@tool
+def dispatch_task(
+    agent_type: str,
+    job: str,
+    comp_id: str = "",
+    platform: str = "",
+    create_comp_name: str = "",
+) -> str:
+    """Dispatch a task to a specialized agent (video / image / audio / pdf).
+
+    Use this from the Director to assign work to sub-agents.
+    The task is queued and picked up automatically.
+
+    Args:
+        agent_type: One of video, image, audio, pdf.
+        job: Natural language instruction for the agent.
+        comp_id: Existing composition ID to work in (optional).
+        platform: Platform preset key e.g. youtube, instagram_story, tiktok (optional).
+        create_comp_name: Name for the new composition to create if comp_id is empty (optional).
+    """
+    import asyncio
+    import concurrent.futures
+    from backend.ai.task_queue import get_task_queue
+    from backend.ai.platform_presets import get_preset
+
+    valid_types = ("video", "image", "audio", "pdf")
+    if agent_type not in valid_types:
+        return "Invalid agent_type '{}'. Must be one of: {}".format(agent_type, valid_types)
+
+    resolved_comp_id = comp_id or None
+    if not resolved_comp_id and create_comp_name:
+        preset = get_preset(platform) if platform else None
+        if preset:
+            w, h, fps = preset["width"], preset["height"], preset["fps"]
+        else:
+            w, h, fps = 1920, 1080, 30
+        result = _post("/comps/create", {"name": create_comp_name, "width": w, "height": h, "fps": fps})
+        resolved_comp_id = result.get("compId") or result.get("comp_id")
+        if not resolved_comp_id:
+            return "Failed to create composition '{}': {}".format(create_comp_name, result)
+
+    queue = get_task_queue()
+
+    def _run():
+        return asyncio.run(queue.push(
+            agent_type=agent_type,
+            job=job,
+            comp_id=resolved_comp_id,
+            platform=platform or None,
+        ))
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                task_id = pool.submit(_run).result(timeout=10)
+        else:
+            task_id = loop.run_until_complete(queue.push(
+                agent_type=agent_type, job=job,
+                comp_id=resolved_comp_id, platform=platform or None,
+            ))
+    except RuntimeError:
+        task_id = _run()
+
+    comp_info = " (comp: {})".format(resolved_comp_id) if resolved_comp_id else ""
+    platform_info = " [{}]".format(platform) if platform else ""
+    return "Task {} dispatched to {} agent{}{}.\nJob: {}\nUse get_campaign_status() to monitor progress.".format(
+        task_id, agent_type, platform_info, comp_info, job
+    )
+
+
+@tool
+def get_campaign_status() -> str:
+    """Get the current status of all dispatched agent tasks for the active campaign."""
+    import asyncio
+    import concurrent.futures
+    from backend.ai.task_queue import get_task_queue
+    queue = get_task_queue()
+
+    def _run():
+        return asyncio.run(queue.summary())
+
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(_run).result(timeout=10)
+        return loop.run_until_complete(queue.summary())
+    except RuntimeError:
+        return _run()
+
+
+ALL_TOOLS.extend([list_platform_presets, dispatch_task, get_campaign_status])
+
+TRACKING_TOOLS = [start_tracking, get_tracking_progress, list_tracks, blur_tracked_region, link_track_to_clip]
+ALL_TOOLS.extend(TRACKING_TOOLS)
 

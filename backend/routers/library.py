@@ -10,6 +10,7 @@ from backend.tools import YtdlpDownloader, ImageDownloader, GeminiImageGenerator
 from backend.tools.generators.tts_generator import get_tts_generator, GEMINI_VOICES
 from backend.tools.generators.video_generator import get_video_generator
 from backend.config.global_config import cfg as _cfg
+from backend.ai.prompt_shield import scan_pdf, scan_image
 
 router = APIRouter()
 
@@ -342,6 +343,37 @@ async def upload_asset(file: UploadFile = File(...)):
 def importAsset(req: ImportRequest):
     if not os.path.exists(req.filepath):
         raise HTTPException(404, f"File not found: {req.filepath}")
+
+    # ── Prompt-injection scan before import ──────────────────────────
+    ext = os.path.splitext(req.filepath)[1].lower()
+    if ext == ".pdf":
+        try:
+            raw = open(req.filepath, "rb").read()
+            shield = scan_pdf(raw)
+            if shield.blocked:
+                raise HTTPException(
+                    422,
+                    f"PDF blocked by security scanner: {shield.reason}"
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # fail-open: if scanner crashes, allow import
+    elif ext in {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff", ".gif"}:
+        try:
+            raw = open(req.filepath, "rb").read()
+            shield = scan_image(raw)
+            if shield.blocked:
+                raise HTTPException(
+                    422,
+                    f"Image blocked by security scanner: {shield.reason}"
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # fail-open
+    # ────────────────────────────────────────────────────────────────
+
     result = _import_file(req.filepath)
     from backend.events import notify; notify("library")
 

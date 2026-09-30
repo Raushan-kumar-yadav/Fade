@@ -1,4 +1,4 @@
- 
+﻿ 
 from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
@@ -236,7 +236,7 @@ class TextClip(BaseClip):
 
     def evaluateAll(self, frame: int) -> None:
         """Tick transform + mask path animations."""
-        super().evaluateAll(frame, _timeline=_timeline)
+        super().evaluateAll(frame)
         lf = self.localFrame(frame)
         for mask in self.masks:
             mask.evaluateAll(lf)

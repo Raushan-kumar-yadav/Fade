@@ -295,6 +295,7 @@ export default function TitleBar({
             key={id}
             className={`titlebar__tab${active === id ? ' titlebar__tab--active' : ''}`}
             onClick={() => onTab(id)}
+            title={label}
           >
             {label}
           </button>
