@@ -6,9 +6,7 @@ from pathlib import Path
 
  
 _FFMPEG_CANDIDATES = [
-    str(Path(__file__).resolve().parents[4] / "tools" / "ffmpeg"),  # bundled
-    r"D:\ffmpeg\FFmpeg",
-    r"C:\ffmpeg\bin",
+    str(Path(__file__).resolve().parents[4] / "tools" / "ffmpeg"),  # bundled in repo
 ]
 
 
