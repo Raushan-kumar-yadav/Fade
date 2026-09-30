@@ -18,6 +18,7 @@ import FloatingAIChat from './workspaces/FloatingAIChat'
 import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
 import DraggableAIButton from './components/DraggableAIButton'
 import { useLibrarySSE }  from './api/useLibrarySSE'
+import { PIIProvider } from './context/piiContext'
 import './App.css'
 
 type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export' | 'image' | 'pdf' | 'director'
@@ -261,6 +262,7 @@ export default function App() {
   const Workspace  = (isImageTab || isPdfTab) ? null : workspaces[activeTab as Exclude<TabId, 'image' | 'pdf'>]
 
   return (
+    <PIIProvider>
     <SelectionContext.Provider value={{ selected, setSelected }}>
       <ToolContext.Provider value={{
         activeTool,
@@ -363,6 +365,7 @@ export default function App() {
         </div>
       </ToolContext.Provider>
     </SelectionContext.Provider>
+    </PIIProvider>
   )
 }
 

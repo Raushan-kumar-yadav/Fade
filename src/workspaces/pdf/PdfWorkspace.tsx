@@ -19,6 +19,7 @@ import PagesPanel, { type PdfPage } from './PagesPanel';
 import LibraryPanel from '../library/LibraryPanel';
 import { type AssetItem } from '../../api/useApi';
 import TrackingWorkspace from '../TrackingWorkspace';
+import PIIReviewPanel from '../pii/PIIReviewPanel';
 
 // PdfTimeline 
 function PdfTimeline() {
@@ -74,6 +75,7 @@ const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
               { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
               { type: 'tab', name: 'Tools',       component: 'tools',      enableClose: false },
               { type: 'tab', name: 'Tracking',    component: 'tracking',   enableClose: false },
+              { type: 'tab', name: 'PII',         component: 'pii',        enableClose: false },
             ],
           },
         ],
@@ -287,6 +289,15 @@ function PdfWorkspaceInner({ docId, docName }: { docId: string | null; docName: 
             fps={state.fps}
           />
         );
+      }
+      case 'pii': {
+        const selClip = state.tracks.flatMap(t => t.clips).find(c => c.isSelected)
+        return (
+          <PIIReviewPanel
+            assetId={selClip?.assetId ?? ''}
+            assetType='text'
+          />
+        )
       }
       default: return <div className="vp" />;
 

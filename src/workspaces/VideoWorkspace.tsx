@@ -17,6 +17,7 @@ import ShapeToolPanel from './tools/ShapeToolPanel'
 import TransitionPanel from './inspector/TransitionPanel'
 import CompositionsPanel from './compositions/CompositionsPanel'
 import TrackingWorkspace from './TrackingWorkspace'
+import PIIReviewPanel from './pii/PIIReviewPanel'
 
 
 
@@ -53,6 +54,7 @@ const layoutJson: FlexLayout.IJsonModel = {
               { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
               { type: 'tab', name: 'Tools',       component: 'tools',      enableClose: false },
               { type: 'tab', name: 'Tracking',    component: 'tracking',   enableClose: false },
+              { type: 'tab', name: 'PII',         component: 'pii',        enableClose: false },
             ],
           },
         ],
@@ -67,7 +69,7 @@ const layoutJson: FlexLayout.IJsonModel = {
 }
 
 const LAYOUT_DEBOUNCE_MS = 500
-const LAYOUT_VERSION = 3  // bump when tabs are added/removed
+const LAYOUT_VERSION = 4  // bump when tabs are added/removed
 
 function makeDefaultModel() {
   return FlexLayout.Model.fromJson(layoutJson)
@@ -177,6 +179,15 @@ function WorkspaceInner() {
             selectedClipId={selClipId}
             totalFrames={state.totalFrames}
             fps={state.fps}
+          />
+        )
+      }
+      case 'pii': {
+        const selClip = state.tracks.flatMap(t => t.clips).find(c => c.isSelected)
+        return (
+          <PIIReviewPanel
+            assetId={selClip?.assetId ?? ''}
+            assetType='video'
           />
         )
       }

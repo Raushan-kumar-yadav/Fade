@@ -18,6 +18,7 @@ import BrushToolPanel from './tools/BrushToolPanel';
 import EraserToolPanel from './tools/EraserToolPanel';
 import ShapeToolPanel from './tools/ShapeToolPanel';
 import TrackingWorkspace from './TrackingWorkspace';
+import PIIReviewPanel from './pii/PIIReviewPanel';
 
 //   Props  
 
@@ -72,6 +73,7 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
               { type: 'tab', name: 'Transitions', component: 'transitions', enableClose: false },
               { type: 'tab', name: 'Tools',       component: 'tools',      enableClose: false },
               { type: 'tab', name: 'Tracking',    component: 'tracking',   enableClose: false },
+              { type: 'tab', name: 'PII',         component: 'pii',        enableClose: false },
             ],
           },
         ],
@@ -275,6 +277,15 @@ function ImageWorkspaceInner({ compId, compName }: InnerProps) {
             fps={state.fps}
           />
         );
+      }
+      case 'pii': {
+        const selClip = state.tracks.flatMap(t => t.clips).find(c => c.isSelected)
+        return (
+          <PIIReviewPanel
+            assetId={selClip?.assetId ?? ''}
+            assetType='image'
+          />
+        )
       }
       default:
         return <div className="vp" />;
