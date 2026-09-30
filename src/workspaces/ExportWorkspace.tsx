@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect, useCallback } from 'react'
 import './ExportWorkspace.css'
 import { exportApi, type ExportProgress } from '../api/toolsApi'
 
@@ -16,13 +16,13 @@ interface Format { id: string; label: string; icon: string; desc: string; w: num
 
 const FORMATS: Format[] = [
   { id: 'mp4-1080', label: 'MP4 1080p', icon: '🎬', desc: 'H.264, AAC · 1920×1080', w: 1920, h: 1080, ext: 'mp4' },
-  { id: 'mp4-4k',   label: 'MP4 4K',   icon: '🎬', desc: 'H.264 · 3840×2160',       w: 3840, h: 2160, ext: 'mp4' },
-  { id: 'mp4-720',  label: 'MP4 720p', icon: '🎬', desc: 'H.264 · 1280×720',         w: 1280, h:  720, ext: 'mp4' },
-  { id: 'shorts',   label: 'YT Shorts',icon: '📱', desc: '1080×1920, 60s max',        w: 1080, h: 1920, ext: 'mp4' },
-  { id: 'reels',    label: 'IG Reels', icon: '📱', desc: '1080×1920, AAC',             w: 1080, h: 1920, ext: 'mp4' },
-  { id: 'webm',     label: 'WebM VP9', icon: '🌐', desc: 'Open format · 1920×1080',   w: 1920, h: 1080, ext: 'webm' },
-  { id: 'gif',      label: 'GIF',      icon: '🎭', desc: 'Animated · 854×480',         w:  854, h:  480, ext: 'gif' },
-]
+  { id: 'mp4-4k',   label: 'MP4 4K',   icon: '🎬', desc: 'H.264 · 3840×2160', w: 3840, h: 2160, ext: 'mp4' },
+  { id: 'mp4-720',  label: 'MP4 720p', icon: '🎬', desc: 'H.264 · 1280×720', w: 1280, h:  720, ext: 'mp4' },
+  { id: 'shorts', label: 'YT Shorts',icon: '📱', desc: '1080×1920, 60s max', w: 1080, h: 1920, ext: 'mp4' },
+  { id: 'reels', label: 'IG Reels', icon: '📱', desc: '1080×1920, AAC', w: 1080, h: 1920, ext: 'mp4' },
+  { id: 'webm', label: 'WebM VP9', icon: '🌐', desc: 'Open format · 1920×1080',   w: 1920, h: 1080, ext: 'webm' },
+  { id: 'gif', label: 'GIF',      icon: '🎭', desc: 'Animated · 854×480', w:  854, h:  480, ext: 'gif' },
+] 
 const FPS_OPTIONS    = ['24','25','30','50','60']
 const PRESET_OPTIONS = ['ultrafast','superfast','veryfast','faster','fast','medium','slow','slower','veryslow']
 const AUDIO_SR = [{ v:'44100', l:'44.1 kHz' },{ v:'48000', l:'48 kHz' }]
@@ -59,6 +59,42 @@ export default function ExportWorkspace() {
   const cleanupRef = useRef<(()=>void)|null>(null)
   const wcCleanup = useRef<(()=>void)|null>(null)
   const fmt = FORMATS.find(f=>f.id===selected)!
+
+  // Integrity state  
+  const [integrityEnabled, setIntegrityEnabled] = useState(false)
+  type IState = {phase:'idle'}|{phase:'running'}|{phase:'done';artifactId:string;tx:string|null;wmPath:string|null}|{phase:'error';msg:string}
+  const [iState, setIState] = useState<IState>({phase:'idle'})
+
+  const runIntegrity = useCallback(async (filePath: string) => {
+    setIState({phase:'running'})
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/integrity/register`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ video_path: filePath }),
+      })
+      if (!r.ok) { const d=await r.json().catch(()=>({})); setIState({phase:'error',msg:d.detail??`Server error ${r.status}`}); return }
+      const d = await r.json()
+      setIState({ phase:'done', artifactId: d.artifact_id, tx: d.batch?.tx??null, wmPath: d.watermarked_output_path??null })
+    } catch(e:any) {
+      setIState({phase:'error', msg: e.message??'Registration failed'})
+    }
+  }, [port])
+ 
+
+ 
+  useEffect(() => {
+    if (!integrityEnabled) return
+    // Check both export paths (comp and video)
+    const filePath = compProgress?.path ?? progress?.path ?? null
+    if (!filePath) return
+    const done = compProgress?.done ?? progress?.done ?? false
+    const hasErr = !!(compProgress?.error ?? progress?.error)
+    if (done && !hasErr && iState.phase === 'idle') {
+      runIntegrity(filePath)
+    }
+  }, [compProgress?.done, compProgress?.path, progress?.done, progress?.path, integrityEnabled, iState.phase, runIntegrity])
+
 
   const fetchComps = async () => {
     try {
@@ -163,6 +199,8 @@ export default function ExportWorkspace() {
       const r=await fetch(`http://127.0.0.1:${port}/export/comp`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
       if(!r.ok){const err=await r.json();setCompProgress(p=>({...p!,error:err.detail??'Export failed',done:true}));return}
       const {jobId:jid}=await r.json();setCompJobId(jid)
+      // Notify ExportProgressOverlay so integrity section appears on completion
+      window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: jid } }))
       compPollRef.current=setInterval(async()=>{
         try{
           const pr=await fetch(`http://127.0.0.1:${port}/export/comp/progress/${jid}`)
@@ -183,6 +221,8 @@ export default function ExportWorkspace() {
     if(compKind==='image'||compKind==='pdf'){await startCompExport();return}
     if(api?.startExport&&api?.onExportProgress){
       setJobId('native');setProgress({jobId:'native',frame:0,total:0,percent:0,done:false,error:null,path:null});setWebcompPhase(null)
+      // Notify ExportProgressOverlay
+      window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: 'native' } }))
       cleanupRef.current?.();wcCleanup.current?.()
       if(api.onExportWebcompPhase) wcCleanup.current=api.onExportWebcompPhase((p:{active:boolean;done:number;total:number})=>setWebcompPhase(p.total>0?p:null))
       cleanupRef.current=api.onExportProgress((p:{frame:number;total:number;done:boolean;error:string;status?:string})=>{
@@ -196,6 +236,7 @@ export default function ExportWorkspace() {
     try{
       const res=await exportApi.start({outputPath,width:fmt.w,height:fmt.h,fps:parseFloat(fps),formatId:selected,videoBitrate:`${videoBr}M`,crf:qualityMode==='crf'?crf:-1,preset,audioBitrate:audioBr,audioSampleRate:parseInt(audioSR),audioChannels:parseInt(audioCh)})
       setJobId(res.jobId);setProgress({jobId:res.jobId,frame:0,total:res.total,percent:0,done:false,error:null,path:null})
+       window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: res.jobId } }))
       pollRef.current=setInterval(async()=>{try{const p=await exportApi.progress(res.jobId);setProgress(p);if(p.done)stopPoll()}catch{stopPoll()}},500)
     }catch(err:any){alert(`Export failed: ${err.message}`)}
   }
@@ -403,14 +444,85 @@ export default function ExportWorkspace() {
           </div>
         )}
 
+        {/*   Integrity checkbox   */}
+        {!exporting && (
+          <label className="export-integrity-toggle">
+            <div className={"export-integrity-check" + (integrityEnabled ? " export-integrity-check--on" : "")}
+              onClick={() => { setIntegrityEnabled(v => !v); setIState({phase:'idle'}) }}>
+              {integrityEnabled && <span>&#x2713;</span>}
+            </div>
+            <div className="export-integrity-toggle__text">
+              <span className="export-integrity-toggle__label">&#x1F512; Register for Integrity Verification</span>
+              <span className="export-integrity-toggle__sub">Embeds invisible watermark &bull; anchors hash to ledger</span>
+            </div>
+          </label>
+        )}
+        
+
         <div className="export-actions">
           {exporting
-            ?<button className="export-btn export-btn--cancel" onClick={compExporting?cancelCompExport:cancelExport}>⏹ Cancel</button>
-            :<button className="export-btn export-btn--primary" onClick={startExport} disabled={!selectedComp}>
-              {compKind==='image'?'🖼️ Export PNG':compKind==='pdf'?'📄 Export PDF':'🎬 Export Video'}
+            ?<button className="export-btn export-btn--cancel" onClick={compExporting?cancelCompExport:cancelExport}>Cancel</button>
+            :<button className="export-btn export-btn--primary" onClick={() => { setIState({phase:'idle'}); startExport() }} disabled={!selectedComp}>
+              {compKind==='image'?'Export PNG':compKind==='pdf'?'Export PDF':'Export Video'}
             </button>
           }
         </div>
+
+        {/*   Inline integrity status   */}
+        {integrityEnabled && iState.phase !== 'idle' && (
+          <div className="export-integrity-status">
+            {iState.phase === 'running' && (
+              <div className="export-integrity-status__running">
+                <span className="export-integrity-spin" />
+                Hashing &bull; Fingerprinting &bull; Watermarking&hellip;
+              </div>
+            )}
+            {iState.phase === 'done' && (
+              <div className="export-integrity-status__done">
+                <div className="export-integrity-status__ok">&#x2705; Registered on ledger</div>
+                <div className="export-integrity-status__row">
+                  <span>Artifact</span>
+                  <code>{iState.artifactId}</code>
+                </div>
+                {iState.tx && (
+                  <div className="export-integrity-status__row">
+                    <span>TX</span>
+                    <code title={iState.tx}>{iState.tx.slice(0,18)}...</code>
+                  </div>
+                )}
+                <div className="export-integrity-status__btns">
+                  <button className="export-integrity-status__btn"
+                    onClick={() => {
+                      const a = document.createElement('a')
+                      a.href = `http://127.0.0.1:${port}/integrity/proof/${iState.artifactId}`
+                      a.download = `${iState.artifactId}.proof.json`
+                      a.click()
+                    }}>
+                    &#x2B07; Proof JSON
+                  </button>
+                  {iState.wmPath && (
+                    <button className="export-integrity-status__btn export-integrity-status__btn--wm"
+                      onClick={() => (window as any).electronAPI?.showItemInFolder?.(iState.wmPath)}
+                      title={iState.wmPath}>
+                      &#x1F4C2; Watermarked Copy
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {iState.phase === 'error' && (
+              <div className="export-integrity-status__error">
+                <span>&#x26A0;&#xFE0F; {iState.msg}</span>
+                <button className="export-integrity-status__retry"
+                  onClick={() => {
+                    const fp = compProgress?.path ?? progress?.path
+                    if (fp) runIntegrity(fp)
+                  }}>Retry</button>
+              </div>
+            )}
+          </div>
+        )}
+        
       </div>
     </div>
   )

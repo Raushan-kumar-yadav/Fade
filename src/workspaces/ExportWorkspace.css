@@ -251,7 +251,7 @@
 .export-btn--cancel:hover { background: #ff6b6b33; }
 
 
-/* ── Composition selector ──────────────────────────────────────────────────── */
+/*   Composition selector   */
 .export-comp-list {
   display: flex;
   flex-direction: column;
@@ -309,7 +309,7 @@
   margin-top: 1px;
 }
 
-/* ── Info cards for image/pdf comps ───────────────────────────────────────── */
+/*   Info cards for image/pdf comps   */
 .export-comp-info-card {
   display: flex;
   align-items: flex-start;
@@ -347,7 +347,7 @@
   color: rgba(255,255,255,0.75);
 }
 
-/* ── Overrides: make comp selection much more prominent ── */
+/*   Overrides: make comp selection much more prominent   */
 .export-comp-list {
   display: flex;
   flex-direction: column;
@@ -499,3 +499,174 @@
 .export-comp-info-card__body strong {
   color: rgba(255,255,255,0.72);
 }
+ 
+/* Checkbox row above Export button */
+.export-integrity-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: rgba(99, 179, 237, 0.05);
+  border: 1px solid rgba(99, 179, 237, 0.12);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+.export-integrity-toggle:hover {
+  background: rgba(99, 179, 237, 0.1);
+  border-color: rgba(99, 179, 237, 0.25);
+}
+
+/* Custom checkbox square */
+.export-integrity-check {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 2px solid rgba(99, 179, 237, 0.4);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+  transition: border-color 0.15s, background 0.15s;
+  font-size: 11px;
+  color: #fff;
+}
+.export-integrity-check--on {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+/* Label text */
+.export-integrity-toggle__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.export-integrity-toggle__label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e2e8f0;
+  line-height: 1.3;
+}
+.export-integrity-toggle__sub {
+  font-size: 10px;
+  color: #64748b;
+  line-height: 1.3;
+}
+
+/*   Inline status card   */
+.export-integrity-status {
+  border-radius: 8px;
+  border: 1px solid rgba(99, 179, 237, 0.15);
+  background: rgba(15, 23, 42, 0.6);
+  padding: 10px 12px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+/* Running state */
+.export-integrity-status__running {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #93c5fd;
+  font-size: 11px;
+}
+.export-integrity-spin {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(99, 179, 237, 0.2);
+  border-top-color: #63b3ed;
+  border-radius: 50%;
+  animation: exp-ws-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes exp-ws-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Done state */
+.export-integrity-status__done {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.export-integrity-status__ok {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #34d399;
+  margin-bottom: 2px;
+}
+.export-integrity-status__row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #94a3b8;
+}
+.export-integrity-status__row span {
+  min-width: 52px;
+  font-size: 10px;
+  color: #475569;
+}
+.export-integrity-status__row code {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 10px;
+  color: #93c5fd;
+  background: rgba(99, 179, 237, 0.08);
+  border-radius: 3px;
+  padding: 1px 5px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Action buttons */
+.export-integrity-status__btns {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+.export-integrity-status__btn {
+  border: none;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 5px 10px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.export-integrity-status__btn:hover   { opacity: 0.85; }
+.export-integrity-status__btn:active  { transform: scale(0.96); }
+.export-integrity-status__btn--wm {
+  background: rgba(255,255,255,0.07);
+  color: #cbd5e1;
+}
+
+/* Error state */
+.export-integrity-status__error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fca5a5;
+  flex-wrap: wrap;
+}
+.export-integrity-status__retry {
+  border: 1px solid rgba(239,68,68,0.4);
+  background: rgba(239,68,68,0.12);
+  color: #fca5a5;
+  border-radius: 4px;
+  font-size: 10.5px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.export-integrity-status__retry:hover { background: rgba(239,68,68,0.22); }
+ 

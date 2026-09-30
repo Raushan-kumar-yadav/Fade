@@ -336,6 +336,15 @@ app.include_router(scene_tools.router)  # scene search / clip description tools
 app.include_router(virality.router)  # virality predictor + social connections
 app.include_router(image_tools.router)
 
+# Artifact Integrity router (SHA-256 + perceptual hash + invisible watermark)
+try:
+    from backend.integrity.router import integrity_router
+    app.include_router(integrity_router, prefix="/integrity")
+    print("[main] Integrity router mounted at /integrity", flush=True)
+except ImportError as _int_err:
+    print(f"[main] Integrity router not available: {_int_err}", flush=True)
+
+
  
 from fastapi.responses import FileResponse as _FileResponse
 import pathlib as _pathlib
