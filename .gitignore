@@ -82,3 +82,7 @@ virality.db
 
 # Tesseract portable binary (auto-downloaded by scripts/setup_tesseract.py)
 AIModels/tesseract/
+
+# PII CLI output (saved next to originals, never tracked)
+pii/sanitized_output/
+**/sanitized_*.report.json
