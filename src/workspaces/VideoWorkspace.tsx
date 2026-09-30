@@ -76,15 +76,6 @@ export default function VideoWorkspace() {
   return (
     <TimelineProvider>
       <div className="video-ws">
-        {/* AI Director toggle button */}
-        <button
-          className="video-ws__ai-btn"
-          onClick={() => window.dispatchEvent(new CustomEvent('fade:ai-toggle'))}
-          title="Toggle AI Director"
-        >
-          🤖
-        </button>
-
         <WorkspaceInner />
       </div>
     </TimelineProvider>

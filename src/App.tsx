@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import TitleBar from './components/TitleBar'
 import SettingsPanel from './components/SettingsPanel'
 import CreateProjectModal from './components/createProjectModal.'
@@ -16,6 +16,8 @@ import { SelectionContext, type SelectedItem } from './context/selectionContext'
 import ToolboxWidget from './workspaces/tools/ToolboxWidget'
 import FloatingAIChat from './workspaces/FloatingAIChat'
 import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
+import WindowManager from './components/WindowManager'
+import DraggableAIButton from './components/DraggableAIButton'
 import { useLibrarySSE }  from './api/useLibrarySSE'
 import './App.css'
 
@@ -323,10 +325,16 @@ export default function App() {
             <ToolboxWidget onClose={() => setShowToolbox(false)} />
           )}
 
-           
-          <div style={{ display: (activeTab === 'video' || activeTab === 'ai') && aiOpen ? 'contents' : 'none' }}>
+          {/* AI chat — visible on ALL tabs */}
+          <div style={{ display: aiOpen ? 'contents' : 'none' }}>
             <FloatingAIChat onClose={() => setAiOpen(false)} />
           </div>
+
+          {/* Draggable AI button — visible on all tabs, position persists in localStorage */}
+          {!aiOpen && <DraggableAIButton onClick={() => setAiOpen(true)} />}
+
+          {/* Floating detached workspace windows */}
+          <WindowManager />
 
           {showSettings && (
             <SettingsPanel onClose={() => setShowSettings(false)} />

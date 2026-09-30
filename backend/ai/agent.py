@@ -774,7 +774,7 @@ def _trim_messages(messages: list) -> list:
     for msg in messages:
         content = getattr(msg, "content", "") or ""
         if isinstance(content, str) and len(content) > _MAX_TOOL_RESULT_CHARS:
-            # Keep a short snippet so the model still has some context
+             
             short = content[:_MAX_TOOL_RESULT_CHARS]
             msg = msg.__class__(
                 content=short + f"\n…[truncated {len(content) - _MAX_TOOL_RESULT_CHARS} chars]",
@@ -791,14 +791,14 @@ def _trim_messages(messages: list) -> list:
             total += len(c) if isinstance(c, str) else sum(len(str(p)) for p in c)
         return total
 
-    # Find the index of the last HumanMessage — we must keep it
+    # Find the index of the last HumanMessage  
     last_human_idx = -1
     for i in range(len(trimmed) - 1, -1, -1):
         if isinstance(trimmed[i], HumanMessage):
             last_human_idx = i
             break
 
-    # Drop from index 1 (keep system at 0) upward, skip last_human_idx
+     
     drop_candidates = [
         i for i in range(1, len(trimmed))
         if i != last_human_idx
@@ -830,7 +830,8 @@ def _trim_messages(messages: list) -> list:
 
 #   Graph builder  
 
-def build_agent(port: int = 8000, tools_override=None, system_override: str = ""):
+def build_agent(port: int = 8000, tools_override=None, system_override: str = "",
+                scratchpad_fn=None):
     """Build and return the compiled LangGraph agent.
 
     Args:
@@ -838,6 +839,9 @@ def build_agent(port: int = 8000, tools_override=None, system_override: str = ""
         tools_override: If provided, use these tools instead of ALL_TOOLS.
         system_override: If provided, prepend this to the system prompt
             (used by Director to inject comp_id/type context).
+        scratchpad_fn: Optional callable () -> str that returns the current
+            shared peer-agent scratchpad context. Called fresh on every LLM
+            invocation so agents always see up-to-date peer status.
     """
     set_port(port)
     llm = _build_llm()
@@ -846,7 +850,6 @@ def build_agent(port: int = 8000, tools_override=None, system_override: str = ""
     tool_node = ToolNode(tools)
 
     def call_model(state: AgentState):
-        # Personalise system prompt with the user's saved profile name
         user_name = _get_user_name()
         if user_name:
             greeting = (
@@ -857,9 +860,14 @@ def build_agent(port: int = 8000, tools_override=None, system_override: str = ""
             system_content = greeting + _SYSTEM
         else:
             system_content = _SYSTEM
-        # Prepend any Director-supplied comp-scoped context
+        # Prepend Director comp-scoped context
         if system_override:
             system_content = system_override + "\n\n" + system_content
+        # Inject live peer scratchpad (refreshed every call so agents see latest state)
+        if scratchpad_fn is not None:
+            peer_ctx = scratchpad_fn()
+            if peer_ctx:
+                system_content = peer_ctx + "\n\n" + system_content
         raw_messages = [SystemMessage(content=system_content)] + state["messages"]
         messages = _trim_messages(raw_messages)
         if len(messages) < len(raw_messages):
