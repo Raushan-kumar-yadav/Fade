@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 import os
 import faulthandler
 from pathlib import Path
@@ -336,13 +336,23 @@ app.include_router(scene_tools.router)  # scene search / clip description tools
 app.include_router(virality.router)  # virality predictor + social connections
 app.include_router(image_tools.router)
 
-# Artifact Integrity router (SHA-256 + perceptual hash + invisible watermark)
+# Artifact Integrity router  
 try:
     from backend.integrity.router import integrity_router
     app.include_router(integrity_router, prefix="/integrity")
     print("[main] Integrity router mounted at /integrity", flush=True)
 except ImportError as _int_err:
     print(f"[main] Integrity router not available: {_int_err}", flush=True)
+
+# Tracking router (face/person/text/image CSRT tracking)
+try:
+    from backend.tracking.router import router as tracking_router
+    from backend.tracking.service import load_all_tracks
+    app.include_router(tracking_router)
+    load_all_tracks()
+    print("[main] Tracking router mounted at /tracking", flush=True)
+except Exception as _trk_err:
+    print(f"[main] Tracking router not available: {_trk_err}", flush=True)
 
 
  

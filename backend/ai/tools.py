@@ -3049,6 +3049,250 @@ def set_integrity_registration(enabled: bool = True) -> str:
         )
 
 
+
+# ── Tracking Tools ──────────────────────────────────────────────────────────
+
+@tool
+def start_tracking(
+    clip_id: str,
+    video_path: str,
+    from_frame: int = 0,
+    to_frame: int = -1,
+    detection_mode: str = "face",
+    label: str = "",
+    text_pattern: str = "email|phone",
+    template_path: str = "",
+    initial_bbox: list = [],
+) -> str:
+    """Start object tracking on a video clip.
+
+    clip_id: the clip to track (from get_timeline_state)
+    video_path: absolute path to the video file
+    from_frame: start tracking from this frame (default 0)
+    to_frame: stop tracking at this frame (-1 = clip end)
+    detection_mode: "face" | "person" | "text" | "image" | "manual"
+      - face   -> MediaPipe face detection
+      - person -> YOLOv8n person detection
+      - text   -> EasyOCR + regex (use text_pattern for email/phone)
+      - image  -> template matching against template_path asset
+      - manual -> use initial_bbox directly (user drew a region)
+    label: friendly name for this track (e.g. "speaker_face")
+    text_pattern: regex or shorthand "email|phone" for text mode
+    template_path: path to reference image for image mode
+    initial_bbox: [x, y, w, h] in pixels for manual mode
+
+    Returns job_id. Use get_tracking_progress(job_id) to poll.
+    """
+    import json
+    body = {
+        "clip_id": clip_id,
+        "video_path": video_path,
+        "from_frame": from_frame,
+        "to_frame": to_frame,
+        "detection_mode": detection_mode,
+        "label": label or detection_mode,
+        "text_pattern": text_pattern,
+        "template_path": template_path or None,
+        "initial_bbox": initial_bbox or None,
+    }
+    try:
+        result = _post("/tracking/start", body)
+        job_id = result.get("job_id", "")
+        return (
+            f"Tracking started!\n"
+            f"  Mode: {detection_mode}\n"
+            f"  Frames: {from_frame} to {to_frame if to_frame >= 0 else 'end'}\n"
+            f"  Job ID: {job_id}\n\n"
+            f"TRACKING_JOB_ID:{job_id}"
+        )
+    except Exception as e:
+        return f"Failed to start tracking: {e}"
+
+
+@tool
+def get_tracking_progress(job_id: str) -> str:
+    """Check the progress of a tracking job.
+
+    job_id: the job ID returned by start_tracking.
+    Returns current percent, status, and track_id when done.
+    """
+    try:
+        import requests
+        r = requests.get(f"http://localhost:7860/tracking/progress/{job_id}", timeout=5)
+        r.raise_for_status()
+        job = r.json()
+        if job.get("done"):
+            track_id = job.get("track_id", "")
+            return (
+                f"Tracking complete!\n"
+                f"  Track ID: {track_id}\n"
+                f"  Frames tracked: {job.get('current_frame', '?')}\n"
+                f"  Status: {job.get('status')}"
+            )
+        elif job.get("error"):
+            return f"Tracking failed: {job['error']}"
+        else:
+            return (
+                f"Tracking in progress...\n"
+                f"  {job.get('percent', 0)}% complete\n"
+                f"  Frame: {job.get('current_frame', 0)}"
+            )
+    except Exception as e:
+        return f"Failed to get tracking progress: {e}"
+
+
+@tool
+def list_tracks(clip_id: str) -> str:
+    """List all completed tracks for a given clip.
+
+    clip_id: the clip whose tracks to list.
+    Returns track IDs, labels, and frame ranges.
+    """
+    try:
+        import requests
+        r = requests.get(f"http://localhost:7860/tracking/tracks/{clip_id}", timeout=5)
+        r.raise_for_status()
+        tracks = r.json().get("tracks", [])
+        if not tracks:
+            return f"No tracks found for clip {clip_id}."
+        lines = [f"Found {len(tracks)} track(s) for clip {clip_id}:"]
+        for t in tracks:
+            lines.append(
+                f"  - {t['label']} | track_id={t['track_id']} | "
+                f"frames {t['from_frame']}-{t['to_frame']} | "
+                f"{t['frame_count']} tracked frames"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Failed to list tracks: {e}"
+
+
+@tool
+def blur_tracked_region(
+    source_clip_id: str,
+    track_id: str,
+    blur_strength: int = 25,
+    scale: float = 1.15,
+) -> str:
+    """Create a blur rectangle that automatically follows a tracked region.
+
+    source_clip_id: the clip that was tracked
+    track_id: the track UUID (from list_tracks or get_tracking_progress)
+    blur_strength: gaussian blur radius 1-50 (default 25)
+    scale: how much larger than the detection bbox (1.15 = 15% padding)
+
+    Creates a ShapeClip with expressions that make it follow the tracked
+    target frame by frame, plus a GaussianBlur effect.
+    Use for: "blur the face", "hide the email", "pixelate the phone number"
+    """
+    try:
+        # Get track metadata
+        import requests
+        r = requests.get(f"http://localhost:7860/tracking/track/{track_id}", timeout=5)
+        r.raise_for_status()
+        track = r.json()
+
+        from_frame = track.get("from_frame", 0)
+        to_frame   = track.get("to_frame", 300)
+        duration   = to_frame - from_frame
+
+        # Find a free overlay track
+        overlay = _post("/timeline/find-free-overlay-track", {
+            "startFrame": from_frame, "endFrame": to_frame
+        })
+        track_idx = overlay.get("track_index", 1)
+
+        # Create a shape clip (rect) on the overlay track
+        shape = _post("/clips/add-shape", {
+            "trackIndex": track_idx,
+            "startFrame": from_frame,
+            "duration": duration,
+            "shapeType": "rect",
+            "fillColor": [0, 0, 0, 0],     # transparent fill
+            "strokeWidth": 0,
+        })
+        shape_clip_id = shape.get("clipId", "")
+
+        if not shape_clip_id:
+            return "Failed to create blur rect shape clip."
+
+        # Add GaussianBlur effect
+        _post(f"/effects/{shape_clip_id}/add", {
+            "effectId": "GaussianBlur",
+            "params": {"radius": blur_strength}
+        })
+
+        # Set expressions to follow the track
+        exprs = {
+            "pos_x":   f'track("{track_id}", frame, "cx") - comp_w / 2',
+            "pos_y":   f'track("{track_id}", frame, "cy") - comp_h / 2',
+            "shape_w": f'track("{track_id}", frame, "w") * {scale}',
+            "shape_h": f'track("{track_id}", frame, "h") * {scale}',
+        }
+        for param, expr in exprs.items():
+            _post(f"/clips/{shape_clip_id}/set-expression", {
+                "param": param, "expression": expr
+            })
+
+        return (
+            f"Blur rect created and linked to track.\n"
+            f"  Blur clip ID: {shape_clip_id}\n"
+            f"  Track ID: {track_id}\n"
+            f"  Frames: {from_frame}-{to_frame}\n"
+            f"  The blur rect will follow the tracked target every frame."
+        )
+    except Exception as e:
+        return f"Failed to create blur rect: {e}"
+
+
+@tool
+def link_track_to_clip(
+    track_id: str,
+    target_clip_id: str,
+    properties: list = ["pos_x", "pos_y"],
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+    scale_factor: float = 1.0,
+) -> str:
+    """Link a tracking track to any clip property via expressions.
+
+    track_id: the track UUID
+    target_clip_id: clip to add tracking expressions to
+    properties: list of properties to link. Options:
+      pos_x, pos_y, scale_x, scale_y, rotation, opacity,
+      shape_w, shape_h, font_size
+    offset_x, offset_y: pixel offset from tracked center
+    scale_factor: multiply tracked dimensions by this factor
+
+    Example: link a logo clip to follow a face track.
+    """
+    try:
+        exprs = {}
+        for prop in properties:
+            if prop == "pos_x":
+                exprs[prop] = f'track("{track_id}", frame, "cx") - comp_w/2 + {offset_x}'
+            elif prop == "pos_y":
+                exprs[prop] = f'track("{track_id}", frame, "cy") - comp_h/2 + {offset_y}'
+            elif prop == "shape_w":
+                exprs[prop] = f'track("{track_id}", frame, "w") * {scale_factor}'
+            elif prop == "shape_h":
+                exprs[prop] = f'track("{track_id}", frame, "h") * {scale_factor}'
+            else:
+                exprs[prop] = f'track("{track_id}", frame, "cx")'  # generic
+
+        for param, expr in exprs.items():
+            _post(f"/clips/{target_clip_id}/set-expression", {
+                "param": param, "expression": expr
+            })
+
+        return (
+            f"Linked track {track_id} to clip {target_clip_id}.\n"
+            f"  Properties: {', '.join(properties)}\n"
+            f"  The clip will now follow the tracked target every frame."
+        )
+    except Exception as e:
+        return f"Failed to link track to clip: {e}"
+
 EXPORT_TOOLS = [export_video, set_integrity_registration]
 ALL_TOOLS.extend(EXPORT_TOOLS)
 
@@ -4374,3 +4618,7 @@ def get_campaign_status() -> str:
 
 
 ALL_TOOLS.extend([list_platform_presets, dispatch_task, get_campaign_status])
+
+TRACKING_TOOLS = [start_tracking, get_tracking_progress, list_tracks, blur_tracked_region, link_track_to_clip]
+ALL_TOOLS.extend(TRACKING_TOOLS)
+

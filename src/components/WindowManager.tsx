@@ -9,10 +9,11 @@ import ExportWorkspace from '../workspaces/ExportWorkspace'
 import ImageWorkspace from '../workspaces/ImageWorkspace'
 import PdfWorkspace from '../workspaces/pdf/PdfWorkspace'
 import DirectorPanel from '../workspaces/director/DirectorPanel'
+import TrackingWorkspace from '../workspaces/TrackingWorkspace'
 
 export type DetachableTabId =
   | 'home' | 'ai' | 'video' | 'audio' | 'export' | 'director'
-  | 'image' | 'pdf'
+  | 'image' | 'pdf' | 'tracking'
 
 interface TabMeta {
   label: string
@@ -31,6 +32,7 @@ export const TAB_META: Record<DetachableTabId, TabMeta> = {
   director: { label: 'Director', icon: '🎭', accent: '#ec4899', w: 900,  h: 640 },
   image: { label: 'Image Editor', icon: '🖼️', accent: '#10b981', w: 1100, h: 720 },
   pdf: { label: 'PDF Editor',   icon: '📄', accent: '#f97316', w: 900,  h: 720 },
+  tracking: { label: 'Tracking', icon: '🎯', accent: '#7c6eff', w: 520,  h: 720 },
 }
 
 interface WindowManagerProps {
@@ -98,6 +100,8 @@ interface ExtraProps {
   imageCompName?: string
   pdfDocId?: string | null
   pdfDocName?: string
+  trackingClipId?: string | null
+  trackingVideoPath?: string | null
   onImageBack: () => void
 }
 
@@ -120,6 +124,8 @@ function renderWorkspace(tabId: DetachableTabId, p: ExtraProps) {
       )
     case 'pdf':
       return <PdfWorkspace docId={p.pdfDocId ?? null} docName={p.pdfDocName ?? 'Untitled Document'} />
+    case 'tracking':
+      return <TrackingWorkspace selectedClipId={p.trackingClipId ?? null} videoPath={p.trackingVideoPath ?? null} />
     default:
       return null
   }
