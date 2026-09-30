@@ -67,7 +67,9 @@ def addTrack(req: AddTrackRequest):
         name = req.name or f"Audio {len(tl.tracks) + 1}"
         track = AudioTrack(name=name)
     else:
-        name = req.name or f"Video {len(tl.tracks) + 1}"
+        is_image = getattr(tl, "kind", "video") == "image"
+        prefix = "Layer" if is_image else "Video"
+        name = req.name or f"{prefix} {len(tl.tracks) + 1}"
         track = VideoTrack(name=name)
     if req.index is not None and 0 <= req.index <= len(tl.tracks):
         tl.tracks.insert(req.index, track)

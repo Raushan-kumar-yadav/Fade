@@ -33,9 +33,11 @@ def _has_cycle(start_id: str, target_id: str, visited: set | None = None) -> boo
 def _ensure_comp_tracks(tl) -> None:
     if tl.tracks:
         return
-    tl.tracks.append(VideoTrack(name="Video 1"))
+    is_image = getattr(tl, "kind", "video") == "image"
+    first_name = "Layer 1" if is_image else "Video 1"
+    tl.tracks.append(VideoTrack(name=first_name))
     # Image comps are purely visual — no audio track
-    if getattr(tl, "kind", "video") != "image":
+    if not is_image:
         tl.tracks.append(AudioTrack(name="Audio 1"))
 
 
@@ -57,7 +59,9 @@ def _top_empty_track(startFrame: int, duration: int):
         )
         if not overlaps:
             return track
-    new_track = VideoTrack(f"Video {len(video_tracks) + 1}")
+    is_image = getattr(tl, "kind", "video") == "image"
+    prefix = "Layer" if is_image else "Video"
+    new_track = VideoTrack(f"{prefix} {len(video_tracks) + 1}")
     tl.addTrack(new_track)
     return new_track
 
@@ -233,6 +237,15 @@ def activateComp(compId: str):
     if engine.compositor:
         engine.compositor.resize(comp_w, comp_h)
      
+    # Rename "Video N" tracks to "Layer N" for image comps (migration for old comps)
+    if getattr(tl, "kind", "video") == "image":
+        import re as _re
+        video_tracks = [t for t in tl.tracks if not getattr(t, "_is_audio", False)]
+        for idx, track in enumerate(video_tracks, start=1):
+            if _re.fullmatch(r"Video\s+\d+", track.name):
+                track.name = f"Layer {idx}"
+        from backend.events import notify as _n; _n("timeline")
+
     from backend.routers.render import _bust_frame_cache
     _bust_frame_cache()
     from backend.events import notify
