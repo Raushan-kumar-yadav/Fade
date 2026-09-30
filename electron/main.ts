@@ -1047,24 +1047,8 @@ ipcMain.on('export:start', async (_event, config) => {
       ipcMain.removeListener('export:cancel', cancelListener)
 
        
-      if (prevScale !== 1.0) {
-        currentPreviewScale = renderEngine.setPreviewScale(prevScale)
-        console.log('[Export] Restored preview scale to', prevScale)
-         
-        if (portSnapshot) {
-          initRenderEngine(portSnapshot, 1920, 1080, 30)
-          const httpMod2 = require('http') as typeof import('http')
-          const body2 = JSON.stringify({ scale: prevScale })
-          const req2 = httpMod2.request(
-            { hostname: '127.0.0.1', port: portSnapshot, path: '/preview/scale',
-              method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body2) } },
-            () => {}
-          )
-          req2.on('error', () => {})
-          req2.write(body2)
-          req2.end()
-        }
-      }
+      // NOTE: preview scale restore is done AFTER audio mux below,
+      // so Python's HTTP server is stable for the /timeline/audio-clips fetch.
 
        
       const liveWebComps = getActiveInstances()
@@ -1202,10 +1186,30 @@ ipcMain.on('export:start', async (_event, config) => {
         }
       } catch (audioErr) {
         console.warn('[Export][Audio] Audio mux error (non-fatal):', audioErr)
-         
       }
     } else if (exitCode === 0 && !exportError) {
       console.log('[Export] Done (video only — no port for audio fetch):', exportConfig.outputPath)
+    }
+
+    // Restore preview scale AFTER audio mux so Python HTTP was stable above
+    if (prevScale !== 1.0) {
+      currentPreviewScale = renderEngine.setPreviewScale(prevScale)
+      console.log('[Export] Restored preview scale to', prevScale)
+      if (portSnapshot) {
+        initRenderEngine(portSnapshot, 1920, 1080, 30)
+        // 300ms grace: let C++ TCP frame server fully reconnect before Python resumes
+        await new Promise(r => setTimeout(r, 300))
+        const httpMod2 = require('http') as typeof import('http')
+        const body2 = JSON.stringify({ scale: prevScale })
+        const req2 = httpMod2.request(
+          { hostname: '127.0.0.1', port: portSnapshot, path: '/preview/scale',
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body2) } },
+          () => {}
+        )
+        req2.on('error', () => {})
+        req2.write(body2)
+        req2.end()
+      }
     }
 
     // Report final done event
