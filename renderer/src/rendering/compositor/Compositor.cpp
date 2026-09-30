@@ -580,7 +580,7 @@ void Compositor::tick(float width, float height, float panX, float panY,
         videoClip->setIsRgba();
         scheduler.prefetchAround(clipId, 0, 0);
       } else {
-        scheduler.prefetchAround(clipId, localFrame, 5);
+        scheduler.prefetchAround(clipId, localFrame, 30);
       }
 
       auto cpuFrame = scheduler.tryGetFrameFromCache(clipId, localFrame);

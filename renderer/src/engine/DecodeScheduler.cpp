@@ -82,7 +82,7 @@ void DecodeScheduler::startPump(const ClipID &pumpId) {
       return;
     }
 
-    const int BATCH_SIZE = 20; // larger batch
+    const int BATCH_SIZE = 60; // must exceed prefetch radius
     int framesDecodedThisRun = 0;
     bool needsMoreWork = false;
 
