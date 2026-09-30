@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { PIIDetection, PIIRedactionRequest } from './PIITypes';
-import { fetchPIIDetections, submitPIIRedactions } from '../../api/piiApi';
+import { PIIDetection } from './PIITypes';
+import { fetchPIIDetections } from '../../api/piiApi';
 import { usePII } from '../../context/piiContext';
 import { useTimeline } from '../timeline/TimelineContext';
 import './PIIReviewPanel.css';
@@ -17,6 +17,7 @@ export default function PIIReviewPanel({ assetId, assetType }: PIIReviewPanelPro
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<'REVIEWING' | 'SANITIZING' | 'SANITIZED' | 'ERROR'>('REVIEWING');
+  const [sanitizeResult, setSanitizeResult] = useState<{filename: string; clips: number} | null>(null);
 
   useEffect(() => {
     async function resolveFile() {
@@ -126,17 +127,16 @@ export default function PIIReviewPanel({ assetId, assetType }: PIIReviewPanelPro
   };
 
   const handleSanitize = async () => {
-    if (!piiContext || !file) return;
+    if (!piiContext || !assetId) return;
     setStatus('SANITIZING');
     try {
       const activeDetections = piiContext.detections.filter(d => d.enabled);
-      
-      // If video, map the user's edited static bbox across all frames so the backend blurs it globally
+
+      // If video, map the user's edited static bbox across all frames
       if (assetType === 'video') {
         activeDetections.forEach(d => {
           if (d.bbox) {
             d.frames = {};
-            // Assuming video spans the entire comp length
             const len = state.totalFrames || 1800;
             for (let i = 0; i < len; i++) {
               d.frames[i.toString()] = { ...d.bbox };
@@ -145,12 +145,29 @@ export default function PIIReviewPanel({ assetId, assetType }: PIIReviewPanelPro
         });
       }
 
-      const request: PIIRedactionRequest = {
-        asset_id: assetId,
-        asset_type: assetType,
-        redactions: activeDetections, // Ensure ONLY enabled redactions
-      };
-      await submitPIIRedactions(file, request);
+      // Call backend-side sanitize — saves next to original, imports to library automatically.
+      // No browser download dialog.
+      const port = (window as any).__FADE_PORT__ ?? 8000;
+      const res = await fetch(`http://127.0.0.1:${port}/pii/sanitize-by-id`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          asset_id: assetId,
+          auto_redact_all: false,          // use the user's reviewed redactions
+          redactions: activeDetections,
+        }),
+      });
+      if (!res.ok) {
+        const detail = await res.text();
+        throw new Error(`Sanitization failed: ${detail}`);
+      }
+      const result = await res.json();
+      console.log(
+        `[PII] Sanitized → new asset ${result.sanitizedAssetId?.slice(0, 8)} "`  +
+        `${result.sanitizedFilename}" | ${result.clipsSwapped} clip(s) updated | ` +
+        `${result.detectionCount} redaction(s) applied`,
+      );
+      setSanitizeResult({ filename: result.sanitizedFilename, clips: result.clipsSwapped ?? 0 });
       setStatus('SANITIZED');
       piiContext.setSelectedId(null);
     } catch (err: any) {
@@ -193,7 +210,16 @@ export default function PIIReviewPanel({ assetId, assetType }: PIIReviewPanelPro
       <h3>PII REVIEW</h3>
       {error && <div className="pii-error">{error}</div>}
       
-      <div className="pii-status">Status: {status}</div>
+      <div className="pii-status">
+        {status === 'SANITIZED' && sanitizeResult ? (
+          <span style={{ color: '#4ade80' }}>
+            ✓ Sanitized version saved as <strong>{sanitizeResult.filename}</strong>
+            {sanitizeResult.clips > 0 && ` — ${sanitizeResult.clips} clip(s) updated on timeline`}
+          </span>
+        ) : (
+          <span>Status: {status}</span>
+        )}
+      </div>
 
       <div className="pii-list">
         {detections.length === 0 ? <p>No PII detected.</p> : null}
