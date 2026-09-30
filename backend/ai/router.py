@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from backend.ai.prompt_shield import shield_prompt
 
 ai_router = APIRouter(tags=["ai"])
 
@@ -174,6 +175,15 @@ async def ai_chat(req: ChatRequest):
 
     async def event_stream():
         try:
+            # ── Prompt-injection shield ──────────────────────────────
+            ok, safe_message, err = shield_prompt(req.message)
+            if not ok:
+                yield f"data: {json.dumps({'type': 'error', 'message': err})}\n\n"
+                return
+            # Use sanitized message (may differ from original if injection was found)
+            scanned_message = safe_message
+            # ─────────────────────────────────────────────────────────
+
             from backend.ai.agent_registry import get_specialized_agent
             agent = get_specialized_agent(req.agent, req.port)
 
@@ -184,7 +194,7 @@ async def ai_chat(req: ChatRequest):
                     messages.append(HumanMessage(content=h["text"]))
                 else:
                     messages.append(AIMessage(content=h["text"]))
-            messages.append(HumanMessage(content=req.message))
+            messages.append(HumanMessage(content=scanned_message))
 
             # Emit initial thinking status
             yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking…'})}\n\n"

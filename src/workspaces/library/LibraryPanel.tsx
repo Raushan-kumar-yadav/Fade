@@ -2,7 +2,7 @@ import React, {
   useState, useEffect, useCallback, useRef, useLayoutEffect,
 } from 'react';
 import ReactDOM from 'react-dom';
-import { fetchAssets, importAsset, removeAsset, addClipToTimeline, type AssetItem } from '../../api/useApi';
+import { fetchAssets, importAsset, removeAsset, addClipToTimeline, type AssetItem, type ImportResult } from '../../api/useApi';
 import { useTimeline } from '../timeline/TimelineContext';
 import './LibraryPanel.css';
 
@@ -941,6 +941,16 @@ export default function LibraryPanel({ onAddToTimeline }: {
   // Media job state  
   const [jobs, setJobs] = useState<MediaJob[]>([]);
 
+  // Security shield: files blocked by prompt-injection scanner
+  const [blockedFiles, setBlockedFiles] = useState<Array<{ id: string; filename: string; reason: string }>>([]);
+  const dismissBlocked = (id: string) => setBlockedFiles(p => p.filter(b => b.id !== id));
+  const addBlocked = (filename: string, reason: string) => {
+    const id = Math.random().toString(36).slice(2);
+    setBlockedFiles(p => [...p, { id, filename, reason }]);
+    // Auto-dismiss after 15 seconds
+    setTimeout(() => dismissBlocked(id), 15000);
+  };
+
   const openCtx = useCallback((e: React.MouseEvent, items: CtxItem[]) => {
     e.preventDefault(); e.stopPropagation();
     setCtxMenu({ x: e.clientX, y: e.clientY, items });
@@ -1089,7 +1099,10 @@ export default function LibraryPanel({ onAddToTimeline }: {
   //   Asset handlers  
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return; setLoading(true);
-    for (const f of Array.from(e.target.files)) await importAsset((f as any).path ?? f.name);
+    for (const f of Array.from(e.target.files)) {
+      const result = await importAsset((f as any).path ?? f.name);
+      if (!result.ok) addBlocked(result.filename, result.reason);
+    }
     await refreshAssets(); if (fileInputRef.current) fileInputRef.current.value = '';
   }, [refreshAssets]);
 
@@ -1098,11 +1111,16 @@ export default function LibraryPanel({ onAddToTimeline }: {
     for (const item of Array.from(e.dataTransfer.items)) {
       const entry = item.webkitGetAsEntry?.();
       if (entry?.isFile) await new Promise<void>(res =>
-        (entry as any).file((f: File) => importAsset((f as any).path ?? f.name).then(() => res()))
+        (entry as any).file(async (f: File) => {
+          const result = await importAsset((f as any).path ?? f.name);
+          if (!result.ok) addBlocked(result.filename, result.reason);
+          res();
+        })
       );
     }
     await refreshAssets();
   }, [refreshAssets]);
+
 
   //   Comp handlers  
   const handleCreateComp = useCallback(async (cfg: CompConfig) => {
@@ -1261,7 +1279,19 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
       {/* GRID */}
       <div className="lib__grid">
- 
+
+        {/* ── Blocked-file cards (security scanner rejections) ───── */}
+        {blockedFiles.map(b => (
+          <div key={b.id} className="lib__blocked-card" title={b.reason}>
+            <div className="lib__blocked-icon">🛡️</div>
+            <div className="lib__blocked-badge">BLOCKED</div>
+            <div className="lib__blocked-name" title={b.filename}>{b.filename}</div>
+            <div className="lib__blocked-reason">{b.reason}</div>
+            <button className="lib__blocked-dismiss" onClick={() => dismissBlocked(b.id)} title="Dismiss">×</button>
+          </div>
+        ))}
+        {/* ─────────────────────────────────────────────────────── */}
+
         {isSemanticMode && (
           <div style={{ gridColumn: '1/-1' }}>
             {semanticLoading && (

@@ -869,3 +869,104 @@
   background: rgba(229, 57, 53, 0.60);
   transform: scale(0.92);
 }
+
+/* ── Security shield: blocked-file card ───────────────────────────────── */
+@keyframes lib-blocked-in {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes lib-blocked-pulse {
+  0%, 100% { box-shadow: 0 0 0 0   rgba(239,68,68,0.55); }
+  50%       { box-shadow: 0 0 0 6px rgba(239,68,68,0);    }
+}
+
+.lib__blocked-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 8px 28px;
+  border-radius: 8px;
+  background: linear-gradient(160deg, #2a0a0a 0%, #1a0606 100%);
+  border: 1.5px solid #ef4444;
+  animation: lib-blocked-in 0.25s ease, lib-blocked-pulse 2s ease-in-out 0.3s 4;
+  cursor: default;
+  overflow: hidden;
+  min-height: 100px;
+  text-align: center;
+}
+.lib__blocked-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    rgba(239,68,68,0.06) 6px,
+    rgba(239,68,68,0.06) 12px
+  );
+  pointer-events: none;
+}
+.lib__blocked-icon {
+  font-size: 22px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(239,68,68,0.8));
+}
+.lib__blocked-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #fff;
+  background: #dc2626;
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+.lib__blocked-name {
+  font-size: 10px;
+  font-weight: 600;
+  color: #fca5a5;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 4px;
+}
+.lib__blocked-reason {
+  font-size: 9px;
+  color: #f87171;
+  opacity: 0.8;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  padding: 0 4px;
+  line-height: 1.3;
+}
+.lib__blocked-dismiss {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(239,68,68,0.2);
+  border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 4px;
+  color: #fca5a5;
+  font-size: 13px;
+  line-height: 1;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s;
+}
+.lib__blocked-dismiss:hover {
+  background: rgba(239,68,68,0.45);
+  color: #fff;
+}
+/* ─────────────────────────────────────────────────────────────────────── */

@@ -42,15 +42,27 @@ export async function fetchAssets(): Promise<AssetItem[]> {
   return r.json();
 }
 
-export async function importAsset(filepath: string): Promise<AssetItem | null> {
+export type ImportResult =
+  | { ok: true;  asset: AssetItem }
+  | { ok: false; filename: string; reason: string };
+
+export async function importAsset(filepath: string): Promise<ImportResult> {
+  const filename = filepath.split(/[\\/]/).pop() ?? filepath;
   const r = await fetch(`${base()}/library/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ filepath }),
   });
-  if (!r.ok) return null;
-  return r.json();
+  if (r.status === 422) {
+    let reason = 'Blocked by security scanner';
+    try { const d = await r.json(); reason = d.detail ?? reason; } catch {}
+    return { ok: false, filename, reason };
+  }
+  if (!r.ok) return { ok: false, filename, reason: `Import failed (${r.status})` };
+  const asset = await r.json();
+  return { ok: true, asset };
 }
+
 
 export async function removeAsset(assetId: string): Promise<void> {
   await fetch(`${base()}/library/assets/${assetId}`, { method: "DELETE" });
