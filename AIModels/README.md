@@ -1,10 +1,7 @@
 ﻿# AIModels — Fade Local Model Registry
 
 This folder is the **single source of truth** for every locally-stored AI/ML model
-used by the Echo video editor backend. All paths in the codebase point here.
-
-> **Note:** Model files (`.onnx`, `.pt`, `.bin`) are excluded from git via
-> `.gitignore`. They are **auto-downloaded on first use** when you start the backend.
+used by the Fade video editor backend. All paths in the codebase point here.
 
 ---
 
@@ -12,92 +9,134 @@ used by the Echo video editor backend. All paths in the codebase point here.
 
 ```
 AIModels/
-├── whisper/          # Faster-Whisper / OpenAI Whisper speech-to-text
-│   ├── small.pt      # Whisper small (461 MB) — default model
-│   ├── tiny/         # faster-whisper CTranslate2 format (auto-downloaded)
-│   ├── base/
-│   ├── small/        # faster-whisper CTranslate2 format (auto-downloaded)
-│   └── medium/
+├── yolov8n.pt            # ✅ git-tracked (6 MB)  — person/object detection (PII + Tracking)
+├── craft_mlt_25k.pth     # ✅ git-tracked (79 MB) — CRAFT text detection (PII OCR)
+├── english_g2.pth        # ✅ git-tracked (14 MB) — G2P phoneme model (Kokoro TTS)
 │
-└── kokoro/           # Kokoro TTS — local text-to-speech (ONNX)
-    ├── kokoro-v1.0.int8.onnx   # INT8 quantized model (109 MB) - used by default
-    ├── kokoro-v1.0.fp16.onnx   # FP16 model (156 MB) - higher quality
-    └── voices-v1.0.bin         # Voice embeddings pack (27 MB)
+├── tessdata/             # ✅ git-tracked — Tesseract OCR language data
+│   ├── eng.traineddata   #    English OCR model (22 MB)
+│   └── osd.traineddata   #    Orientation + script detection (10 MB)
+│
+├── tesseract/            # ⛔ git-ignored — portable Tesseract 5.4 binary
+│   └── tesseract.exe     #    Auto-extracted at startup via scripts/setup_tesseract.py
+│                         #    Requires 7-Zip: winget install 7zip.7zip
+│
+├── whisper/              # ⛔ git-ignored — Whisper speech-to-text models
+│   ├── small.pt          #    OpenAI Whisper small (461 MB) — auto-downloaded
+│   ├── small/            #    faster-whisper CTranslate2 format — auto-downloaded
+│   └── ...               #    Other sizes: tiny / base / medium / large
+│
+└── kokoro/               # ⛔ git-ignored — Kokoro local TTS (ONNX)
+    ├── kokoro-v1.0.int8.onnx   # INT8 model (109 MB) — auto-downloaded
+    ├── kokoro-v1.0.fp16.onnx   # FP16 model (156 MB) — higher quality
+    └── voices-v1.0.bin         # Voice embeddings (27 MB) — auto-downloaded
 ```
 
 ---
 
 ## Model Details
 
-### 1. Whisper (Speech-to-Text / Transcription)
+### 1. YOLOv8n — Object / Person Detection
 
 | Property | Value |
-|----------|-------|
-| **Library** | `faster-whisper` (CTranslate2) or `openai-whisper` (fallback) |
-| **Default model** | `small` |
-| **Config key** | `ai.whisper_model` (`tiny` / `base` / `small` / `medium` / `large`) |
-| **Backend key** | `ai.whisper_backend` (`faster` / `openai`) |
-| **Code** | `backend/ai/whisper_tool.py` |
-| **Auto-download** | Yes - downloads from HuggingFace on first transcription request |
-| **GPU support** | Yes - auto-detects CUDA via `ctranslate2`, falls back to CPU |
-
-**Used for:**
-- Video semantic indexing (scene captions + transcript enrichment)
-- Caption generation on the timeline
-- Speech-segment detection for audio tools
+|---|---|
+| **File** | `yolov8n.pt` (6 MB) — **git-tracked** |
+| **Library** | `ultralytics` |
+| **Code** | `backend/pii/detector.py`, `backend/tracking/` |
+| **Used for** | PII person blurring, object tracking workspace |
+| **Fallback** | `ultralytics` auto-downloads if file missing |
 
 ---
 
-### 2. Kokoro TTS (Text-to-Speech)
+### 2. CRAFT — Scene Text Detection
 
 | Property | Value |
-|----------|-------|
-| **Library** | `kokoro-onnx` (ONNX Runtime inference) |
-| **Model** | Kokoro v1.0 INT8 ONNX (~82M params, Apache 2.0) |
-| **Config key** | `generators.tts_provider = "kokoro"` |
-| **Voice key** | `generators.tts_kokoro_voice` (default: `af_heart`) |
+|---|---|
+| **File** | `craft_mlt_25k.pth` (79 MB) — **git-tracked** |
+| **Library** | `craft-text-detector` |
+| **Code** | `pii/detector.py` |
+| **Used for** | Detecting text regions in images/frames for PII redaction |
+
+---
+
+### 3. G2P — Grapheme-to-Phoneme
+
+| Property | Value |
+|---|---|
+| **File** | `english_g2.pth` (14 MB) — **git-tracked** |
+| **Library** | `g2p_en` |
 | **Code** | `backend/tools/generators/tts_generator.py` |
-| **Auto-download** | Yes - downloads from GitHub releases on first TTS call |
-| **GPU support** | No - ONNX CPU inference (fast enough, no GPU needed) |
-
-**Available voice families (54+ voices):**
-- `af_*` / `am_*` - American English (female / male)
-- `bf_*` / `bm_*` - British English (female / male)
-- `hf_*` / `hm_*` - Hindi
-- `jf_*` / `jm_*` - Japanese
-- `ef_*` / `em_*` - Spanish
-- `ff_*` - French
-- `if_*` / `im_*` - Italian
-- `pf_*` / `pm_*` - Portuguese
-- `cf_*` / `cm_*` - Mandarin Chinese
-
-**Windows extra requirement:**
-espeak-ng must be installed for multilingual phonemization.
-https://github.com/espeak-ng/espeak-ng/releases/download/1.52.0/espeak-ng.msi
+| **Used for** | English phonemization for Kokoro TTS voiceovers |
 
 ---
 
-## External AI Services (not stored here)
+### 4. Tesseract OCR — Optical Character Recognition
 
-These run as external services or use cloud APIs - no local files needed:
+| Property | Value |
+|---|---|
+| **tessdata** | `tessdata/eng+osd.traineddata` — **git-tracked** |
+| **Binary** | `tesseract/tesseract.exe` — **git-ignored, auto-extracted** |
+| **Code** | `pii/scrubber.py`, `scripts/setup_tesseract.py` |
+| **Used for** | OCR text scanning in images/video for PII detection |
+| **Requirement** | 7-Zip: `winget install 7zip.7zip` |
+| **Auto-setup** | Runs at backend startup automatically |
+
+---
+
+### 5. Whisper — Speech-to-Text
+
+| Property | Value |
+|---|---|
+| **Location** | `whisper/` — **git-ignored, auto-downloaded** |
+| **Library** | `faster-whisper` (CTranslate2) or `openai-whisper` (fallback) |
+| **Default** | `small` — override with `FADE_WHISPER_MODEL=tiny\|base\|medium` in `.env` |
+| **Code** | `backend/ai/whisper_tool.py` |
+| **GPU** | Auto-detects CUDA, falls back to CPU |
+| **Used for** | Transcription, captions, speech detection |
+
+---
+
+### 6. Kokoro TTS — Local Text-to-Speech
+
+| Property | Value |
+|---|---|
+| **Location** | `kokoro/` — **git-ignored, auto-downloaded** |
+| **Library** | `kokoro-onnx` (ONNX Runtime, CPU-only) |
+| **Config** | `generators.tts_provider = "kokoro"` in Settings |
+| **Code** | `backend/tools/generators/tts_generator.py` |
+| **Windows extra** | `espeak-ng` for multilingual voices — [download MSI](https://github.com/espeak-ng/espeak-ng/releases/download/1.52.0/espeak-ng.msi) |
+| **Voices** | 54+ — American/British English, Hindi, Japanese, Spanish, French, Italian, Portuguese, Mandarin |
+
+---
+
+## External Services (no local files needed)
 
 | Service | Purpose | Config |
-|---------|---------|--------|
-| **Ollama** | LLM inference, image captioning, legacy TTS | `generators.ollama_url` |
-| **Google Gemini** | Cloud image generation, TTS, LLM agent | `GOOGLE_API_KEY` in `.env` |
-| **Google Imagen** | Cloud image generation | `GOOGLE_API_KEY` in `.env` |
-| **ChromaDB** | Vector DB for semantic search (data, not model) | Per-project `.chroma/` folder |
+|---|---|---|
+| **Ollama** | LLM agent (local) | `ECHO_AI_PROVIDER=ollama` + `ollama pull llama3.2` |
+| **Google Gemini** | LLM agent, video indexing, image gen | `GOOGLE_API_KEY` in `.env` |
+| **ChromaDB** | Vector DB for semantic search | Auto-created at `~/.fade/chroma_db` |
+| **fastembed** | ONNX text embeddings (no GPU required) | Auto-downloaded by `fastembed` package |
 
 ---
 
-## Restoring Models After Fresh Clone
+## After a Fresh Clone
 
-Models are auto-downloaded on first use. You can also manually restore:
+All git-ignored models **auto-download on first use** — just run `npm run dev`.
+
+To pre-download everything manually:
 
 ```powershell
-# Kokoro TTS (int8 model + voices)
-curl -L -o AIModels\kokoro\kokoro-v1.0.int8.onnx https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.int8.onnx
-curl -L -o AIModels\kokoro\voices-v1.0.bin https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin
+# 1. Tesseract binary (needs 7-Zip)
+winget install 7zip.7zip
+python scripts/setup_tesseract.py
 
-# Whisper small (auto-downloads from HuggingFace on first transcription)
+# 2. Kokoro TTS model + voices
+curl -L -o AIModels\kokoro\kokoro-v1.0.int8.onnx `
+  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/kokoro-v1.0.int8.onnx
+curl -L -o AIModels\kokoro\voices-v1.0.bin `
+  https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/voices-v1.0.bin
+
+# 3. Whisper small (or auto-downloads on first transcription)
+python -c "import whisper; whisper.load_model('small', download_root='AIModels/whisper')"
 ```
