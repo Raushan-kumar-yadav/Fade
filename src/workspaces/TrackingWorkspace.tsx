@@ -21,6 +21,7 @@ interface JobState {
   track_id: string | null
   current_frame: number
   label:        string
+  frame_count?: number
 }
 
 interface Props {

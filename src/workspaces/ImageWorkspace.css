@@ -1,14 +1,54 @@
-﻿/* ── ImageWorkspace overrides ───────────────────────────────────────────── */
-/* Only functional changes — visual style identical to VideoWorkspace */
-
-/* Hide viewport playback controls (scrub bar + transport) in image mode */
+ 
 .image-ws-mode .vw-scrub,
 .image-ws-mode .vw-controls {
   display: none !important;
 }
 
-/* Let the canvas fill the full height now that controls are gone */
+ 
 .image-ws-mode .vw-canvas {
   flex: 1 !important;
   border-bottom: none !important;
 }
+ 
+.image-ws-mode .flexlayout__tab_button[data-layout-path*="Tools"],
+.image-ws-mode [title="Tools"].flexlayout__tab_button {
+  display: none !important;
+}
+ 
+.image-ws-mode .flexlayout__tab_button:has(.flexlayout__tab_button_content span:only-child) {
+ 
+}
+ 
+.image-ws-mode .flexlayout__tab_button[data-layout-path$="/Tools"] {
+  display: none !important;
+}
+ 
+.image-ws-mode .tl-header-item {
+  flex-direction: row !important;
+  align-items: center !important;
+  padding: 0 8px !important;
+  gap: 6px !important;
+}
+
+.image-ws-mode .tl-header-item__name {
+  flex: 1 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: #c8ccd8 !important;      
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  opacity: 1 !important;
+}
+
+ 
+.image-ws-mode .tl-header-item__controls {
+  flex-shrink: 0 !important;
+  gap: 2px !important;
+}
+
+ 
+.image-ws-mode .tl-headers__add-row {
+  display: none !important;
+}
+
