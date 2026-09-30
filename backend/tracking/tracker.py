@@ -40,9 +40,9 @@ def track_clip(
 
     tracker = _make_tracker()
     x, y, w, h = [float(v) for v in initial_bbox]
-    ok = tracker.init(frame, (x, y, w, h))
+    ok = tracker.init(frame, (int(x), int(y), int(w), int(h)))
     if not ok:
-        logger.warning("[tracker] CSRT init failed on frame %d", from_frame)
+        logger.warning("[tracker] MIL init failed on frame %d", from_frame)
 
     # Record first frame
     results[from_frame] = {"cx": x + w / 2, "cy": y + h / 2, "w": w, "h": h, "confidence": 1.0}
@@ -59,7 +59,7 @@ def track_clip(
             if new_box:
                 x, y, w, h = new_box.x, new_box.y, new_box.w, new_box.h
                 tracker = _make_tracker()
-                tracker.init(frame, (x, y, w, h))
+                tracker.init(frame, (int(x), int(y), int(w), int(h)))
 
         ok, rect = tracker.update(frame)
         if ok:
@@ -71,7 +71,7 @@ def track_clip(
             if new_box:
                 x, y, w, h = new_box.x, new_box.y, new_box.w, new_box.h
                 tracker = _make_tracker()
-                tracker.init(frame, (x, y, w, h))
+                tracker.init(frame, (int(x), int(y), int(w), int(h)))
                 results[fi] = {"cx": x + w / 2, "cy": y + h / 2, "w": w, "h": h, "confidence": 0.6}
             else:
                 # Carry last known position
@@ -95,8 +95,8 @@ def track_clip(
 
 
 def _make_tracker():
-    """Create a fresh CSRT tracker instance."""
-    return cv2.TrackerCSRT_create()
+    """Create a fresh tracker instance."""
+    return cv2.TrackerMIL_create()
 
 
 def _redetect(frame, mode: str, text_pattern: str, template_path: str | None,

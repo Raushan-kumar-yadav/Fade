@@ -138,7 +138,7 @@ def _get_ocr():
 
 # Common privacy patterns
 _PATTERNS = {
-    "email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}",
+    "email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+[\.\s][a-zA-Z]{2,}",
     "phone": r"(\+?\d[\d\s\-().]{7,}\d)",
     "any": r".",        # match all text
 } 

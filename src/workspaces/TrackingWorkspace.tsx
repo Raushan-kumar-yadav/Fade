@@ -129,8 +129,11 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
 
   /*   when selectedClipId prop changes   */
   useEffect(() => {
-    if (selectedClipId) setSelClipId(selectedClipId)
-  }, [selectedClipId])
+    if (selectedClipId) {
+      setSelClipId(selectedClipId)
+      loadClips()
+    }
+  }, [selectedClipId, loadClips])
 
   /*   resolve selClip from id   */
   useEffect(() => {
@@ -225,10 +228,24 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
     refreshTracks()
   }
 
-  const handleAddBlur = (track: TrackSummary) => {
-    window.dispatchEvent(new CustomEvent('fade:add-blur-track', {
-      detail: { track_id: track.track_id, clip_id: selClipId }
-    }))
+  const handleAddBlur = async (track: TrackSummary) => {
+    setError(null)
+    try {
+      const res = await fetch(`${base()}/tracking/add-blur`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ track_id: track.track_id, clip_id: selClipId }),
+      }).then(r => r.json())
+
+      if (!res.ok) {
+        setError(res.detail ?? 'Failed to create blur clip.')
+        return
+      }
+      // Tell the rest of the app to reload the timeline
+      window.dispatchEvent(new CustomEvent('fade:timeline-changed'))
+    } catch (e: unknown) {
+      setError(String(e))
+    }
   }
 
   const isRunning = !!(activeJob && !activeJob.done)
@@ -397,7 +414,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
       </div>
 
       {/*   mode-specific params   */}
-      <ModeParams />
+      {ModeParams()}
 
       {/*   error   */}
       {error && <div className="tr-error">{error}</div>}
@@ -411,7 +428,6 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         <button
           className="tr-btn-start"
           onClick={handleStart}
-          disabled={!selClip}
         >
           Start Tracking
         </button>
