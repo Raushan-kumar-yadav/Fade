@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import os
 import faulthandler
 from pathlib import Path
@@ -281,6 +281,19 @@ async def lifespan(app: FastAPI):
         except Exception as _e:
             print(f"[main] Kokoro pre-warm skipped: {_e}", flush=True)
     threading.Thread(target=_prewarm_kokoro, daemon=True, name="kokoro-prewarm").start()
+
+    # Auto-download portable Tesseract OCR if not already present (for PII text detection)
+    def _setup_tesseract():
+        try:
+            import sys as _sys, os as _os
+            _scripts = _os.path.join(_os.path.dirname(__file__), '..', 'scripts')
+            if _scripts not in _sys.path:
+                _sys.path.insert(0, _os.path.normpath(_scripts))
+            from setup_tesseract import ensure_tesseract
+            ensure_tesseract()
+        except Exception as _e:
+            print(f"[main] Tesseract setup skipped: {_e}", flush=True)
+    threading.Thread(target=_setup_tesseract, daemon=True, name="tesseract-setup").start()
 
     yield
 

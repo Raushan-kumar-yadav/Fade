@@ -79,3 +79,6 @@ Thumbs.db
 #   Misc  
 virality.db
 *.bak
+
+# Tesseract portable binary (auto-downloaded by scripts/setup_tesseract.py)
+AIModels/tesseract/
