@@ -1,4 +1,4 @@
-/* TrackingWorkspace.css */
+ 
 .tr-workspace {
   display: flex;
   flex-direction: column;
@@ -12,7 +12,7 @@
   font-size: 13px;
 }
 
-/* ── Header ─────────────────────────────────────────────────────────── */
+/*   Header   */
 .tr-header {
   display: flex;
   align-items: center;
@@ -38,7 +38,7 @@
   color: #6e7191;
 }
 
-/* ── Fields ─────────────────────────────────────────────────────────── */
+/*   Fields   */
 .tr-field-group {
   display: flex;
   flex-direction: column;
@@ -91,7 +91,7 @@
   color: #7eb8ff;
 }
 
-/* ── Mode tabs ───────────────────────────────────────────────────────── */
+/*   Mode tabs   */
 .tr-mode-tabs {
   display: flex;
   gap: 6px;
@@ -118,7 +118,7 @@
   font-weight: 600;
 }
 
-/* ── Error ───────────────────────────────────────────────────────────── */
+/*   Error   */
 .tr-error {
   background: #2a1520;
   border: 1px solid #ff4d6a44;
@@ -128,7 +128,7 @@
   font-size: 12px;
 }
 
-/* ── Start button ─────────────────────────────────────────────────────── */
+/*   Start button   */
 .tr-btn-start {
   background: linear-gradient(135deg, #7c6eff, #5b4de0);
   color: #fff;
@@ -152,7 +152,7 @@
   cursor: not-allowed;
 }
 
-/* ── Job card ─────────────────────────────────────────────────────────── */
+/*   Job card   */
 .tr-job-card {
   border-radius: 10px;
   border: 1px solid #282b40;
@@ -213,7 +213,7 @@
 
 .tr-job-error { color: #ff7191; }
 
-/* ── Tracks section ───────────────────────────────────────────────────── */
+/*   Tracks section   */
 .tr-tracks-section {
   display: flex;
   flex-direction: column;
@@ -290,7 +290,7 @@
 .tr-btn-action--blur:hover  { background: #7c6eff22; border-color: #7c6eff; color: #d0ccff; }
 .tr-btn-action--delete:hover{ background: #ff4d6a22; border-color: #ff4d6a44; color: #ff7191; }
 
-/* ── Expression hint ─────────────────────────────────────────────────── */
+/*   Expression hint   */
 .tr-expr-hint {
   background: #13141f;
   border: 1px solid #1e2030;

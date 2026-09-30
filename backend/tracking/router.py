@@ -1,7 +1,4 @@
-"""
-backend/tracking/router.py
-FastAPI router for tracking endpoints.
-"""
+ 
 from __future__ import annotations
 import os
 from fastapi import APIRouter, HTTPException
@@ -14,41 +11,37 @@ from backend.tracking import service as _svc
 router = APIRouter(prefix="/tracking", tags=["tracking"])
 
 
-# ── Request models ────────────────────────────────────────────────────────────
+#   Request models  
 
 class StartTrackRequest(BaseModel):
-    clip_id:         str
-    video_path:      str
-    from_frame:      int = 0
-    to_frame:        int = -1
+    clip_id: str
+    video_path: str
+    from_frame: int = 0
+    to_frame: int = -1
     detection_mode:  str = "face"       # face | person | text | image | manual
-    initial_bbox:    Optional[list] = None   # [x, y, w, h] pixels
-    text_pattern:    str = "email|phone"
-    template_path:   Optional[str] = None   # local path to reference image
-    label:           str = ""
-    fps:             float = 30.0
-    comp_w:          int = 1920
-    comp_h:          int = 1080
+    initial_bbox: Optional[list] = None   # [x, y, w, h] pixels
+    text_pattern: str = "email|phone"
+    template_path: Optional[str] = None   # local path to reference image
+    label: str = ""
+    fps: float = 30.0
+    comp_w: int = 1920
+    comp_h: int = 1080
 
 
 class LinkTrackRequest(BaseModel):
     track_id:     str
     target_clip_id: str
     properties:   list[str] = ["pos_x", "pos_y"]
-    offset_x:     float = 0.0
-    offset_y:     float = 0.0
+    offset_x: float = 0.0
+    offset_y: float = 0.0
     scale_factor: float = 1.0
 
 
-# ── Routes ────────────────────────────────────────────────────────────────────
+#   Routes  
 
 @router.post("/start")
 def start_tracking(req: StartTrackRequest):
-    """
-    Start a background tracking job.
-    Returns immediately with job_id.
-    Poll /tracking/progress/{job_id} for status.
-    """
+     
     if req.detection_mode == "manual" and not req.initial_bbox:
         raise HTTPException(400, "initial_bbox required for manual mode")
     if req.detection_mode == "image" and not req.template_path:
@@ -119,11 +112,11 @@ def get_frame(track_id: str, frame: int):
     if data is None:
         raise HTTPException(404, f"Track {track_id!r} not found")
     return {
-        "frame":      frame,
-        "cx":         _svc.interpolate_at(track_id, frame, "cx"),
-        "cy":         _svc.interpolate_at(track_id, frame, "cy"),
-        "w":          _svc.interpolate_at(track_id, frame, "w"),
-        "h":          _svc.interpolate_at(track_id, frame, "h"),
+        "frame": frame,
+        "cx": _svc.interpolate_at(track_id, frame, "cx"),
+        "cy": _svc.interpolate_at(track_id, frame, "cy"),
+        "w": _svc.interpolate_at(track_id, frame, "w"),
+        "h": _svc.interpolate_at(track_id, frame, "h"),
         "confidence": _svc.interpolate_at(track_id, frame, "confidence"),
     }
 

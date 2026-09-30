@@ -1,8 +1,4 @@
-"""
-download_models.py
-Downloads all AI models needed for Fade's tracking system into AIModels/.
-Run once: python download_models.py
-"""
+ 
 import sys, os, io, zipfile, shutil
 from pathlib import Path
 import urllib.request
@@ -59,7 +55,7 @@ print("=" * 60)
 print(" Fade AI Model Downloader")
 print("=" * 60)
 
-# ─── 1. YOLOv8n — person detection ───────────────────────────────────
+#   YOLOv8n — person detection  
 print("\n[1/3] YOLOv8n (person detection)")
 download(
     url="https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
@@ -67,7 +63,7 @@ download(
     label="yolov8n.pt",
 )
 
-# ─── 2. EasyOCR CRAFT — text detection ───────────────────────────────
+#  EasyOCR CRAFT — text detection  
 print("\n[2/3] EasyOCR CRAFT (text region detection)")
 download_zip(
     url="https://github.com/JaidedAI/EasyOCR/releases/download/pre-v1.1.6/craft_mlt_25k.zip",
@@ -76,7 +72,7 @@ download_zip(
     label="craft_mlt_25k.pth",
 )
 
-# ─── 3. EasyOCR English recognition model ────────────────────────────
+#  EasyOCR English recognition model  
 print("\n[3/3] EasyOCR English recognition model")
 download_zip(
     url="https://github.com/JaidedAI/EasyOCR/releases/download/v1.3/english_g2.zip",
@@ -85,7 +81,7 @@ download_zip(
     label="english_g2.pth",
 )
 
-# ─── Summary ─────────────────────────────────────────────────────────
+ 
 print("\n" + "=" * 60)
 print(" Done! Files in AIModels/:")
 for f in sorted(AI_MODELS.iterdir()):
@@ -94,5 +90,5 @@ for f in sorted(AI_MODELS.iterdir()):
         print(f"   {f.name:35s}  {mb:7.1f} MB")
 print("=" * 60)
 print("\nNote: MediaPipe face models are bundled inside the mediapipe")
-print("      package — no separate download needed.")
-print("      For PyInstaller, add: --add-data 'AIModels;AIModels'")
+print(" package — no separate download needed.")
+print(" For PyInstaller, add: --add-data 'AIModels;AIModels'")

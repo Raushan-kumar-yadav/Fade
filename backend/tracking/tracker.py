@@ -19,15 +19,9 @@ def track_clip(
     text_pattern: str = "email|phone",
     template_path: str | None = None,
     redetect_every: int = 60,
-    job: dict | None = None,               # shared job dict for progress updates
+    job: dict | None = None,               
 ) -> dict[int, dict]:
-    """
-    Runs CSRT tracker from from_frame to to_frame.
-
-    Returns:
-        dict[frame_number -> {"cx","cy","w","h","confidence"}]
-        (cx, cy = center x/y in pixels)
-    """
+     
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")

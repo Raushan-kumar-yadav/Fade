@@ -1,24 +1,24 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import './TrackingWorkspace.css'
 
-/* ─── types ────────────────────────────────────────────────────────────── */
+/*   types   */
 type DetectionMode = 'face' | 'person' | 'text' | 'image' | 'manual'
 
 interface TrackSummary {
   track_id: string
-  label:    string
+  label: string
   from_frame: number
   to_frame:   number
   frame_count: number
 }
 
 interface JobState {
-  job_id:       string
-  percent:      number
-  status:       string
-  done:         boolean
-  error:        string | null
-  track_id:     string | null
+  job_id: string
+  percent: number
+  status: string
+  done: boolean
+  error: string | null
+  track_id: string | null
   current_frame: number
   label:        string
 }
@@ -31,7 +31,7 @@ interface Props {
   fps?: number
 }
 
-/* ─── API helpers ──────────────────────────────────────────────────────── */
+/*   API helpers   */
 const BASE = 'http://localhost:7860'
 const api = {
   startTrack: (body: Record<string, unknown>) =>
@@ -48,33 +48,33 @@ const api = {
     fetch(`${BASE}/timeline/state`).then(r => r.json()),
 }
 
-/* ─── Component ─────────────────────────────────────────────────────────── */
+/*   Component   */
 export default function TrackingWorkspace({ selectedClipId, videoPath, totalFrames = 300, fps = 30 }: Props) {
   /* form state */
-  const [mode, setMode]               = useState<DetectionMode>('face')
-  const [fromFrame, setFromFrame]     = useState(0)
-  const [toFrame, setToFrame]         = useState(totalFrames)
-  const [label, setLabel]             = useState('')
+  const [mode, setMode] = useState<DetectionMode>('face')
+  const [fromFrame, setFromFrame] = useState(0)
+  const [toFrame, setToFrame] = useState(totalFrames)
+  const [label, setLabel] = useState('')
   const [textPattern, setTextPattern] = useState('email|phone')
   const [templatePath, setTemplatePath] = useState('')
-  const [manualBbox, setManualBbox]   = useState('')
-  const [clipId, setClipId]           = useState(selectedClipId ?? '')
-  const [clipPath, setClipPath]       = useState(videoPath ?? '')
+  const [manualBbox, setManualBbox] = useState('')
+  const [clipId, setClipId] = useState(selectedClipId ?? '')
+  const [clipPath, setClipPath] = useState(videoPath ?? '')
 
   /* clip picker */
   const [timelineClips, setTimelineClips] = useState<{ id: string; name: string; path: string }[]>([])
 
   /* jobs & tracks */
-  const [activeJob, setActiveJob]     = useState<JobState | null>(null)
-  const [tracks, setTracks]           = useState<TrackSummary[]>([])
-  const [error, setError]             = useState<string | null>(null)
-  const pollRef                       = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [activeJob, setActiveJob] = useState<JobState | null>(null)
+  const [tracks, setTracks] = useState<TrackSummary[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   /* sync props */
   useEffect(() => {
     if (selectedClipId) setClipId(selectedClipId)
-    if (videoPath)      setClipPath(videoPath)
-    if (totalFrames)    setToFrame(totalFrames)
+    if (videoPath) setClipPath(videoPath)
+    if (totalFrames) setToFrame(totalFrames)
   }, [selectedClipId, videoPath, totalFrames])
 
   /* load timeline clips for picker */
@@ -133,13 +133,13 @@ export default function TrackingWorkspace({ selectedClipId, videoPath, totalFram
 
     try {
       const res = await api.startTrack({
-        clip_id:       clipId,
-        video_path:    clipPath,
-        from_frame:    fromFrame,
-        to_frame:      toFrame,
+        clip_id: clipId,
+        video_path: clipPath,
+        from_frame: fromFrame,
+        to_frame: toFrame,
         detection_mode: mode,
-        label:         label || mode,
-        text_pattern:  textPattern,
+        label: label || mode,
+        text_pattern:   textPattern,
         template_path: templatePath || null,
         initial_bbox:  bbox,
       })
@@ -169,7 +169,7 @@ export default function TrackingWorkspace({ selectedClipId, videoPath, totalFram
     window.dispatchEvent(new CustomEvent('fade:add-blur-track', { detail: { track_id: track.track_id, clip_id: clipId } }))
   }
 
-  /* ── Clip picker section ──────────────────────────────────────────────── */
+  /* Clip picker section   */
   function ClipPicker() {
     return (
       <div className="tr-field-group">
@@ -197,7 +197,7 @@ export default function TrackingWorkspace({ selectedClipId, videoPath, totalFram
     )
   }
 
-  /* ── Mode-specific inputs ─────────────────────────────────────────────── */
+  /* Mode-specific inputs   */
   function ModeParams() {
     if (mode === 'text') return (
       <div className="tr-field-group">
@@ -241,10 +241,10 @@ export default function TrackingWorkspace({ selectedClipId, videoPath, totalFram
         </div>
       </div>
 
-      {/* ── Clip picker ── */}
+      {/*   Clip picker   */}
       <ClipPicker />
 
-      {/* ── Frame range ── */}
+      {/*   Frame range   */}
       <div className="tr-row">
         <div className="tr-field-group tr-field-group--half">
           <label className="tr-label">Start frame</label>
@@ -256,13 +256,13 @@ export default function TrackingWorkspace({ selectedClipId, videoPath, totalFram
         </div>
       </div>
 
-      {/* ── Label ── */}
+      {/*   Label   */}
       <div className="tr-field-group">
         <label className="tr-label">Track label (optional)</label>
         <input className="tr-input" placeholder="e.g. speaker_face" value={label} onChange={e => setLabel(e.target.value)} />
       </div>
 
-      {/* ── Tracking type tabs ── */}
+      {/*   Tracking type tabs   */}
       <div className="tr-field-group">
         <label className="tr-label">Detection mode</label>
         <div className="tr-mode-tabs">
@@ -278,13 +278,13 @@ export default function TrackingWorkspace({ selectedClipId, videoPath, totalFram
         </div>
       </div>
 
-      {/* ── Mode-specific params ── */}
+      {/*   Mode-specific params   */}
       <ModeParams />
 
-      {/* ── Error ── */}
+      {/*   Error   */}
       {error && <div className="tr-error">⚠️ {error}</div>}
 
-      {/* ── Start button ── */}
+      {/*   Start button  */}
       <button
         className={`tr-btn-start${activeJob && !activeJob.done ? ' tr-btn-start--disabled' : ''}`}
         onClick={handleStart}
@@ -293,7 +293,7 @@ export default function TrackingWorkspace({ selectedClipId, videoPath, totalFram
         {activeJob && !activeJob.done ? '⏳ Tracking…' : '▶ Start Tracking'}
       </button>
 
-      {/* ── Active job progress ── */}
+      {/*   Active job progress   */}
       {activeJob && (
         <div className={`tr-job-card tr-job-card--${activeJob.done ? (activeJob.error ? 'error' : 'done') : 'running'}`}>
           <div className="tr-job-header">
@@ -346,7 +346,7 @@ export default function TrackingWorkspace({ selectedClipId, videoPath, totalFram
         </div>
       )}
 
-      {/* ── Expression hint ── */}
+      {/*   Expression hint   */}
       {tracks.length > 0 && (
         <details className="tr-expr-hint">
           <summary>📐 Use in expressions</summary>

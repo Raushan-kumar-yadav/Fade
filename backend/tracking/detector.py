@@ -1,15 +1,4 @@
-"""
-backend/tracking/detector.py
-
-Detects target regions in a single video frame.
-Supports three modes:
-  - "face"   : MediaPipe FaceDetection (fast CPU)
-  - "person" : YOLOv8n (lazy-loaded, optional)
-  - "text"   : EasyOCR + regex filter for emails / phone numbers / custom patterns
-  - "image"  : OpenCV template matching against a reference asset image
-
-Returns a list of (x, y, w, h) bounding boxes in pixel coordinates.
-"""
+ 
 from __future__ import annotations
 import logging
 import os
@@ -20,15 +9,13 @@ from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 
-# ── PyInstaller-safe model directory ─────────────────────────────────────────
-# Dev:    <repo>/AIModels/
-# Frozen: <bundle>/_MEIPASS/AIModels/
+ 
 def _resolve_models_dir() -> Path:
     if getattr(sys, "frozen", False):
         # Running as a PyInstaller bundle
-        base = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+        base = Path(sys._MEIPASS)   
     else:
-        # Dev: go up two levels from backend/tracking/ to repo root
+         
         base = Path(__file__).parent.parent.parent
     d = base / "AIModels"
     d.mkdir(parents=True, exist_ok=True)
@@ -46,7 +33,7 @@ class BBox(NamedTuple):
     label: str = ""
 
 
-# ── MediaPipe Face ─────────────────────────────────────────────────────────────
+#   MediaPipe Face  
 _mp_face = None
 
 def _get_mp_face():
@@ -90,7 +77,7 @@ def detect_faces(frame_bgr) -> list[BBox]:
         return []
 
 
-# ── YOLOv8 Person ─────────────────────────────────────────────────────────────
+#   YOLOv8 Person  
 _yolo_model = None
 
 def _get_yolo():
@@ -98,7 +85,7 @@ def _get_yolo():
     if _yolo_model is None:
         try:
             from ultralytics import YOLO
-            # Use bundled model; fall back to auto-download if missing
+            # Use bundled model;  
             model_path = MODELS_DIR / "yolov8n.pt"
             _yolo_model = YOLO(str(model_path) if model_path.exists() else "yolov8n.pt")
         except ImportError:
@@ -126,7 +113,7 @@ def detect_persons(frame_bgr) -> list[BBox]:
         return []
 
 
-# ── EasyOCR Text ──────────────────────────────────────────────────────────────
+#   EasyOCR Text  
 _ocr_reader = None
 
 def _get_ocr():
@@ -134,7 +121,7 @@ def _get_ocr():
     if _ocr_reader is None:
         try:
             import easyocr
-            # Use AIModels/ as the model storage directory so no internet download at runtime
+         
             _ocr_reader = easyocr.Reader(
                 ["en"],
                 gpu=False,
@@ -151,10 +138,10 @@ def _get_ocr():
 
 # Common privacy patterns
 _PATTERNS = {
-    "email":   r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}",
-    "phone":   r"(\+?\d[\d\s\-().]{7,}\d)",
-    "any":     r".",        # match all text
-}
+    "email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}",
+    "phone": r"(\+?\d[\d\s\-().]{7,}\d)",
+    "any": r".",        # match all text
+} 
 
 def detect_text(frame_bgr, text_pattern: str = "email|phone") -> list[BBox]:
     """
@@ -187,7 +174,7 @@ def detect_text(frame_bgr, text_pattern: str = "email|phone") -> list[BBox]:
         return []
 
 
-# ── Template Matching (Image asset) ───────────────────────────────────────────
+#   Template Matching    
 def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.7) -> list[BBox]:
     """
     Find occurrences of a template image inside the frame using OpenCV matchTemplate.
