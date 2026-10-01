@@ -243,6 +243,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
       }
       // Tell the rest of the app to reload the timeline
       window.dispatchEvent(new CustomEvent('fade:timeline-changed'))
+      window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
     } catch (e: unknown) {
       setError(String(e))
     }

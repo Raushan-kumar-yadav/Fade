@@ -145,6 +145,7 @@ def start_track_job(
                 "track_id": track_id,
                 "clip_id": clip_id,
                 "label": label,
+                "video_path": video_path,
                 "detection_mode": detection_mode,
                 "from_frame": from_frame,
                 "to_frame": to_frame,
