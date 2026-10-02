@@ -114,15 +114,30 @@ def start_track_job(
             if not bbox:
                 import cv2
                 cap = cv2.VideoCapture(video_path)
-                cap.set(cv2.CAP_PROP_POS_FRAMES, float(from_frame))
-                ret, frame = cap.read()
+                
+                # Scan up to 5 evenly-spaced frames to find initial detection
+                scan_frames = []
+                frame_range = max(1, to_frame - from_frame)
+                for i in range(5):
+                    scan_frames.append(from_frame + int(frame_range * i / 4)) if frame_range > 1 else scan_frames.append(from_frame)
+                scan_frames = list(dict.fromkeys(scan_frames))  # deduplicate
+                
+                boxes = []
+                checked_frame = from_frame
+                for sf in scan_frames:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, float(sf))
+                    ret, frame = cap.read()
+                    if not ret:
+                        continue
+                    checked_frame = sf
+                    boxes = _detect(frame, detection_mode, text_pattern, template_path)
+                    if boxes:
+                        break
                 cap.release()
-                if not ret:
-                    raise RuntimeError(f"Cannot read frame {from_frame} from {video_path}")
-                boxes = _detect(frame, detection_mode, text_pattern, template_path)
+                
                 if not boxes:
                     raise RuntimeError(
-                        f"No {detection_mode} detected in frame {from_frame}. "
+                        f"No {detection_mode} detected in any of {len(scan_frames)} scanned frames. "
                         "Try manual ROI or a different detection mode."
                     )
                 b = boxes[0]

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { uploadAsset } from '../api/useApi'
 import './TrackingWorkspace.css'
 
 /* ── types ─────────────────────────────────────────────────────────────── */
@@ -48,11 +49,12 @@ interface Props {
 
 /*   API   */
 function base() {
-  return `http://localhost:${(window as any).__FADE_PORT__ ?? 8000}`
+  return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`
 }
 const api = {
   timelineState: () => fetch(`${base()}/timeline/state`).then(r => r.json()),
   assets: () => fetch(`${base()}/library/assets`).then(r => r.json()),
+  importAsset: (filepath: string) => fetch(`${base()}/library/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filepath }) }).then(r => r.json()),
   startTrack: (body: Record<string, unknown>) =>
     fetch(`${base()}/tracking/start`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
   progress: (jobId: string) => fetch(`${base()}/tracking/progress/${jobId}`).then(r => r.json()),
@@ -252,33 +254,32 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
   const isRunning = !!(activeJob && !activeJob.done)
 
   /*   ref image/person picker   */
-  const RefAssetPicker = ({ label: lbl }: { label: string }) => (
-    <div className="tr-field-group">
-      <label className="tr-label">{lbl}</label>
-      {imageAssets.length === 0 ? (
-        <p className="tr-hint tr-hint--warn">No images imported yet — import an image asset first.</p>
-      ) : (
-        <select
-          className="tr-select"
-          value={refAssetId}
-          onChange={e => setRefAssetId(e.target.value)}
-        >
-          <option value="">— pick an image —</option>
-          {imageAssets.map(a => (
-            <option key={a.assetId} value={a.assetId}>
-              {a.filename}
-            </option>
-          ))}
-        </select>
-      )}
-      {refAssetId && imageAssets.find(a => a.assetId === refAssetId) && (
-        <span className="tr-hint">{imageAssets.find(a => a.assetId === refAssetId)?.filepath}</span>
-      )}
-    </div>
-  )
+  const [isUploading, setIsUploading] = useState(false)
+  const handleImportImage = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return
+    setIsUploading(true)
+    setError(null)
+    for (const f of Array.from(e.target.files)) {
+      const result = await uploadAsset(f)
+      if (!result.ok) {
+        setError(`Failed to import ${result.filename}: ${result.reason}`)
+        setIsUploading(false)
+        e.target.value = ''
+        return
+      } else {
+        setRefAssetId(result.asset.assetId)
+      }
+    }
+    loadImageAssets()
+    e.target.value = ''
+    setIsUploading(false)
+  }, [loadImageAssets])
 
-  /*   mode-specific UI   */
-  const ModeParams = () => {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+
+  /*   mode-specific UI — rendered inline (no sub-components, to keep fileInputRef stable)   */
+  const modeParamsJSX = (() => {
     if (mode === 'text') return (
       <div className="tr-field-group">
         <label className="tr-label">Text pattern</label>
@@ -291,12 +292,88 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         <span className="tr-hint">Shortcuts: <code>email</code>, <code>phone</code> — or any regex</span>
       </div>
     )
-    if (mode === 'image') return (
-      <RefAssetPicker label="Reference image (template to match)" />
-    )
-    if (mode === 'person') return (
-      <RefAssetPicker label="Reference person image (face/body crop)" />
-    )
+    if (mode === 'image' || mode === 'person') {
+      const pickerLabel = mode === 'image'
+        ? 'Reference image (template to match)'
+        : 'Reference person image (face/body crop)'
+      const selectedAsset = imageAssets.find(a => a.assetId === refAssetId)
+      return (
+        <div className="tr-field-group">
+          <label className="tr-label">{pickerLabel}</label>
+
+          {/* Upload status card */}
+          {isUploading && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 12px', borderRadius: '6px',
+              background: '#1e293b', border: '1px solid #3b82f6',
+              marginBottom: '8px', fontSize: '13px', color: '#93c5fd'
+            }}>
+              <svg style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/>
+              </svg>
+              Uploading image…
+            </div>
+          )}
+
+          {/* Success card */}
+          {!isUploading && selectedAsset && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 12px', borderRadius: '6px',
+              background: '#052e16', border: '1px solid #16a34a',
+              marginBottom: '8px', fontSize: '13px', color: '#86efac'
+            }}>
+              <svg style={{ flexShrink: 0 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+              <span>Uploaded: <strong>{selectedAsset.filename}</strong></span>
+              <button
+                onClick={() => setRefAssetId('')}
+                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#86efac', cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}
+                title="Remove"
+              >×</button>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {/* Dropdown to pick already-imported images */}
+            {imageAssets.length > 0 && (
+              <select
+                className="tr-select"
+                value={refAssetId}
+                onChange={e => setRefAssetId(e.target.value)}
+                style={{ flex: 1 }}
+              >
+                <option value="">— or pick from library —</option>
+                {imageAssets.map(a => (
+                  <option key={a.assetId} value={a.assetId}>{a.filename}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Upload button — uses stable ref defined at component level */}
+            <button
+              className="tr-btn-action"
+              style={{ whiteSpace: 'nowrap', padding: '6px 14px', opacity: isUploading ? 0.6 : 1 }}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+            >
+              {isUploading ? 'Uploading…' : 'Import Image'}
+            </button>
+          </div>
+
+          {/* hidden file input — ref attached at component level, never remounts */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleImportImage}
+          />
+        </div>
+      )
+    }
     if (mode === 'manual') return (
       <div className="tr-field-group">
         <label className="tr-label">Bounding box — x, y, w, h (pixels)</label>
@@ -315,7 +392,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         MediaPipe face detection — automatically finds all faces in frame {fromFrame}
       </div>
     )
-  }
+  })()
 
   /*   render   */
   return (
@@ -415,7 +492,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
       </div>
 
       {/*   mode-specific params   */}
-      {ModeParams()}
+      {modeParamsJSX}
 
       {/*   error   */}
       {error && <div className="tr-error">{error}</div>}

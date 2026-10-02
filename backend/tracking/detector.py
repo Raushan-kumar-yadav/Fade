@@ -175,10 +175,11 @@ def detect_text(frame_bgr, text_pattern: str = "email|phone") -> list[BBox]:
 
 
 #   Template Matching    
-def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.7) -> list[BBox]:
+def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.5) -> list[BBox]:
     """
     Find occurrences of a template image inside the frame using OpenCV matchTemplate.
-    Best for logos, watermarks, or any static image target.
+    Uses multi-scale search and always returns the best match found even if below threshold
+    (with lower confidence score). Best for logos, watermarks, or any static image target.
     """
     try:
         import cv2
@@ -187,21 +188,57 @@ def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.7)
         if template is None:
             logger.warning("[tracker] could not read template: %s", template_path)
             return []
-        # Resize template if larger than frame
+
         fh, fw = frame_bgr.shape[:2]
         th, tw = template.shape[:2]
+
+        # Ensure template fits inside frame
         if th > fh or tw > fw:
             scale = min(fh / th, fw / tw) * 0.9
             template = cv2.resize(template, (int(tw * scale), int(th * scale)))
             th, tw = template.shape[:2]
 
-        result = cv2.matchTemplate(frame_bgr, template, cv2.TM_CCOEFF_NORMED)
-        locs = np.where(result >= threshold)
-        boxes = []
-        for py, px in zip(*locs):
-            boxes.append(BBox(float(px), float(py), float(tw), float(th), float(result[py, px]), "image"))
-        # NMS: merge overlapping boxes
-        return _simple_nms(boxes, iou_threshold=0.3)
+        # Multi-scale search: try original + 80% + 60% + 40% of template size
+        scales = [1.0, 0.8, 0.6, 0.4]
+        best_val = -1.0
+        best_loc = (0, 0)
+        best_tw = tw
+        best_th = th
+
+        for scale in scales:
+            scaled_tw = max(4, int(tw * scale))
+            scaled_th = max(4, int(th * scale))
+            if scaled_tw >= fw or scaled_th >= fh:
+                continue
+            scaled_tmpl = cv2.resize(template, (scaled_tw, scaled_th))
+            result = cv2.matchTemplate(frame_bgr, scaled_tmpl, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            if max_val > best_val:
+                best_val = max_val
+                best_loc = max_loc
+                best_tw = scaled_tw
+                best_th = scaled_th
+
+        logger.info("[tracker] template best match: val=%.3f at %s (threshold=%.2f)", best_val, best_loc, threshold)
+
+        if best_val >= threshold:
+            # Good match — also collect all locations above threshold at best scale
+            scaled_tmpl = cv2.resize(template, (best_tw, best_th))
+            result = cv2.matchTemplate(frame_bgr, scaled_tmpl, cv2.TM_CCOEFF_NORMED)
+            locs = np.where(result >= threshold)
+            boxes = []
+            for py, px in zip(*locs):
+                boxes.append(BBox(float(px), float(py), float(best_tw), float(best_th), float(result[py, px]), "image"))
+            return _simple_nms(boxes, iou_threshold=0.3)
+        elif best_val >= 0.3:
+            # Below threshold but still a plausible match — return as single box with low confidence
+            # This lets tracking begin even when template is not a perfect pixel match
+            px, py = best_loc
+            logger.warning("[tracker] template match below threshold (%.3f < %.2f), using best guess", best_val, threshold)
+            return [BBox(float(px), float(py), float(best_tw), float(best_th), float(best_val), "image")]
+        else:
+            logger.warning("[tracker] template match too poor (%.3f), no detection", best_val)
+            return []
     except Exception as e:
         logger.warning("[tracker] template matching error: %s", e)
         return []
