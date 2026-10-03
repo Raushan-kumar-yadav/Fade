@@ -63,6 +63,27 @@ export async function importAsset(filepath: string): Promise<ImportResult> {
   return { ok: true, asset };
 }
 
+export async function uploadAsset(file: File): Promise<ImportResult> {
+  const filename = file.name;
+  try {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    const r = await fetch(`${base()}/library/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (r.status === 422) {
+      let reason = 'Blocked by security scanner';
+      try { const d = await r.json(); reason = d.detail ?? reason; } catch {}
+      return { ok: false, filename, reason };
+    }
+    if (!r.ok) return { ok: false, filename, reason: `Upload failed (${r.status})` };
+    const asset = await r.json();
+    return { ok: true, asset };
+  } catch (err) {
+    return { ok: false, filename, reason: String(err) };
+  }
+}
 
 export async function removeAsset(assetId: string): Promise<void> {
   await fetch(`${base()}/library/assets/${assetId}`, { method: "DELETE" });
