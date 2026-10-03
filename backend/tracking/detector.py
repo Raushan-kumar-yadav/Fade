@@ -33,47 +33,85 @@ class BBox(NamedTuple):
     label: str = ""
 
 
-#   MediaPipe Face  
-_mp_face = None
+#   MediaPipe Face (new Tasks API — mediapipe >= 0.10)
+_mp_face_detector = None
 
 def _get_mp_face():
-    global _mp_face
-    if _mp_face is None:
+    global _mp_face_detector
+    if _mp_face_detector is None:
         try:
             import mediapipe as mp
-            _mp_face = mp.solutions.face_detection.FaceDetection(
-                model_selection=1,          # 1 = full-range model
-                min_detection_confidence=0.5,
-            )
-        except ImportError:
-            logger.warning("[tracker] mediapipe not installed: pip install mediapipe")
-    return _mp_face
+            model_path = MODELS_DIR / "blaze_face_short_range.tflite"
+            if not model_path.exists():
+                logger.warning("[tracker] blaze_face_short_range.tflite not found at %s — downloading...", model_path)
+                try:
+                    import urllib.request
+                    url = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite"
+                    urllib.request.urlretrieve(url, str(model_path))
+                    logger.info("[tracker] downloaded face model to %s", model_path)
+                except Exception as dl_err:
+                    logger.warning("[tracker] failed to download face model: %s", dl_err)
+
+            if model_path.exists():
+                BaseOptions = mp.tasks.BaseOptions
+                FaceDetector = mp.tasks.vision.FaceDetector
+                FaceDetectorOptions = mp.tasks.vision.FaceDetectorOptions
+                RunningMode = mp.tasks.vision.RunningMode
+                options = FaceDetectorOptions(
+                    base_options=BaseOptions(model_asset_path=str(model_path)),
+                    running_mode=RunningMode.IMAGE,
+                    min_detection_confidence=0.2,
+                )
+                _mp_face_detector = FaceDetector.create_from_options(options)
+                logger.info("[tracker] MediaPipe FaceDetector (Tasks API) loaded")
+            else:
+                logger.warning("[tracker] face model not available, will use OpenCV fallback")
+        except Exception as e:
+            logger.warning("[tracker] MediaPipe face detector init error: %s", e)
+    return _mp_face_detector
 
 
 def detect_faces(frame_bgr) -> list[BBox]:
-    """Detect faces in a BGR frame. Returns list of BBox (pixel coords)."""
+    """Detect faces in a BGR frame using MediaPipe Tasks API. Falls back to OpenCV Haar cascade."""
     det = _get_mp_face()
-    if det is None:
-        return []
+    if det is not None:
+        try:
+            import mediapipe as mp
+            import cv2
+            h, w = frame_bgr.shape[:2]
+            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            result = det.detect(mp_img)
+            if not result.detections:
+                return []
+            boxes = []
+            for d in result.detections:
+                bb = d.bounding_box
+                score = d.categories[0].score if d.categories else 0.9
+                boxes.append(BBox(float(bb.origin_x), float(bb.origin_y),
+                                  float(bb.width), float(bb.height),
+                                  float(score), "face"))
+            return boxes
+        except Exception as e:
+            logger.warning("[tracker] MediaPipe face detection error: %s", e)
+
+    # OpenCV Haar cascade fallback
     try:
         import cv2
-        h, w = frame_bgr.shape[:2]
-        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        res = det.process(rgb)
-        if not res.detections:
-            return []
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        cascade_path = str(MODELS_DIR / "haarcascade_frontalface_default.xml")
+        if not os.path.exists(cascade_path):
+            # Use OpenCV built-in
+            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        clf = cv2.CascadeClassifier(cascade_path)
+        faces = clf.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
         boxes = []
-        for d in res.detections:
-            bb = d.location_data.relative_bounding_box
-            x = bb.xmin * w
-            y = bb.ymin * h
-            bw = bb.width * w
-            bh = bb.height * h
-            score = d.score[0] if d.score else 0.9
-            boxes.append(BBox(x, y, bw, bh, float(score), "face"))
+        for (x, y, w, h) in faces:
+            boxes.append(BBox(float(x), float(y), float(w), float(h), 0.8, "face"))
+        logger.info("[tracker] OpenCV Haar cascade found %d faces", len(boxes))
         return boxes
     except Exception as e:
-        logger.warning("[tracker] face detection error: %s", e)
+        logger.warning("[tracker] OpenCV face detection error: %s", e)
         return []
 
 
@@ -138,7 +176,7 @@ def _get_ocr():
 
 # Common privacy patterns
 _PATTERNS = {
-    "email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z]{2,}",
+    "email": r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+[\.\s][a-zA-Z]{2,}",
     "phone": r"(\+?\d[\d\s\-().]{7,}\d)",
     "any": r".",        # match all text
 } 
@@ -175,10 +213,11 @@ def detect_text(frame_bgr, text_pattern: str = "email|phone") -> list[BBox]:
 
 
 #   Template Matching    
-def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.7) -> list[BBox]:
+def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.5) -> list[BBox]:
     """
     Find occurrences of a template image inside the frame using OpenCV matchTemplate.
-    Best for logos, watermarks, or any static image target.
+    Uses multi-scale search and always returns the best match found even if below threshold
+    (with lower confidence score). Best for logos, watermarks, or any static image target.
     """
     try:
         import cv2
@@ -187,21 +226,57 @@ def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.7)
         if template is None:
             logger.warning("[tracker] could not read template: %s", template_path)
             return []
-        # Resize template if larger than frame
+
         fh, fw = frame_bgr.shape[:2]
         th, tw = template.shape[:2]
+
+        # Ensure template fits inside frame
         if th > fh or tw > fw:
             scale = min(fh / th, fw / tw) * 0.9
             template = cv2.resize(template, (int(tw * scale), int(th * scale)))
             th, tw = template.shape[:2]
 
-        result = cv2.matchTemplate(frame_bgr, template, cv2.TM_CCOEFF_NORMED)
-        locs = np.where(result >= threshold)
-        boxes = []
-        for py, px in zip(*locs):
-            boxes.append(BBox(float(px), float(py), float(tw), float(th), float(result[py, px]), "image"))
-        # NMS: merge overlapping boxes
-        return _simple_nms(boxes, iou_threshold=0.3)
+        # Multi-scale search: try original + 80% + 60% + 40% of template size
+        scales = [1.0, 0.8, 0.6, 0.4]
+        best_val = -1.0
+        best_loc = (0, 0)
+        best_tw = tw
+        best_th = th
+
+        for scale in scales:
+            scaled_tw = max(4, int(tw * scale))
+            scaled_th = max(4, int(th * scale))
+            if scaled_tw >= fw or scaled_th >= fh:
+                continue
+            scaled_tmpl = cv2.resize(template, (scaled_tw, scaled_th))
+            result = cv2.matchTemplate(frame_bgr, scaled_tmpl, cv2.TM_CCOEFF_NORMED)
+            _, max_val, _, max_loc = cv2.minMaxLoc(result)
+            if max_val > best_val:
+                best_val = max_val
+                best_loc = max_loc
+                best_tw = scaled_tw
+                best_th = scaled_th
+
+        logger.info("[tracker] template best match: val=%.3f at %s (threshold=%.2f)", best_val, best_loc, threshold)
+
+        if best_val >= threshold:
+            # Good match — also collect all locations above threshold at best scale
+            scaled_tmpl = cv2.resize(template, (best_tw, best_th))
+            result = cv2.matchTemplate(frame_bgr, scaled_tmpl, cv2.TM_CCOEFF_NORMED)
+            locs = np.where(result >= threshold)
+            boxes = []
+            for py, px in zip(*locs):
+                boxes.append(BBox(float(px), float(py), float(best_tw), float(best_th), float(result[py, px]), "image"))
+            return _simple_nms(boxes, iou_threshold=0.3)
+        elif best_val >= 0.3:
+            # Below threshold but still a plausible match — return as single box with low confidence
+            # This lets tracking begin even when template is not a perfect pixel match
+            px, py = best_loc
+            logger.warning("[tracker] template match below threshold (%.3f < %.2f), using best guess", best_val, threshold)
+            return [BBox(float(px), float(py), float(best_tw), float(best_th), float(best_val), "image")]
+        else:
+            logger.warning("[tracker] template match too poor (%.3f), no detection", best_val)
+            return []
     except Exception as e:
         logger.warning("[tracker] template matching error: %s", e)
         return []

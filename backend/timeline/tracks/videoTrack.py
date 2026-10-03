@@ -82,6 +82,7 @@ class VideoTrack(BaseTrack):
             "image": ImageClip,
             "text": TextClip,
             "shape": ShapeClip,
+            "solid": ShapeClip,
             "pen": PenClip,
             "svg": SvgClip,
             "comp": CompClip,

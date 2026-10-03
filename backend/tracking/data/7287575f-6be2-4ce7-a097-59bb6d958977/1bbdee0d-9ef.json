@@ -1,0 +1,28 @@
+{
+  "track_id": "1bbdee0d-9ef",
+  "clip_id": "7287575f-6be2-4ce7-a097-59bb6d958977",
+  "label": "text",
+  "detection_mode": "text",
+  "from_frame": 12,
+  "to_frame": 162,
+  "fps": 30.0,
+  "comp_w": 1920,
+  "comp_h": 1080,
+  "frames": {
+    "12": {
+      "cx": 251.0,
+      "cy": 257.0,
+      "w": 66.0,
+      "h": 26.0,
+      "confidence": 1.0
+    },
+    "13": {
+      "cx": 250.0,
+      "cy": 259.0,
+      "w": 66,
+      "h": 26,
+      "confidence": 0.9
+    }
+  },
+  "created_at": 1790807958.8497038
+}
