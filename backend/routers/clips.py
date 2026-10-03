@@ -260,6 +260,7 @@ def addShapeClip(req: ShapeClipRequest):
     track.addClip(clip)
     _clipTrackMap[clip.clipId] = tl.tracks.index(track)
     notify("timeline")
+    notify("render")
     return clip.toDict()
 
 
@@ -275,6 +276,7 @@ def updateShapeClip(clipId: str, req: ShapePatchRequest):
     if req.transform:
         from backend.animation.transform import Transform
         clip.transform = Transform.fromDict(req.transform)
+    notify("render")
     return clip.toDict()
 
 
