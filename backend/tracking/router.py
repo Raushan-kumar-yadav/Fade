@@ -290,15 +290,17 @@ def add_blur_track(req: AddBlurRequest):
         tl.tracks.append(new_tr)
         target_track = new_tr
 
-    # ── 3. Create a fully-opaque solid shape clip ─────────────────────────────
+    # ── 3. Create a Shape clip (standard shape tool) ──────────
+    from backend.timeline.clips.shapeClip import ShapeClip, ShapeStyle
+    
     style = ShapeStyle()
     style.shapeType   = "rect"
-    style.width       = init_w
-    style.height      = init_h
-    style.fillColor   = [0.0, 0.0, 0.0, 1.0]
+    style.width       = init_w   # Actual tracked box width
+    style.height      = init_h   # Actual tracked box height
+    style.fillColor   = [0.8, 0.2, 0.2, 1.0]  # Red color to distinguish it
     style.fillOpacity = 1.0
     style.strokeWidth = 0.0
-    style.cornerRadius = 2.0
+    style.cornerRadius = 0.0
 
     shape_clip = ShapeClip(
         clipId=str(uuid.uuid4()),
@@ -306,13 +308,19 @@ def add_blur_track(req: AddBlurRequest):
         duration=duration,
         style=style,
     )
+    
     shape_clip.transform.position.x.setBaseValue(init_cx)
     shape_clip.transform.position.y.setBaseValue(init_cy)
+    shape_clip.transform.scale.x.setBaseValue(1.0)
+    shape_clip.transform.scale.y.setBaseValue(1.0)
 
     target_track.clips.append(shape_clip)
     clip_id = shape_clip.clipId
 
-    # ── 4. Bake keyframes for position and size ───────────────────────────────
+    from backend.state import _clipTrackMap
+    _clipTrackMap[clip_id] = tl.tracks.index(target_track)
+
+    # ── 4. Bake keyframes for position (tracks face movement) ─────────────────
     BAKE_EVERY = 3
 
     sorted_frame_keys = sorted(frames.keys(), key=int)

@@ -33,47 +33,85 @@ class BBox(NamedTuple):
     label: str = ""
 
 
-#   MediaPipe Face  
-_mp_face = None
+#   MediaPipe Face (new Tasks API — mediapipe >= 0.10)
+_mp_face_detector = None
 
 def _get_mp_face():
-    global _mp_face
-    if _mp_face is None:
+    global _mp_face_detector
+    if _mp_face_detector is None:
         try:
             import mediapipe as mp
-            _mp_face = mp.solutions.face_detection.FaceDetection(
-                model_selection=1,          # 1 = full-range model
-                min_detection_confidence=0.5,
-            )
-        except ImportError:
-            logger.warning("[tracker] mediapipe not installed: pip install mediapipe")
-    return _mp_face
+            model_path = MODELS_DIR / "blaze_face_short_range.tflite"
+            if not model_path.exists():
+                logger.warning("[tracker] blaze_face_short_range.tflite not found at %s — downloading...", model_path)
+                try:
+                    import urllib.request
+                    url = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite"
+                    urllib.request.urlretrieve(url, str(model_path))
+                    logger.info("[tracker] downloaded face model to %s", model_path)
+                except Exception as dl_err:
+                    logger.warning("[tracker] failed to download face model: %s", dl_err)
+
+            if model_path.exists():
+                BaseOptions = mp.tasks.BaseOptions
+                FaceDetector = mp.tasks.vision.FaceDetector
+                FaceDetectorOptions = mp.tasks.vision.FaceDetectorOptions
+                RunningMode = mp.tasks.vision.RunningMode
+                options = FaceDetectorOptions(
+                    base_options=BaseOptions(model_asset_path=str(model_path)),
+                    running_mode=RunningMode.IMAGE,
+                    min_detection_confidence=0.2,
+                )
+                _mp_face_detector = FaceDetector.create_from_options(options)
+                logger.info("[tracker] MediaPipe FaceDetector (Tasks API) loaded")
+            else:
+                logger.warning("[tracker] face model not available, will use OpenCV fallback")
+        except Exception as e:
+            logger.warning("[tracker] MediaPipe face detector init error: %s", e)
+    return _mp_face_detector
 
 
 def detect_faces(frame_bgr) -> list[BBox]:
-    """Detect faces in a BGR frame. Returns list of BBox (pixel coords)."""
+    """Detect faces in a BGR frame using MediaPipe Tasks API. Falls back to OpenCV Haar cascade."""
     det = _get_mp_face()
-    if det is None:
-        return []
+    if det is not None:
+        try:
+            import mediapipe as mp
+            import cv2
+            h, w = frame_bgr.shape[:2]
+            rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+            mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            result = det.detect(mp_img)
+            if not result.detections:
+                return []
+            boxes = []
+            for d in result.detections:
+                bb = d.bounding_box
+                score = d.categories[0].score if d.categories else 0.9
+                boxes.append(BBox(float(bb.origin_x), float(bb.origin_y),
+                                  float(bb.width), float(bb.height),
+                                  float(score), "face"))
+            return boxes
+        except Exception as e:
+            logger.warning("[tracker] MediaPipe face detection error: %s", e)
+
+    # OpenCV Haar cascade fallback
     try:
         import cv2
-        h, w = frame_bgr.shape[:2]
-        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        res = det.process(rgb)
-        if not res.detections:
-            return []
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        cascade_path = str(MODELS_DIR / "haarcascade_frontalface_default.xml")
+        if not os.path.exists(cascade_path):
+            # Use OpenCV built-in
+            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        clf = cv2.CascadeClassifier(cascade_path)
+        faces = clf.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
         boxes = []
-        for d in res.detections:
-            bb = d.location_data.relative_bounding_box
-            x = bb.xmin * w
-            y = bb.ymin * h
-            bw = bb.width * w
-            bh = bb.height * h
-            score = d.score[0] if d.score else 0.9
-            boxes.append(BBox(x, y, bw, bh, float(score), "face"))
+        for (x, y, w, h) in faces:
+            boxes.append(BBox(float(x), float(y), float(w), float(h), 0.8, "face"))
+        logger.info("[tracker] OpenCV Haar cascade found %d faces", len(boxes))
         return boxes
     except Exception as e:
-        logger.warning("[tracker] face detection error: %s", e)
+        logger.warning("[tracker] OpenCV face detection error: %s", e)
         return []
 
 
