@@ -4663,7 +4663,7 @@ def sanitize_asset_pii(asset_id: str, auto_redact_all: bool = True) -> str:
       4. Swaps ALL timeline clips that referenced the original to the sanitized version.
       5. Marks the original as RESTRICTED and the sanitized copy as SANITIZED.
 
-    The original file is NOT deleted — it is marked RESTRICTED so AI tools
+    The original file is NOT deleted â€” it is marked RESTRICTED so AI tools
     will not use it again.
 
     Args:

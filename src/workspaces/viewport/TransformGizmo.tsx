@@ -136,9 +136,14 @@ export default function TransformGizmo({ currentFrame, activeTool, stageW, stage
   const visualMinY = localMinY + cropT * fittedH;
   const visualMaxY = localMaxY - cropB * fittedH;
  
-  const isImageVideo = (clip.type === 'image' || clip.type === 'video');
-  const originOffsetX = isImageVideo ? REND_W / 2 : 0;  // always 960 for img/vid
-  const originOffsetY = isImageVideo ? REND_H / 2 : 0;  // always 540 for img/vid
+  // ─ Origin offset: does the C++ renderer place this clip relative to canvas center?
+  // • shape → DrawShape.cpp:  translate(canvasW*0.5 + t.x, ...)  → YES center-based
+  // • pen   → DrawPen.cpp:    translate(canvasW*0.5 + t.x, ...)  → YES center-based
+  // • image/video → letterboxed, centered                         → YES center-based
+  // • text  → getCanonicalMatrix(t) = translate(t.x, t.y) directly → NO center offset
+  const isTextClip = clip.type === 'text';
+  const originOffsetX = isTextClip ? 0 : REND_W / 2;
+  const originOffsetY = isTextClip ? 0 : REND_H / 2;
 
   const applyMatrix = (pt: {x: number, y: number}) => {
     let nx = pt.x - ax; let ny = pt.y - ay;

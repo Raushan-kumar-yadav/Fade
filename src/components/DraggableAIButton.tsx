@@ -5,7 +5,14 @@ const STORAGE_KEY = 'fade:ai-btn-pos'
 function loadPos(): { x: number; y: number } {
   try {
     const s = localStorage.getItem(STORAGE_KEY)
-    if (s) return JSON.parse(s)
+    if (s) {
+      const p = JSON.parse(s)
+      // Clamp to current screen so a saved off-screen position never hides the button
+      return {
+        x: Math.max(0, Math.min(window.innerWidth  - 44, p.x)),
+        y: Math.max(0, Math.min(window.innerHeight - 44, p.y)),
+      }
+    }
   } catch {}
   return { x: window.innerWidth - 56, y: 42 }
 }
