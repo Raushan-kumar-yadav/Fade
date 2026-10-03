@@ -21,7 +21,7 @@ class ExportStartRequest(BaseModel):
     audioSampleRate:  int   = 48000
     audioChannels: int   = 2
     formatId: str   = "mp4-1080"
-    transparentBg:    bool  = False       # future: WebM alpha export
+    transparentBg:    bool  = False        
 
 
  

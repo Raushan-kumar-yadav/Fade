@@ -38,7 +38,7 @@ class BaseClip(ABC):
             print(f"[ANIM] evaluateAll  clip={self.clipId[:8]}({type(self).__name__})  "
                   f"timeline_frame={frame}  local_frame={lf}", flush=True)
 
-        # Resolve _timeline from engine if not provided (render path doesn't pass it)
+         
         if _timeline is None:
             try:
                 from backend.state import engine as _eng
@@ -46,15 +46,13 @@ class BaseClip(ABC):
             except Exception:
                 pass
 
-        # Step 1: push _anim_params keyframe values into _baseValue first.
-        # Keyframes stored at timeline frames, so evaluate with timeline frame.
+         
         if hasattr(self, '_anim_params'):
             for key, ap in self._anim_params.items():
                 val = ap.evaluate(frame) if ap.is_animated() else ap._base[0]
                 self.applyParam(key, val)
 
-        # Step 2: transform.evaluateAll reads _baseValue, applies expressions,
-        # writes _currentValue that the renderer reads via .get().
+         
         self.transform.evaluateAll(lf, _clip=self, _timeline=_timeline)
 
         for effect in self.effects:

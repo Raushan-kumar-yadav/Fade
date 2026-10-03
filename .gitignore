@@ -92,3 +92,8 @@ out.js
 out.css
 dom.html
 test.png
+
+# Large model archives - never commit
+AIModels.rar
+*.rar
+

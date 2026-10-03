@@ -1,4 +1,4 @@
-﻿#include "HeadlessCompositor.hpp"
+#include "HeadlessCompositor.hpp"
 
 #include "stb/stb_image.h"
 
@@ -237,7 +237,20 @@ void HeadlessCompositor::renderFrame(const FrameDescriptor &fd) {
   doRender(fd);
 }
 
-void HeadlessCompositor::doRender(const FrameDescriptor &fd) {
+void HeadlessCompositor::doRender(const FrameDescriptor &fdIn) {
+
+  FrameDescriptor fd = fdIn;
+  if (fd.width > 0 && m_width > 0 && m_width != fd.width) {
+    const float ps = static_cast<float>(m_width) / static_cast<float>(fd.width);
+    for (auto &c : fd.clips) {
+      c.transform.x *= ps;
+      c.transform.y *= ps;
+      if (c.type == ClipDesc::Type::Shape || c.type == ClipDesc::Type::Pen) {
+        c.transform.anchorX *= ps;
+        c.transform.anchorY *= ps;
+      }
+    }
+  }
 
   if (fd.clips.size() == 1) {
     const auto &clip = fd.clips[0];

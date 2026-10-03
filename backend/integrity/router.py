@@ -1,13 +1,4 @@
-﻿"""
-router.py - FastAPI endpoints for artifact integrity verification.
-
-Endpoints:
-  POST  /integrity/register   - register export + embed watermark
-  POST  /integrity/verify     - 3-layer verify (by file path)
-  GET   /integrity/proof/{id} - portable proof JSON
-  GET   /integrity/list       - all registered artifacts
-  POST  /integrity/audit      - validate ledger hash chain
-"""
+﻿ 
 from __future__ import annotations
 import os
 import tempfile
@@ -22,7 +13,7 @@ integrity_router = APIRouter(tags=["integrity"])
 _svc = ArtifactIntegrityService()
 
 
-# ── Request / Response models ─────────────────────────────────────────────────
+#   Request / Response models  
 
 class RegisterRequest(BaseModel):
     video_path:              str
@@ -32,7 +23,7 @@ class VerifyByPathRequest(BaseModel):
     video_path: str
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+#   Endpoints  
 
 @integrity_router.post("/register")
 def register_export(req: RegisterRequest):

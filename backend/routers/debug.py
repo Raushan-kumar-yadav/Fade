@@ -251,9 +251,7 @@ def patchAnimMethods():
     BaseClip.evaluateAll = _evaluateAll
     BaseClip.applyParam  = _applyParam
 
-    # Also patch subclass overrides — in the running process they still have
-    # `super().evaluateAll(frame, _timeline=_timeline)` which crashes with NameError.
-    # Replace each subclass override with a minimal one that calls the fixed super().
+ 
     from backend.timeline.clips import imageClip as _ic, videoClip as _vc
     try:
         from backend.timeline.clips import penClip as _pc

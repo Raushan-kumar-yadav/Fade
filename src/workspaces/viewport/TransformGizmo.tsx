@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSelection } from '../../context/selectionContext';
 import { useTimeline } from '../timeline/TimelineContext';
 import { inspectorApi, type ParamRow } from '../../api/inspectorApi';
-import { compositionToViewport, viewportToComposition } from './viewportUtils';
 
 function rotatePoint(px: number, py: number, cx: number, cy: number, angleDeg: number) {
   const rad = (angleDeg * Math.PI) / 180;
@@ -16,9 +15,13 @@ function rotatePoint(px: number, py: number, cx: number, cy: number, angleDeg: n
   };
 }
 
-export default function TransformGizmo({ currentFrame, activeTool }: { currentFrame: number, activeTool: string }) {
+export default function TransformGizmo({ currentFrame, activeTool, stageW, stageH }: { currentFrame: number, activeTool: string, stageW?: number, stageH?: number }) {
   const { selected, setSelected } = useSelection();
   const { state } = useTimeline();
+  // The stage (canvas) is comp-sized and the engine renders at comp aspect, so the
+  // SVG overlay must use the same coordinate space as the stage.
+  const compW = state.width || stageW || 1920;
+  const compH = state.height || stageH || 1080;
   const svgRef = useRef<SVGSVGElement>(null);
   
   const [params, setParams] = useState<ParamRow[]>([]);
@@ -35,12 +38,12 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     if (!svgRef.current) return;
     const observer = new ResizeObserver((entries) => {
       for (let entry of entries) {
-        setSvgScale(1920 / entry.contentRect.width);
+        setSvgScale(compW / entry.contentRect.width);
       }
     });
     observer.observe(svgRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [compW]);
 
   useEffect(() => {
     setMode('normal');
@@ -88,19 +91,17 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
   const ax = getParam('anchor_x', 0);
   const ay = getParam('anchor_y', 0);
  
-  const baseWidth  = getParam('base_width',  state.width  || 1920);
-  const baseHeight = getParam('base_height', state.height || 1080);
+  const baseWidth  = getParam('base_width',  compW);
+  const baseHeight = getParam('base_height', compH);
 
   const cropL = getParam('cropLeft', 0);
   const cropR = getParam('cropRight', 0);
   const cropT = getParam('cropTop', 0);
   const cropB = getParam('cropBottom', 0);
 
-  const compW = state.width || 1920;
-  const compH = state.height || 1080;
- 
-  const REND_W = 1920;
-  const REND_H = 1080;
+  // Renderer canvas == comp space
+  const REND_W = compW;
+  const REND_H = compH;
 
   let localMinX = 0, localMinY = 0, localMaxX = compW, localMaxY = compH;
   let imgW = compW, imgH = compH;       // native image pixels (from backend)
@@ -148,17 +149,13 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     const ry = nx * sinA + ny * cosA;
     const worldX = rx + ax + px + originOffsetX;
     const worldY = ry + ay + py + originOffsetY;
-    if (isImageVideo) {
-      // Already in 1920×1080 renderer space 
-      return { x: worldX, y: worldY };
-    }
-    return compositionToViewport(worldX, worldY, compW, compH);
+    // SVG space == comp space
+    return { x: worldX, y: worldY };
   };
 
   const inverseApplyMatrix = (svgPt: {x: number, y: number}) => {
- 
-    const worldX = isImageVideo ? svgPt.x : (viewportToComposition(svgPt.x, svgPt.y, compW, compH, false)?.x ?? svgPt.x);
-    const worldY = isImageVideo ? svgPt.y : (viewportToComposition(svgPt.x, svgPt.y, compW, compH, false)?.y ?? svgPt.y);
+    const worldX = svgPt.x;
+    const worldY = svgPt.y;
     let rx = worldX - ax - px - originOffsetX;
     let ry = worldY - ay - py - originOffsetY;
     const rad = -rot * Math.PI / 180;
@@ -177,23 +174,6 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     { x: visualMaxX, y: visualMaxY }, { x: visualMinX, y: visualMaxY }
   ].map(applyMatrix);
 
-  // DEBUG — remove after fixing offset
-  if (isImageVideo) {
-    console.log('[Gizmo]', {
-      clipType: clip.type,
-      compW, compH,
-      baseWidth, baseHeight,
-      fittedW, fittedH,
-      px, py, ax, ay, sx, sy, rot,
-      originOffsetX, originOffsetY,
-      localMinX, localMaxX,
-      visualMinX, visualMaxX,
-      topLeftSVG: vCorners[0],
-      topRightSVG: vCorners[1],
-      // C++ expected left edge  
-      expectedCppLeft: (compW / 2) - (fittedW / 2) + px,
-    });
-  }
 
 
 
@@ -211,7 +191,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     { x: localMaxX, y: localMaxY }, { x: localMinX, y: localMaxY }
   ].map(applyMatrix);
 
-  const dimPath = `M0,0 L1920,0 L1920,1080 L0,1080 Z M${vCorners[0].x},${vCorners[0].y} L${vCorners[3].x},${vCorners[3].y} L${vCorners[2].x},${vCorners[2].y} L${vCorners[1].x},${vCorners[1].y} Z`;
+  const dimPath = `M0,0 L${compW},0 L${compW},${compH} L0,${compH} Z M${vCorners[0].x},${vCorners[0].y} L${vCorners[3].x},${vCorners[3].y} L${vCorners[2].x},${vCorners[2].y} L${vCorners[1].x},${vCorners[1].y} Z`;
 
   const rotDist = 50 * svgScale;
   const radRot = rot * Math.PI / 180;
@@ -224,8 +204,8 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     if (!svgRef.current) return { x: 0, y: 0 };
     const rect = svgRef.current.getBoundingClientRect();
     return {
-      x: (e.clientX - rect.left) * (1920 / rect.width),
-      y: (e.clientY - rect.top) * (1080 / rect.height)
+      x: (e.clientX - rect.left) * (compW / rect.width),
+      y: (e.clientY - rect.top) * (compH / rect.height)
     };
   };
 
@@ -288,7 +268,7 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
          const dxLocal = inverseApplyMatrix(pt).x - inverseApplyMatrix(dragStartRef.current).x;
          const dyLocal = inverseApplyMatrix(pt).y - inverseApplyMatrix(dragStartRef.current).y;
          // SVG space  
-         const sf = isImageVideo ? 1 : Math.min(REND_W / compW, REND_H / compH);
+         const sf = 1;
          next.px += (pt.x - dragStartRef.current.x) / sf;
          next.py += (pt.y - dragStartRef.current.y) / sf;
          
@@ -462,13 +442,13 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
   let ty = minY - toolbarHeight - (16 * svgScale);
   if (ty < 0) {
       ty = maxY + (16 * svgScale);
-      if (ty + toolbarHeight > 1080) {
+      if (ty + toolbarHeight > compH) {
           ty = Math.max(0, minY + (16 * svgScale)); // clamp inside if massive
       }
   }
   
   let tx = (vCorners[0].x + vCorners[1].x) / 2 - (toolbarWidth / 2);
-  tx = Math.max(0, Math.min(1920 - toolbarWidth, tx));
+  tx = Math.max(0, Math.min(compW - toolbarWidth, tx));
 
   const toolbarPos = { x: tx, y: ty };
 
@@ -485,10 +465,10 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
     <svg 
       ref={svgRef} 
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 50 }} 
-      viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet"
+      viewBox={`0 0 ${compW} ${compH}`} preserveAspectRatio="xMidYMid meet"
     >
       <rect 
-        width={1920} height={1080} fill="transparent"
+        width={compW} height={compH} fill="transparent"
         pointerEvents="all" 
         onPointerDown={handleSvgPointerDown}
         onPointerMove={handlePointerMove}
@@ -510,11 +490,10 @@ export default function TransformGizmo({ currentFrame, activeTool }: { currentFr
             
             {/* Pivot Marker   */}
             {(() => {
-              const pivot = compositionToViewport(
-                ax + px + originOffsetX,
-                ay + py + originOffsetY,
-                compW, compH
-              );
+              const pivot = {
+                x: ax + px + originOffsetX,
+                y: ay + py + originOffsetY,
+              };
               return (
                 <>
                   <circle cx={pivot.x} cy={pivot.y} r={4 * svgScale} fill="#0f0" pointerEvents="none" />

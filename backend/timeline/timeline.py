@@ -122,14 +122,14 @@ class Timeline:
         t = cls(name=data["name"])
         t.timelineId = data["timelineId"]
         t.playheadFrame = data.get("playheadFrame", 0)
-        t.kind      = data.get("kind", "video")
+        t.kind = data.get("kind", "video")
         t.isHidden  = data.get("isHidden",  False)
         t.isDefault = data.get("isDefault", False)
         t.page_ids  = list(data.get("page_ids", []))
         t.totalFrames = data.get("totalFrames", 900)
-        t.fps       = data.get("fps", 30.0)
-        t.width     = data.get("width", 1920)
-        t.height    = data.get("height", 1080)
+        t.fps = data.get("fps", 30.0)
+        t.width = data.get("width", 1920)
+        t.height = data.get("height", 1080)
 
         for trackData in data.get("tracks", []):
             trackType = trackData.get("type", "video")

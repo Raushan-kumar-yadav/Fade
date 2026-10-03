@@ -1,13 +1,4 @@
-# backend/ai/task_queue.py
-"""
-In-memory task queue for Director → Worker agent dispatch.
-
-The Director agent creates compositions and dispatches tasks here.
-Background workers pick up tasks, run their specialized LangGraph agents,
-and write results back. Director polls for completion.
-
-Thread-safe via asyncio.Lock.
-"""
+ 
 from __future__ import annotations
 
 import asyncio
@@ -24,12 +15,12 @@ TaskStatus = Literal["pending", "running", "done", "failed", "cancelled"]
 class AgentTask:
     id:          str
     agent_type:  AgentType
-    job:         str          # natural language instruction
-    comp_id:     str | None = None   # composition to work in
-    doc_id:      str | None = None   # PDF doc id
-    platform:    str | None = None   # platform preset name
-    status:      TaskStatus = "pending"
-    result:      str | None = None   # summary of what was done / error
+    job: str          # natural language instruction
+    comp_id: str | None = None   # composition to work in
+    doc_id: str | None = None   # PDF doc id
+    platform: str | None = None   # platform preset name
+    status: TaskStatus = "pending"
+    result: str | None = None   # summary of what was done / error
     created_at:  str = field(default_factory=lambda: datetime.utcnow().isoformat())
     started_at:  str | None = None
     finished_at: str | None = None
@@ -122,7 +113,7 @@ class TaskQueue:
         return "\n".join(lines)
 
 
-# ── Singleton ──────────────────────────────────────────────────────────────────
+# Singleton  
 _queue: TaskQueue | None = None
 
 def get_task_queue() -> TaskQueue:

@@ -70,10 +70,10 @@ def _env(key: str, default: str = "") -> str:
 def _is_configured(provider: str) -> bool:
     """Return True if the minimum env vars for this provider are present."""
     checks: dict[str, list[str]] = {
-        "youtube":   ["GOOGLE_CLIENT_ID",  "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
-        "instagram": ["INSTAGRAM_APP_ID",   "INSTAGRAM_APP_SECRET"],
-        "linkedin":  ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
-        "gmail":     ["GMAIL_CLIENT_ID",    "GMAIL_CLIENT_SECRET"],
+        "youtube": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
+        "instagram": ["INSTAGRAM_APP_ID", "INSTAGRAM_APP_SECRET"],
+        "linkedin": ["LINKEDIN_CLIENT_ID", "LINKEDIN_CLIENT_SECRET"],
+        "gmail": ["GMAIL_CLIENT_ID", "GMAIL_CLIENT_SECRET"],
     }
     required = checks.get(provider, [])
     return all(_env(k) for k in required)
@@ -199,7 +199,7 @@ def _exchange_youtube(code: str) -> dict:
         )
         items = yt.get("items", [])
         if items:
-            channel_id   = items[0]["id"]
+            channel_id = items[0]["id"]
             channel_name = items[0]["snippet"]["title"]
     except Exception as exc:
         print(f"[Integrations] YouTube channel fetch warning: {exc}", flush=True)
@@ -215,11 +215,11 @@ def _exchange_youtube(code: str) -> dict:
 def _exchange_gmail(code: str) -> dict:
     """Exchange code, return {access_token, refresh_token, channel_name (email)}."""
     token_data = _post_form("https://oauth2.googleapis.com/token", {
-        "code":          code,
+        "code": code,
         "client_id": _env("GMAIL_CLIENT_ID"),
         "client_secret": _env("GMAIL_CLIENT_SECRET"),
-        "redirect_uri":  _redirect_uri("gmail"),
-        "grant_type":    "authorization_code",
+        "redirect_uri": _redirect_uri("gmail"),
+        "grant_type": "authorization_code",
     })
     access_token  = token_data.get("access_token", "")
     refresh_token = token_data.get("refresh_token", "")
@@ -236,10 +236,10 @@ def _exchange_gmail(code: str) -> dict:
         print(f"[Integrations] Gmail userinfo warning: {exc}", flush=True)
 
     return {
-        "access_token":  access_token,
+        "access_token": access_token,
         "refresh_token": refresh_token,
         "channel_id": account_email,   # reuse channel_id col for email
-        "channel_name":  account_email,
+        "channel_name": account_email,
     }
 
 
@@ -288,7 +288,7 @@ def _exchange_instagram(code: str) -> dict:
             "client_id": _env("INSTAGRAM_APP_ID"),
             "client_secret": _env("INSTAGRAM_APP_SECRET"),
             "grant_type": "authorization_code",
-            "redirect_uri":  _env("INSTAGRAM_REDIRECT_URI", _redirect_uri("instagram")),
+            "redirect_uri": _env("INSTAGRAM_REDIRECT_URI", _redirect_uri("instagram")),
             "code": code,
         },
     )
@@ -393,16 +393,16 @@ def _get_safe_status(provider: str) -> dict:
     if row is None:
         return {
             "provider": provider,
-            "connected":   False,
-            "configured":  _is_configured(provider),
+            "connected": False,
+            "configured": _is_configured(provider),
             "accountName": None,
             "connectedAt": None,
         }
 
     return {
-        "provider":    provider,
-        "connected":   bool(row["connected"]),
-        "configured":  _is_configured(provider),
+        "provider": provider,
+        "connected": bool(row["connected"]),
+        "configured": _is_configured(provider),
         "accountName": row["channel_name"] or None,
         "connectedAt": row["connected_at"] if "connected_at" in row.keys() else None,
     }

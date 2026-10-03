@@ -708,6 +708,8 @@ export default function ViewportWidget() {
             <TransformGizmo
               currentFrame={currentFrame}
               activeTool={activeTool}
+              stageW={nativeDims.w}
+              stageH={nativeDims.h}
             />
           )}
           
