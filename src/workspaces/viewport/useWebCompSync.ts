@@ -17,11 +17,12 @@ function base(): string {
 }
 
  
-const PREFETCH_AHEAD = 6;
+const PREFETCH_AHEAD = 30;    // ~1 s at 30fps (was 6 — too small, caused starvation)
 const PREWARM_AHEAD = 90;   
-const PREWARM_FRAMES = 12;
+const PREWARM_FRAMES = 30;    // pre-warm more frames when clip is approaching
 const PARAMS_SETTLE_MS = 300;
-const TICK_SLEEP_MS    = 30;
+const TICK_SLEEP_MS    = 8;   // faster polling (was 30ms — too slow vs 33ms/frame)
+const MAX_PARALLEL     = 4;   // fire up to N captures concurrently per tick
 
 function sleep(ms: number) {
   return new Promise<void>(r => setTimeout(r, ms));
@@ -50,27 +51,31 @@ export function useWebCompSync() {
       // Detect seek/loop 
       const delta = newFrame - oldFrame;
       if (delta < 0 || delta > PREFETCH_AHEAD + 2) {
-        // Playhead jumped  
+        // Playhead jumped — clear caches and aggressively pre-fill
         for (const set of pushedRef.current.values()) set.clear();
         for (const set of pendingRef.current.values()) set.clear();
 
-         
+        // Fire burst of captures in parallel for the next several frames
         if (api?.webcompPushToNative) {
           for (const clip of wcClipsRef.current) {
-            const srcFrame = newFrame - clip.startFrame;
-            if (srcFrame < 0 || srcFrame >= clip.duration) continue;
             const pushed  = pushedRef.current.get(clip.webcompId);
             const pending = pendingRef.current.get(clip.webcompId);
             if (!pushed || !pending) continue;
-            if (pushed.has(srcFrame) || pending.has(srcFrame)) continue;
-            pending.add(srcFrame);
-            const capSrc = srcFrame;
-            api.webcompPushToNative(clip.webcompId, capSrc, clip.width, clip.height)
-              .then((ok: boolean) => {
-                pending.delete(capSrc);
-                if (ok) pushed.add(capSrc);
-              })
-              .catch(() => { pending.delete(capSrc); });
+
+            // Capture current + next PREFETCH_AHEAD frames in parallel
+            for (let d = 0; d < Math.min(PREFETCH_AHEAD, clip.duration); d++) {
+              const srcFrame = (newFrame + d) - clip.startFrame;
+              if (srcFrame < 0 || srcFrame >= clip.duration) continue;
+              if (pushed.has(srcFrame) || pending.has(srcFrame)) continue;
+              pending.add(srcFrame);
+              const capSrc = srcFrame;
+              api.webcompPushToNative(clip.webcompId, capSrc, clip.width, clip.height)
+                .then((ok: boolean) => {
+                  pending.delete(capSrc);
+                  if (ok) pushed.add(capSrc);
+                })
+                .catch(() => { pending.delete(capSrc); });
+            }
           }
         }
       }
@@ -83,17 +88,18 @@ export function useWebCompSync() {
     };
   }, []);
 
-  /*   On seek/stop */
+  /*   On seek/stop — DON'T clear pushedRef here.
+       Electron's frameCache + C++ cache still hold the frames.
+       Only params-change (which invalidates content) should clear pushed.
+       The seek handler in onFrame already handles backward jumps. */
   useEffect(() => {
     const onReset = () => {
-      for (const set of pushedRef.current.values()) set.clear();
-    
+      // Only clear pending (in-flight) captures to avoid stale results
+      for (const set of pendingRef.current.values()) set.clear();
     };
-    window.addEventListener('fade:seek',  onReset);
     window.addEventListener('fade:stop',  onReset);
     window.addEventListener('fade:reset', onReset);
     return () => {
-      window.removeEventListener('fade:seek',  onReset);
       window.removeEventListener('fade:stop',  onReset);
       window.removeEventListener('fade:reset', onReset);
     };
@@ -154,9 +160,12 @@ export function useWebCompSync() {
  
         for (const clip of clips) {
  
+          // Fire up to MAX_PARALLEL captures concurrently per tick
+          let fired = 0;
           for (let delta = 0; delta <= PREFETCH_AHEAD; delta++) {
             if (ctrl.signal.aborted) break;
             if (Date.now() < settleUntilRef.current) break;
+            if (fired >= MAX_PARALLEL) break;
 
             const absFrame = cur + delta;
             const srcFrame = absFrame - clip.startFrame;
@@ -165,7 +174,7 @@ export function useWebCompSync() {
             if (pushed.has(srcFrame) || pending.has(srcFrame)) continue;
 
             pending.add(srcFrame);
-
+            fired++;
 
             const capGen = myGen;
             api.webcompPushToNative(
@@ -181,7 +190,7 @@ export function useWebCompSync() {
               }
               if (ok) {
                 pushed.add(srcFrame);
-                if (pushed.size > 120) {
+                if (pushed.size > 300) {
                   const oldest = pushed.values().next().value;
                   if (oldest !== undefined) pushed.delete(oldest);
                 }

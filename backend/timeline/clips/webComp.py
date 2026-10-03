@@ -38,7 +38,20 @@ class WebCompClip(BaseClip):
             from backend.state import _webcompExportCache
             entry = _webcompExportCache.get((self.webcompId, frame))
             if not entry:
-                return
+                # O(1) fallback: show last rendered frame for this webcomp
+                # instead of scanning entire cache dict (was 35-55ms per frame)
+                if not hasattr(WebCompClip, '_lastGoodFrame'):
+                    WebCompClip._lastGoodFrame = {}
+                last = WebCompClip._lastGoodFrame.get(self.webcompId)
+                if last is not None:
+                    entry = _webcompExportCache.get((self.webcompId, last))
+                if not entry:
+                    return
+            else:
+                # Remember this frame as the last good one
+                if not hasattr(WebCompClip, '_lastGoodFrame'):
+                    WebCompClip._lastGoodFrame = {}
+                WebCompClip._lastGoodFrame[self.webcompId] = frame
             import skia
             raw = entry["rgba"]
             w = entry["width"]

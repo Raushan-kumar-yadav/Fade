@@ -9,13 +9,12 @@ interface WebCompInstance {
   frameCache: Map<number, Buffer>
   ready: boolean
   readyPromise: Promise<void>
-  // Serializes concurrent captures: only one executeJavaScript+capturePage
-  // runs at a time per instance, preventing FADE_FRAME races.
+ 
   captureQueue: Promise<Buffer | null>
 }
 
 const instances = new Map<string, WebCompInstance>()
-const MAX_CACHE_FRAMES = 360  // ~12 s at 30fps; JS-side LRU before C++ cache fills
+const MAX_CACHE_FRAMES = 600  // ~20 s at 30fps; increased to support larger prefetch window
 
 export async function createWebComp(
   webcompId: string, htmlUrl: string,
