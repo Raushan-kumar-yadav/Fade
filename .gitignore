@@ -87,7 +87,7 @@ AIModels/tesseract/
 pii/sanitized_output/
 **/sanitized_*.report.json
 
-# Build artifacts — never commit
+# Build artifacts - never commit
 out.js
 out.css
 dom.html
