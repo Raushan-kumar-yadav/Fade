@@ -319,6 +319,14 @@ try:
 except ImportError as _ai_err:
     print(f"[main] AI router not available: {_ai_err}", flush=True)
 
+# AI Task Plan router
+try:
+    from backend.ai.task_router import task_router
+    app.include_router(task_router)
+    print("[main] AI Task Plan router mounted at /ai/plans", flush=True)
+except ImportError as _tp_err:
+    print(f"[main] AI Task Plan router not available: {_tp_err}", flush=True)
+
 # MCP Remote Control router
 try:
     from backend.routers.mcp_remote_router import mcp_remote_router

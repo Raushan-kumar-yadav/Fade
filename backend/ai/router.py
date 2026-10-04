@@ -180,10 +180,95 @@ async def ai_chat(req: ChatRequest):
             if not ok:
                 yield f"data: {json.dumps({'type': 'error', 'message': err})}\n\n"
                 return
-            # Use sanitized message (may differ from original if injection was found)
             scanned_message = safe_message
-            # ─────────────────────────────────────────────────────────
 
+            # ── Intent classification ────────────────────────────────
+            from backend.ai.intent_classifier import classify_intent, Intent, intent_summary
+            from backend.ai import task_store as _store
+
+            active_plan = _store.get_active_plan()
+            intent = classify_intent(scanned_message, has_active_plan=active_plan is not None)
+            print(f"[AI Router] Intent: {intent.value} ({intent_summary(intent)})", flush=True)
+
+            # ── Handle plan-management intents ───────────────────────
+            if intent == Intent.CHECK_PROGRESS:
+                if active_plan:
+                    from backend.ai.planner import format_plan_for_display
+                    plan_text = format_plan_for_display(active_plan)
+                    yield f"data: {json.dumps({'type': 'token', 'content': plan_text})}\n\n"
+                    yield f"data: {json.dumps({'type': 'plan_update', 'plan': active_plan.to_dict()})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'token', 'content': 'No active plan. Ask me to do something complex and I will create a step-by-step plan.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            if intent == Intent.CANCEL_TASK:
+                if active_plan:
+                    for step in active_plan.steps:
+                        if step.status in ("pending", "running"):
+                            _store.update_step_status(step.step_id, "skipped")
+                    _store.update_plan_status(active_plan.plan_id, "failed")
+                    yield f"data: {json.dumps({'type': 'token', 'content': f'Plan cancelled: {active_plan.goal}'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'plan_update', 'plan': _store.get_plan(active_plan.plan_id).to_dict()})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'token', 'content': 'No active plan to cancel.'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            if intent == Intent.CONTINUE_TASK and active_plan:
+                # Resume: inject the plan context into the message
+                next_step = active_plan.next_pending_step
+                if next_step:
+                    scanned_message = (
+                        f"[CONTINUING PLAN: {active_plan.goal}]\n"
+                        f"Current step ({next_step.order + 1}/{len(active_plan.steps)}): "
+                        f"{next_step.description}\n"
+                        f"Tool to use: {next_step.tool_name}\n"
+                        f"Execute this step now."
+                    )
+                    _store.update_step_status(next_step.step_id, "running")
+                    yield f"data: {json.dumps({'type': 'plan_step', 'step_id': next_step.step_id, 'status': 'running', 'description': next_step.description})}\n\n"
+                else:
+                    _store.update_plan_status(active_plan.plan_id, "done")
+                    yield f"data: {json.dumps({'type': 'token', 'content': 'All steps are complete! The plan is done.'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'plan_update', 'plan': _store.get_plan(active_plan.plan_id).to_dict()})}\n\n"
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+
+            # ── Complex task: generate plan first ────────────────────
+            if intent == Intent.COMPLEX_TASK:
+                yield f"data: {json.dumps({'type': 'status', 'phase': 'planning', 'label': 'Creating plan...'})}\n\n"
+                
+                from backend.ai.planner import generate_plan_with_llm, format_plan_for_display
+                plan = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: generate_plan_with_llm(scanned_message, req.agent)
+                )
+
+                # Show the plan to the user
+                plan_text = format_plan_for_display(plan)
+                yield f"data: {json.dumps({'type': 'token', 'content': plan_text})}\n\n"
+                yield f"data: {json.dumps({'type': 'plan_created', 'plan': plan.to_dict()})}\n\n"
+
+                # Start executing the first step
+                first_step = plan.next_pending_step
+                if first_step:
+                    _store.update_step_status(first_step.step_id, "running")
+                    yield f"data: {json.dumps({'type': 'plan_step', 'step_id': first_step.step_id, 'status': 'running', 'description': first_step.description})}\n\n"
+                    scanned_message = (
+                        f"[EXECUTING PLAN: {plan.goal}]\n"
+                        f"Step {first_step.order + 1}/{len(plan.steps)}: "
+                        f"{first_step.description}\n"
+                        f"Tool to use: {first_step.tool_name}\n"
+                        f"Execute this step now. After completing it, tell the user "
+                        f"what you did and that they can say 'continue' for the next step."
+                    )
+                    active_plan = plan  # for step tracking below
+
+            # ── Standard LangGraph execution ─────────────────────────
             from backend.ai.agent_registry import get_specialized_agent
             agent = get_specialized_agent(req.agent, req.port)
 
@@ -197,9 +282,18 @@ async def ai_chat(req: ChatRequest):
             messages.append(HumanMessage(content=scanned_message))
 
             # Emit initial thinking status
-            yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking…'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking...'})}\n\n"
 
             last_phase = "thinking"
+            current_step = None
+
+            # Track which step we're executing (for plan-aware mode)
+            if active_plan and active_plan.status == "executing":
+                current_step = active_plan.next_pending_step
+                if current_step and current_step.status == "running":
+                    pass  # already marked running
+                elif current_step:
+                    _store.update_step_status(current_step.step_id, "running")
 
             # Stream events from LangGraph
             async for event in agent.astream_events(
@@ -216,7 +310,7 @@ async def ai_chat(req: ChatRequest):
                     if text:
                         if last_phase != "responding":
                             last_phase = "responding"
-                            yield f"data: {json.dumps({'type': 'status', 'phase': 'responding', 'label': 'Responding…'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'status', 'phase': 'responding', 'label': 'Responding...'})}\n\n"
                         yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
 
                 # Tool call start
@@ -234,8 +328,24 @@ async def ai_chat(req: ChatRequest):
                     output = event["data"].get("output", "")
                     content = str(output) if not isinstance(output, str) else output
                     last_phase = "thinking"
-                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking…'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking...'})}\n\n"
                     yield f"data: {json.dumps({'type': 'tool_result', 'name': name, 'content': content})}\n\n"
+
+            # ── Post-execution: update plan step status ──────────────
+            if current_step and active_plan:
+                _store.update_step_status(current_step.step_id, "done")
+                yield f"data: {json.dumps({'type': 'plan_step', 'step_id': current_step.step_id, 'status': 'done', 'description': current_step.description})}\n\n"
+                
+                # Refresh plan and check completion
+                updated_plan = _store.get_plan(active_plan.plan_id)
+                if updated_plan:
+                    remaining = updated_plan.progress["pending"]
+                    if remaining == 0:
+                        _store.update_plan_status(updated_plan.plan_id, "done")
+                        total = updated_plan.progress["total"]
+                        done_msg = f"\n\n**Plan complete!** All {total} steps finished."
+                        yield f"data: {json.dumps({'type': 'token', 'content': done_msg})}\n\n"
+                    yield f"data: {json.dumps({'type': 'plan_update', 'plan': updated_plan.to_dict()})}\n\n"
 
             yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -243,17 +353,25 @@ async def ai_chat(req: ChatRequest):
         except Exception as e:
             import traceback
             err_str = str(e)
-            # Classify the error for a friendly user message
+ 
             if any(k in type(e).__name__ for k in ("Timeout", "TimeoutError")):
-                msg = "⏱️ The AI model took too long to respond. The free model may be busy — please try again."
+                msg = "The AI model took too long to respond. The free model may be busy -- please try again."
             elif "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower():
-                msg = "⚠️ Rate limit reached on the AI model. Wait a moment and try again."
+                msg = "Rate limit reached on the AI model. Wait a moment and try again."
             elif "connect" in err_str.lower() or "connection" in err_str.lower():
-                msg = "🔌 Could not connect to the AI model. Check your internet connection."
+                msg = "Could not connect to the AI model. Check your internet connection."
             else:
                 traceback.print_exc()
                 msg = f"AI error: {err_str}"
             print(f"[AI Router] error: {msg}", flush=True)
+
+ 
+            try:
+                if current_step is not None and active_plan is not None:
+                    _store.update_step_status(current_step.step_id, "failed", error=msg)
+            except Exception:
+                pass
+
             yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
             yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
 

@@ -58,6 +58,28 @@ def copy_all_tracks_to(dest_dir: str | Path) -> int:
     return count
 
 
+def load_all_tracks() -> int:
+    """Scan _DATA_DIR for JSON sidecars and load them into the in-memory registry.
+    Called by project.py when loading a project that has bundled tracking data."""
+    count = 0
+    with _reg_lock:
+        _registry.clear()
+    for clip_dir in _DATA_DIR.iterdir():
+        if not clip_dir.is_dir():
+            continue
+        for json_file in clip_dir.glob("*.json"):
+            try:
+                data = json.loads(json_file.read_text(encoding="utf-8"))
+                tid = data.get("track_id", json_file.stem)
+                with _reg_lock:
+                    _registry[tid] = data
+                count += 1
+            except Exception as e:
+                print(f"[tracking] Failed to load {json_file}: {e}", flush=True)
+    print(f"[tracking] Loaded {count} tracks from {_DATA_DIR}", flush=True)
+    return count
+
+
 def get_track(track_id: str) -> dict | None:
     with _reg_lock:
         return _registry.get(track_id)
