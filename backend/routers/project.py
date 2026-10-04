@@ -288,15 +288,25 @@ def saveProject(req: SaveRequest):
     proj_dict["chromaDbBundled"] = True
     proj_dict["chromaDbChunks"] = chroma_chunks
 
-    #   Tracking data — copy to project folder  
+    #   Tracking data — write only current project's tracks to project folder  
     try:
-        from backend.tracking.service import copy_all_tracks_to, set_data_dir
+        from backend.tracking.service import copy_all_tracks_to
         tracking_dest = proj_folder / "tracking"
-        track_count = copy_all_tracks_to(tracking_dest)
-        set_data_dir(tracking_dest)  # future saves go here directly
+
+        # Collect all clip IDs from every timeline in this project
+        current_clip_ids: set[str] = set()
+        for timeline in all_timelines:
+            for track in timeline.tracks:
+                for clip in track.clips:
+                    cid = getattr(clip, "clipId", None) or getattr(clip, "clip_id", None)
+                    if cid:
+                        current_clip_ids.add(cid)
+
+        track_count = copy_all_tracks_to(tracking_dest, clip_ids=current_clip_ids)
         proj_dict["trackingDataBundled"] = True
         proj_dict["trackingDataCount"] = track_count
-        print(f"[Project] Tracking data: {track_count} tracks saved to {tracking_dest}", flush=True)
+        print(f"[Project] Tracking data: {track_count} tracks saved to {tracking_dest} "
+              f"(filtered to {len(current_clip_ids)} project clips)", flush=True)
     except Exception as e:
         print(f"[Project] Tracking data save failed (non-fatal): {e}", flush=True)
         proj_dict["trackingDataBundled"] = False

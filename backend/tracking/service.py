@@ -39,22 +39,31 @@ def set_data_dir(new_dir: str | Path) -> None:
     print(f"[tracking] data dir switched to: {_DATA_DIR}", flush=True)
 
 
-def copy_all_tracks_to(dest_dir: str | Path) -> int:
-    """Copy all in-registry tracks to dest_dir, preserving clip_id subdirs.
-    Returns number of tracks copied."""
+def copy_all_tracks_to(dest_dir: str | Path, clip_ids: set[str] | None = None) -> int:
+    """Write in-registry tracks to dest_dir, preserving clip_id subdirs.
+
+    Args:
+        dest_dir: Destination directory.
+        clip_ids: If given, only copy tracks whose clip_id is in this set
+                  (i.e. only current project's clips). If None, copy all.
+    Returns:
+        Number of tracks written.
+    """
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
     count = 0
     with _reg_lock:
         for tid, data in _registry.items():
             clip_id = data.get("clip_id", "unknown")
+            if clip_ids is not None and clip_id not in clip_ids:
+                continue  # skip tracks from other projects
             sub = dest / clip_id
             sub.mkdir(parents=True, exist_ok=True)
             out_path = sub / f"{tid}.json"
             out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             count += 1
-            print(f"[tracking] copied track {tid} -> {out_path}", flush=True)
-    logger.info("[tracking] copied %d tracks to %s", count, dest)
+            print(f"[tracking] saved track {tid} -> {out_path}", flush=True)
+    logger.info("[tracking] saved %d tracks to %s", count, dest)
     return count
 
 
@@ -267,16 +276,12 @@ def start_track_job(
             with _reg_lock:
                 _registry[track_id] = track_record
 
-            # Save JSON sidecar
-            sidecar_path = _sidecar(clip_id, track_id)
-            sidecar_path.write_text(
-                json.dumps(track_record, indent=2), encoding="utf-8"
-            )
-
+            # Tracks are stored in RAM only — written to disk on project save.
+            # Do NOT write to backend/tracking/data here.
             _jobs.finish_job(job, track_id)
             print(f"[tracking] DONE job={job_id} track={track_id} "
-                  f"frames={len(frame_data)} sidecar={sidecar_path}", flush=True)
-            logger.info("[tracking] job %s done → track_id=%s (%d frames)",
+                  f"frames={len(frame_data)} (RAM only, write on save)", flush=True)
+            logger.info("[tracking] job %s done -> track_id=%s (%d frames)",
                         job_id, track_id, len(frame_data))
 
         except Exception as e:
@@ -300,8 +305,9 @@ def _detect(frame, mode: str, text_pattern: str, template_path: str | None) -> l
     return []
 
 
-def _sidecar(clip_id: str, track_id: str) -> Path:
-    d = _DATA_DIR / clip_id
+def _sidecar_path(dest_dir: Path, clip_id: str, track_id: str) -> Path:
+    """Return the sidecar path inside a given destination directory."""
+    d = dest_dir / clip_id
     d.mkdir(parents=True, exist_ok=True)
     return d / f"{track_id}.json"
 
