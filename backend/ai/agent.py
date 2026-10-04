@@ -933,52 +933,73 @@ def _trim_messages(messages: list) -> list:
 #   Graph builder  
 
 def _build_skill_context() -> str:
-    """Dynamically build a skills section for the system prompt.
-    Re-reads the registry live so new imported skills appear immediately."""
+    """Dynamically build a rich skills section for the system prompt.
+    Re-reads the registry live so newly imported skills appear immediately.
+    The registry reads ALL .md files from backend/ai/skills/ — no hardcoding.
+    """
     try:
-        from backend.ai.skill_loader import skill_registry
-        skills = skill_registry.list_skills()
-    except Exception:
-        skills = []
+        from backend.ai.skill_loader import skill_registry, SKILLS_DIR
+        skills_raw = skill_registry.list_skills()
+        # Also get full SkillDef objects for richer info
+        all_skills = [skill_registry.get(s["name"]) for s in skills_raw]
+        all_skills = [s for s in all_skills if s is not None]
+    except Exception as e:
+        return f"SKILLS:\nSkill registry unavailable: {e}"
 
-    if not skills:
+    if not all_skills:
         return (
             "SKILLS:\n"
-            "No skill files are currently loaded. The user can import .md skill files "
-            "via Settings > Skills."
+            "No skill files are currently loaded in backend/ai/skills/.\n"
+            "The user can import .md skill files via Settings > Skills tab.\n"
+            "Use the read_skill(name) tool once skills are loaded to read their content."
         )
 
     lines = [
-        "SKILLS — AUTOMATED MULTI-STEP WORKFLOWS:",
+        f"SKILLS — {len(all_skills)} AUTOMATED WORKFLOW(S) LOADED FROM DISK:",
+        f"Skill files live in: backend/ai/skills/  (any .md added there is auto-indexed)",
         "",
-        "You have access to pre-built skill workflows stored as .md files.",
-        "When the user's request matches a skill, the system AUTOMATICALLY detects it,",
-        "builds a step-by-step plan, and executes it with live progress in the chat.",
-        "You DO have access to these skill files and workflows — they run automatically.",
+        "You HAVE access to these skill workflows. They are read from .md files on disk.",
+        "The system auto-detects which skill to run based on the user's message.",
+        "Use list_skills() to get live list, read_skill(name) to read a skill's full .md content.",
         "",
-        "Loaded skills (auto-detected from user message):",
     ]
-    for s in skills:
-        triggers = s.get("triggers", [])[:3]
-        trigger_str = " | ".join(f'"{t}"' for t in triggers)
-        lines.append(
-            f"  - {s['name']}  ({s['steps']} steps)  triggers: {trigger_str}"
-        )
+
+    for skill in all_skills:
+        step_names = " -> ".join(s.name for s in skill.steps)
+        all_triggers = " | ".join(f'"{t}"' for t in skill.triggers)
+        lines += [
+            f"{'='*50}",
+            f"SKILL: {skill.name}  (v{skill.version}, {len(skill.steps)} steps)",
+            f"  Description: {skill.description[:200].strip()}",
+            f"  Triggers:    {all_triggers}",
+            f"  Steps:       {step_names}",
+            f"  Checkpoints: steps {list(skill.checkpoints.keys())}",
+            "",
+        ]
 
     lines += [
+        f"{'='*50}",
+        "HOW SKILL EXECUTION WORKS:",
+        "  1. User message matches a trigger -> system emits 'skill_detected' event",
+        "  2. plan_from_skill() converts the .md steps into a persisted SQLite TaskPlan",
+        "  3. PlanWidget shows each step live in the chat UI with progress %",
+        "  4. Each step runs a focused single-tool agent call with step-scoped context",
+        "  5. Steps checkpoint to SQLite — safe to pause/resume/retry per step",
         "",
-        "HOW SKILLS WORK:",
-        "  1. User says something matching a trigger phrase (e.g. 'make an educational video')",
-        "  2. System detects the skill and shows you: 'Skill detected: educational_video'",
-        "  3. A step-by-step plan is created and shown to the user in the Plan Widget",
-        "  4. Each step executes automatically with live progress updates",
-        "  5. You can manage the plan mid-execution using these tools:",
-        "     get_current_plan(), skip_plan_step(), retry_plan_step(),",
-        "     insert_plan_step(), edit_plan_step(), pause_current_plan(), resume_current_plan()",
+        "PLAN MANAGEMENT (you can call these mid-execution):",
+        "  get_current_plan()        — view all steps + their current status",
+        "  skip_plan_step(step_id)   — skip a step that's blocking progress",
+        "  retry_plan_step(step_id)  — re-run a failed step",
+        "  insert_plan_step(...)     — add a new step at any position",
+        "  edit_plan_step(step_id)   — change a step's description or tool",
+        "  pause_current_plan()      — pause after current step completes",
+        "  resume_current_plan()     — resume a paused plan",
         "",
-        "IMPORTANT: When a skill runs, acknowledge it naturally:",
-        "  'I've detected the educational_video skill — executing the 10-step workflow now.'",
-        "  Do NOT say you cannot access skill files. They exist and are loaded above.",
+        "IMPORTANT — how to talk about skills:",
+        "  When asked 'do you have any skills?': list them by name with their descriptions.",
+        "  When asked about a specific skill: call read_skill(name) for full .md content.",
+        "  When a skill is triggered: say 'Skill detected: X — running N-step workflow...'",
+        "  NEVER say you don't have access to skill files. They are loaded above.",
     ]
     return "\n".join(lines)
 

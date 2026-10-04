@@ -4742,3 +4742,8 @@ ALL_TOOLS.extend(PLAN_TOOLS)
 from backend.ai.bg_remove_tools import BG_REMOVE_TOOLS  # noqa: E402
 ALL_TOOLS.extend(BG_REMOVE_TOOLS)
 
+
+# Skill management tools
+from backend.ai.skill_tools import SKILL_TOOLS  # noqa: E402
+ALL_TOOLS.extend(SKILL_TOOLS)
+

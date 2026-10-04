@@ -27,6 +27,11 @@ _KNOWN_TOOLS = [
     "list_tracks_for_clip", "delete_track",
     "add_blur_to_track", "add_follow_to_track",
     "track_and_blur_face", "track_and_blur_text",
+    # Skill management
+    "list_skills", "read_skill", "reload_skills",
+    # Background removal
+    "remove_background_from_image", "remove_background_from_video",
+    "check_bg_remove_job", "get_bg_remove_models",
 ]
 
 PLANNER_SYSTEM = """\
