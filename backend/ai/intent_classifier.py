@@ -1,6 +1,10 @@
  
 from __future__ import annotations
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.ai.skill_loader import SkillDef
 
 
 class Intent(str, Enum):
@@ -107,3 +111,71 @@ def intent_summary(intent: Intent) -> str:
         Intent.CHECK_PROGRESS: "Check plan progress",
         Intent.CANCEL_TASK: "Cancel active plan",
     }.get(intent, "Unknown")
+
+
+# ── LLM Skill Classifier ─────────────────────────────────────────────────────
+
+def classify_skill_with_llm(
+    message: str,
+    skills: "list[SkillDef]",
+    llm,
+) -> "SkillDef | None":
+    """Ask LLM to map a user request to the best matching skill.
+
+    Only called when keyword matching fails. Uses a single short LLM call
+    (~50 output tokens) — fast and cheap. Returns None if no skill fits well.
+
+    Args:
+        message: The user's raw message.
+        skills:  List of all loaded SkillDef objects.
+        llm:     Pre-built LLM instance (reuse existing, no rebuild cost).
+
+    Returns:
+        The best matching SkillDef, or None if no good match found.
+    """
+    if not skills:
+        return None
+
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    skill_list = "\n".join(
+        f"- {s.name}: {s.description[:120].strip()} "
+        f"(triggers: {', '.join(s.triggers[:4])})"
+        for s in skills
+    )
+
+    system = (
+        "You are a skill router for a video editing AI. "
+        "Given a user request and a list of available skill workflows, "
+        "decide which skill BEST matches what the user wants to create. "
+        "Be generous — if the request is broadly related to a skill, match it. "
+        "Respond with ONLY the skill name exactly as listed, or 'none' if truly no skill fits. "
+        "One word only. No explanation."
+    )
+    user_msg = (
+        f"User request: \"{message}\"\n\n"
+        f"Available skills:\n{skill_list}"
+    )
+
+    try:
+        response = llm.invoke([
+            SystemMessage(content=system),
+            HumanMessage(content=user_msg),
+        ])
+        answer = response.content.strip().lower().strip('"\'')
+        if answer == "none":
+            return None
+        # Find exact match
+        match = next((s for s in skills if s.name == answer), None)
+        if match:
+            import logging
+            logging.getLogger(__name__).info(
+                "[IntentClassifier] LLM matched skill '%s' for: %.60s", answer, message
+            )
+        return match
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            "[IntentClassifier] LLM skill classifier failed: %s", e
+        )
+        return None

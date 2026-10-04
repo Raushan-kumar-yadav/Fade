@@ -194,3 +194,52 @@ def format_plan_for_display(plan: TaskPlan) -> str:
     lines.append(f"\nProgress: {prog['done']}/{prog['total']} steps ({prog['percent']}%)")
     
     return "\n".join(lines)
+
+
+def plan_to_pseudo_skill(plan: TaskPlan) -> "SkillDef":
+    """Wrap a LLM-generated TaskPlan into a SkillDef for execution via skill_executor.
+
+    This allows any auto-generated plan (from generate_plan_with_llm) to run
+    through the same checkpoint-aware, resume-safe executor as real .md skills.
+    Each TaskStep becomes a SkillStep with the same tool_name and description.
+
+    Returns a SkillDef that skill_executor.execute_skill_plan() can consume.
+    """
+    from backend.ai.skill_loader import SkillDef, SkillStep
+
+    skill_steps = [
+        SkillStep(
+            order=s.order + 1,
+            name=(s.tool_name or f"step_{s.order}").upper(),
+            tool_name=s.tool_name or "get_timeline_state",
+            instruction=s.description,
+        )
+        for s in sorted(plan.steps, key=lambda x: x.order)
+    ]
+
+    # Auto-checkpoint every 3 steps
+    checkpoints = {
+        s.order: f"CHECKPOINT_{s.order}"
+        for s in skill_steps
+        if s.order % 3 == 0
+    }
+
+    return SkillDef(
+        name=f"auto_plan",
+        version="auto",
+        triggers=[],
+        comp_type="video",
+        agent_type="video",
+        output_dimensions=[1920, 1080],
+        fps=30,
+        max_duration_frames=18000,
+        description=plan.goal,
+        rules=[
+            "Follow the plan steps strictly in order",
+            "Do not skip steps unless explicitly instructed",
+            "Call get_timeline_state before any clip placement",
+        ],
+        steps=skill_steps,
+        checkpoints=checkpoints,
+        raw_path=__import__("pathlib").Path(),
+    )
