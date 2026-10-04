@@ -28,12 +28,12 @@ MODELS = {
 DEFAULT_IMAGE_MODEL = "u2net"
 DEFAULT_VIDEO_MODEL = "u2netp"   # faster for frame-by-frame
 
-# Output goes into a sibling "bg_removed" folder next to source
+ 
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "bg_removed"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
-# ── Library auto-import ───────────────────────────────────────────────────────
+# Library auto-import  
 
 def _import_to_library(filepath: str) -> str | None:
     """Register the output file into the library panel.
