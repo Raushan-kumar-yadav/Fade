@@ -280,15 +280,27 @@ def saveProject(req: SaveRequest):
     all_asset_ids = set(media_assets.keys()) | {d.get("assetId", "") for d in wc_dicts}
     from backend.worker.worker_bus import bus as _bus
     if _bus.is_indexing_active():
-        # Sandbox subprocess has exclusive write access to project ChromaDB right now.
-        # Reading/healing from the main process concurrently causes a Rust HNSW
-        # segfault → backend.exe exits with code 1. Skip safely and use last count.
+        
         chroma_chunks = proj_dict.get("chromaDbChunks", 0)
         print(f"[Project] ChromaDB access deferred (indexing active) — cached count: {chroma_chunks}", flush=True)
     else:
         chroma_chunks = _migrate_chroma_to_project(proj_folder, all_asset_ids)
     proj_dict["chromaDbBundled"] = True
     proj_dict["chromaDbChunks"] = chroma_chunks
+
+    #   Tracking data — copy to project folder  
+    try:
+        from backend.tracking.service import copy_all_tracks_to, set_data_dir
+        tracking_dest = proj_folder / "tracking"
+        track_count = copy_all_tracks_to(tracking_dest)
+        set_data_dir(tracking_dest)  # future saves go here directly
+        proj_dict["trackingDataBundled"] = True
+        proj_dict["trackingDataCount"] = track_count
+        print(f"[Project] Tracking data: {track_count} tracks saved to {tracking_dest}", flush=True)
+    except Exception as e:
+        print(f"[Project] Tracking data save failed (non-fatal): {e}", flush=True)
+        proj_dict["trackingDataBundled"] = False
+        proj_dict["trackingDataCount"] = 0
 
     # Verify clip  
     clip_count = 0
@@ -430,6 +442,24 @@ def loadProject(req: LoadRequest):
             print(f"[Project] ChromaDB switched to project DB: {proj_chroma}", flush=True)
         except Exception as e:
             print(f"[Project] ChromaDB switch failed (non-fatal): {e}", flush=True)
+
+    #   Tracking data — load from project folder  
+    proj_tracking = proj_folder / "tracking"
+    if data.get("trackingDataBundled") and proj_tracking.is_dir():
+        try:
+            from backend.tracking.service import set_data_dir, load_all_tracks
+            set_data_dir(str(proj_tracking))
+            load_all_tracks()
+            print(f"[Project] Tracking data loaded from: {proj_tracking}", flush=True)
+        except Exception as e:
+            print(f"[Project] Tracking data load failed (non-fatal): {e}", flush=True)
+    else:
+        # No bundled tracking data — try loading from default location
+        try:
+            from backend.tracking.service import load_all_tracks
+            load_all_tracks()
+        except Exception:
+            pass
 
     _library.clear()
     missing: list[str] = []

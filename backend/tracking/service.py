@@ -25,6 +25,39 @@ _DATA_DIR = Path(__file__).parent / "data"
 _DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def get_data_dir() -> Path:
+    """Return current tracking data directory."""
+    return _DATA_DIR
+
+
+def set_data_dir(new_dir: str | Path) -> None:
+    """Switch tracking data directory (called by project save/load)."""
+    global _DATA_DIR
+    _DATA_DIR = Path(new_dir)
+    _DATA_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info("[tracking] data dir switched to: %s", _DATA_DIR)
+    print(f"[tracking] data dir switched to: {_DATA_DIR}", flush=True)
+
+
+def copy_all_tracks_to(dest_dir: str | Path) -> int:
+    """Copy all in-registry tracks to dest_dir, preserving clip_id subdirs.
+    Returns number of tracks copied."""
+    dest = Path(dest_dir)
+    dest.mkdir(parents=True, exist_ok=True)
+    count = 0
+    with _reg_lock:
+        for tid, data in _registry.items():
+            clip_id = data.get("clip_id", "unknown")
+            sub = dest / clip_id
+            sub.mkdir(parents=True, exist_ok=True)
+            out_path = sub / f"{tid}.json"
+            out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            count += 1
+            print(f"[tracking] copied track {tid} -> {out_path}", flush=True)
+    logger.info("[tracking] copied %d tracks to %s", count, dest)
+    return count
+
+
 def get_track(track_id: str) -> dict | None:
     with _reg_lock:
         return _registry.get(track_id)
@@ -107,6 +140,10 @@ def start_track_job(
     job_id = job["job_id"]
     track_id = str(uuid.uuid4())[:12]
 
+    print(f"[tracking] START job={job_id} track={track_id} clip={clip_id[:8]} "
+          f"mode={detection_mode} frames={from_frame}-{to_frame} "
+          f"video={video_path} comp={comp_w}x{comp_h}", flush=True)
+
     def _run():
         try:
             # Step 1: detect initial bbox if not provided
@@ -174,11 +211,14 @@ def start_track_job(
                 _registry[track_id] = track_record
 
             # Save JSON sidecar
-            _sidecar(clip_id, track_id).write_text(
+            sidecar_path = _sidecar(clip_id, track_id)
+            sidecar_path.write_text(
                 json.dumps(track_record, indent=2), encoding="utf-8"
             )
 
             _jobs.finish_job(job, track_id)
+            print(f"[tracking] DONE job={job_id} track={track_id} "
+                  f"frames={len(frame_data)} sidecar={sidecar_path}", flush=True)
             logger.info("[tracking] job %s done → track_id=%s (%d frames)",
                         job_id, track_id, len(frame_data))
 
