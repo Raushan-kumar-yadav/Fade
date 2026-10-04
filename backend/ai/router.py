@@ -175,14 +175,14 @@ async def ai_chat(req: ChatRequest):
 
     async def event_stream():
         try:
-            # ── Prompt-injection shield ──────────────────────────────
+            # Prompt-injection shield  
             ok, safe_message, err = shield_prompt(req.message)
             if not ok:
                 yield f"data: {json.dumps({'type': 'error', 'message': err})}\n\n"
                 return
             scanned_message = safe_message
 
-            # ── Skill detection (before intent classification) ──────
+            # Skill detection 
             from backend.ai.skill_loader import skill_registry
             matched_skill = skill_registry.match(scanned_message)
 
@@ -226,7 +226,7 @@ async def ai_chat(req: ChatRequest):
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
 
-            # ── Intent classification ────────────────────────────────
+            #   Intent classification  
             from backend.ai.intent_classifier import classify_intent, Intent, intent_summary
             from backend.ai import task_store as _store
 
@@ -234,7 +234,7 @@ async def ai_chat(req: ChatRequest):
             intent = classify_intent(scanned_message, has_active_plan=active_plan is not None)
             print(f"[AI Router] Intent: {intent.value} ({intent_summary(intent)})", flush=True)
 
-            # ── Handle plan-management intents ───────────────────────
+            #   Handle plan-management intents  
             if intent == Intent.CHECK_PROGRESS:
                 if active_plan:
                     from backend.ai.planner import format_plan_for_display
@@ -282,7 +282,7 @@ async def ai_chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     return
 
-            # ── Complex task: generate plan first ────────────────────
+            #   Complex task: generate plan first  
             if intent == Intent.COMPLEX_TASK:
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'planning', 'label': 'Creating plan...'})}\n\n"
                 
@@ -312,7 +312,7 @@ async def ai_chat(req: ChatRequest):
                     )
                     active_plan = plan  # for step tracking below
 
-            # ── Standard LangGraph execution ─────────────────────────
+            #   Standard LangGraph execution  
             from backend.ai.agent_registry import get_specialized_agent
             agent = get_specialized_agent(req.agent, req.port)
 
@@ -375,7 +375,7 @@ async def ai_chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking...'})}\n\n"
                     yield f"data: {json.dumps({'type': 'tool_result', 'name': name, 'content': content})}\n\n"
 
-            # ── Post-execution: update plan step status ──────────────
+            # Post-execution: update plan step status  
             if current_step and active_plan:
                 _store.update_step_status(current_step.step_id, "done")
                 yield f"data: {json.dumps({'type': 'plan_step', 'step_id': current_step.step_id, 'status': 'done', 'description': current_step.description})}\n\n"
@@ -659,8 +659,81 @@ def get_skill(skill_name: str):
 
 @ai_router.post('/skills/reload')
 def reload_skills():
-    ''''Hot-reload all skill .md files from disk without server restart.'''
+    '''Hot-reload all skill .md files from disk without server restart.'''
     from backend.ai.skill_loader import skill_registry
     count = skill_registry.reload()
     return {'ok': True, 'skills_loaded': count,
             'skills': [s['name'] for s in skill_registry.list_skills()]}
+
+
+class SkillImportRequest(BaseModel):
+    filename: str   # original filename e.g. "my_skill.md"
+    content:  str   # full .md file text
+
+
+@ai_router.post('/skills/import')
+def import_skill(req: SkillImportRequest):
+    """Save a skill .md file to the skills directory and re-index."""
+    import re as _re
+    from fastapi import HTTPException
+    from backend.ai.skill_loader import skill_registry, SKILLS_DIR, load_skill
+
+    # Server-side injection scan (second layer after frontend scan)
+    lower = req.content.lower()
+    BLOCKED = [
+        'ignore previous instructions', 'ignore all previous',
+        'disregard the above', 'jailbreak', 'do anything now',
+        'dan mode', '__import__', 'subprocess', 'os.system',
+        'exec(', 'eval(', '<script', 'drop table',
+    ]
+    for pat in BLOCKED:
+        if pat in lower:
+            raise HTTPException(400, f"Blocked pattern detected: '{pat}'. Import rejected.")
+
+    if not req.content.strip().startswith('---'):
+        raise HTTPException(400, "Skill file must start with YAML frontmatter (---)")
+    if '## Steps' not in req.content:
+        raise HTTPException(400, "Skill file must contain a ## Steps section")
+
+    # Sanitise filename — alphanumeric + underscore only
+    safe_name = _re.sub(r'[^a-z0-9_]', '_', req.filename.lower().removesuffix('.md'))
+    if not safe_name:
+        raise HTTPException(400, "Invalid filename")
+
+    dest = SKILLS_DIR / f"{safe_name}.md"
+    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    dest.write_text(req.content, encoding='utf-8')
+
+    # Parse to validate
+    skill = load_skill(dest)
+    if not skill:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(422, "Skill file parsed but no valid skill found. Check frontmatter.")
+
+    # Re-index registry
+    skill_registry.reload()
+    print(f"[SkillImport] Imported skill '{skill.name}' -> {dest}", flush=True)
+    return {'ok': True, 'name': skill.name, 'steps': len(skill.steps),
+            'triggers': skill.triggers[:3]}
+
+
+@ai_router.delete('/skills/{skill_name}')
+def delete_skill(skill_name: str):
+    """Delete a skill .md file from disk and re-index."""
+    import re as _re
+    from fastapi import HTTPException
+    from backend.ai.skill_loader import skill_registry, SKILLS_DIR
+
+    # Sanitise
+    safe = _re.sub(r'[^a-z0-9_]', '', skill_name.lower())
+    if not safe:
+        raise HTTPException(400, "Invalid skill name")
+
+    target = SKILLS_DIR / f"{safe}.md"
+    if not target.exists():
+        raise HTTPException(404, f"Skill file '{safe}.md' not found")
+
+    target.unlink()
+    skill_registry.reload()
+    print(f"[SkillDelete] Deleted skill '{safe}'", flush=True)
+    return {'ok': True, 'deleted': safe}

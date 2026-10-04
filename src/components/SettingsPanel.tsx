@@ -170,7 +170,7 @@ async function postEnvSettings(updates: Record<string, string>): Promise<EnvSett
 
 //   Tab IDs  
 
-type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'agent' | 'generators' | 'apis' | 'connections';
+type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'agent' | 'generators' | 'apis' | 'connections' | 'skills';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'cache',       icon: '⚡', label: 'Cache'       },
@@ -181,6 +181,7 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'generators',  icon: '✨', label: 'Generators'  },
   { id: 'apis',        icon: '🔑', label: 'API Keys'    },
   { id: 'connections', icon: '🔗', label: 'Connections' },
+  { id: 'skills',      icon: '📚', label: 'Skills'      },
 ];
 
 // ── Connections types ────────────────────────────────────────────────────────
@@ -346,6 +347,123 @@ export default function SettingsPanel({ onClose }: Props) {
   const [env, setEnv] = useState<EnvSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<Tab>('cache');
+
+  // Skills state
+  interface SkillEntry {
+    name: string; version: string; comp_type: string;
+    agent_type: string; triggers: string[]; steps: number;
+    description: string;
+  }
+  const [skills, setSkills]       = useState<SkillEntry[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillImporting, setSkillImporting] = useState(false);
+  const [skillImportStatus, setSkillImportStatus] = useState<{ok: boolean; msg: string} | null>(null);
+  const [skillScanResult, setSkillScanResult] = useState<{safe: boolean; issues: string[]} | null>(null);
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
+  const [pendingImportText, setPendingImportText] = useState<string>('');
+
+  const loadSkills = async () => {
+    setSkillsLoading(true);
+    try {
+      const r = await fetch('http://127.0.0.1:8000/ai/skills');
+      const d = await r.json();
+      setSkills(d.skills || []);
+    } catch { /* backend not ready */ }
+    setSkillsLoading(false);
+  };
+
+  const reloadSkills = async () => {
+    setSkillsLoading(true);
+    try {
+      await fetch('http://127.0.0.1:8000/ai/skills/reload', { method: 'POST' });
+      await loadSkills();
+      setSkillImportStatus({ ok: true, msg: 'Skills re-indexed from disk.' });
+    } catch (e: any) {
+      setSkillImportStatus({ ok: false, msg: String(e) });
+    }
+    setSkillsLoading(false);
+  };
+
+  // Scan .md content for prompt injection before accepting
+  const scanSkillText = (text: string): { safe: boolean; issues: string[] } => {
+    const issues: string[] = [];
+    const lower = text.toLowerCase();
+    // Block classic injection patterns
+    const FORBIDDEN = [
+      'ignore previous instructions', 'ignore all previous',
+      'disregard the above', 'you are now', 'act as',
+      'jailbreak', 'do anything now', 'dan mode',
+      'system prompt', '\\x', '\u0000', '<script', 'eval(',
+      'exec(', '__import__', 'subprocess', 'os.system',
+      'rm -rf', 'format c:', 'drop table',
+    ];
+    for (const pat of FORBIDDEN) {
+      if (lower.includes(pat)) issues.push(`Blocked pattern: "${pat}"`);
+    }
+    // Frontmatter must exist
+    if (!text.trimStart().startsWith('---')) issues.push('Missing YAML frontmatter (must start with ---)');
+    // Must have ## Steps
+    if (!text.includes('## Steps')) issues.push('Missing ## Steps section');
+    // Must have name:
+    if (!/^name:\s*\S/m.test(text)) issues.push('Missing name: in frontmatter');
+    return { safe: issues.length === 0, issues };
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.md')) {
+      setSkillScanResult({ safe: false, issues: ['File must be a .md (Markdown) file'] });
+      return;
+    }
+    const text = await file.text();
+    const scan = scanSkillText(text);
+    setSkillScanResult(scan);
+    if (scan.safe) {
+      setPendingImportFile(file);
+      setPendingImportText(text);
+    } else {
+      setPendingImportFile(null);
+      setPendingImportText('');
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!pendingImportFile || !pendingImportText) return;
+    setSkillImporting(true);
+    setSkillImportStatus(null);
+    try {
+      const res = await fetch('http://127.0.0.1:8000/ai/skills/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: pendingImportFile.name, content: pendingImportText }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        setSkillImportStatus({ ok: true, msg: `✓ Skill "${d.name}" imported and indexed.` });
+        setPendingImportFile(null);
+        setPendingImportText('');
+        setSkillScanResult(null);
+        await loadSkills();
+      } else {
+        setSkillImportStatus({ ok: false, msg: d.detail || 'Import failed' });
+      }
+    } catch (e: any) {
+      setSkillImportStatus({ ok: false, msg: String(e) });
+    }
+    setSkillImporting(false);
+  };
+
+  const deleteSkill = async (skillName: string) => {
+    if (!confirm(`Delete skill "${skillName}"? This cannot be undone.`)) return;
+    try {
+      await fetch(`http://127.0.0.1:8000/ai/skills/${skillName}`, { method: 'DELETE' });
+      await loadSkills();
+    } catch { /* ignore */ }
+  };
+
+  // Load skills when tab opens
+  React.useEffect(() => { if (tab === 'skills') loadSkills(); }, [tab]);
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [panelW, setPanelW] = useState(INIT_W);
   const [panelH, setPanelH] = useState(INIT_H);
@@ -1836,6 +1954,144 @@ export default function SettingsPanel({ onClose }: Props) {
                 <div className="sp-hint" style={{ marginTop: 14 }}>
                   💡 OAuth uses your system browser. After authorizing, return to FADE — the card updates automatically.
                   Connection credentials are stored locally in <code>virality.db</code>.
+                </div>
+              </>
+            )}
+
+            {/* Skills Tab */}
+            {tab === 'skills' && (
+              <>
+                <div className="sp-subsection-title">📚 Agent Skills</div>
+                <p className="sp-hint">
+                  Skills are workflow recipes stored as <code>.md</code> files.
+                  When you type a trigger phrase (e.g. <em>"make an educational video"</em>),
+                  the agent automatically loads the matching skill and executes it
+                  step-by-step with checkpoints.
+                </p>
+
+                {/* Import row */}
+                <div className="sp-skills-import-row">
+                  <label className="sp-btn sp-btn--secondary sp-skills-import-btn" htmlFor="skill-file-input">
+                    📥 Import Skill (.md)
+                  </label>
+                  <input
+                    id="skill-file-input"
+                    type="file"
+                    accept=".md"
+                    style={{ display: 'none' }}
+                    onChange={handleImportFile}
+                  />
+                  <button
+                    className="sp-btn sp-btn--secondary"
+                    onClick={reloadSkills}
+                    disabled={skillsLoading}
+                    title="Re-scan the skills folder from disk"
+                  >
+                    🔄 Re-index
+                  </button>
+                </div>
+
+                {/* Scan result */}
+                {skillScanResult && (
+                  <div className={`sp-skill-scan ${skillScanResult.safe ? 'sp-skill-scan--ok' : 'sp-skill-scan--fail'}`}>
+                    {skillScanResult.safe ? (
+                      <>
+                        <div className="sp-skill-scan-title">✅ Skill passed security scan</div>
+                        <div className="sp-skill-scan-sub">File: <strong>{pendingImportFile?.name}</strong></div>
+                        <div className="sp-skills-import-row" style={{ marginTop: 10 }}>
+                          <button
+                            className="sp-btn sp-btn--primary"
+                            onClick={confirmImport}
+                            disabled={skillImporting}
+                          >
+                            {skillImporting ? 'Importing…' : '✓ Confirm Import'}
+                          </button>
+                          <button
+                            className="sp-btn sp-btn--secondary"
+                            onClick={() => { setSkillScanResult(null); setPendingImportFile(null); }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="sp-skill-scan-title">🚫 Security scan blocked this file</div>
+                        {skillScanResult.issues.map((issue, i) => (
+                          <div key={i} className="sp-skill-scan-issue">• {issue}</div>
+                        ))}
+                        <button
+                          className="sp-btn sp-btn--secondary"
+                          style={{ marginTop: 8 }}
+                          onClick={() => setSkillScanResult(null)}
+                        >
+                          Dismiss
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Import status */}
+                {skillImportStatus && (
+                  <div className={`sp-skill-status ${skillImportStatus.ok ? 'sp-skill-status--ok' : 'sp-skill-status--fail'}`}>
+                    {skillImportStatus.msg}
+                    <button className="sp-skill-status-dismiss" onClick={() => setSkillImportStatus(null)}>✕</button>
+                  </div>
+                )}
+
+                {/* Skills list */}
+                {skillsLoading ? (
+                  <p className="sp-loading">Loading skills…</p>
+                ) : skills.length === 0 ? (
+                  <div className="sp-skill-empty">
+                    <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+                    <div>No skills installed yet.</div>
+                    <div style={{ opacity: 0.5, fontSize: 12, marginTop: 4 }}>Import a .md skill file or add one to <code>backend/ai/skills/</code></div>
+                  </div>
+                ) : (
+                  <div className="sp-skills-list">
+                    {skills.map(sk => (
+                      <div key={sk.name} className="sp-skill-card">
+                        <div className="sp-skill-card-header">
+                          <div className="sp-skill-card-name">
+                            {sk.comp_type === 'video' ? '🎬' : sk.comp_type === 'image' ? '🖼' : '📄'}
+                            {' '}{sk.name.replace(/_/g, ' ')}
+                          </div>
+                          <div className="sp-skill-card-meta">
+                            <span className="sp-skill-badge sp-skill-badge--type">{sk.comp_type}</span>
+                            <span className="sp-skill-badge sp-skill-badge--version">v{sk.version}</span>
+                            <span className="sp-skill-badge sp-skill-badge--steps">{sk.steps} steps</span>
+                          </div>
+                          <button
+                            className="sp-skill-delete"
+                            title={`Delete skill "${sk.name}"`}
+                            onClick={() => deleteSkill(sk.name)}
+                          >🗑</button>
+                        </div>
+
+                        {sk.description && (
+                          <div className="sp-skill-card-desc">{sk.description.slice(0, 120)}{sk.description.length > 120 ? '…' : ''}</div>
+                        )}
+
+                        <div className="sp-skill-triggers">
+                          <span className="sp-skill-triggers-label">Triggers:</span>
+                          {sk.triggers.slice(0, 5).map(t => (
+                            <span key={t} className="sp-skill-trigger-chip">{t}</span>
+                          ))}
+                          {sk.triggers.length > 5 && (
+                            <span className="sp-skill-trigger-chip sp-skill-trigger-chip--more">+{sk.triggers.length - 5} more</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="sp-hint" style={{ marginTop: 14 }}>
+                  💡 To add a skill manually, drop a <code>.md</code> file into
+                  <code> backend/ai/skills/</code> then click <strong>Re-index</strong>.
+                  No server restart needed.
                 </div>
               </>
             )}

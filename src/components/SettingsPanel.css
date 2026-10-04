@@ -737,3 +737,185 @@
   border: 1px solid rgba(108,99,255,0.15);
   border-radius: 8px;
 }
+
+/* ── Skills Tab ──────────────────────────────────────────────────────────── */
+
+.sp-skills-import-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sp-skills-import-btn {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Security scan box */
+.sp-skill-scan {
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  animation: sp-fade-in 0.15s ease;
+}
+.sp-skill-scan--ok {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+.sp-skill-scan--fail {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+.sp-skill-scan-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  margin-bottom: 4px;
+  color: #f0f0f2;
+}
+.sp-skill-scan-sub {
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+}
+.sp-skill-scan-issue {
+  color: #fca5a5;
+  font-size: 12.5px;
+  line-height: 1.6;
+  padding-left: 4px;
+}
+
+/* Status toast */
+.sp-skill-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 13px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-family: 'Inter', sans-serif;
+  margin-bottom: 10px;
+  animation: sp-fade-in 0.15s ease;
+}
+.sp-skill-status--ok  { background: rgba(34,197,94,0.12);  border: 1px solid rgba(34,197,94,0.25);  color: #86efac; }
+.sp-skill-status--fail { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.25); color: #fca5a5; }
+.sp-skill-status-dismiss {
+  background: none; border: none; cursor: pointer;
+  color: rgba(255,255,255,0.35); font-size: 13px; padding: 0 0 0 8px;
+}
+.sp-skill-status-dismiss:hover { color: rgba(255,255,255,0.7); }
+
+/* Empty state */
+.sp-skill-empty {
+  text-align: center;
+  padding: 36px 20px;
+  color: rgba(255,255,255,0.35);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+}
+
+/* Skills grid */
+.sp-skills-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sp-skill-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  padding: 12px 14px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sp-skill-card:hover {
+  background: rgba(255,255,255,0.055);
+  border-color: rgba(108,99,255,0.3);
+}
+
+.sp-skill-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.sp-skill-card-name {
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: #e8e8f0;
+  flex: 1;
+  text-transform: capitalize;
+}
+
+.sp-skill-card-meta {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.sp-skill-badge {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+.sp-skill-badge--type    { background: rgba(108,99,255,0.18); color: #a5b4fc; border: 1px solid rgba(108,99,255,0.3); }
+.sp-skill-badge--version { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.08); }
+.sp-skill-badge--steps   { background: rgba(34,197,94,0.12);  color: #86efac; border: 1px solid rgba(34,197,94,0.2); }
+
+.sp-skill-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  opacity: 0.3;
+  transition: opacity 0.15s, background 0.15s;
+}
+.sp-skill-delete:hover { opacity: 1; background: rgba(239,68,68,0.15); }
+
+.sp-skill-card-desc {
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  color: rgba(255,255,255,0.38);
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.sp-skill-triggers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.sp-skill-triggers-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 10.5px;
+  color: rgba(255,255,255,0.3);
+  margin-right: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sp-skill-trigger-chip {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 20px;
+  padding: 2px 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 10.5px;
+  color: rgba(255,255,255,0.5);
+  cursor: default;
+  transition: background 0.1s;
+}
+.sp-skill-trigger-chip:hover { background: rgba(108,99,255,0.12); color: #a5b4fc; }
+.sp-skill-trigger-chip--more { background: rgba(108,99,255,0.08); color: rgba(165,180,252,0.6); }
