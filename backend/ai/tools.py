@@ -1011,6 +1011,133 @@ def layout_text_block(
 
 
 @tool
+def layout_element(
+    comp_type: str,
+    anchor: str,
+    element_width: float,
+    element_height: float,
+    margin_x: float = -1.0,
+    margin_y: float = -1.0,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
+) -> str:
+    """Calculate exact pixel position for ANY element in a composition using anchor points.
+
+    Works for images, shapes, WebComps, logos, clips — anything placed via
+    animate_property(pos_x / pos_y) or place_clip. Not text-specific.
+
+    Args:
+        comp_type:      Composition type preset:
+                        "a4"     — 2480×3508 (A4 PDF @ 300dpi)
+                        "letter" — 2550×3300 (US Letter @ 300dpi)
+                        "16x9"   — 1920×1080 (standard video)
+                        "9x16"   — 1080×1920 (vertical / reel)
+                        "square" — 1080×1080 (social post)
+        anchor:         Where to anchor the element within the safe zone:
+                        "top-left"      "top-center"      "top-right"
+                        "center-left"   "center"          "center-right"
+                        "bottom-left"   "bottom-center"   "bottom-right"
+        element_width:  Element width in pixels (your image/shape/webcomp width).
+        element_height: Element height in pixels.
+        margin_x:       Horizontal margin from the safe-zone edge in pixels.
+                        -1 = use comp default (80px for video, 240px for A4).
+        margin_y:       Vertical margin from the safe-zone edge in pixels.
+                        -1 = use comp default.
+        offset_x:       Fine-tune X position after anchoring (positive = right).
+        offset_y:       Fine-tune Y position after anchoring (positive = down).
+
+    Returns:
+        JSON with x, y (top-left corner of element), center_x, center_y,
+        right_edge, bottom_edge, and the workflow to apply the position.
+
+    Examples:
+        Logo bottom-right corner:
+            layout_element("16x9", "bottom-right", 200, 80)
+            → x=1560, y=920  (1920-80-200-80=1560, 1080-80-80-80=920)
+
+        Hero image centered:
+            layout_element("a4", "center", 1200, 800)
+            → x=640, y=1354  (centered in 2480×3508)
+
+        Brand bar bottom-left:
+            layout_element("9x16", "bottom-left", 400, 120, margin_x=60, margin_y=80)
+            → x=60, y=1720
+
+    Workflow after getting coordinates:
+        result = layout_element("16x9", "bottom-right", 300, 100)
+        data = json.loads(result)
+        clip_id = place_clip(asset_id, ...)  # place the clip
+        animate_property(clip_id, "pos_x", 0, data["x"])
+        animate_property(clip_id, "pos_y", 0, data["y"])
+    """
+    GRIDS = {
+        "a4":     {"w": 2480, "h": 3508, "mx": 240, "my": 240},
+        "letter": {"w": 2550, "h": 3300, "mx": 255, "my": 255},
+        "16x9":   {"w": 1920, "h": 1080, "mx": 80,  "my": 60},
+        "9x16":   {"w": 1080, "h": 1920, "mx": 80,  "my": 150},
+        "square": {"w": 1080, "h": 1080, "mx": 80,  "my": 80},
+    }
+    grid = GRIDS.get(comp_type, GRIDS["16x9"])
+    cw, ch = grid["w"], grid["h"]
+
+    mx = margin_x if margin_x >= 0 else grid["mx"]
+    my = margin_y if margin_y >= 0 else grid["my"]
+
+    # Safe zone boundaries
+    safe_left   = mx
+    safe_right  = cw - mx
+    safe_top    = my
+    safe_bottom = ch - my
+    safe_w      = safe_right  - safe_left
+    safe_h      = safe_bottom - safe_top
+
+    anchor = anchor.lower().strip()
+
+    # Horizontal placement
+    if "left" in anchor:
+        x = safe_left
+    elif "right" in anchor:
+        x = safe_right - element_width
+    else:  # center
+        x = safe_left + (safe_w - element_width) / 2
+
+    # Vertical placement
+    if "top" in anchor:
+        y = safe_top
+    elif "bottom" in anchor:
+        y = safe_bottom - element_height
+    else:  # center
+        y = safe_top + (safe_h - element_height) / 2
+
+    x = round(x + offset_x)
+    y = round(y + offset_y)
+
+    return json.dumps({
+        "comp_type":    comp_type,
+        "anchor":       anchor,
+        "x":            x,
+        "y":            y,
+        "center_x":     round(x + element_width  / 2),
+        "center_y":     round(y + element_height / 2),
+        "right_edge":   round(x + element_width),
+        "bottom_edge":  round(y + element_height),
+        "element_width":  int(element_width),
+        "element_height": int(element_height),
+        "safe_zone": {
+            "left": safe_left, "right": safe_right,
+            "top": safe_top,   "bottom": safe_bottom,
+        },
+        "workflow": (
+            f"1. Place or create your clip/shape/image\n"
+            f"2. animate_property(clip_id, 'pos_x', 0, {x})\n"
+            f"3. animate_property(clip_id, 'pos_y', 0, {y})\n"
+            f"For shapes: use width={int(element_width)}, height={int(element_height)} "
+            f"in add_shape_clip. For images: use place_clip then set transform."
+        ),
+    }, indent=2)
+
+
+@tool
 def get_transitions_catalog() -> str:
     """Return all available transition types with their typeId values."""
     data = _get("/transitions/catalog")
@@ -1922,6 +2049,7 @@ ALL_TOOLS = [
     add_text_clip,
     set_text_style,
     layout_text_block,
+    layout_element,
     get_transitions_catalog,
     add_transition,
     add_transitions_between_all_clips,
@@ -4877,7 +5005,7 @@ ALL_TOOLS.extend([
     get_clip_info, remove_clip, list_timeline_clips,
     generate_captions, remove_silence, get_transcript, get_clip_params,
     animate_property, remove_keyframe, clear_animation, get_keyframes,
-    set_text_content, set_text_style, layout_text_block,
+    set_text_content, set_text_style, layout_text_block, layout_element,
     list_curve_presets, apply_curve_preset, move_keyframe,
     list_kokoro_voices, generate_tts, check_job_status, cancel_job,
     stop_indexing, export_video,

@@ -760,10 +760,39 @@ Current project context will be injected by the router.
 
 TEXT STYLING & LAYOUT — FULL WORKFLOW:
 All text clips support rich styling via add_text_clip parameters. Use these tools:
-  1. layout_text_block(comp_type, blocks) → get x, y, max_width for each block
+  1. layout_text_block(comp_type, blocks) → get x, y, max_width for each text block
   2. add_text_clip(..., alignment, max_width, font_size, bold, shadow, bg_enabled) → place
   3. animate_property(clip_id, "pos_x", frame, x) + animate_property(..., "pos_y", frame, y)
   4. set_text_style(clip_id, ...) → patch any style after placement
+
+ELEMENT POSITIONING (images, logos, shapes, WebComps, any clip):
+Use layout_element() for anchor-based placement of ANY non-text element:
+  layout_element(comp_type, anchor, element_width, element_height, margin_x, margin_y)
+  anchor options: "top-left" | "top-center" | "top-right"
+                  "center-left" | "center" | "center-right"
+                  "bottom-left" | "bottom-center" | "bottom-right"
+
+  Examples:
+    Logo bottom-right (16:9 video):
+      pos = layout_element("16x9", "bottom-right", 200, 80)
+      → place_clip(asset_id), then animate_property(clip_id, "pos_x", 0, pos.x)
+                                    animate_property(clip_id, "pos_y", 0, pos.y)
+
+    Hero image centered (A4 PDF page):
+      pos = layout_element("a4", "center", 1200, 800)
+
+    Brand watermark bottom-left with custom margin:
+      pos = layout_element("16x9", "bottom-left", 300, 100, margin_x=40, margin_y=40)
+
+    Fine-tune position with offset_x / offset_y:
+      pos = layout_element("9x16", "bottom-center", 400, 120, offset_y=-20)
+
+  ALWAYS use layout_element when placing:
+  - Logos / watermarks (always anchored to a corner)
+  - Hero images (center or top-center)
+  - Banners / bars (bottom-left, bottom-right, top-left)
+  - Icons / badges (any corner)
+  - WebComp overlays with specific corner placement
 
 COMPOSITION LAYOUT GRIDS — memorize these, never guess pixel positions:
 
