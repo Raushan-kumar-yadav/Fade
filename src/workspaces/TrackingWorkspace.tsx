@@ -3,7 +3,7 @@ import { uploadAsset } from '../api/useApi'
 import './TrackingWorkspace.css'
 
 /* ── types ─────────────────────────────────────────────────────────────── */
-type DetectionMode = 'face' | 'person' | 'text' | 'image' | 'manual'
+type DetectionMode = 'face' | 'face_ref' | 'person' | 'text' | 'image' | 'manual'
 
 interface ClipMeta {
   clipId: string
@@ -181,8 +181,8 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
 
     const refAsset = imageAssets.find(a => a.assetId === refAssetId)
 
-    if ((mode === 'image' || mode === 'person') && !refAsset) {
-      setError(`Pick a reference image for ${mode} mode.`); return
+    if ((mode === 'image' || mode === 'person' || mode === 'face_ref') && !refAsset) {
+      setError(`Pick a reference ${mode === 'face_ref' ? 'face' : ''} image for ${mode} mode.`); return
     }
     if (mode === 'manual' && !manualBbox) {
       setError('Enter a bounding box (x,y,w,h) for Manual mode.'); return
@@ -388,7 +388,90 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         <span className="tr-hint">Pixel coordinates of the target in the start frame</span>
       </div>
     )
-    /* face */
+    /* face_ref — specific face by reference photo */
+    if (mode === 'face_ref') {
+      const selectedAsset = imageAssets.find(a => a.assetId === refAssetId)
+      return (
+        <div className="tr-field-group">
+          <label className="tr-label">Reference face photo</label>
+          <span className="tr-hint" style={{ marginBottom: 8, display: 'block' }}>
+            Upload a clear photo showing only the target face. The system will find and track
+            that specific person even when multiple faces are in frame.
+          </span>
+
+          {/* Upload status */}
+          {isUploading && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '8px 12px', borderRadius: '6px',
+              background: '#1e293b', border: '1px solid #3b82f6',
+              marginBottom: '8px', fontSize: '13px', color: '#93c5fd'
+            }}>
+              <svg style={{ animation: 'spin 1s linear infinite', flexShrink: 0 }} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48 2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48 2.83-2.83"/>
+              </svg>
+              Uploading face photo…
+            </div>
+          )}
+
+          {/* Selected face preview */}
+          {!isUploading && selectedAsset && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '8px 12px', borderRadius: '6px',
+              background: '#052e16', border: '1px solid #16a34a',
+              marginBottom: '8px', fontSize: '13px', color: '#86efac'
+            }}>
+              <img
+                src={`http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}/library/thumbnail/${selectedAsset.assetId}`}
+                alt="reference face"
+                style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+              <span>Face: <strong>{selectedAsset.filename}</strong></span>
+              <button
+                onClick={() => setRefAssetId('')}
+                style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#86efac', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}
+                title="Remove"
+              >×</button>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {imageAssets.length > 0 && (
+              <select
+                className="tr-select"
+                value={refAssetId}
+                onChange={e => setRefAssetId(e.target.value)}
+                style={{ flex: 1 }}
+              >
+                <option value="">— pick from library —</option>
+                {imageAssets.map(a => (
+                  <option key={a.assetId} value={a.assetId}>{a.filename}</option>
+                ))}
+              </select>
+            )}
+            <button
+              className="tr-btn-action"
+              style={{ whiteSpace: 'nowrap', padding: '6px 14px', opacity: isUploading ? 0.6 : 1 }}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+            >
+              {isUploading ? 'Uploading…' : 'Upload Face Photo'}
+            </button>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleImportImage}
+          />
+        </div>
+      )
+    }
+    /* face — auto-detect all faces */
     return (
       <div className="tr-hint tr-hint--info">
         MediaPipe face detection — automatically finds all faces in frame {fromFrame}
@@ -481,13 +564,13 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
       <div className="tr-field-group">
         <label className="tr-label">Detection mode</label>
         <div className="tr-mode-tabs">
-          {(['face', 'person', 'text', 'image', 'manual'] as DetectionMode[]).map(m => (
+          {(['face', 'face_ref', 'person', 'text', 'image', 'manual'] as DetectionMode[]).map(m => (
             <button
               key={m}
               className={`tr-mode-tab${mode === m ? ' tr-mode-tab--active' : ''}`}
               onClick={() => setMode(m)}
             >
-              {({ face: 'Face', person: 'Person', text: 'Text', image: 'Image', manual: 'Manual' } as Record<DetectionMode,string>)[m]}
+              {({ face: 'Face', face_ref: 'Face 📷', person: 'Person', text: 'Text', image: 'Image', manual: 'Manual' } as Record<DetectionMode,string>)[m]}
             </button>
           ))}
         </div>

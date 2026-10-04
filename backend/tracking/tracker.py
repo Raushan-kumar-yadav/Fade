@@ -15,9 +15,10 @@ def track_clip(
     initial_bbox: tuple[float, float, float, float],   # (x, y, w, h) pixels
     from_frame: int,
     to_frame: int,
-    detection_mode: str = "manual",        # "face"|"person"|"text"|"image"|"manual"
+    detection_mode: str = "manual",        # "face"|"face_ref"|"person"|"text"|"image"|"manual"
     text_pattern: str = "email|phone",
     template_path: str | None = None,
+    ref_embedding = None,                  # pre-computed HOG embedding for face_ref mode
     redetect_every: int = 60,
     job: dict | None = None,               
 ) -> dict[int, dict]:
@@ -55,7 +56,7 @@ def track_clip(
 
         # Optional re-detection to correct drift
         if fi > from_frame and (fi - from_frame) % redetect_every == 0:
-            new_box = _redetect(frame, detection_mode, text_pattern, template_path, x, y, w, h)
+            new_box = _redetect(frame, detection_mode, text_pattern, template_path, x, y, w, h, ref_embedding)
             if new_box:
                 x, y, w, h = new_box.x, new_box.y, new_box.w, new_box.h
                 tracker = _make_tracker()
@@ -67,7 +68,7 @@ def track_clip(
             results[fi] = {"cx": x + w / 2, "cy": y + h / 2, "w": w, "h": h, "confidence": 0.9}
         else:
             # Lost 
-            new_box = _redetect(frame, detection_mode, text_pattern, template_path, x, y, w, h)
+            new_box = _redetect(frame, detection_mode, text_pattern, template_path, x, y, w, h, ref_embedding)
             if new_box:
                 x, y, w, h = new_box.x, new_box.y, new_box.w, new_box.h
                 tracker = _make_tracker()
@@ -100,12 +101,16 @@ def _make_tracker():
 
 
 def _redetect(frame, mode: str, text_pattern: str, template_path: str | None,
-              last_x: float, last_y: float, last_w: float, last_h: float) -> BBox | None:
+              last_x: float, last_y: float, last_w: float, last_h: float,
+              ref_embedding=None) -> BBox | None:
     """Try to re-detect target. Returns best match closest to last known position, or None."""
     candidates: list[BBox] = []
 
     if mode == "face":
         candidates = detect_faces(frame)
+    elif mode == "face_ref" and ref_embedding is not None:
+        from backend.tracking.detector import detect_face_by_reference
+        return detect_face_by_reference(frame, ref_embedding)[0] if detect_face_by_reference(frame, ref_embedding) else None
     elif mode == "person":
         candidates = detect_persons(frame)
     elif mode == "text":

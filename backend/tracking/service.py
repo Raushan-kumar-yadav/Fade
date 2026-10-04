@@ -10,7 +10,8 @@ from typing import Any
 
 from backend.tracking import jobs as _jobs
 from backend.tracking.detector import (
-    BBox, detect_faces, detect_persons, detect_text, detect_image_template
+    BBox, detect_faces, detect_persons, detect_text, detect_image_template,
+    detect_face_by_reference, extract_face_embedding,
 )
 from backend.tracking.tracker import track_clip
 
@@ -175,6 +176,20 @@ def start_track_job(
           f"mode={detection_mode} frames={from_frame}-{to_frame} "
           f"video={video_path} comp={comp_w}x{comp_h}", flush=True)
 
+    # Pre-compute face reference embedding (outside thread — fail fast)
+    ref_embedding = None
+    if detection_mode == "face_ref":
+        if not template_path:
+            raise ValueError("face_ref mode requires template_path (reference face image)")
+        import cv2
+        ref_img = cv2.imread(template_path)
+        if ref_img is None:
+            raise ValueError(f"Cannot read reference image: {template_path}")
+        ref_embedding = extract_face_embedding(ref_img)
+        if ref_embedding is None:
+            raise ValueError("No face detected in the reference image. Use a clear face photo.")
+        print(f"[tracking] face_ref: embedding extracted from {template_path}", flush=True)
+
     def _run():
         try:
             # Check if this is an image file  
@@ -233,7 +248,7 @@ def start_track_job(
                         if not ret:
                             continue
                         checked_frame = sf
-                        boxes = _detect(frame, detection_mode, text_pattern, template_path)
+                        boxes = _detect(frame, detection_mode, text_pattern, template_path, ref_embedding)
                         if boxes:
                             break
                     cap.release()
@@ -255,6 +270,7 @@ def start_track_job(
                     detection_mode=detection_mode,
                     text_pattern=text_pattern,
                     template_path=template_path,
+                    ref_embedding=ref_embedding,
                     job=job,
                 )
 
@@ -293,9 +309,12 @@ def start_track_job(
     return job_id
 
 
-def _detect(frame, mode: str, text_pattern: str, template_path: str | None) -> list[BBox]:
+def _detect(frame, mode: str, text_pattern: str, template_path: str | None,
+            ref_embedding=None) -> list[BBox]:
     if mode == "face":
         return detect_faces(frame)
+    if mode == "face_ref" and ref_embedding is not None:
+        return detect_face_by_reference(frame, ref_embedding)
     if mode == "person":
         return detect_persons(frame)
     if mode == "text":

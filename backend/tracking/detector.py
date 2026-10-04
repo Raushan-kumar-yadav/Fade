@@ -282,6 +282,128 @@ def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.5)
         return []
 
 
+# ── Face by Reference ────────────────────────────────────────────────────────
+
+def extract_face_embedding(img_bgr) -> "np.ndarray | None":
+    """Crop the largest face from an image and return a normalised feature vector.
+    Uses HOG histogram over the face crop as a lightweight embedding (no extra deps)."""
+    import cv2
+    import numpy as np
+
+    faces = detect_faces(img_bgr)
+    if not faces:
+        return None
+
+    # Use the largest detected face
+    best = max(faces, key=lambda b: b.w * b.h)
+    x, y, w, h = int(best.x), int(best.y), int(best.w), int(best.h)
+    x, y = max(0, x), max(0, y)
+    crop = img_bgr[y:y+h, x:x+w]
+    if crop.size == 0:
+        return None
+
+    # Resize to fixed size for consistent embedding
+    SIZE = 64
+    face_resized = cv2.resize(crop, (SIZE, SIZE))
+
+    # HOG descriptor as embedding
+    try:
+        hog = cv2.HOGDescriptor(
+            _winSize=(SIZE, SIZE),
+            _blockSize=(16, 16),
+            _blockStride=(8, 8),
+            _cellSize=(8, 8),
+            _nbins=9,
+        )
+        vec = hog.compute(face_resized).flatten()
+        norm = np.linalg.norm(vec)
+        return vec / norm if norm > 0 else vec
+    except Exception:
+        # Fallback: flattened colour histogram
+        hist = cv2.calcHist([face_resized], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+        vec = hist.flatten().astype(float)
+        norm = np.linalg.norm(vec)
+        return vec / norm if norm > 0 else vec
+
+
+def _face_similarity(crop_bgr, ref_embedding: "np.ndarray") -> float:
+    """Return cosine similarity [0..1] between a face crop and a reference embedding."""
+    import cv2
+    import numpy as np
+
+    SIZE = 64
+    resized = cv2.resize(crop_bgr, (SIZE, SIZE))
+    try:
+        hog = cv2.HOGDescriptor(
+            _winSize=(SIZE, SIZE),
+            _blockSize=(16, 16),
+            _blockStride=(8, 8),
+            _cellSize=(8, 8),
+            _nbins=9,
+        )
+        vec = hog.compute(resized).flatten()
+    except Exception:
+        hist = cv2.calcHist([resized], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+        vec = hist.flatten().astype(float)
+
+    norm = np.linalg.norm(vec)
+    if norm > 0:
+        vec = vec / norm
+    sim = float(np.dot(vec, ref_embedding))
+    return max(0.0, min(1.0, sim))
+
+
+def detect_face_by_reference(
+    frame_bgr,
+    ref_embedding: "np.ndarray",
+    min_similarity: float = 0.60,
+) -> list[BBox]:
+    """Detect all faces in a frame and return the one most similar to the reference.
+
+    Args:
+        frame_bgr:       BGR video frame.
+        ref_embedding:   HOG embedding from extract_face_embedding() on the reference image.
+        min_similarity:  Minimum cosine similarity to accept a match (0..1).
+
+    Returns:
+        List with at most one BBox — the best matching face, or [] if no face is similar enough.
+    """
+    import cv2
+    import numpy as np
+
+    faces = detect_faces(frame_bgr)
+    if not faces:
+        return []
+
+    best_box: BBox | None = None
+    best_sim = -1.0
+
+    for face in faces:
+        x, y, w, h = int(face.x), int(face.y), int(face.w), int(face.h)
+        x, y = max(0, x), max(0, y)
+        crop = frame_bgr[y:y+h, x:x+w]
+        if crop.size == 0:
+            continue
+
+        sim = _face_similarity(crop, ref_embedding)
+        logger.debug("[tracker] face_ref candidate sim=%.3f at (%d,%d,%d,%d)", sim, x, y, w, h)
+
+        if sim > best_sim:
+            best_sim = sim
+            best_box = face
+
+    if best_box is not None and best_sim >= min_similarity:
+        logger.info("[tracker] face_ref matched: sim=%.3f (threshold=%.2f)", best_sim, min_similarity)
+        return [BBox(best_box.x, best_box.y, best_box.w, best_box.h,
+                     float(best_sim), "face_ref")]
+
+    if best_box is not None:
+        logger.warning("[tracker] face_ref best sim=%.3f below threshold %.2f",
+                       best_sim, min_similarity)
+
+    return []
+
+
 def _simple_nms(boxes: list[BBox], iou_threshold: float = 0.3) -> list[BBox]:
     """Non-maximum suppression — removes overlapping boxes."""
     if not boxes:
