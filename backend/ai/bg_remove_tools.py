@@ -1,12 +1,4 @@
-"""
-bg_remove_tools.py — Agent-facing LangChain tools for background removal.
-
-Tools:
-  remove_background_from_image  — removes BG from an image asset (sync)
-  remove_background_from_video  — starts async BG removal for a video clip
-  get_bg_remove_models          — lists available models
-  check_bg_remove_job           — poll a running video job
-"""
+ 
 from __future__ import annotations
 
 from langchain_core.tools import tool
@@ -55,13 +47,17 @@ def remove_background_from_image(
         return f"Error: Unknown model '{model}'. Valid options: {valid}"
 
     try:
-        output = remove_background_image(input_path=input_path, model_key=model)
-        return (
+        output, asset_id = remove_background_image(input_path=input_path, model_key=model)
+        result = (
             f"Background removed successfully!\n"
-            f"Output: {output}\n"
+            f"Output file: {output}\n"
+            f"Library asset_id: {asset_id}\n"
             f"Model used: {model}\n"
-            f"Format: PNG with transparent alpha channel"
+            f"You can now use asset_id '{asset_id}' to place this on the timeline with place_clip()."
         )
+        if not asset_id:
+            result += "\n(Note: library import failed — use the file path directly)"
+        return result
     except Exception as e:
         return f"Error removing background: {e}"
 
@@ -142,11 +138,20 @@ def check_bg_remove_job(job_id: str) -> str:
     status = job["status"]
 
     if status == "done":
-        return (
+        asset_id = job.get("asset_id")
+        out_path  = job.get('output_path', 'unknown')
+        msg = (
             f"Job {job_id} COMPLETE!\n"
-            f"Output: {job.get('output_path', 'unknown')}\n"
-            f"The background has been removed from all frames."
+            f"Output: {out_path}\n"
         )
+        if asset_id:
+            msg += (
+                f"Library asset_id: {asset_id}\n"
+                f"You can place it on the timeline using place_clip(asset_id='{asset_id}')."
+            )
+        else:
+            msg += "(Library import skipped — use output path directly)"
+        return msg
     elif status == "running":
         pct = job.get("progress", 0)
         msg = job.get("message", "")

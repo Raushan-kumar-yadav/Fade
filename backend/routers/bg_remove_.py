@@ -1,13 +1,4 @@
-"""
-routers/bg_remove_.py — REST endpoints for background removal.
-
-POST  /bg-remove/image           — sync image removal
-POST  /bg-remove/video           — async video removal (returns job_id)
-GET   /bg-remove/status/{job_id} — poll job progress
-POST  /bg-remove/cancel/{job_id} — cancel video job
-GET   /bg-remove/jobs            — list all jobs
-GET   /bg-remove/models          — list available models
-"""
+ 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
@@ -16,7 +7,7 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/bg-remove", tags=["bg-remove"])
 
 
-# ── Request models ─────────────────────────────────────────────────────────────
+# Request models  
 
 class ImageRemoveRequest(BaseModel):
     input_path: str
@@ -31,7 +22,7 @@ class VideoRemoveRequest(BaseModel):
     workers: int = 4
 
 
-# ── Endpoints ──────────────────────────────────────────────────────────────────
+# Endpoints  
 
 @router.get("/models")
 def list_models():
@@ -39,10 +30,10 @@ def list_models():
     from backend.bg_remove.service import MODELS
     return {
         "models": [
-            {"key": "u2net",    "name": "U²-Net",         "size": "180MB", "quality": "high",      "speed": "medium", "best_for": "general images"},
-            {"key": "u2netp",   "name": "U²-Net Light",   "size": "4MB",   "quality": "good",      "speed": "fast",   "best_for": "video frames"},
-            {"key": "isnet",    "name": "IS-Net",          "size": "180MB", "quality": "excellent", "speed": "medium", "best_for": "fine detail, hair"},
-            {"key": "silueta",  "name": "Silueta",         "size": "43MB",  "quality": "good",      "speed": "fast",   "best_for": "portraits"},
+            {"key": "u2net", "name": "U²-Net", "size": "180MB", "quality": "high", "speed": "medium", "best_for": "general images"},
+            {"key": "u2netp", "name": "U²-Net Light",   "size": "4MB",   "quality": "good", "speed": "fast",   "best_for": "video frames"},
+            {"key": "isnet", "name": "IS-Net", "size": "180MB", "quality": "excellent", "speed": "medium", "best_for": "fine detail, hair"},
+            {"key": "silueta",  "name": "Silueta", "size": "43MB",  "quality": "good", "speed": "fast",   "best_for": "portraits"},
         ]
     }
 
@@ -60,7 +51,7 @@ def remove_image_bg(req: ImageRemoveRequest):
         raise HTTPException(404, f"Input file not found: {req.input_path}")
 
     try:
-        output = remove_background_image(
+        output, asset_id = remove_background_image(
             input_path=req.input_path,
             model_key=req.model,
             output_path=req.output_path,
@@ -68,6 +59,7 @@ def remove_image_bg(req: ImageRemoveRequest):
         return {
             "ok": True,
             "output_path": output,
+            "asset_id": asset_id,          # usable immediately in timeline
             "model": req.model,
         }
     except Exception as e:

@@ -1,16 +1,4 @@
-"""
-bg_remove/service.py — Local background removal using rembg + OpenCV + FFmpeg.
-
-Supports:
-  - Single image (sync, fast)
-  - Video (async, frame-by-frame with progress updates)
-
-Models (via rembg):
-  u2net        — best quality,  ~180MB download on first use
-  u2netp       — fast+small,    ~4MB,  good for video
-  isnet-general-use — newest, best detail
-  silueta      — balanced speed/quality
-"""
+ 
 from __future__ import annotations
 
 import io
@@ -28,13 +16,13 @@ from typing import Callable
 import cv2
 import numpy as np
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+#   Constants  
 
 MODELS = {
-    "u2net":              "u2net",
-    "u2netp":             "u2netp",
-    "isnet":              "isnet-general-use",
-    "silueta":            "silueta",
+    "u2net": "u2net",
+    "u2netp": "u2netp",
+    "isnet": "isnet-general-use",
+    "silueta": "silueta",
 }
 
 DEFAULT_IMAGE_MODEL = "u2net"
@@ -45,7 +33,23 @@ OUTPUT_DIR = Path(__file__).parent.parent.parent / "bg_removed"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
-# ── Image removal (sync) ──────────────────────────────────────────────────────
+# ── Library auto-import ───────────────────────────────────────────────────────
+
+def _import_to_library(filepath: str) -> str | None:
+    """Register the output file into the library panel.
+    Returns the new asset_id, or None if library is unavailable."""
+    try:
+        from backend.routers.library import _import_file
+        result = _import_file(filepath)
+        asset_id = result.get("assetId")
+        print(f"[BgRemove] Auto-imported to library: assetId={asset_id[:8]} path={filepath}", flush=True)
+        return asset_id
+    except Exception as e:
+        print(f"[BgRemove] Library import skipped: {e}", flush=True)
+        return None
+
+
+# Image removal  
 
 def remove_background_image(
     input_path: str,
@@ -79,10 +83,13 @@ def remove_background_image(
     result = remove(data, session=session)
     out.write_bytes(result)
     print(f"[BgRemove] Image done: {out}", flush=True)
-    return str(out)
+
+    # Auto-import into library so agent can use asset_id immediately
+    asset_id = _import_to_library(str(out))
+    return str(out), asset_id
 
 
-# ── Video removal (async with progress) ───────────────────────────────────────
+#   Video removal  
 
 def remove_background_video(
     input_path: str,
@@ -106,9 +113,9 @@ def remove_background_video(
         raise FileNotFoundError(f"Video not found: {input_path}")
 
     model_name = MODELS.get(model_key, model_key)
-    job_id     = str(uuid.uuid4())[:8]
-    tmp_dir    = Path(tempfile.mkdtemp(prefix=f"bg_remove_{job_id}_"))
-    out_stem   = OUTPUT_DIR / f"{in_path.stem}_nobg_{model_key}_{job_id}"
+    job_id = str(uuid.uuid4())[:8]
+    tmp_dir = Path(tempfile.mkdtemp(prefix=f"bg_remove_{job_id}_"))
+    out_stem = OUTPUT_DIR / f"{in_path.stem}_nobg_{model_key}_{job_id}"
 
     def _prog(pct, msg):
         if progress_cb:
@@ -116,19 +123,19 @@ def remove_background_video(
         print(f"[BgRemove] {pct:.0f}% — {msg}", flush=True)
 
     try:
-        # ── 1. Open video ───────────────────────────────────────────────────
+        # Open video  
         cap = cv2.VideoCapture(str(in_path))
         if not cap.isOpened():
             raise RuntimeError(f"Cannot open video: {input_path}")
 
-        fps    = cap.get(cv2.CAP_PROP_FPS) or 24.0
+        fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
         total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         _prog(2, f"Opened video: {width}x{height} @ {fps}fps, {total} frames")
 
-        # ── 2. Extract frames ───────────────────────────────────────────────
+        #  Extract frames  
         frames_dir = tmp_dir / "frames_in"
         frames_dir.mkdir()
         out_dir    = tmp_dir / "frames_out"
@@ -149,7 +156,7 @@ def remove_background_video(
         total_frames = len(frame_paths)
         _prog(10, f"Extracted {total_frames} frames")
 
-        # ── 3. Remove background per frame ─────────────────────────────────
+        # Remove background per frame  
         session = new_session(model_name)
         done_count = 0
 
@@ -174,7 +181,7 @@ def remove_background_video(
 
         _prog(85, "Reassembling video…")
 
-        # ── 4. Reassemble with FFmpeg ───────────────────────────────────────
+        #  Reassemble with FFmpeg  
         if output_format == "webm":
             out_file = str(out_stem) + ".webm"
             ffmpeg_cmd = [
@@ -202,7 +209,7 @@ def remove_background_video(
         if proc.returncode != 0:
             raise RuntimeError(f"FFmpeg failed:\n{proc.stderr[-500:]}")
 
-        # ── 5. Try to merge original audio ─────────────────────────────────
+        #  Try to merge original audio  
         final_file = str(out_stem) + f"_final.{output_format}"
         merge_cmd = [
             "ffmpeg", "-y",
@@ -211,7 +218,7 @@ def remove_background_video(
             "-c:v", "copy",
             "-c:a", "aac",
             "-map", "0:v:0",
-            "-map", "1:a:0?",     # ? = optional (no audio track = ok)
+            "-map", "1:a:0?",     
             "-shortest",
             final_file,
         ]
@@ -223,13 +230,16 @@ def remove_background_video(
             result_path = out_file   # no audio, still valid
 
         _prog(100, f"Done! Output: {result_path}")
-        return result_path
+
+        # Auto-import finished video into library
+        asset_id = _import_to_library(result_path)
+        return result_path, asset_id
 
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
-# ── Job registry (in-memory) ───────────────────────────────────────────────────
+#   Job registry  
 
 _jobs: dict[str, dict] = {}
 _lock = threading.Lock()
@@ -239,14 +249,15 @@ def _new_job(job_type: str, input_path: str) -> str:
     job_id = str(uuid.uuid4())[:12]
     with _lock:
         _jobs[job_id] = {
-            "job_id":     job_id,
-            "type":       job_type,
+            "job_id": job_id,
+            "type": job_type,
             "input_path": input_path,
-            "status":     "pending",
-            "progress":   0.0,
-            "message":    "Queued",
+            "status": "pending",
+            "progress": 0.0,
+            "message": "Queued",
             "output_path": None,
-            "error":      None,
+            "asset_id": None,       # populated after library import
+            "error": None,
             "created_at": time.time(),
         }
     return job_id
@@ -280,7 +291,7 @@ def _is_cancelled(job_id: str) -> bool:
     return job_id in _cancelled
 
 
-# ── Start async video job ─────────────────────────────────────────────────────
+# Start async video job  
 
 def start_video_job(
     input_path: str,
@@ -294,7 +305,7 @@ def start_video_job(
     def _run():
         _update_job(job_id, status="running", progress=2, message="Starting…")
         try:
-            result = remove_background_video(
+            output_path, asset_id = remove_background_video(
                 input_path=input_path,
                 model_key=model_key,
                 output_format=output_format,
@@ -304,7 +315,9 @@ def start_video_job(
                 cancelled_fn=lambda: _is_cancelled(job_id),
             )
             _update_job(job_id, status="done", progress=100,
-                        message="Complete", output_path=result)
+                        message="Complete",
+                        output_path=output_path,
+                        asset_id=asset_id)      # <- library asset_id
         except RuntimeError as e:
             if "Cancelled" in str(e):
                 _update_job(job_id, status="cancelled", message="Cancelled")
