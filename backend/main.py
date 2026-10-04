@@ -358,9 +358,12 @@ app.include_router(debug.router)    # animation diagnostics: /debug/anim-*
 app.include_router(scene_tools.router)  # scene search / clip description tools
 app.include_router(virality.router)  # virality predictor + social connections
 app.include_router(image_tools.router)
-app.include_router(integrations.router)  # platform connections (YouTube, Instagram, LinkedIn, Gmail)
+app.include_router(integrations.router)   
 from backend.routers import pii
 app.include_router(pii.router)
+
+from backend.routers.pdf_export import router as pdf_export_router
+app.include_router(pdf_export_router)
 
 # Artifact Integrity router  
 try:

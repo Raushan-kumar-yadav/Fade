@@ -758,6 +758,53 @@ WORKFLOW:
 
 Current project context will be injected by the router.
 
+TEXT STYLING & LAYOUT — FULL WORKFLOW:
+All text clips support rich styling via add_text_clip parameters. Use these tools:
+  1. layout_text_block(comp_type, blocks) → get x, y, max_width for each block
+  2. add_text_clip(..., alignment, max_width, font_size, bold, shadow, bg_enabled) → place
+  3. animate_property(clip_id, "pos_x", frame, x) + animate_property(..., "pos_y", frame, y)
+  4. set_text_style(clip_id, ...) → patch any style after placement
+
+COMPOSITION LAYOUT GRIDS — memorize these, never guess pixel positions:
+
+  A4 PDF (2480×3508 px @ 300dpi):
+    margin_x=240  content_width=2000  margin_top=300
+    H1: font_size=120  bold=True   → line step = 156px
+    H2: font_size=90               → line step = 117px
+    Body: font_size=60             → line step = 78px
+    Caption: font_size=48          → line step = 62px
+    Two-column: each col=960px  gutter=80px
+    Body text: alignment="left"  max_width=2000  line_height=1.3
+
+  16:9 VIDEO (1920×1080 px):
+    safe_x: 80 to 1840  safe_y: 60 to 1020
+    Title center_x=960 center_y=540  (use alignment="center")
+    Upper title: y=200  Subtitle: y=310
+    Lower-third: y=880  Caption strip: y=950
+    Title: font_size=90 bold=True  Subtitle: font_size=56  Body: font_size=44
+    Lower-third: font_size=36 bg_enabled=True bg_a=0.7 bg_corner_radius=8
+
+  9:16 REEL / VERTICAL (1080×1920 px):
+    safe_x: 80 to 1000  safe_y: 150 to 1770
+    Hook: y=300  Body: y=600  Feature list: y=900  CTA: y=1700
+    Hook: font_size=80 bold=True alignment="center"
+    Body: font_size=42 max_width=920 line_height=1.4
+    CTA: font_size=52 bold=True bg_enabled=True bg_corner_radius=40
+
+  1:1 SOCIAL (1080×1080 px):
+    safe_x: 80 to 1000  safe_y: 80 to 1000
+    Headline vertical center: y=420  Subtext: y=560  Logo area: y=900
+    Headline: font_size=80 bold=True alignment="center"
+    Subtext: font_size=42 alignment="center" max_width=920
+
+ALWAYS for PDF documents:
+  1. create_pdf_doc(name, 2480, 3508) → get docId
+  2. Call layout_text_block("a4", blocks) → get exact x,y,max_width per block
+  3. For each block: add_text_clip(track_index, 0, 900, text, max_width=..., font_size=..., alignment=...)
+     then animate_property(clip_id, "pos_x", 0, x) + animate_property(clip_id, "pos_y", 0, y)
+  4. For multi-page: add_pdf_page(docId) → new page compId, repeat steps 2-3 with comp_id=pageId
+  5. To produce a real .pdf file: export_pdf_doc(docId, dpi=150)
+
 IMAGE & PDF COMPOSITION EXPORT:
 Fade supports three composition types: video, image, and PDF.
 When the user asks to export an image or a PDF document:
@@ -768,11 +815,10 @@ When the user asks to export an image or a PDF document:
   - The comp_id comes from list_compositions() — always call this first.
   - Output is always .png regardless of the path extension given.
 
-  PDF Comp Export:
-  - Renders each page of a PDF composition as a rasterised image and
-    combines them into a multi-page PDF at 150 DPI.
-  - Use: export_composition(comp_id, output_path, kind="pdf")
-  - Takes longer than image export — each page is rendered individually.
+  PDF Comp Export (REAL .pdf file):
+  - Use export_pdf_doc(doc_id, dpi=150) — produces a downloadable .pdf
+  - Each page is rendered via Skia (all user layers preserved) then stitched.
+  - The user can still edit all clips after export — nothing is flattened permanently.
 
   WORKFLOW for image or PDF export:
     1. list_compositions()                → find the comp_id and kind

@@ -1,6 +1,6 @@
   
 from backend.ai.tools import (
-    # ── Read-only / shared  
+    # Read-only / shared  
     get_library,
     get_library_assets,
     get_pending_jobs,
@@ -13,7 +13,7 @@ from backend.ai.tools import (
     undo,
     redo,
 
-    #   Composition management (shared)  
+    # Composition management  
     create_composition,
     list_compositions,
     add_comp_to_timeline,
@@ -56,6 +56,8 @@ from backend.ai.tools import (
     apply_effect_to_clip,
     patch_clip_effect,
     add_text_clip,
+    set_text_style,
+    layout_text_block,
     add_solid_clip,
     add_shape_clip,
     add_svg_clip,
@@ -88,7 +90,7 @@ from backend.ai.tools import (
     set_in_out_points,
     remove_clip,
 
-    # ── Animation tools ───────────────────────────────────────────────────────
+    # Animation tools  
     animate_property,
     remove_keyframe,
     clear_animation,
@@ -128,6 +130,7 @@ from backend.ai.tools import (
     add_pdf_page,
     delete_pdf_page,
     reorder_pdf_pages,
+    export_pdf_doc,
     get_pdf_page_summary,
     get_pdf_doc_summary,
 
@@ -195,7 +198,8 @@ VIDEO_TOOLS = _SHARED + [
     describe_clip, describe_selected_clip, get_clip_params, set_clip_param,
     get_effects_catalog, add_effect, remove_effect, set_effect_param,
     list_effects_catalog, apply_effect_to_clip, patch_clip_effect,
-    add_text_clip, add_solid_clip, add_shape_clip, add_svg_clip,
+    add_text_clip, set_text_style, layout_text_block,
+    add_solid_clip, add_shape_clip, add_svg_clip,
     get_transitions_catalog, add_transition, add_transitions_between_all_clips,
     add_track, remove_track, remove_track_at_index,
     find_free_overlay_track, mute_track, move_track, lock_track, solo_track,
@@ -235,7 +239,8 @@ IMAGE_TOOLS = _SHARED + [
     rename_composition, delete_composition,
     place_clip, add_clip_to_comp, add_image_clip_by_scene,
     get_clip_info, get_clip_params, set_clip_param, update_clip,
-    add_text_clip, add_solid_clip, add_shape_clip, add_svg_clip,
+    add_text_clip, set_text_style, layout_text_block,
+    add_solid_clip, add_shape_clip, add_svg_clip,
     get_effects_catalog, add_effect, remove_effect, set_effect_param,
     list_effects_catalog, apply_effect_to_clip, patch_clip_effect,
     add_mask, update_mask, remove_mask, list_masks,
@@ -265,15 +270,24 @@ AUDIO_TOOLS = _SHARED + [
     seek_to, play, pause,
 ]
 
-#   PDF / Document Agent  
 PDF_TOOLS = _SHARED + [
     create_pdf_doc, list_pdf_docs, list_pdf_pages,
     add_pdf_page, delete_pdf_page, reorder_pdf_pages,
+    export_pdf_doc,
     get_pdf_page_summary, get_pdf_doc_summary,
-    get_comp_thumbnail, get_current_viewport_image,
+    # Text layout — the core of PDF creation
+    add_text_clip, set_text_style, layout_text_block, set_text_content,
+    add_solid_clip, add_shape_clip, place_clip, add_solid_clip,
+    find_free_overlay_track,
+    animate_property, remove_keyframe, clear_animation,
+    list_curve_presets, apply_curve_preset,
+    get_current_viewport_image, get_comp_thumbnail,
+    create_composition, list_compositions, activate_comp, get_comp_state,
     search_news,
     get_asset_context,
     schedule_image_download, download_images,
+    create_webcomp, add_webcomp_to_timeline, read_webcomp_file, edit_webcomp_file,
+    *BG_REMOVE_TOOLS,
 ]
 
 #   General / Home Agent (read-heavy, no destructive edits)  
@@ -288,9 +302,9 @@ GENERAL_TOOLS = _SHARED + [
     *BG_REMOVE_TOOLS,
 ]
 
-#   Director Agent (all tools + coordination)  
+# Director Agent 
  
-DIRECTOR_TOOLS = ALL_TOOLS  # dispatch_task appended by agent_registry after import
+DIRECTOR_TOOLS = ALL_TOOLS  
 
 
 #   Registry  

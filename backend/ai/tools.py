@@ -664,32 +664,351 @@ def add_text_clip(
     start_frame: int,
     duration: int,
     text: str,
+    comp_id: str | None = None,
+    #   Typography  
     font: str = "Arial",
-    comp_id: str | None = None
+    font_size: float = 48.0,
+    bold: bool = False,
+    italic: bool = False,
+    all_caps: bool = False,
+    letter_spacing: float = 0.0,
+    #   Layout    
+    alignment: str = "left",
+    max_width: float = 0.0,
+    line_height: float = 1.2,
+    #   Fill color (RGBA 0-1)  
+    color_r: float = 1.0,
+    color_g: float = 1.0,
+    color_b: float = 1.0,
+    color_a: float = 1.0,
+    #   Stroke  
+    stroke_width: float = 0.0,
+    stroke_r: float = 0.0,
+    stroke_g: float = 0.0,
+    stroke_b: float = 0.0,
+    stroke_a: float = 1.0,
+    # ── Drop shadow ──────────────────────────────────────────────────────────
+    shadow: bool = False,
+    shadow_offset_x: float = 4.0,
+    shadow_offset_y: float = 4.0,
+    shadow_blur: float = 6.0,
+    shadow_r: float = 0.0,
+    shadow_g: float = 0.0,
+    shadow_b: float = 0.0,
+    shadow_a: float = 0.6,
+    # ── Background box ───────────────────────────────────────────────────────
+    bg_enabled: bool = False,
+    bg_r: float = 0.0,
+    bg_g: float = 0.0,
+    bg_b: float = 0.0,
+    bg_a: float = 0.5,
+    bg_padding_x: float = 20.0,
+    bg_padding_y: float = 10.0,
+    bg_corner_radius: float = 0.0,
 ) -> str:
-    """Add a text clip to the timeline.
+    """Add a richly-styled text clip to ANY composition (video, image, or PDF page).
+
+    All style parameters map directly to the Skia text renderer — full layout
+    support including word-wrap, alignment, shadows, stroke, and background boxes.
 
     Args:
-        track_index: Track index (0 = first).
-        start_frame: Frame where the clip starts.
-        duration: Duration in frames.
-        text: The text to display.
-        font: Font family (e.g. Arial).
-        comp_id: Optional compId to add the clip inside a specific nested composition.
-                 Leave None (default) to add to the main/root timeline.
-                 The UI's currently-open comp tab does NOT affect where the clip lands.
+        track_index:      Track index (0 = first).
+        start_frame:      Frame where the clip starts.
+        duration:         Duration in frames.
+        text:             The text to display. Use \\n for manual line breaks.
+        comp_id:          Target comp ID (None = main/root timeline).
+
+        font:             Font family name e.g. "Arial", "Georgia", "Courier New".
+        font_size:        Font size in pixels. A4 body=60, title=120, caption=48.
+                          16:9 title=80, subtitle=48, lower-third=36.
+        bold:             Bold weight.
+        italic:           Italic slant.
+        all_caps:         Force all characters to uppercase.
+        letter_spacing:   Extra pixels between characters (tracking).
+
+        alignment:        "left" | "center" | "right" — horizontal text alignment.
+        max_width:        Pixel width before word-wrapping to next line.
+                          0 = no wrap. Set to column width for documents.
+                          A4 content width = 2000px. 16:9 safe width = 1760px.
+        line_height:      Line height multiplier (1.2 = 120% of font_size).
+
+        color_r/g/b/a:    Fill color as RGBA floats 0-1. White=(1,1,1,1).
+
+        stroke_width:     Outline stroke width in pixels. 0 = no stroke.
+        stroke_r/g/b/a:   Stroke color. Black=(0,0,0,1).
+
+        shadow:           Enable drop shadow.
+        shadow_offset_x:  Shadow X offset in pixels.
+        shadow_offset_y:  Shadow Y offset in pixels.
+        shadow_blur:      Shadow blur radius in pixels.
+        shadow_r/g/b/a:   Shadow color. Default semi-transparent black.
+
+        bg_enabled:       Enable filled background box behind the text.
+        bg_r/g/b/a:       Background box color. Default semi-transparent black.
+        bg_padding_x:     Horizontal padding inside the background box.
+        bg_padding_y:     Vertical padding inside the background box.
+        bg_corner_radius: Corner radius of the background box (rounded corners).
+
+    Returns:
+        JSON with clipId, startFrame, duration, and the full applied style.
+
+    Layout grids for precise placement:
+        A4 PDF  (2480x3508): margin_x=240, content_w=2000, start_y=300
+          H1 font=120  H2 font=90  Body font=60  Caption font=48
+          Body line step = font_size * line_height (e.g. 60 * 1.3 = 78px)
+        16:9 VIDEO (1920x1080): safe x=80-1840, title_y=200, subtitle_y=310
+          lower_third_y=880  center_y=540
+        9:16 REEL (1080x1920): safe x=80-1000, hook_y=300, body_y=600, cta_y=1700
+        1:1 SOCIAL (1080x1080): safe x=80-1000, headline_y=420
     """
+    style = {
+        "text": text,
+        "fontFamily": font,
+        "fontSize": font_size,
+        "bold": bold,
+        "italic": italic,
+        "allCaps": all_caps,
+        "letterSpacing": letter_spacing,
+        "alignment": alignment,
+        "maxWidth": max_width,
+        "lineHeight": line_height,
+        "color": [color_r, color_g, color_b, color_a],
+        "strokeWidth": stroke_width,
+        "strokeColor": [stroke_r, stroke_g, stroke_b, stroke_a],
+        "shadowEnabled": shadow,
+        "shadowOffsetX": shadow_offset_x,
+        "shadowOffsetY": shadow_offset_y,
+        "shadowBlur": shadow_blur,
+        "shadowColor": [shadow_r, shadow_g, shadow_b, shadow_a],
+        "bgEnabled": bg_enabled,
+        "bgColor": [bg_r, bg_g, bg_b, bg_a],
+        "bgPaddingX": bg_padding_x,
+        "bgPaddingY": bg_padding_y,
+        "bgCornerRadius": bg_corner_radius,
+    }
     result = _post("/clips/text", {
         "trackIndex": track_index,
         "startFrame": start_frame,
         "duration": duration,
         "text": text,
         "fontFamily": font,
-        "compId": comp_id,      
+        "style": style,
+        "compId": comp_id,
     })
     return json.dumps(result, indent=2)
 
+
+@tool
+def set_text_style(
+    clip_id: str,
+    text: str | None = None,
+    font: str | None = None,
+    font_size: float | None = None,
+    bold: bool | None = None,
+    italic: bool | None = None,
+    alignment: str | None = None,
+    max_width: float | None = None,
+    line_height: float | None = None,
+    color_r: float | None = None,
+    color_g: float | None = None,
+    color_b: float | None = None,
+    color_a: float | None = None,
+    stroke_width: float | None = None,
+    shadow: bool | None = None,
+    bg_enabled: bool | None = None,
+    bg_r: float | None = None,
+    bg_g: float | None = None,
+    bg_b: float | None = None,
+    bg_a: float | None = None,
+    bg_corner_radius: float | None = None,
+    letter_spacing: float | None = None,
+    all_caps: bool | None = None,
+) -> str:
+    """Update the style of an existing text clip (any comp type: video, image, PDF).
+
+    Only the fields you pass are updated — all others are preserved as-is.
+    Use this after add_text_clip to tweak styling without recreating the clip.
+
+    Args:
+        clip_id:    The clipId of the text clip to update.
+        text:       New text content (supports \\n for line breaks).
+        font:       New font family.
+        font_size:  New font size in pixels.
+        bold:       Set bold on/off.
+        italic:     Set italic on/off.
+        alignment:  "left" | "center" | "right"
+        max_width:  Word-wrap width in pixels. 0 = no wrap.
+        line_height: Line height multiplier.
+        color_r/g/b/a: New fill color channels (0-1 floats).
+        stroke_width: Outline stroke width. 0 = remove stroke.
+        shadow:      Enable/disable drop shadow.
+        bg_enabled:  Enable/disable background box.
+        bg_r/g/b/a:  Background box color channels.
+        bg_corner_radius: Background box corner radius.
+        letter_spacing: Letter tracking in pixels.
+        all_caps:    Force uppercase.
+
+    Returns:
+        Updated clip dict with new style applied.
+    """
+    style_patch: dict = {}
+    if font is not None:        style_patch["fontFamily"] = font
+    if font_size is not None:   style_patch["fontSize"] = font_size
+    if bold is not None:        style_patch["bold"] = bold
+    if italic is not None:      style_patch["italic"] = italic
+    if alignment is not None:   style_patch["alignment"] = alignment
+    if max_width is not None:   style_patch["maxWidth"] = max_width
+    if line_height is not None: style_patch["lineHeight"] = line_height
+    if letter_spacing is not None: style_patch["letterSpacing"] = letter_spacing
+    if all_caps is not None:    style_patch["allCaps"] = all_caps
+    if stroke_width is not None: style_patch["strokeWidth"] = stroke_width
+    if shadow is not None:      style_patch["shadowEnabled"] = shadow
+    if bg_enabled is not None:  style_patch["bgEnabled"] = bg_enabled
+    if bg_corner_radius is not None: style_patch["bgCornerRadius"] = bg_corner_radius
+
+    # Batch color fields only if at least one channel is specified
+    for key, fields in [
+        ("color",       [("color_r", color_r), ("color_g", color_g), ("color_b", color_b), ("color_a", color_a)]),
+        ("bgColor",     [("bg_r", bg_r), ("bg_g", bg_g), ("bg_b", bg_b), ("bg_a", bg_a)]),
+    ]:
+        vals = [(n, v) for n, v in fields if v is not None]
+        if vals:
+            style_patch[key] = [
+                (color_r if key == "color" else bg_r) or 0.0,
+                (color_g if key == "color" else bg_g) or 0.0,
+                (color_b if key == "color" else bg_b) or 0.0,
+                (color_a if key == "color" else bg_a) or 1.0,
+            ]
+
+    payload: dict = {}
+    if text is not None:  payload["text"] = text
+    if style_patch:       payload["style"] = style_patch
+
+    result = _patch(f"/clips/text/{clip_id}", payload)
+    return json.dumps(result, indent=2)
+
+
+@tool
+def layout_text_block(
+    comp_type: str,
+    blocks: list,
+    start_y: float = -1.0,
+    margin_x: float = -1.0,
+    column_count: int = 1,
+    gutter: float = 40.0,
+) -> str:
+    """Calculate pixel positions for a sequence of text blocks in any composition.
+
+    Returns ready-to-use x, y, max_width values to pass directly to add_text_clip.
+    Eliminates manual pixel math for document and video layouts.
+
+    Args:
+        comp_type:     Preset layout grid:
+                       "a4"       — A4 at 300dpi (2480x3508px), 240px margins
+                       "letter"   — US Letter at 300dpi (2550x3300px)
+                       "16x9"     — 1920x1080 video, 80px safe zone
+                       "9x16"     — 1080x1920 vertical/reel
+                       "square"   — 1080x1080 social
+                       "custom"   — uses margin_x and start_y you provide
+        blocks:        List of dicts, each describing one text block:
+                       [{"role": "h1"|"h2"|"body"|"caption"|"subtitle",
+                         "text": "...",
+                         "lines": 1}]   ← lines: estimated line count for spacing
+        start_y:       Override starting Y position. -1 = use comp default.
+        margin_x:      Override left margin. -1 = use comp default.
+        column_count:  Number of columns (1 or 2). Only for a4/letter.
+        gutter:        Space between columns in px.
+
+    Returns:
+        JSON list: [{text, role, x, y, max_width, font_size, alignment,
+                     line_height, track_index_hint}, ...]
+        Pass x→pos_x, y→pos_y, max_width→max_width to add_text_clip,
+        and use animate_property to set the position after placement.
+    """
+    # Built-in layout grids
+    GRIDS = {
+        "a4":     {"w": 2480, "h": 3508, "mx": 240, "my": 300, "col_gap": gutter},
+        "letter": {"w": 2550, "h": 3300, "mx": 255, "my": 300, "col_gap": gutter},
+        "16x9":   {"w": 1920, "h": 1080, "mx": 80,  "my": 80,  "col_gap": gutter},
+        "9x16":   {"w": 1080, "h": 1920, "mx": 80,  "my": 150, "col_gap": gutter},
+        "square": {"w": 1080, "h": 1080, "mx": 80,  "my": 80,  "col_gap": gutter},
+    }
+    FONT_SIZES = {
+        "a4":     {"h1": 120, "h2": 90,  "body": 60,  "caption": 48, "subtitle": 72},
+        "letter": {"h1": 120, "h2": 90,  "body": 60,  "caption": 48, "subtitle": 72},
+        "16x9":   {"h1": 90,  "h2": 72,  "body": 44,  "caption": 32, "subtitle": 56},
+        "9x16":   {"h1": 80,  "h2": 64,  "body": 42,  "caption": 30, "subtitle": 52},
+        "square": {"h1": 80,  "h2": 64,  "body": 42,  "caption": 30, "subtitle": 52},
+    }
+    LINE_HEIGHT = 1.3
+
+    grid = GRIDS.get(comp_type, GRIDS["16x9"])
+    fsizes = FONT_SIZES.get(comp_type, FONT_SIZES["16x9"])
+
+    mx = margin_x if margin_x >= 0 else grid["mx"]
+    sy = start_y  if start_y  >= 0 else grid["my"]
+    total_content_w = grid["w"] - 2 * mx
+
+    if column_count == 2 and comp_type in ("a4", "letter"):
+        col_w = (total_content_w - gutter) / 2
+    else:
+        col_w = total_content_w
+        column_count = 1
+
+    results = []
+    cur_y = sy
+    col = 0  # 0 = left, 1 = right
+
+    for blk in blocks:
+        role = blk.get("role", "body")
+        btxt = blk.get("text", "")
+        lines_est = int(blk.get("lines", 1))
+
+        fs = fsizes.get(role, fsizes["body"])
+        line_step = fs * LINE_HEIGHT
+        block_h = line_step * lines_est
+
+        col_x = mx + col * (col_w + gutter)
+
+        results.append({
+            "text": btxt,
+            "role": role,
+            "x": round(col_x),
+            "y": round(cur_y),
+            "max_width": round(col_w),
+            "font_size": fs,
+            "line_height": LINE_HEIGHT,
+            "alignment": "left",
+            "track_index_hint": len(results) + 1,
+            "estimated_height": round(block_h),
+        })
+
+        # Advance Y position
+        spacing_after = {
+            "h1": fs * 0.6, "h2": fs * 0.5,
+            "body": fs * 0.3, "caption": fs * 0.2, "subtitle": fs * 0.4,
+        }.get(role, fs * 0.3)
+
+        cur_y += block_h + spacing_after
+
+        # Column flow for 2-column layouts
+        if column_count == 2:
+            col = 1 - col
+            if col == 0:
+                pass  # both columns filled, keep advancing Y
+
+    return json.dumps({
+        "comp_type": comp_type,
+        "grid": {"width": grid["w"], "height": grid["h"],
+                 "margin_x": mx, "start_y": sy, "content_width": round(col_w)},
+        "blocks": results,
+        "tip": "Pass each block's x/y to animate_property(pos_x/pos_y) after add_text_clip. "
+               "Use max_width as the max_width param in add_text_clip for word-wrap.",
+    }, indent=2)
+
+
 # transitions  
+
 
 @tool
 def get_transitions_catalog() -> str:
@@ -1601,6 +1920,8 @@ ALL_TOOLS = [
     set_effect_param,
     set_clip_param,
     add_text_clip,
+    set_text_style,
+    layout_text_block,
     get_transitions_catalog,
     add_transition,
     add_transitions_between_all_clips,
@@ -4478,6 +4799,70 @@ ALL_TOOLS.extend(ABOUT_TOOLS)
 PDF_SUMMARY_TOOLS = [get_pdf_page_summary, get_pdf_doc_summary]
 ALL_TOOLS.extend(PDF_SUMMARY_TOOLS)
 
+
+@tool
+def export_pdf_doc(
+    doc_id: str,
+    output_path: str | None = None,
+    dpi: int = 150,
+) -> str:
+    """Export a PDF document to a real .pdf file with proper page layout.
+
+    Each page composition is rendered at full resolution through the Skia engine
+    (preserving all user-editable layers, effects, animations at frame 0), then
+    all pages are stitched into a single PDF file using ReportLab.
+
+    The user retains full canvas editing control — this only produces the output file.
+
+    Args:
+        doc_id:      The PDF document ID (from create_pdf_doc or list_pdf_docs).
+        output_path: Where to save the .pdf file. If None, saves to the project's
+                     exports/ folder with the document name as filename.
+        dpi:         Render resolution. 72=screen, 150=print-ready, 300=high-res.
+                     Higher DPI = larger file, slower render.
+
+    Returns:
+        Path to the saved .pdf file and page count.
+    """
+    import requests as _req
+    import os
+
+    # Call the export endpoint
+    url = f"{_BASE}/pdf-docs/{doc_id}/export?dpi={dpi}"
+    try:
+        resp = _req.get(url, timeout=120)
+        resp.raise_for_status()
+    except Exception as e:
+        return f"Error: PDF export request failed — {e}"
+
+    pdf_bytes = resp.content
+    if len(pdf_bytes) < 100:
+        return f"Error: Export returned empty PDF ({len(pdf_bytes)} bytes)"
+
+    # Determine save path
+    if not output_path:
+        export_dir = os.path.join(os.path.dirname(__file__), "..", "..", "exports")
+        os.makedirs(export_dir, exist_ok=True)
+        cd = resp.headers.get("Content-Disposition", "")
+        fname = "document.pdf"
+        if 'filename="' in cd:
+            fname = cd.split('filename="')[1].rstrip('"')
+        output_path = os.path.join(export_dir, fname)
+
+    output_path = os.path.abspath(output_path)
+    with open(output_path, "wb") as f:
+        f.write(pdf_bytes)
+
+    size_kb = len(pdf_bytes) // 1024
+    return (
+        f"PDF exported successfully!\n"
+        f"  Path: {output_path}\n"
+        f"  Size: {size_kb} KB\n"
+        f"  DPI:  {dpi}\n"
+        f"Open this file with any PDF viewer."
+    )
+
+
 # Previously defined but unregistered tools - now fully exposed to the agent
 ALL_TOOLS.extend([
     get_timeline_range,
@@ -4492,7 +4877,8 @@ ALL_TOOLS.extend([
     get_clip_info, remove_clip, list_timeline_clips,
     generate_captions, remove_silence, get_transcript, get_clip_params,
     animate_property, remove_keyframe, clear_animation, get_keyframes,
-    set_text_content, list_curve_presets, apply_curve_preset, move_keyframe,
+    set_text_content, set_text_style, layout_text_block,
+    list_curve_presets, apply_curve_preset, move_keyframe,
     list_kokoro_voices, generate_tts, check_job_status, cancel_job,
     stop_indexing, export_video,
     set_clip_volume, mute_clip, get_clip_volume,
@@ -4502,6 +4888,7 @@ ALL_TOOLS.extend([
     rename_composition, get_comp_layers, update_comp_layer, move_comp_layer,
     create_pdf_doc, list_pdf_docs, list_pdf_pages,
     add_pdf_page, delete_pdf_page, reorder_pdf_pages,
+    export_pdf_doc,
     play, pause, set_playback_speed, set_in_out_points,
     transform_batch,
 ])
