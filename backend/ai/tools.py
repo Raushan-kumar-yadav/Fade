@@ -4733,3 +4733,7 @@ from backend.ai.tracking_tools import (  # noqa: E402
     track_and_blur_text,
 )
 ALL_TOOLS.extend(TRACKING_TOOLS)
+
+# Plan management tools
+from backend.ai.plan_tools import PLAN_TOOLS  # noqa: E402
+ALL_TOOLS.extend(PLAN_TOOLS)

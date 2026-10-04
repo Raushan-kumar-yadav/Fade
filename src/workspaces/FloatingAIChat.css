@@ -626,3 +626,9 @@
 /* Status bar extended phases */
 .fchat__status-bar--skill { background: rgba(108,99,255,0.15); }
 .fchat__status-bar--checkpoint { background: rgba(34,197,94,0.12); }
+
+/* Plan Widget wrapper inside chat */
+.fchat__plan-widget-wrapper {
+  padding: 0 10px 8px;
+  flex-shrink: 0;
+}

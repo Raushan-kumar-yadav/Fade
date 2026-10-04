@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import './FloatingAIChat.css'
+import PlanWidget from './PlanWidget'
 
 // Types
 
@@ -345,6 +346,7 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
   const [input,    setInput]    = useState(() => getStore(agentId).input)
   const [busy,     setBusy]     = useState(false)
   const [status,   setStatus]   = useState<AgentStatus>({ phase: 'idle', label: '' })
+  const [activePlanId, setActivePlanId] = useState<string | null>(null)
 
   // Widget position & size
   const [pos,  setPos]  = useState(() => contained ? { x: 20, y: 50 } : { x: window.innerWidth - 440, y: 72 })
@@ -441,6 +443,8 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
 
             } else if (evt.type === 'plan_created' && evt.skill) {
               const plan = evt.plan
+              // Open the Plan Preview Widget
+              if (plan?.plan_id) setActivePlanId(plan.plan_id)
               if (plan?.steps) {
                 const steps: SkillStepState[] = (plan.steps as any[]).map((s: any) => ({
                   order:  s.order ?? 0,
@@ -453,6 +457,7 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
                 ))
               }
               setStatus({ phase: 'skill', label: `📋 Plan ready — ${plan?.steps?.length ?? '?'} steps` })
+              window.dispatchEvent(new CustomEvent('fade:plan-changed'))
 
             } else if (evt.type === 'step_start') {
               setStatus({ phase: 'skill', label: `[${evt.order}] ${evt.name} — ${evt.tool ?? ''}…` })
@@ -478,6 +483,7 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               if (evt.checkpoint) {
                 setStatus({ phase: 'checkpoint', label: `🏁 Checkpoint: ${evt.checkpoint}` })
               }
+              window.dispatchEvent(new CustomEvent('fade:plan-changed'))
               scrollBottom()
 
             } else if (evt.type === 'step_failed') {
@@ -488,12 +494,14 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
                 )
                 return { ...m, skillSteps: steps, skillError: evt.error ?? 'Step failed' }
               }))
+              window.dispatchEvent(new CustomEvent('fade:plan-changed'))
               setStatus({ phase: 'idle', label: '' })
 
             } else if (evt.type === 'skill_done') {
               setMessages(prev => prev.map(m =>
                 m.id === `skill-${aiId}` ? { ...m, skillDone: true } : m
               ))
+              window.dispatchEvent(new CustomEvent('fade:plan-changed'))
               setStatus({ phase: 'idle', label: '' })
               scrollBottom()
 
@@ -607,9 +615,11 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
 
   // Input glow state
   const glowClass =
-    status.phase === 'thinking'   ? 'fchat__input-wrap--thinking'  :
-    status.phase === 'responding' ? 'fchat__input-wrap--responding' :
-    status.phase === 'tool'       ? 'fchat__input-wrap--tool'       : ''
+    status.phase === 'thinking'    ? 'fchat__input-wrap--thinking'  :
+    status.phase === 'responding'  ? 'fchat__input-wrap--responding' :
+    status.phase === 'tool'        ? 'fchat__input-wrap--tool'       :
+    status.phase === 'skill'       ? 'fchat__input-wrap--tool'       :
+    status.phase === 'checkpoint'  ? 'fchat__input-wrap--responding' : ''
 
   return (
     <div
@@ -636,6 +646,21 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
         {messages.map(m => <Bubble key={m.id} msg={m} />)}
         <div ref={bottomRef} />
       </div>
+
+      {/* Plan Preview Widget — shown when an active plan exists */}
+      {activePlanId && (
+        <div className="fchat__plan-widget-wrapper">
+          <PlanWidget
+            port={port}
+            onPlanChange={p => {
+              if (!p || p.status === 'done' || p.status === 'failed') {
+                // Keep visible for 4s after done so user sees final state
+                setTimeout(() => setActivePlanId(null), 4000)
+              }
+            }}
+          />
+        </div>
+      )}
 
       {/* Input */}
       <div className="fchat__input-row">

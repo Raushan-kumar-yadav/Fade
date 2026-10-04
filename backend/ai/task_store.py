@@ -339,3 +339,128 @@ def delete_plan(plan_id: str) -> bool:
     if deleted:
         print(f"[TaskStore] Plan {plan_id} deleted", flush=True)
     return deleted
+
+
+# ── Plan management helpers ────────────────────────────────────────────────────
+
+def skip_step(step_id: str) -> bool:
+    """Mark a step as skipped (bypasses execution)."""
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            "UPDATE task_steps SET status='skipped', finished_at=? WHERE step_id=? "
+            "AND status IN ('pending', 'failed')",
+            (time.time(), step_id),
+        )
+        if cur.rowcount:
+            row = conn.execute("SELECT plan_id FROM task_steps WHERE step_id=?", (step_id,)).fetchone()
+            if row:
+                conn.execute("UPDATE task_plans SET updated_at=? WHERE plan_id=?",
+                             (time.time(), row["plan_id"]))
+        conn.commit()
+        conn.close()
+    print(f"[TaskStore] Step {step_id} skipped", flush=True)
+    return cur.rowcount > 0
+
+
+def reset_step(step_id: str) -> bool:
+    """Reset a failed/skipped step back to pending so it can be retried."""
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            "UPDATE task_steps SET status='pending', error=NULL, result=NULL, "
+            "started_at=NULL, finished_at=NULL WHERE step_id=? "
+            "AND status IN ('failed', 'skipped', 'done')",
+            (step_id,),
+        )
+        if cur.rowcount:
+            row = conn.execute("SELECT plan_id FROM task_steps WHERE step_id=?", (step_id,)).fetchone()
+            if row:
+                conn.execute("UPDATE task_plans SET updated_at=? WHERE plan_id=?",
+                             (time.time(), row["plan_id"]))
+        conn.commit()
+        conn.close()
+    print(f"[TaskStore] Step {step_id} reset to pending", flush=True)
+    return cur.rowcount > 0
+
+
+def insert_step(plan_id: str, after_order: int, description: str,
+                tool_name: str = "") -> TaskStep:
+    """Insert a new step after a given order index, shifting later steps up."""
+    with _lock:
+        conn = _get_conn()
+        # Shift existing steps with order > after_order
+        conn.execute(
+            'UPDATE task_steps SET "order"="order"+1 WHERE plan_id=? AND "order">?',
+            (plan_id, after_order),
+        )
+        new_order = after_order + 1
+        step_id = str(uuid.uuid4())[:12]
+        conn.execute(
+            'INSERT INTO task_steps (step_id, plan_id, "order", description, tool_name, status) '
+            "VALUES (?, ?, ?, ?, ?, 'pending')",
+            (step_id, plan_id, new_order, description, tool_name),
+        )
+        conn.execute("UPDATE task_plans SET updated_at=? WHERE plan_id=?",
+                     (time.time(), plan_id))
+        conn.commit()
+        conn.close()
+    print(f"[TaskStore] Inserted step {step_id} at order {new_order}", flush=True)
+    return TaskStep(step_id=step_id, plan_id=plan_id, order=new_order,
+                    description=description, tool_name=tool_name)
+
+
+def edit_step(step_id: str, description: str | None = None,
+              tool_name: str | None = None) -> bool:
+    """Edit a pending step's description and/or tool name."""
+    with _lock:
+        conn = _get_conn()
+        if description and tool_name:
+            cur = conn.execute(
+                "UPDATE task_steps SET description=?, tool_name=? WHERE step_id=? AND status='pending'",
+                (description, tool_name, step_id),
+            )
+        elif description:
+            cur = conn.execute(
+                "UPDATE task_steps SET description=? WHERE step_id=? AND status='pending'",
+                (description, step_id),
+            )
+        elif tool_name:
+            cur = conn.execute(
+                "UPDATE task_steps SET tool_name=? WHERE step_id=? AND status='pending'",
+                (tool_name, step_id),
+            )
+        else:
+            conn.close()
+            return False
+        conn.commit()
+        conn.close()
+    return cur.rowcount > 0
+
+
+def pause_plan(plan_id: str) -> bool:
+    """Pause an executing plan (executor checks this before each step)."""
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            "UPDATE task_plans SET status='paused', updated_at=? WHERE plan_id=? AND status='executing'",
+            (time.time(), plan_id),
+        )
+        conn.commit()
+        conn.close()
+    print(f"[TaskStore] Plan {plan_id} paused", flush=True)
+    return cur.rowcount > 0
+
+
+def resume_plan(plan_id: str) -> bool:
+    """Resume a paused plan."""
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            "UPDATE task_plans SET status='executing', updated_at=? WHERE plan_id=? AND status='paused'",
+            (time.time(), plan_id),
+        )
+        conn.commit()
+        conn.close()
+    print(f"[TaskStore] Plan {plan_id} resumed", flush=True)
+    return cur.rowcount > 0

@@ -200,27 +200,37 @@ async def ai_chat(req: ChatRequest):
 
                 yield f"data: {json.dumps({'type': 'plan_created', 'plan': skill_plan.to_dict(), 'skill': matched_skill.name})}\n\n"
 
+                total = len(skill_plan.steps)
                 async for evt in execute_skill_plan(
                     plan=skill_plan,
                     skill=matched_skill,
                     port=req.port,
                 ):
-                    # Translate skill events to standard SSE format
-                    if evt["type"] == "step_start":
-                        label = f"[{evt['order']}/{skill_plan.steps.__len__()}] {evt['name']} — {evt.get('tool', '')}…"
-                        yield f"data: {json.dumps({'type': 'status', 'phase': 'tool', 'label': label, 'tool': evt.get('tool', '')})}\n\n"
-                        yield f"data: {json.dumps({'type': 'plan_step', 'step_id': evt['step_id'], 'status': 'running', 'description': evt['name']})}\n\n"
-                    elif evt["type"] == "step_done":
-                        yield f"data: {json.dumps({'type': 'plan_step', 'step_id': evt['step_id'], 'status': 'done', 'description': evt['name']})}\n\n"
-                        yield f"data: {json.dumps({'type': 'plan_update', 'plan': skill_plan.to_dict()})}\n\n"
+                    t = evt["type"]
+
+                    if t == "step_start":
+                        label = f"[{evt['order']}/{total}] {evt['name']} — {evt.get('tool', '')}…"
+                        yield f"data: {json.dumps({'type': 'status', 'phase': 'skill', 'label': label})}\n\n"
+                        yield f"data: {json.dumps({'type': 'step_start', 'order': evt['order'], 'step_id': evt['step_id'], 'name': evt['name'], 'tool': evt.get('tool', '')})}\n\n"
+
+                    elif t == "step_done":
+                        yield f"data: {json.dumps({'type': 'step_done', 'order': evt['order'], 'step_id': evt['step_id'], 'name': evt['name'], 'checkpoint': evt.get('checkpoint')})}\n\n"
                         if evt.get("checkpoint"):
-                            yield f"data: {json.dumps({'type': 'token', 'content': f'✓ Checkpoint: {evt["checkpoint"]} (step {evt["order"]} done)\n'})}\n\n"
-                    elif evt["type"] == "step_failed":
-                        yield f"data: {json.dumps({'type': 'token', 'content': f'✗ Step {evt["name"]} failed: {evt.get("error", "")}'})}\n\n"
-                    elif evt["type"] == "skill_done":
-                        yield f"data: {json.dumps({'type': 'token', 'content': f'\n✅ Skill complete: {matched_skill.name} — {evt["steps_completed"]} steps done.'})}\n\n"
-                    elif evt["type"] == "checkpoint":
-                        yield f"data: {json.dumps({'type': 'status', 'phase': 'checkpoint', 'label': f'Checkpoint: {evt["label"]}', 'checkpoint': evt['label']})}\n\n"
+                            chk = evt["checkpoint"]
+                            yield f"data: {json.dumps({'type': 'status', 'phase': 'checkpoint', 'label': f'Checkpoint: {chk}'})}\n\n"
+
+                    elif t == "step_failed":
+                        yield f"data: {json.dumps({'type': 'step_failed', 'order': evt['order'], 'step_id': evt['step_id'], 'name': evt['name'], 'error': evt.get('error', '')})}\n\n"
+
+                    elif t == "skill_done":
+                        n = evt.get("steps_completed", total)
+                        pretty = matched_skill.name.replace("_", " ").title()
+                        yield f"data: {json.dumps({'type': 'skill_done', 'skill': matched_skill.name, 'steps_completed': n})}\n\n"
+                        yield f"data: {json.dumps({'type': 'token', 'content': f'\n✅ **{pretty}** complete — {n} steps done.'})}\n\n"
+
+                    elif t == "checkpoint":
+                        lbl = evt.get("label", "")
+                        yield f"data: {json.dumps({'type': 'status', 'phase': 'checkpoint', 'label': f'Checkpoint: {lbl}'})}\n\n"
 
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
