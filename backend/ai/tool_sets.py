@@ -164,7 +164,7 @@ from backend.ai.tools import (
     ALL_TOOLS,
 )
 
-# Background removal, skill management, and plan management tools
+# Background removal 
 from backend.ai.bg_remove_tools import BG_REMOVE_TOOLS
 from backend.ai.skill_tools import SKILL_TOOLS
 from backend.ai.plan_tools import PLAN_TOOLS
@@ -179,9 +179,9 @@ _SHARED = [
     cancel_job,
     undo,
     redo,
-    # Skill management (every agent can list/read skills)
+    # Skill management  
     *SKILL_TOOLS,
-    # Plan management (every agent can inspect/manage plans)
+    # Plan management  
     *PLAN_TOOLS,
 ]
 

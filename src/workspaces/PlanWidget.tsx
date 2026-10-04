@@ -34,7 +34,7 @@ const STATUS_ICON: Record<string, string> = {
 const STATUS_COLOR: Record<string, string> = {
   pending: 'rgba(255,255,255,0.25)',
   running: '#a5b4fc',
-  done:    '#86efac',
+  done: '#86efac',
   skipped: 'rgba(255,255,255,0.2)',
   failed:  '#fca5a5',
 }

@@ -1,15 +1,4 @@
-"""
-plan_tools.py — LangChain tools for agent-driven plan management.
-
-The agent can call these tools to:
-  - View the current active plan and all steps
-  - Skip a step (bypass it without executing)
-  - Retry a failed or skipped step
-  - Insert a new step into the plan at any position
-  - Edit a pending step's instruction or tool
-  - Pause the skill executor after the current step
-  - Resume a paused plan
-"""
+ 
 from __future__ import annotations
 
 import json
