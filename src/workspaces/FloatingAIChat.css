@@ -478,3 +478,151 @@
   opacity: 0.4;
 }
 .fchat__resize-handle:hover { opacity: 1; }
+
+/* Skill Progress Card */
+.fchat__skill-card {
+  margin: 6px 0;
+  background: rgba(108,99,255,0.06);
+  border: 1px solid rgba(108,99,255,0.18);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-family: 'Inter', sans-serif;
+  animation: fchat-fadein 0.2s ease;
+  transition: border-color 0.2s;
+}
+.fchat__skill-card--done {
+  border-color: rgba(34,197,94,0.3);
+  background: rgba(34,197,94,0.05);
+}
+.fchat__skill-card--error {
+  border-color: rgba(239,68,68,0.3);
+  background: rgba(239,68,68,0.05);
+}
+@keyframes fchat-fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.fchat__skill-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.fchat__skill-icon { font-size: 18px; flex-shrink: 0; }
+.fchat__skill-title { flex: 1; display: flex; align-items: baseline; gap: 6px; }
+.fchat__skill-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d4d0ff;
+  text-transform: capitalize;
+}
+.fchat__skill-version {
+  font-size: 10px;
+  color: rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px;
+  border-radius: 10px;
+}
+.fchat__skill-state-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+.fchat__skill-state-badge--running { background: rgba(108,99,255,0.2); color: #a5b4fc; }
+.fchat__skill-state-badge--done    { background: rgba(34,197,94,0.15);  color: #86efac; }
+.fchat__skill-state-badge--error   { background: rgba(239,68,68,0.15);  color: #fca5a5; }
+
+/* Progress bar */
+.fchat__skill-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.fchat__skill-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.fchat__skill-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c6fff, #a78bfa);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.fchat__skill-progress-fill--done {
+  background: linear-gradient(90deg, #22c55e, #86efac);
+}
+.fchat__skill-progress-label {
+  font-size: 10px;
+  color: rgba(255,255,255,0.35);
+  min-width: 28px;
+  text-align: right;
+}
+
+/* Steps list */
+.fchat__skill-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fchat__skill-step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  transition: background 0.15s;
+}
+.fchat__skill-step--pending { color: rgba(255,255,255,0.28); }
+.fchat__skill-step--running { background: rgba(108,99,255,0.12); color: #c4bfff; }
+.fchat__skill-step--done    { color: rgba(255,255,255,0.45); }
+.fchat__skill-step--failed  { background: rgba(239,68,68,0.1); color: #fca5a5; }
+
+.fchat__skill-step-icon {
+  font-size: 10px;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.fchat__skill-step-icon--spin {
+  display: inline-block;
+  animation: fchat-spin 1s linear infinite;
+}
+@keyframes fchat-spin { to { transform: rotate(360deg); } }
+
+.fchat__skill-step-name {
+  flex: 1;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+.fchat__skill-step-tool {
+  font-size: 10px;
+  color: rgba(255,255,255,0.2);
+  font-family: 'JetBrains Mono', monospace;
+}
+.fchat__skill-checkpoint {
+  font-size: 9.5px;
+  font-weight: 700;
+  background: rgba(34,197,94,0.15);
+  color: #86efac;
+  padding: 1px 6px;
+  border-radius: 10px;
+  letter-spacing: 0.4px;
+  margin-left: 2px;
+}
+.fchat__skill-error {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: #fca5a5;
+  padding: 6px 8px;
+  background: rgba(239,68,68,0.08);
+  border-radius: 6px;
+}
+
+/* Status bar extended phases */
+.fchat__status-bar--skill { background: rgba(108,99,255,0.15); }
+.fchat__status-bar--checkpoint { background: rgba(34,197,94,0.12); }

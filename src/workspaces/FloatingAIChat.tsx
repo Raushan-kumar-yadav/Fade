@@ -1,10 +1,18 @@
-﻿import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import './FloatingAIChat.css'
 
 // Types
 
-type MsgRole = 'ai' | 'user' | 'tool_call' | 'tool_result' | 'error'
-type Phase   = 'idle' | 'thinking' | 'responding' | 'tool'
+type MsgRole = 'ai' | 'user' | 'tool_call' | 'tool_result' | 'error' | 'skill_progress'
+type Phase   = 'idle' | 'thinking' | 'responding' | 'tool' | 'skill' | 'checkpoint'
+
+interface SkillStepState {
+  order: number
+  name: string
+  tool: string
+  status: 'pending' | 'running' | 'done' | 'failed'
+  checkpoint?: string
+}
 
 interface Message {
   id: string
@@ -13,6 +21,12 @@ interface Message {
   toolName?: string
   toolArgs?: Record<string, unknown>
   streaming?: boolean
+  // For skill_progress role:
+  skillName?: string
+  skillVersion?: string
+  skillSteps?: SkillStepState[]
+  skillDone?: boolean
+  skillError?: string
 }
 
 interface AgentStatus {
@@ -158,8 +172,7 @@ function SelectedClipBadge() {
   )
 }
 
-// Single status bar � the ONLY status indicator in the whole widget
-
+ 
 function StatusBar({ status }: { status: AgentStatus }) {
   if (status.phase === 'idle') return null
   return (
@@ -170,10 +183,93 @@ function StatusBar({ status }: { status: AgentStatus }) {
   )
 }
 
+// Skill Progress Card
+
+const STEP_STATUS_ICON: Record<string, string> = {
+  pending: '○',
+  running: '⟳',
+  done:    '✓',
+  failed:  '✕',
+}
+
+function SkillProgressCard({ msg }: { msg: Message }) {
+  const steps = msg.skillSteps ?? []
+  const total = steps.length
+  const done  = steps.filter(s => s.status === 'done').length
+  const pct   = total > 0 ? Math.round(done / total * 100) : 0
+  const compType = msg.skillName?.includes('video') ? '🎬'
+    : msg.skillName?.includes('social') || msg.skillName?.includes('post') ? '🖼'
+    : msg.skillName?.includes('product') ? '📦' : '📚'
+
+  return (
+    <div className={`fchat__skill-card ${msg.skillDone ? 'fchat__skill-card--done' : ''} ${msg.skillError ? 'fchat__skill-card--error' : ''}`}>
+      {/* Header */}
+      <div className="fchat__skill-header">
+        <span className="fchat__skill-icon">{compType}</span>
+        <div className="fchat__skill-title">
+          <span className="fchat__skill-name">{(msg.skillName ?? '').replace(/_/g, ' ')}</span>
+          {msg.skillVersion && <span className="fchat__skill-version">v{msg.skillVersion}</span>}
+        </div>
+        <span className={`fchat__skill-state-badge ${
+          msg.skillDone ? 'fchat__skill-state-badge--done'
+          : msg.skillError ? 'fchat__skill-state-badge--error'
+          : 'fchat__skill-state-badge--running'
+        }`}>
+          {msg.skillDone ? '✅ done' : msg.skillError ? '✕ failed' : '⟳ running'}
+        </span>
+      </div>
+
+      {/* Progress bar */}
+      {total > 0 && (
+        <div className="fchat__skill-progress-row">
+          <div className="fchat__skill-progress-bar">
+            <div
+              className={`fchat__skill-progress-fill ${msg.skillDone ? 'fchat__skill-progress-fill--done' : ''}`}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <span className="fchat__skill-progress-label">{done}/{total}</span>
+        </div>
+      )}
+
+      {/* Steps list */}
+      <div className="fchat__skill-steps">
+        {steps.map(s => (
+          <div
+            key={s.order}
+            className={`fchat__skill-step fchat__skill-step--${s.status}`}
+          >
+            <span className={`fchat__skill-step-icon ${
+              s.status === 'running' ? 'fchat__skill-step-icon--spin' : ''
+            }`}>
+              {STEP_STATUS_ICON[s.status]}
+            </span>
+            <span className="fchat__skill-step-name">{s.name.replace(/_/g, ' ')}</span>
+            <span className="fchat__skill-step-tool">{s.tool}</span>
+            {s.checkpoint && s.status === 'done' && (
+              <span className="fchat__skill-checkpoint">{s.checkpoint}</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Error */}
+      {msg.skillError && (
+        <div className="fchat__skill-error">✕ {msg.skillError}</div>
+      )}
+    </div>
+  )
+}
+
 // Message Bubble
 
 function Bubble({ msg }: { msg: Message }) {
   const [expanded, setExpanded] = useState(false)
+
+  // Skill progress card
+  if (msg.role === 'skill_progress') {
+    return <SkillProgressCard msg={msg} />
+  }
 
   if (msg.role === 'tool_call') {
     const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '??'
@@ -327,8 +423,79 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
             const evt = JSON.parse(line.slice(6))
 
             if (evt.type === 'status') {
-              // Label comes directly from backend � never hardcoded here
+              // Label comes directly from backend
               setStatus({ phase: evt.phase as Phase, label: evt.label, tool: evt.tool })
+
+            } else if (evt.type === 'skill_detected') {
+              setStatus({ phase: 'skill', label: `📚 Skill: ${evt.skill} (${evt.steps} steps)…` })
+              appendMsg({
+                id: `skill-${aiId}`,
+                role: 'skill_progress',
+                text: '',
+                skillName: evt.skill,
+                skillVersion: evt.version,
+                skillSteps: [],
+                skillDone: false,
+              })
+              scrollBottom()
+
+            } else if (evt.type === 'plan_created' && evt.skill) {
+              const plan = evt.plan
+              if (plan?.steps) {
+                const steps: SkillStepState[] = (plan.steps as any[]).map((s: any) => ({
+                  order:  s.order ?? 0,
+                  name:   s.tool_name ?? `Step ${s.order}`,
+                  tool:   s.tool_name ?? '',
+                  status: 'pending' as const,
+                }))
+                setMessages(prev => prev.map(m =>
+                  m.id === `skill-${aiId}` ? { ...m, skillSteps: steps } : m
+                ))
+              }
+              setStatus({ phase: 'skill', label: `📋 Plan ready — ${plan?.steps?.length ?? '?'} steps` })
+
+            } else if (evt.type === 'step_start') {
+              setStatus({ phase: 'skill', label: `[${evt.order}] ${evt.name} — ${evt.tool ?? ''}…` })
+              setMessages(prev => prev.map(m => {
+                if (m.id !== `skill-${aiId}`) return m
+                const steps = (m.skillSteps ?? []).map((s: SkillStepState) =>
+                  s.order === evt.order ? { ...s, status: 'running' as const } : s
+                )
+                return { ...m, skillSteps: steps }
+              }))
+              scrollBottom()
+
+            } else if (evt.type === 'step_done') {
+              setMessages(prev => prev.map(m => {
+                if (m.id !== `skill-${aiId}`) return m
+                const steps = (m.skillSteps ?? []).map((s: SkillStepState) =>
+                  s.order === evt.order
+                    ? { ...s, status: 'done' as const, checkpoint: evt.checkpoint }
+                    : s
+                )
+                return { ...m, skillSteps: steps }
+              }))
+              if (evt.checkpoint) {
+                setStatus({ phase: 'checkpoint', label: `🏁 Checkpoint: ${evt.checkpoint}` })
+              }
+              scrollBottom()
+
+            } else if (evt.type === 'step_failed') {
+              setMessages(prev => prev.map(m => {
+                if (m.id !== `skill-${aiId}`) return m
+                const steps = (m.skillSteps ?? []).map((s: SkillStepState) =>
+                  s.order === evt.order ? { ...s, status: 'failed' as const } : s
+                )
+                return { ...m, skillSteps: steps, skillError: evt.error ?? 'Step failed' }
+              }))
+              setStatus({ phase: 'idle', label: '' })
+
+            } else if (evt.type === 'skill_done') {
+              setMessages(prev => prev.map(m =>
+                m.id === `skill-${aiId}` ? { ...m, skillDone: true } : m
+              ))
+              setStatus({ phase: 'idle', label: '' })
+              scrollBottom()
 
             } else if (evt.type === 'token') {
               aiText += evt.content
