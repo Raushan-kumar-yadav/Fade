@@ -439,11 +439,12 @@ def edit_step(step_id: str, description: str | None = None,
 
 
 def pause_plan(plan_id: str) -> bool:
-    """Pause an executing plan (executor checks this before each step)."""
+    """Pause an executing or planning plan (executor checks this before each step)."""
     with _lock:
         conn = _get_conn()
         cur = conn.execute(
-            "UPDATE task_plans SET status='paused', updated_at=? WHERE plan_id=? AND status='executing'",
+            "UPDATE task_plans SET status='paused', updated_at=? WHERE plan_id=? "
+            "AND status IN ('executing', 'planning')",
             (time.time(), plan_id),
         )
         conn.commit()
