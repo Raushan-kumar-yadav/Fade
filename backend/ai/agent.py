@@ -932,6 +932,57 @@ def _trim_messages(messages: list) -> list:
 
 #   Graph builder  
 
+def _build_skill_context() -> str:
+    """Dynamically build a skills section for the system prompt.
+    Re-reads the registry live so new imported skills appear immediately."""
+    try:
+        from backend.ai.skill_loader import skill_registry
+        skills = skill_registry.list_skills()
+    except Exception:
+        skills = []
+
+    if not skills:
+        return (
+            "SKILLS:\n"
+            "No skill files are currently loaded. The user can import .md skill files "
+            "via Settings > Skills."
+        )
+
+    lines = [
+        "SKILLS — AUTOMATED MULTI-STEP WORKFLOWS:",
+        "",
+        "You have access to pre-built skill workflows stored as .md files.",
+        "When the user's request matches a skill, the system AUTOMATICALLY detects it,",
+        "builds a step-by-step plan, and executes it with live progress in the chat.",
+        "You DO have access to these skill files and workflows — they run automatically.",
+        "",
+        "Loaded skills (auto-detected from user message):",
+    ]
+    for s in skills:
+        triggers = s.get("triggers", [])[:3]
+        trigger_str = " | ".join(f'"{t}"' for t in triggers)
+        lines.append(
+            f"  - {s['name']}  ({s['steps']} steps)  triggers: {trigger_str}"
+        )
+
+    lines += [
+        "",
+        "HOW SKILLS WORK:",
+        "  1. User says something matching a trigger phrase (e.g. 'make an educational video')",
+        "  2. System detects the skill and shows you: 'Skill detected: educational_video'",
+        "  3. A step-by-step plan is created and shown to the user in the Plan Widget",
+        "  4. Each step executes automatically with live progress updates",
+        "  5. You can manage the plan mid-execution using these tools:",
+        "     get_current_plan(), skip_plan_step(), retry_plan_step(),",
+        "     insert_plan_step(), edit_plan_step(), pause_current_plan(), resume_current_plan()",
+        "",
+        "IMPORTANT: When a skill runs, acknowledge it naturally:",
+        "  'I've detected the educational_video skill — executing the 10-step workflow now.'",
+        "  Do NOT say you cannot access skill files. They exist and are loaded above.",
+    ]
+    return "\n".join(lines)
+
+
 def build_agent(port: int = 8000, tools_override=None, system_override: str = "",
                 scratchpad_fn=None):
     """Build and return the compiled LangGraph agent.
@@ -959,9 +1010,9 @@ def build_agent(port: int = 8000, tools_override=None, system_override: str = ""
                 f"Address them as {user_name} when greeting or referring to them. "
                 "Be warm, professional, and personal.\n\n"
             )
-            system_content = greeting + _SYSTEM
+            system_content = greeting + _SYSTEM + "\n\n" + _build_skill_context()
         else:
-            system_content = _SYSTEM
+            system_content = _SYSTEM + "\n\n" + _build_skill_context()
         # Prepend Director comp-scoped context
         if system_override:
             system_content = system_override + "\n\n" + system_content
