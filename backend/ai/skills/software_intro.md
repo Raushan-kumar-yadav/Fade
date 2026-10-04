@@ -1,6 +1,6 @@
 ---
 name: software_intro
-version: "1.0"
+version: "1.1"
 triggers:
   - software intro
   - app intro
@@ -22,11 +22,15 @@ max_duration_frames: 2700
 
 ## Description
 Create a cinematic 30-90 second software/app intro video with professional voiceover,
-animated title cards, B-roll footage of the software in use, feature callout overlays,
-smooth transitions, and a strong call-to-action ending.
+animated WebComp widgets (live UI mockups, animated feature cards, stat counters,
+tech HUD overlays), B-roll footage, animated title cards, transitions, captions,
+and a strong CTA. WebComps simulate the software interface and make the video feel
+like an actual product demo.
 
 ## Rules
 - Always generate voiceover BEFORE placing any video clips
+- Use create_webcomp to build animated UI mockup panels — this is the key differentiator
+- add_webcomp_to_timeline immediately after every create_webcomp call
 - Search for cinematic B-roll that matches the software/tech aesthetic (dark UI, screens, people working)
 - Use bold white text on dark overlays for all title cards
 - Feature callouts must be short (max 5 words each)
@@ -79,35 +83,73 @@ smooth transitions, and a strong call-to-action ending.
    Animate scale from 0.8 to 1.0 and opacity from 0 to 1 over 20 frames.
    Apply ease_out preset. Place at the moment the voiceover says the product name.
 
-7. FEATURE_CALLOUTS | add_text_clip
-   Add 3 feature callout text clips, one for each key feature mentioned in voiceover.
-   Font size 48px, bold, slightly transparent background box (bgEnabled: true).
-   Each callout appears and disappears in sync with the voiceover mentioning it.
-   Use find_free_overlay_track for each. Animate with slide-in from left (pos_x).
+7. UI_MOCKUP_WEBCOMP | create_webcomp
+   Create a WebComp that simulates an animated UI dashboard or app interface panel.
+   This is the KEY motion design element — it shows the software "in action".
+   HTML: a realistic-looking dark-themed app UI panel with:
+     - A navigation sidebar with icon items
+     - A main content area with cards or data
+     - Animated progress bars or charts that fill on load
+     - Subtle loading shimmer effects using CSS keyframes
+   Size: 800x500px. Dark theme (#0f0f1a background, accent color highlights).
+   CSS: @keyframes shimmer, fadeIn, barFill animations.
+   Name it "ui_mockup". Add to timeline with add_webcomp_to_timeline on a free overlay track.
+   Position center-right. Appear during the feature highlights section.
 
-8. CTA_CARD | add_text_clip
-   Add a final call-to-action card for the last 5 seconds.
-   Text: website URL or action phrase (e.g. "Try Fade Free Today").
-   Large, centered, bold. Animate scale bounce-in with bounce_out preset.
-   Add a semi-transparent background rectangle behind the CTA text.
+8. FEATURE_CARDS_WEBCOMP | create_webcomp
+   Create a WebComp showing animated feature highlight cards that slide in one by one.
+   HTML: 3 cards stacked vertically, each with an icon + title + 1-line description.
+   CSS: @keyframes slideInLeft — each card animates in with a 0.3s delay between them.
+   Use glassmorphism style: backdrop-filter blur, semi-transparent white border.
+   Size: 380x320px. Name it "feature_cards".
+   Add to timeline with add_webcomp_to_timeline on a free overlay track.
+   Timed to appear during the "3 key features" section of the voiceover.
 
-9. TRANSITIONS | add_transitions_between_all_clips
-   Add smooth fade transitions between all video clips.
-   Duration: 0.5 seconds (15 frames at 30fps).
+9. STAT_COUNTER_WEBCOMP | create_webcomp
+   Create a WebComp for animated social proof stats/metrics.
+   HTML: 3 large numbers side-by-side (e.g. "10K+ Users", "99% Uptime", "4.9★ Rating").
+   JavaScript: countUp animation — each number counts from 0 to target over 2 seconds.
+   Style: large bold font (72px), accent color, minimal dark card background.
+   Size: 900x180px. Name it "stats_bar".
+   Add to timeline with add_webcomp_to_timeline on a free overlay track.
+   Position at the bottom third, timed to the social proof moment in the voiceover.
 
-10. CAPTIONS | generate_captions
+10. HUD_OVERLAY_WEBCOMP | create_webcomp
+    Create a subtle tech HUD (heads-up display) overlay WebComp for cinematic feel.
+    HTML: thin corner brackets in the four corners of the frame (1920x1080).
+    SVG corner marks that pulse gently. Scanline or grid overlay at low opacity.
+    CSS: @keyframes pulse — opacity 0.3 to 0.7 over 2s, infinite alternate.
+    Color: accent color at 30% opacity. Name it "hud_overlay".
+    Add to timeline with add_webcomp_to_timeline spanning the full middle section.
+    This gives the video a premium tech-product aesthetic.
+
+11. CTA_CARD | add_text_clip
+    Add a final call-to-action card for the last 5 seconds.
+    Text: website URL or action phrase (e.g. "Try Fade Free Today").
+    Large, centered, bold. Animate scale bounce-in with bounce_out preset.
+    Add a semi-transparent background rectangle behind the CTA text.
+
+12. TRANSITIONS | add_transitions_between_all_clips
+    Add smooth fade transitions between all video clips.
+    Duration: 0.5 seconds (15 frames at 30fps).
+
+13. CAPTIONS | generate_captions
     Generate auto-synced captions from the voiceover audio.
     Style: white bold text, center bottom, readable font size (36px).
 
-11. REVIEW | get_current_viewport_image
+14. REVIEW | get_current_viewport_image
     Take a viewport screenshot at frame 900 (30 second mark) to verify:
     - B-roll is visible and well-lit
-    - Text overlays are readable and properly positioned
-    - No clips overlap incorrectly
-    Adjust any issues found.
+    - WebComp UI mockup is rendering correctly
+    - Feature cards and stat counters are positioned well
+    - HUD overlay is subtle (not distracting)
+    - Text overlays are readable
+    Adjust any sizing or position issues.
 
 ## Checkpoints
 - 2: VOICEOVER_READY
 - 4: TIMELINE_BUILT
-- 9: TRANSITIONS_DONE
-- 11: REVIEW_PASSED
+- 7: UI_MOCKUP_LIVE
+- 10: ALL_WEBCOMPS_PLACED
+- 13: CAPTIONS_DONE
+- 14: REVIEW_PASSED
