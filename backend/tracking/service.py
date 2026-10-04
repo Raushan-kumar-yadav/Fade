@@ -168,51 +168,86 @@ def start_track_job(
 
     def _run():
         try:
-            # Step 1: detect initial bbox if not provided
-            bbox = initial_bbox
-            if not bbox:
-                import cv2
-                cap = cv2.VideoCapture(video_path)
-                
-                # Scan up to 5 evenly-spaced frames to find initial detection
-                scan_frames = []
-                frame_range = max(1, to_frame - from_frame)
-                for i in range(5):
-                    scan_frames.append(from_frame + int(frame_range * i / 4)) if frame_range > 1 else scan_frames.append(from_frame)
-                scan_frames = list(dict.fromkeys(scan_frames))  # deduplicate
-                
-                boxes = []
-                checked_frame = from_frame
-                for sf in scan_frames:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, float(sf))
-                    ret, frame = cap.read()
-                    if not ret:
-                        continue
-                    checked_frame = sf
-                    boxes = _detect(frame, detection_mode, text_pattern, template_path)
-                    if boxes:
-                        break
-                cap.release()
-                
-                if not boxes:
-                    raise RuntimeError(
-                        f"No {detection_mode} detected in any of {len(scan_frames)} scanned frames. "
-                        "Try manual ROI or a different detection mode."
-                    )
-                b = boxes[0]
-                bbox = [b.x, b.y, b.w, b.h]
+            # Check if this is an image file  
+            _IMG_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp', '.svg'}
+            is_image = Path(video_path).suffix.lower() in _IMG_EXTS
 
-            # Step 2: track
-            frame_data = track_clip(
-                video_path=video_path,
-                initial_bbox=tuple(bbox),
-                from_frame=from_frame,
-                to_frame=to_frame,
-                detection_mode=detection_mode,
-                text_pattern=text_pattern,
-                template_path=template_path,
-                job=job,
-            )
+            if is_image:
+                # Image clip: single-frame detection only  
+                import cv2
+                img = cv2.imread(video_path)
+                if img is None:
+                    raise RuntimeError(f"Cannot read image: {video_path}")
+
+                bbox = initial_bbox
+                if not bbox:
+                    boxes = _detect(img, detection_mode, text_pattern, template_path)
+                    if not boxes:
+                        raise RuntimeError(
+                            f"No {detection_mode} detected in image. "
+                            "Try manual ROI or a different detection mode."
+                        )
+                    b = boxes[0]
+                    bbox = [b.x, b.y, b.w, b.h]
+
+                x, y, w, h = [float(v) for v in bbox]
+                # Produce tracking data for every frame of the clip duration
+                frame_data = {}
+                for fi in range(from_frame, to_frame + 1):
+                    frame_data[fi] = {
+                        "cx": x + w / 2, "cy": y + h / 2,
+                        "w": w, "h": h, "confidence": 1.0,
+                    }
+                print(f"[tracking] Image mode: detected bbox at ({x:.0f},{y:.0f},{w:.0f},{h:.0f}), "
+                      f"replicated to {len(frame_data)} frames", flush=True)
+
+            else:
+                 
+                 
+                bbox = initial_bbox
+                if not bbox:
+                    import cv2
+                    cap = cv2.VideoCapture(video_path)
+                    
+                     
+                    scan_frames = []
+                    frame_range = max(1, to_frame - from_frame)
+                    for i in range(5):
+                        scan_frames.append(from_frame + int(frame_range * i / 4)) if frame_range > 1 else scan_frames.append(from_frame)
+                    scan_frames = list(dict.fromkeys(scan_frames))  # deduplicate
+                    
+                    boxes = []
+                    checked_frame = from_frame
+                    for sf in scan_frames:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, float(sf))
+                        ret, frame = cap.read()
+                        if not ret:
+                            continue
+                        checked_frame = sf
+                        boxes = _detect(frame, detection_mode, text_pattern, template_path)
+                        if boxes:
+                            break
+                    cap.release()
+                    
+                    if not boxes:
+                        raise RuntimeError(
+                            f"No {detection_mode} detected in any of {len(scan_frames)} scanned frames. "
+                            "Try manual ROI or a different detection mode."
+                        )
+                    b = boxes[0]
+                    bbox = [b.x, b.y, b.w, b.h]
+
+                # Step 2: track
+                frame_data = track_clip(
+                    video_path=video_path,
+                    initial_bbox=tuple(bbox),
+                    from_frame=from_frame,
+                    to_frame=to_frame,
+                    detection_mode=detection_mode,
+                    text_pattern=text_pattern,
+                    template_path=template_path,
+                    job=job,
+                )
 
             # Step 3: store
             track_record = {
@@ -271,19 +306,4 @@ def _sidecar(clip_id: str, track_id: str) -> Path:
     return d / f"{track_id}.json"
 
 
-# Load persisted tracks on startup  
 
-def load_all_tracks():
-    """Load all JSON sidecars from disk into registry. Call on app startup."""
-    count = 0
-    for f in _DATA_DIR.rglob("*.json"):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            tid = data.get("track_id")
-            if tid:
-                with _reg_lock:
-                    _registry[tid] = data
-                count += 1
-        except Exception as e:
-            logger.warning("[tracking] failed to load %s: %s", f, e)
-    logger.info("[tracking] loaded %d tracks from disk", count)

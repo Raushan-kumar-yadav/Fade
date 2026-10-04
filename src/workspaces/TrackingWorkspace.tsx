@@ -64,20 +64,22 @@ const api = {
 }
 
 /*   helpers   */
-function extractVideoClips(data: any): ClipMeta[] {
+function extractTrackableClips(data: any): ClipMeta[] {
   const clips: ClipMeta[] = []
   ;(data?.tracks ?? []).forEach((tr: any) => {
     ;(tr?.clips ?? []).forEach((c: any) => {
       // backend serializes as 'filepath'; frontend state may use camelCase variants
       const p = c.filepath ?? c.mediaPath ?? c.assetPath ?? c.filePath ?? ''
-      if (p && (c.type === 'video' || c.clipType === 'video' || !c.type)) {
+      const clipType = c.type ?? c.clipType ?? ''
+      // Include video AND image clips (image = single-frame tracking)
+      if (p && (clipType === 'video' || clipType === 'image' || !clipType)) {
         clips.push({
           clipId: c.clipId ?? c.id,
           name: c.name ?? c.clipId?.slice(0, 8) ?? 'Clip',
           videoPath: p,
           startFrame: c.startFrame ?? 0,
           duration: c.duration ?? 300,
-          type: c.type ?? 'video',
+          type: clipType || 'video',
         })
       }
     })
@@ -89,7 +91,7 @@ function extractVideoClips(data: any): ClipMeta[] {
 export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }: Props) {
 
   /*   clip state   */
-  const [videoClips, setVideoClips] = useState<ClipMeta[]>([])
+  const [videoClips, setVideoClips] = useState<ClipMeta[]>([])  // includes image clips too
   const [selClipId, setSelClipId] = useState<string>(selectedClipId ?? '')
   const [selClip, setSelClip] = useState<ClipMeta | null>(null)
 
@@ -114,7 +116,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
   /*   load video clips from timeline   */
   const loadClips = useCallback(() => {
     api.timelineState()
-      .then(d => setVideoClips(extractVideoClips(d)))
+      .then(d => setVideoClips(extractTrackableClips(d)))
       .catch(() => {})
   }, [])
 
@@ -175,7 +177,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
   const handleStart = async () => {
     setError(null)
     if (!selClipId || !selClip) { setError('Select a clip from the timeline first.'); return }
-    if (!selClip.videoPath) { setError('Selected clip has no video path.'); return }
+    if (!selClip.videoPath) { setError('Selected clip has no media path.'); return }
 
     const refAsset = imageAssets.find(a => a.assetId === refAssetId)
 
@@ -419,16 +421,16 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
             value={selClipId}
             onChange={e => setSelClipId(e.target.value)}
           >
-            <option value="">— select a video clip —</option>
+            <option value="">— select a clip —</option>
             {videoClips.map(c => (
               <option key={c.clipId} value={c.clipId}>
-                {c.name}  ({c.duration} fr)
+                {c.name} ({c.type}) ({c.duration} fr)
               </option>
             ))}
           </select>
         ) : (
           <p className="tr-hint tr-hint--warn">
-            No video clips on the timeline. Add a video clip first, then select it.
+            No video or image clips on the timeline. Add a clip first, then select it.
           </p>
         )}
 

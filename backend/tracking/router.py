@@ -250,15 +250,22 @@ def add_blur_track(req: AddBlurRequest):
     print(f"[add-blur] Video transform: tx={v_tx} ty={v_ty} sx={v_sx} sy={v_sy}", flush=True)
 
     def map_coords(raw_x, raw_y, raw_w, raw_h):
+        """Convert tracker pixel coords (top-left origin) to ShapeClip
+        transform coords (0,0 = center of composition)."""
+        # Step 1: apply letterbox scaling
         lx = raw_x * lb_scale + dx
         ly = raw_y * lb_scale + dy
         lw = raw_w * lb_scale
         lh = raw_h * lb_scale
-        final_x = v_sx * (lx - comp_cx) + v_tx + comp_cx
-        final_y = v_sy * (ly - comp_cy) + v_ty + comp_cy
+        # Step 2: apply video transform (scale around center + translate)
+        abs_x = v_sx * (lx - comp_cx) + v_tx + comp_cx
+        abs_y = v_sy * (ly - comp_cy) + v_ty + comp_cy
         final_w = lw * v_sx
         final_h = lh * v_sy
-        return final_x, final_y, final_w, final_h
+        # Step 3: convert to centered coordinates (0,0 = center of comp)
+        centered_x = abs_x - comp_cx
+        centered_y = abs_y - comp_cy
+        return centered_x, centered_y, final_w, final_h
 
     from_frame: int = track_data.get("from_frame", 0)
     to_frame:   int = track_data.get("to_frame", 0)
