@@ -164,6 +164,11 @@ from backend.ai.tools import (
     ALL_TOOLS,
 )
 
+# Background removal, skill management, and plan management tools
+from backend.ai.bg_remove_tools import BG_REMOVE_TOOLS
+from backend.ai.skill_tools import SKILL_TOOLS
+from backend.ai.plan_tools import PLAN_TOOLS
+
 #   Shared read-only tools every agent gets  
 _SHARED = [
     get_library,
@@ -174,6 +179,10 @@ _SHARED = [
     cancel_job,
     undo,
     redo,
+    # Skill management (every agent can list/read skills)
+    *SKILL_TOOLS,
+    # Plan management (every agent can inspect/manage plans)
+    *PLAN_TOOLS,
 ]
 
 #   Video Agent  
@@ -215,6 +224,8 @@ VIDEO_TOOLS = _SHARED + [
     list_tracks_for_clip, delete_track,
     add_blur_to_track, add_follow_to_track,
     track_and_blur_face, track_and_blur_text,
+    # Background removal (video)
+    *BG_REMOVE_TOOLS,
 ]
 
 #   Image Agent  
@@ -237,6 +248,8 @@ IMAGE_TOOLS = _SHARED + [
     export_video,  # export as image frame too
     create_webcomp, list_webcomps, add_webcomp_to_timeline,
     search_news,
+    # Background removal (image)
+    *BG_REMOVE_TOOLS,
 ]
 
 #   Audio Agent  
@@ -271,6 +284,8 @@ GENERAL_TOOLS = _SHARED + [
     generate_tts, list_kokoro_voices,
     get_asset_context, get_index_status,
     get_social_connections,
+    # BG removal available in general context too
+    *BG_REMOVE_TOOLS,
 ]
 
 #   Director Agent (all tools + coordination)  
