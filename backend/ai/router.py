@@ -182,6 +182,50 @@ async def ai_chat(req: ChatRequest):
                 return
             scanned_message = safe_message
 
+            # ── Skill detection (before intent classification) ──────
+            from backend.ai.skill_loader import skill_registry
+            matched_skill = skill_registry.match(scanned_message)
+
+            if matched_skill:
+                print(f"[AI Router] Skill matched: '{matched_skill.name}' — switching to "
+                      f"checkpoint executor", flush=True)
+                yield f"data: {json.dumps({'type': 'skill_detected', 'skill': matched_skill.name, 'version': matched_skill.version, 'steps': len(matched_skill.steps), 'message': f'Skill detected: {matched_skill.name} ({len(matched_skill.steps)} steps)'})}\n\n"
+
+                from backend.ai.skill_executor import plan_from_skill, execute_skill_plan
+                skill_plan = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: plan_from_skill(matched_skill, goal=scanned_message,
+                                            agent_type=req.agent)
+                )
+
+                yield f"data: {json.dumps({'type': 'plan_created', 'plan': skill_plan.to_dict(), 'skill': matched_skill.name})}\n\n"
+
+                async for evt in execute_skill_plan(
+                    plan=skill_plan,
+                    skill=matched_skill,
+                    port=req.port,
+                ):
+                    # Translate skill events to standard SSE format
+                    if evt["type"] == "step_start":
+                        label = f"[{evt['order']}/{skill_plan.steps.__len__()}] {evt['name']} — {evt.get('tool', '')}…"
+                        yield f"data: {json.dumps({'type': 'status', 'phase': 'tool', 'label': label, 'tool': evt.get('tool', '')})}\n\n"
+                        yield f"data: {json.dumps({'type': 'plan_step', 'step_id': evt['step_id'], 'status': 'running', 'description': evt['name']})}\n\n"
+                    elif evt["type"] == "step_done":
+                        yield f"data: {json.dumps({'type': 'plan_step', 'step_id': evt['step_id'], 'status': 'done', 'description': evt['name']})}\n\n"
+                        yield f"data: {json.dumps({'type': 'plan_update', 'plan': skill_plan.to_dict()})}\n\n"
+                        if evt.get("checkpoint"):
+                            yield f"data: {json.dumps({'type': 'token', 'content': f'✓ Checkpoint: {evt["checkpoint"]} (step {evt["order"]} done)\n'})}\n\n"
+                    elif evt["type"] == "step_failed":
+                        yield f"data: {json.dumps({'type': 'token', 'content': f'✗ Step {evt["name"]} failed: {evt.get("error", "")}'})}\n\n"
+                    elif evt["type"] == "skill_done":
+                        yield f"data: {json.dumps({'type': 'token', 'content': f'\n✅ Skill complete: {matched_skill.name} — {evt["steps_completed"]} steps done.'})}\n\n"
+                    elif evt["type"] == "checkpoint":
+                        yield f"data: {json.dumps({'type': 'status', 'phase': 'checkpoint', 'label': f'Checkpoint: {evt["label"]}', 'checkpoint': evt['label']})}\n\n"
+
+                yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
             # ── Intent classification ────────────────────────────────
             from backend.ai.intent_classifier import classify_intent, Intent, intent_summary
             from backend.ai import task_store as _store
@@ -586,3 +630,37 @@ async def director_cancel(session_id: str):
         raise HTTPException(404, f"Session {session_id!r} not found")
     return {"status": "cancelled", "session_id": session_id}
 
+
+
+# Skills management
+
+@ai_router.get('/skills')
+def list_skills():
+    ''''List all available skills and their trigger phrases.'''
+    from backend.ai.skill_loader import skill_registry
+    return {'skills': skill_registry.list_skills()}
+
+
+@ai_router.get('/skills/{skill_name}')
+def get_skill(skill_name: str):
+    ''''Get full details of a skill including steps, rules, and checkpoints.'''
+    from backend.ai.skill_loader import skill_registry
+    from fastapi import HTTPException
+    skill = skill_registry.get(skill_name)
+    if not skill:
+        raise HTTPException(404, f"Skill '{skill_name}' not found")
+    return {'name': skill.name, 'version': skill.version, 'triggers': skill.triggers,
+            'comp_type': skill.comp_type, 'agent_type': skill.agent_type,
+            'description': skill.description, 'rules': skill.rules,
+            'checkpoints': skill.checkpoints,
+            'steps': [{'order': s.order, 'name': s.name, 'tool_name': s.tool_name,
+                        'instruction': s.instruction} for s in skill.steps]}
+
+
+@ai_router.post('/skills/reload')
+def reload_skills():
+    ''''Hot-reload all skill .md files from disk without server restart.'''
+    from backend.ai.skill_loader import skill_registry
+    count = skill_registry.reload()
+    return {'ok': True, 'skills_loaded': count,
+            'skills': [s['name'] for s in skill_registry.list_skills()]}
