@@ -3050,7 +3050,7 @@ def set_integrity_registration(enabled: bool = True) -> str:
 
 
 
-# ── Tracking Tools ──────────────────────────────────────────────────────────
+# Tracking Tools  
 
 @tool
 def start_tracking(
@@ -4719,7 +4719,7 @@ def get_asset_pii_state(asset_id: str) -> str:
 PII_TOOLS = [scan_asset_for_pii, sanitize_asset_pii, get_asset_pii_state]
 ALL_TOOLS.extend(PII_TOOLS)
 
-# ── Tracking & Privacy tools ──────────────────────────────────────────────────
+# Tracking & Privacy tools  
 from backend.ai.tracking_tools import (  # noqa: E402
     TRACKING_TOOLS,
     start_track,
@@ -4737,3 +4737,8 @@ ALL_TOOLS.extend(TRACKING_TOOLS)
 # Plan management tools
 from backend.ai.plan_tools import PLAN_TOOLS  # noqa: E402
 ALL_TOOLS.extend(PLAN_TOOLS)
+
+# Background removal tools
+from backend.ai.bg_remove_tools import BG_REMOVE_TOOLS  # noqa: E402
+ALL_TOOLS.extend(BG_REMOVE_TOOLS)
+

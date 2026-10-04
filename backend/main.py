@@ -109,6 +109,7 @@ from backend.routers import (
     virality,
     image_tools,
     integrations,
+    bg_remove_,
 )
 
 
@@ -337,6 +338,7 @@ except ImportError as _mcp_err:
 
 # Domain routers
 app.include_router(project.router)
+app.include_router(bg_remove_.router)
 app.include_router(render.router)
 app.include_router(library.router)
 app.include_router(timeline.router)
