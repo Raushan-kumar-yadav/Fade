@@ -4718,3 +4718,18 @@ def get_asset_pii_state(asset_id: str) -> str:
 
 PII_TOOLS = [scan_asset_for_pii, sanitize_asset_pii, get_asset_pii_state]
 ALL_TOOLS.extend(PII_TOOLS)
+
+# ── Tracking & Privacy tools ──────────────────────────────────────────────────
+from backend.ai.tracking_tools import (  # noqa: E402
+    TRACKING_TOOLS,
+    start_track,
+    check_track_job,
+    wait_for_track,
+    list_tracks_for_clip,
+    delete_track,
+    add_blur_to_track,
+    add_follow_to_track,
+    track_and_blur_face,
+    track_and_blur_text,
+)
+ALL_TOOLS.extend(TRACKING_TOOLS)

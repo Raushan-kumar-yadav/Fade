@@ -150,6 +150,17 @@ from backend.ai.tools import (
     get_social_connections,
     get_youtube_videos,
 
+    # Tracking & Privacy
+    start_track,
+    check_track_job,
+    wait_for_track,
+    list_tracks_for_clip,
+    delete_track,
+    add_blur_to_track,
+    add_follow_to_track,
+    track_and_blur_face,
+    track_and_blur_text,
+
     ALL_TOOLS,
 )
 
@@ -199,6 +210,11 @@ VIDEO_TOOLS = _SHARED + [
     set_webcomp_opacity, delete_webcomp, reload_webcomp, update_webcomp_meta,
     get_social_connections, get_youtube_videos, analyze_virality,
     search_news,
+    # Tracking & Privacy
+    start_track, check_track_job, wait_for_track,
+    list_tracks_for_clip, delete_track,
+    add_blur_to_track, add_follow_to_track,
+    track_and_blur_face, track_and_blur_text,
 ]
 
 #   Image Agent  
@@ -272,6 +288,7 @@ TOOL_SETS: dict[str, list] = {
     "home": GENERAL_TOOLS,
     "ai": GENERAL_TOOLS,
     "export":   VIDEO_TOOLS,   # export tab uses video pipeline
+    "tracking": VIDEO_TOOLS,   # tracking tab — full video toolset
 }
 
 def get_tools_for(agent_type: str) -> list:

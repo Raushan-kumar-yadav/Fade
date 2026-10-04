@@ -22,6 +22,11 @@ _KNOWN_TOOLS = [
     "split_clip", "trim_clip", "move_clip", "delete_clip",
     "set_text_content", "update_text_clip",
     "describe_clip", "get_clip_params",
+    # Tracking & Privacy
+    "start_track", "wait_for_track", "check_track_job",
+    "list_tracks_for_clip", "delete_track",
+    "add_blur_to_track", "add_follow_to_track",
+    "track_and_blur_face", "track_and_blur_text",
 ]
 
 PLANNER_SYSTEM = """\
