@@ -1,9 +1,4 @@
-"""
-skill_loader.py — Parses skill Markdown files into SkillDef dataclasses.
-
-Skill files live in backend/ai/skills/*.md
-Each file has YAML frontmatter + Markdown body with ## Steps and ## Rules sections.
-"""
+ 
 from __future__ import annotations
 
 import re
@@ -17,7 +12,7 @@ logger = logging.getLogger(__name__)
 SKILLS_DIR = Path(__file__).parent / "skills"
 
 
-# ── Data classes ──────────────────────────────────────────────────────────────
+# Data classes  
 
 @dataclass
 class SkillStep:
@@ -67,7 +62,7 @@ class SkillDef:
         )
 
 
-# ── Parser ────────────────────────────────────────────────────────────────────
+#   Parser  
 
 def _parse_frontmatter(text: str) -> tuple[dict, str]:
     """Extract YAML-ish frontmatter between --- delimiters. Returns (meta_dict, body)."""
@@ -81,7 +76,7 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     fm_text = m.group(1)
     body = m.group(2)
 
-    # Simple key: value parser (handles lists with - prefix)
+ 
     current_key = None
     for line in fm_text.splitlines():
         list_m = re.match(r"^\s{2,}- (.+)$", line)
@@ -97,7 +92,7 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
             key = kv_m.group(1)
             val = kv_m.group(2).strip().strip('"')
             current_key = key
-            # Empty value — defer to list if items follow, otherwise set as string
+            # Empty value 
             meta[key] = val if val else []
 
     # Parse output_dimensions: [1920, 1080]
@@ -200,7 +195,7 @@ def load_skill(path: Path) -> Optional[SkillDef]:
         return None
 
 
-# ── Registry ──────────────────────────────────────────────────────────────────
+#   Registry  
 
 class SkillRegistry:
     """Singleton registry that loads and caches all skills from the skills/ folder."""
