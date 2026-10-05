@@ -463,7 +463,32 @@
 }
 .fchat__drop-chip-remove:hover { color: #ff6b6b; }
 
-/* ── Drop overlay on the textarea ───────────────────── */
+/* Image / face-reference chip variant — amber accent */
+.fchat__drop-chip--ref {
+  background: rgba(255, 165, 0, 0.10);
+  border-color: rgba(255, 165, 0, 0.40);
+  color: #ffd580;
+}
+.fchat__drop-chip-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.fchat__drop-chip-type--ref {
+  font-size: 10px;
+  color: #ffa040;
+  background: rgba(255,160,0,0.18);
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+
+
+
+/*   Drop overlay on the textarea   */
 .fchat__input-wrap {
   position: relative;
 }

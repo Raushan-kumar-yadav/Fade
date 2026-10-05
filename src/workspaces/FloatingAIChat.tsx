@@ -410,12 +410,11 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
   async function send() {
     const text = input.trim()
     if (!text || busy) return
-    // Build message — append dropped asset context if any
-    const assetCtx = droppedAsset
-      ? `\n[Asset: ${droppedAsset.filename} | id:${droppedAsset.assetId}]`
-      : ''
-    const fullText = text + assetCtx
-    const assetId  = droppedAsset?.assetId ?? null
+    // Build message — for image assets the backend handles filepath injection;
+    // for other assets we still append minimal context as fallback.
+    const fullText = text
+    const assetId   = droppedAsset?.assetId  ?? null
+    const assetType = droppedAsset?.type      ?? null
     setDroppedAsset(null)
     setInput('')
     setSkillRun(null)
@@ -454,7 +453,14 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
       const res = await fetch(`http://127.0.0.1:${port}/ai/chat`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: fullText, history: historySlice, port, agent: agentId, asset_id: assetId }),
+        body:    JSON.stringify({
+          message:    fullText,
+          history:    historySlice,
+          port,
+          agent:      agentId,
+          asset_id:   assetId,
+          asset_type: assetType,   // tells backend if it's an image (face ref) or video
+        }),
         signal:  abortRef.current.signal,
       })
       const reader  = res.body!.getReader()
@@ -744,15 +750,20 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
       <div className="fchat__input-row">
         {/* Dropped asset chip */}
         {droppedAsset && (
-          <div className="fchat__drop-chip">
+          <div className={`fchat__drop-chip ${droppedAsset.type === 'image' ? 'fchat__drop-chip--ref' : ''}`}>
             <img
               src={`http://127.0.0.1:${port}/library/thumbnail/${droppedAsset.assetId}`}
               alt={droppedAsset.filename}
               className="fchat__drop-chip-thumb"
               onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
-            <span className="fchat__drop-chip-name">{droppedAsset.filename}</span>
-            <span className="fchat__drop-chip-type">{droppedAsset.type}</span>
+            <div className="fchat__drop-chip-info">
+              <span className="fchat__drop-chip-name">{droppedAsset.filename}</span>
+              {droppedAsset.type === 'image'
+                ? <span className="fchat__drop-chip-type fchat__drop-chip-type--ref">🎯 Face Reference</span>
+                : <span className="fchat__drop-chip-type">{droppedAsset.type}</span>
+              }
+            </div>
             <button
               className="fchat__drop-chip-remove"
               onClick={() => setDroppedAsset(null)}
@@ -790,7 +801,7 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
           >
             {isDragOver && (
               <div className="fchat__drop-overlay">
-                <span>Drop to attach asset</span>
+                <span>Drop image for 📷 face reference, or video to 🎬 track</span>
               </div>
             )}
             <textarea

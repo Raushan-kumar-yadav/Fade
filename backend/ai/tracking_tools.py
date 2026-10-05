@@ -1,4 +1,4 @@
-﻿"""
+"""
 Tracking and Privacy tools for the Fade AI agent.
 
 Workflow:
@@ -35,24 +35,27 @@ def start_track(
     text_pattern: str = "email|phone",
     template_path: str | None = None,
     initial_bbox: list[float] | None = None,
+    auto_blur: bool = False,
 ) -> str:
     """Start an object-tracking job on a timeline clip. Returns job_id immediately (non-blocking).
 
     Args:
         clip_id: The clipId of the video or image clip to track.
         detection_mode: "face" | "face_ref" | "person" | "text" | "image" | "manual"
-            - face     : auto-detect all faces
+            - face : auto-detect all faces
             - face_ref : track a specific face — provide template_path (reference photo)
-            - person   : full-body detection — provide template_path
-            - text     : OCR text matching text_pattern (phone numbers, emails, etc.)
-            - image    : template-match template_path image in each frame
-            - manual   : fixed bbox defined by initial_bbox [x,y,w,h]
+            - person : full-body detection
+            - text : OCR text matching text_pattern
+            - image : template-match template_path in each frame
+            - manual : fixed bbox defined by initial_bbox [x,y,w,h]
         from_frame: Timeline frame to start (0 = clip start).
         to_frame: Timeline frame to stop (-1 = clip end).
-        label: Human-readable name for this track, e.g. "speaker_face".
-        text_pattern: Regex for text mode. Shortcuts: "email", "phone", "any".
-        template_path: Absolute path to reference image (required for face_ref/person/image).
-        initial_bbox: [x, y, w, h] in pixels, required for manual mode only.
+        label: Human-readable name for this track.
+        text_pattern: Regex for text mode.
+        template_path: Absolute path to reference image (required for face_ref/image modes).
+        initial_bbox: [x, y, w, h] in pixels (required for manual mode).
+        auto_blur: If True, blur is applied AUTOMATICALLY when job finishes.
+                   Use this to avoid needing an extra LLM call for add_blur_to_track.
 
     Returns:
         JSON {"job_id": "...", "hint": "call wait_for_track(job_id)"}
@@ -99,11 +102,15 @@ def start_track(
             "text_pattern": text_pattern,
             "template_path": template_path,
             "initial_bbox": initial_bbox,
+            "auto_blur_clip_id": clip_id if auto_blur else None,
         })
         if "job_id" in result:
+            hint = (f"Blur will auto-apply when done. Call wait_for_track('{result['job_id']}') to confirm."
+                    if auto_blur else
+                    f"Call wait_for_track('{result['job_id']}') to wait.")
             return json.dumps({"job_id": result["job_id"], "clip_id": clip_id,
                                "mode": detection_mode, "from": from_frame, "to": to_frame,
-                               "hint": f"Call wait_for_track('{result['job_id']}') to wait."})
+                               "hint": hint})
         return json.dumps({"error": result.get("detail", "Failed to start tracking")})
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -244,7 +251,7 @@ def track_and_blur_face(
         from_frame / to_frame: Frame range (defaults to full clip).
     """
     try:
-        s = json.loads(start_track.invoke({"clip_id": clip_id, "detection_mode": "face",
+        s = json.loads(start_track.invoke({"clip_id": clip_id, "detection_mode": "face_ref",  # match against reference photo, not all faces
                                             "label": label, "from_frame": from_frame, "to_frame": to_frame}))
         if "error" in s:
             return json.dumps({"error": f"Start failed: {s['error']}"})

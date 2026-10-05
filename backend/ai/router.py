@@ -103,6 +103,7 @@ class ChatRequest(BaseModel):
     port: int = 8000
     agent: str = "video"   # agent type: video | image | audio | pdf | director | home
     asset_id: Optional[str] = None   # dragged asset from library/timeline
+    asset_type: Optional[str] = None  # "image" | "video" | "audio" — type of dragged asset
 
 class TranscribeRequest(BaseModel):
     assetId: str
@@ -457,14 +458,70 @@ async def ai_chat(req: ChatRequest):
             from backend.ai.agent_registry import get_specialized_agent
             agent = get_specialized_agent(req.agent, req.port)
 
-            # Rebuild history  
+            # Rebuild history
             messages = []
             for h in req.history:
                 if h["role"] == "user":
                     messages.append(HumanMessage(content=h["text"]))
                 else:
                     messages.append(AIMessage(content=h["text"]))
-            messages.append(HumanMessage(content=scanned_message))
+
+ 
+            final_message_text = scanned_message
+
+            if req.asset_id:
+                asset_filepath = None
+                try:
+                    from backend.state import _library as _lib
+                    _ast = _lib.get(req.asset_id)
+                    if _ast:
+                        asset_filepath = getattr(_ast, "filepath", None)
+                except Exception:
+                    pass
+
+                _atype = (req.asset_type or "").lower()
+                _is_image = _atype == "image" or bool(
+                    asset_filepath and
+                    asset_filepath.lower().endswith(
+                        (".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")
+                    )
+                )
+
+                if _is_image and asset_filepath:
+                    # Image = face reference for tracking
+                    final_message_text = (
+                        scanned_message
+                        + "\n\n[ATTACHED IMAGE]"
+                        + f"\nreference_image_path: {asset_filepath}"
+                        + f"\nasset_id: {req.asset_id}"
+                        + "\nThis is a FACE REFERENCE image. DO NOT place it on the timeline."
+                        + " Call track_face_with_image(clip_id=<active_clip>,"
+                        + f" reference_image_path=\"{asset_filepath}\")."
+                        + " Find the active clip with get_timeline_state() first."
+                    )
+                    print(f"[AI Router] Image ref injected: {asset_filepath}", flush=True)
+
+                elif asset_filepath:
+                    # Video / audio / other asset
+                    final_message_text = (
+                        scanned_message
+                        + "\n\n[DROPPED ASSET]"
+                        + f"\nasset_id: {req.asset_id}"
+                        + f"\nfilepath: {asset_filepath}"
+                        + f"\ntype: {req.asset_type or 'video'}"
+                        + "\nUse asset_id for tracking (track_face_and_blur_by_asset)."
+                        + " Do NOT place it on the timeline unless explicitly asked."
+                    )
+                    print(f"[AI Router] Asset injected: {req.asset_id[:8]}", flush=True)
+
+                else:
+                    final_message_text = (
+                        scanned_message
+                        + f"\n\n[DROPPED ASSET - asset_id: {req.asset_id}"
+                        + f" | type: {req.asset_type or 'unknown'}]"
+                    )
+
+            messages.append(HumanMessage(content=final_message_text))
 
             # Emit initial thinking status
             yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking...'})}\n\n"
@@ -542,7 +599,7 @@ async def ai_chat(req: ChatRequest):
             if any(k in type(e).__name__ for k in ("Timeout", "TimeoutError")):
                 msg = "The AI model took too long to respond. The free model may be busy -- please try again."
             elif "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower():
-                msg = "Rate limit reached on the AI model. Wait a moment and try again."
+                msg = "The AI model is rate-limited (429). Please wait a moment and try again."
             elif "connect" in err_str.lower() or "connection" in err_str.lower():
                 msg = "Could not connect to the AI model. Check your internet connection."
             else:

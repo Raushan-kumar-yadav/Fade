@@ -18,7 +18,7 @@ class StartTrackRequest(BaseModel):
     video_path: str
     from_frame: int = 0
     to_frame: int = -1
-    detection_mode:  str = "face"       # face | person | text | image | manual
+    detection_mode:  str = "face"       # face | person | text | image | manual | face_ref
     initial_bbox: Optional[list] = None   # [x, y, w, h] pixels
     text_pattern: str = "email|phone"
     template_path: Optional[str] = None   # local path to reference image
@@ -26,6 +26,9 @@ class StartTrackRequest(BaseModel):
     fps: float = 30.0
     comp_w: int = 1920
     comp_h: int = 1080
+ 
+    auto_blur_clip_id: Optional[str] = None
+    auto_blur_padding: float = 8.0
 
 
 class LinkTrackRequest(BaseModel):
@@ -62,6 +65,8 @@ def start_tracking(req: StartTrackRequest):
         fps=req.fps,
         comp_w=req.comp_w,
         comp_h=req.comp_h,
+        auto_blur_clip_id=req.auto_blur_clip_id,
+        auto_blur_padding=req.auto_blur_padding,
     )
     return {"ok": True, "job_id": job_id}
 

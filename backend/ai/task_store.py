@@ -295,8 +295,7 @@ def get_plan(plan_id: str) -> TaskPlan | None:
     return plan
 
 
-# Plans older than this are considered stale (from a previous session)
-_PLAN_MAX_AGE_SECONDS = 10 * 60   # 10 minutes
+_PLAN_MAX_AGE_SECONDS = 10 * 60    
 
 
 def get_active_plan() -> TaskPlan | None:
@@ -380,7 +379,7 @@ def delete_plan(plan_id: str) -> bool:
     return deleted
 
 
-# ── Plan management helpers ────────────────────────────────────────────────────
+# Plan management helpers  
 
 def skip_step(step_id: str) -> bool:
     """Mark a step as skipped (bypasses execution)."""

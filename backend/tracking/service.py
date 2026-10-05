@@ -157,14 +157,17 @@ def start_track_job(
     video_path: str,
     from_frame: int,
     to_frame: int,
-    detection_mode: str = "face",   # "face"|"person"|"text"|"image"|"manual"
-    initial_bbox: list | None = None,   # [x,y,w,h] for "manual" or override
+    detection_mode: str = "face",    
+    initial_bbox: list | None = None,
     text_pattern: str = "email|phone",
-    template_path: str | None = None,   # for "image" mode
+    template_path: str | None = None,
     label: str = "",
     fps: float = 30.0,
     comp_w: int = 1920,
     comp_h: int = 1080,
+ 
+    auto_blur_clip_id: str | None = None,
+    auto_blur_padding: float = 8.0,
 ) -> str:
     """Start async tracking job. Returns job_id immediately."""
     label = label or detection_mode
@@ -205,8 +208,13 @@ def start_track_job(
 
                 bbox = initial_bbox
                 if not bbox:
-                    boxes = _detect(img, detection_mode, text_pattern, template_path)
+                    boxes = _detect(img, detection_mode, text_pattern, template_path, ref_embedding)
                     if not boxes:
+                        if detection_mode == "face_ref":
+                            raise RuntimeError(
+                                "Could not find the reference face in the target image. "
+                                "Try a clearer reference photo or use mode='face' to blur all faces."
+                            )
                         raise RuntimeError(
                             f"No {detection_mode} detected in image. "
                             "Try manual ROI or a different detection mode."
@@ -299,6 +307,20 @@ def start_track_job(
                   f"frames={len(frame_data)} (RAM only, write on save)", flush=True)
             logger.info("[tracking] job %s done -> track_id=%s (%d frames)",
                         job_id, track_id, len(frame_data))
+
+            # Auto-blur: apply ellipse blur without needing another LLM call
+            if auto_blur_clip_id:
+                try:
+                    from backend.ai.tracking_tools import add_blur_to_track as _blur_tool
+                    import json as _json
+                    result = _blur_tool.invoke({
+                        "track_id": track_id,
+                        "clip_id": auto_blur_clip_id,
+                        "padding": auto_blur_padding,
+                    })
+                    print(f"[tracking] Auto-blur applied: {result[:80]}", flush=True)
+                except Exception as _be:
+                    print(f"[tracking] Auto-blur failed: {_be}", flush=True)
 
         except Exception as e:
             logger.error("[tracking] job %s failed: %s", job_id, e, exc_info=True)
