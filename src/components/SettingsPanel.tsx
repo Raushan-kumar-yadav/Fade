@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import './SettingsPanel.css';
+import { getFadeServerConfig, saveFadeServerConfig, pingServer, type FadeServerConfig } from '../api/fadeServerApi';
 
 // Env key info from backend
 interface EnvKeyInfo {
@@ -170,7 +171,7 @@ async function postEnvSettings(updates: Record<string, string>): Promise<EnvSett
 
 //   Tab IDs  
 
-type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'agent' | 'generators' | 'apis' | 'connections' | 'skills';
+type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'agent' | 'generators' | 'apis' | 'connections' | 'skills' | 'server';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'cache', icon: '⚡', label: 'Cache'       },
@@ -182,6 +183,7 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'apis', icon: '🔑', label: 'API Keys'    },
   { id: 'connections', icon: '🔗', label: 'Connections' },
   { id: 'skills', icon: '📚', label: 'Skills'      },
+  { id: 'server', icon: '🛡', label: 'Fade Server' },
 ];
 
 //   Connections types  
@@ -340,7 +342,154 @@ async function disconnectProvider(port: number, provider: string): Promise<boole
   } catch { return false; }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Fade Server Settings Section (rendered inside SettingsPanel → "Fade Server")
+// ──────────────────────────────────────────────────────────────────────────────
+
+function FadeServerSettingsSection() {
+  const [cfg, setCfg] = useState<FadeServerConfig>(getFadeServerConfig);
+  const [draftUrl, setDraftUrl] = useState(cfg.baseUrl);
+  const [draftKey, setDraftKey] = useState(cfg.apiKey);
+  const [pingState, setPingState] = useState<'idle' | 'pinging' | 'ok' | 'error'>('idle');
+  const [pingMsg, setPingMsg] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    const next: FadeServerConfig = { baseUrl: draftUrl.replace(/\/$/, ''), apiKey: draftKey };
+    setCfg(next);
+    saveFadeServerConfig(next);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handlePing = async () => {
+    const live: FadeServerConfig = { baseUrl: draftUrl.replace(/\/$/, ''), apiKey: draftKey };
+    setPingState('pinging');
+    setPingMsg('');
+    try {
+      const r = await pingServer(live);
+      setPingState('ok');
+      setPingMsg(r.status ?? 'OK');
+    } catch (e: any) {
+      setPingState('error');
+      setPingMsg(e.message);
+    }
+  };
+
+  return (
+    <>
+      {/* Banner */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18,
+        background: 'rgba(124,111,255,0.07)', border: '1px solid rgba(124,111,255,0.2)',
+        borderRadius: 10, padding: '10px 14px',
+      }}>
+        <span style={{ fontSize: 22 }}>🛡️</span>
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#c0b8ff' }}>Fade Verification Server</div>
+          <div style={{ fontSize: 11, color: 'rgba(160,160,200,0.6)' }}>
+            Exported artifacts are automatically registered on this server for public blockchain verification.
+          </div>
+        </div>
+      </div>
+
+      {/* Backend URL */}
+      <div className="sp-row">
+        <label className="sp-label" htmlFor="fade-server-url">Backend URL</label>
+        <input
+          id="fade-server-url"
+          className="sp-input"
+          value={draftUrl}
+          onChange={e => setDraftUrl(e.target.value)}
+          placeholder="https://fade-web-backend.onrender.com"
+        />
+      </div>
+
+      {/* API Key */}
+      <div className="sp-row">
+        <label className="sp-label" htmlFor="fade-server-key">API Key</label>
+        <input
+          id="fade-server-key"
+          className="sp-input"
+          type="password"
+          value={draftKey}
+          onChange={e => setDraftKey(e.target.value)}
+          placeholder="sih2026-fade-secret-key"
+        />
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+        <button
+          className="sp-btn sp-btn--primary"
+          onClick={handleSave}
+          style={{ flex: 1 }}
+        >
+          {saved ? '✅ Saved!' : '💾 Save'}
+        </button>
+        <button
+          className="sp-btn"
+          onClick={handlePing}
+          disabled={pingState === 'pinging'}
+          style={{ flex: 1 }}
+        >
+          {pingState === 'pinging' ? '⏳ Testing…' : '🔌 Test Connection'}
+        </button>
+      </div>
+
+      {/* Ping result */}
+      {pingState === 'ok' && (
+        <div style={{
+          marginTop: 10, padding: '7px 12px', borderRadius: 7, fontSize: 12,
+          background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', color: '#86efac',
+        }}>
+          ✅ Server reachable — {pingMsg}
+        </div>
+      )}
+      {pingState === 'error' && (
+        <div style={{
+          marginTop: 10, padding: '7px 12px', borderRadius: 7, fontSize: 12,
+          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5',
+        }}>
+          ❌ {pingMsg}
+        </div>
+      )}
+
+      {/* Info rows */}
+      <div style={{ marginTop: 18, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {[
+          ['POST /registerContent', 'Auto-called after every integrity export'],
+          ['GET /getVerificationContent/:url', 'Public verification by social/direct URL'],
+          ['GET /blockchain/status', 'Polygon Amoy anchor status'],
+          ['GET /artifacts', 'List all registered artifacts'],
+        ].map(([ep, desc]) => (
+          <div key={ep} style={{
+            display: 'flex', gap: 10, alignItems: 'flex-start',
+            background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+            borderRadius: 7, padding: '7px 10px',
+          }}>
+            <code style={{ fontSize: 10, color: '#a78bfa', whiteSpace: 'nowrap', flexShrink: 0 }}>{ep}</code>
+            <span style={{ fontSize: 11, color: 'rgba(160,160,200,0.65)' }}>{desc}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Live link */}
+      <div style={{ marginTop: 14 }}>
+        <a
+          href={draftUrl || 'https://fade-web-backend.onrender.com'}
+          target="_blank" rel="noreferrer"
+          style={{ fontSize: 12, color: '#7c6fff', textDecoration: 'none' }}
+        >
+          🌐 Open Verification Portal ↗
+        </a>
+      </div>
+    </>
+  );
+}
+
 export default function SettingsPanel({ onClose }: Props) {
+
   const [s, setS] = useState<Settings | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);
   const [gen, setGen] = useState<GeneratorSettings | null>(null);
@@ -710,7 +859,7 @@ export default function SettingsPanel({ onClose }: Props) {
 
           {/* Right content */}
           <div className="sp-content">
-            {!s && tab !== 'ai' && tab !== 'generators' && tab !== 'apis' && tab !== 'connections' && (
+            {!s && tab !== 'ai' && tab !== 'generators' && tab !== 'apis' && tab !== 'connections' && tab !== 'server' && (
               <p className="sp-loading">Connecting to engine…</p>
             )}
 
@@ -2094,6 +2243,9 @@ export default function SettingsPanel({ onClose }: Props) {
                 </div>
               </>
             )}
+            {/* Fade Server */}
+            {tab === 'server' && <FadeServerSettingsSection />}
+
           </div>
         </div>
 

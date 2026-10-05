@@ -410,8 +410,7 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
   async function send() {
     const text = input.trim()
     if (!text || busy) return
-    // Build message — for image assets the backend handles filepath injection;
-    // for other assets we still append minimal context as fallback.
+ 
     const fullText = text
     const assetId   = droppedAsset?.assetId  ?? null
     const assetType = droppedAsset?.type      ?? null

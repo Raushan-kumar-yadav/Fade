@@ -50,13 +50,13 @@ If Windows SmartScreen warns, click **More info -> Run anyway**.
 
 **Fade** (shipped as **Echo**) is a desktop-native professional media editor that unifies:
 
-| Workspace | Capability |
-|-----------|-----------|
-| **Video** | Multi-track NLE timeline, clip manipulation, effects, transitions, animations |
-| **Image** | Layer-based canvas compositor (Photoshop-style) |
-| **PDF / Docs** | Multi-page document builder with visual layer editor |
-| **Audio** | Volume mixing, TTS voiceover, Whisper transcription |
-| **Director** | AI campaign orchestrator -- dispatches tasks to specialized agents |
+| Workspace      | Capability                                                                    |
+| -------------- | ----------------------------------------------------------------------------- |
+| **Video**      | Multi-track NLE timeline, clip manipulation, effects, transitions, animations |
+| **Image**      | Layer-based canvas compositor (Photoshop-style)                               |
+| **PDF / Docs** | Multi-page document builder with visual layer editor                          |
+| **Audio**      | Volume mixing, TTS voiceover, Whisper transcription                           |
+| **Director**   | AI campaign orchestrator -- dispatches tasks to specialized agents            |
 
 Ships as a **self-contained Windows executable** -- no Python, Node.js, or GPU drivers needed.
 
@@ -91,13 +91,13 @@ Ships as a **self-contained Windows executable** -- no Python, Node.js, or GPU d
 
 ### Key Design Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| **Electron** (not web) | Native FS, IPC to C++ `.node`, frameless window |
-| **Python backend** | LangGraph, Whisper, ChromaDB, PyTorch ecosystem |
-| **C++ GPU renderer** | HW video decode, Vulkan memory, sub-ms compositing |
-| **N-API** (not HTTP for frames) | Zero-serialization -- avoids 60fps JPEG overhead |
-| **FastAPI + SSE** for AI | LangGraph streams tokens/tool events natively |
+| Decision                        | Rationale                                          |
+| ------------------------------- | -------------------------------------------------- |
+| **Electron** (not web)          | Native FS, IPC to C++ `.node`, frameless window    |
+| **Python backend**              | LangGraph, Whisper, ChromaDB, PyTorch ecosystem    |
+| **C++ GPU renderer**            | HW video decode, Vulkan memory, sub-ms compositing |
+| **N-API** (not HTTP for frames) | Zero-serialization -- avoids 60fps JPEG overhead   |
+| **FastAPI + SSE** for AI        | LangGraph streams tokens/tool events natively      |
 
 ---
 
@@ -110,8 +110,8 @@ Ships as a **self-contained Windows executable** -- no Python, Node.js, or GPU d
 ```typescript
 // Spawn Python backend as child process
 pyProcess = spawn(pythonExe, [backendScript], {
-  env: { ...process.env, FADE_PORT: String(port) }
-})
+  env: { ...process.env, FADE_PORT: String(port) },
+});
 // Polls stdout for "Backend ready on port XXXX"
 // On quit: SIGTERM + taskkill /F /T /PID (kills GPU worker threads too)
 ```
@@ -119,21 +119,22 @@ pyProcess = spawn(pythonExe, [backendScript], {
 ### Splash Screen
 
 A dedicated `BrowserWindow` shows boot progress while:
+
 - Python subprocess starts and loads FastAPI routes
-- Bundled ML models (Whisper `small.pt`, Kokoro TTS) initialize  
+- Bundled ML models (Whisper `small.pt`, Kokoro TTS) initialize
 - C++ Vulkan device is selected and GPU context created
 
 ### IPC Bridge (contextBridge)
 
 ```typescript
 // electron/preload.ts
-contextBridge.exposeInMainWorld('electronAPI', {
-  minimize:    () => ipcRenderer.send('window:minimize'),
-  maximize:    () => ipcRenderer.send('window:maximize'),
-  close:       () => ipcRenderer.send('window:close'),
-  openFile:    () => ipcRenderer.invoke('dialog:openFile'),
-  renderFrame: (data) => ipcRenderer.invoke('render:frame', data),
-})
+contextBridge.exposeInMainWorld("electronAPI", {
+  minimize: () => ipcRenderer.send("window:minimize"),
+  maximize: () => ipcRenderer.send("window:maximize"),
+  close: () => ipcRenderer.send("window:close"),
+  openFile: () => ipcRenderer.invoke("dialog:openFile"),
+  renderFrame: (data) => ipcRenderer.invoke("render:frame", data),
+});
 ```
 
 ### WebComp Renderer (`electron/webComp/`)
@@ -178,10 +179,11 @@ const _storeHistory:  Map<string, History[]>  = new Map()
 ```
 
 Each agent has its own greeting:
+
 - **video** -- "I can edit the timeline, place clips, add effects..."
 - **image** -- "I can create image compositions, add layers, apply filters..."
 - **audio** -- "I can adjust volumes, TTS, transcribe speech..."
-- **pdf**   -- "I can create PDF documents, add pages, populate content..."
+- **pdf** -- "I can create PDF documents, add pages, populate content..."
 - **director** -- "Give me a high-level brief and I'll plan the campaign..."
 
 ---
@@ -192,28 +194,28 @@ Each agent has its own greeting:
 
 ### API Router Map
 
-| Prefix | File | Responsibility |
-|--------|------|----------------|
-| `/ai` | `ai/router.py` | Chat SSE streaming, agent restart, Director run |
-| `/timeline` | `routers/timeline.py` | Timeline state, track management |
-| `/clips` | `routers/clips.py` | CRUD: video / image / text / shape / SVG clips |
-| `/comps` | `routers/comps.py` | Composition create / activate / state / PDF pages |
-| `/library` | `routers/library.py` | Asset listing, import, SSE change events |
-| `/render` | `routers/render.py` | Frame requests (routed to C++ renderer) |
-| `/playback` | `routers/playback.py` | Play / pause / seek / speed |
-| `/effects` | `routers/effects.py` | Effect catalog, add / remove / params |
-| `/transitions` | `routers/transitions.py` | Transition catalog + insertion |
-| `/audio` | `routers/audio.py` | Audio track management |
-| `/animation` | `routers/animation.py` | Keyframes, expressions, easing curves |
-| `/export` | `routers/export_.py` | Export triggers + SSE progress stream |
-| `/jobs` | `routers/jobs.py` | Background job queue (TTS, Whisper, downloads) |
-| `/search` | `routers/search.py` | DuckDuckGo search + yt-dlp download trigger |
-| `/context` | `routers/context.py` | LLM-optimized timeline/clip context dumps |
-| `/scene-tools` | `routers/scene_tools.py` | Semantic scene search (ChromaDB + vision AI) |
-| `/virality` | `routers/virality.py` | Virality predictor + social connections |
-| `/image-tools` | `routers/image_tools.py` | Image-specific operations |
-| `/debug` | `routers/debug.py` | Animation diagnostics |
-| `/mcp-remote` | `routers/mcp_remote_router.py` | MCP protocol for external AI access |
+| Prefix         | File                           | Responsibility                                    |
+| -------------- | ------------------------------ | ------------------------------------------------- |
+| `/ai`          | `ai/router.py`                 | Chat SSE streaming, agent restart, Director run   |
+| `/timeline`    | `routers/timeline.py`          | Timeline state, track management                  |
+| `/clips`       | `routers/clips.py`             | CRUD: video / image / text / shape / SVG clips    |
+| `/comps`       | `routers/comps.py`             | Composition create / activate / state / PDF pages |
+| `/library`     | `routers/library.py`           | Asset listing, import, SSE change events          |
+| `/render`      | `routers/render.py`            | Frame requests (routed to C++ renderer)           |
+| `/playback`    | `routers/playback.py`          | Play / pause / seek / speed                       |
+| `/effects`     | `routers/effects.py`           | Effect catalog, add / remove / params             |
+| `/transitions` | `routers/transitions.py`       | Transition catalog + insertion                    |
+| `/audio`       | `routers/audio.py`             | Audio track management                            |
+| `/animation`   | `routers/animation.py`         | Keyframes, expressions, easing curves             |
+| `/export`      | `routers/export_.py`           | Export triggers + SSE progress stream             |
+| `/jobs`        | `routers/jobs.py`              | Background job queue (TTS, Whisper, downloads)    |
+| `/search`      | `routers/search.py`            | DuckDuckGo search + yt-dlp download trigger       |
+| `/context`     | `routers/context.py`           | LLM-optimized timeline/clip context dumps         |
+| `/scene-tools` | `routers/scene_tools.py`       | Semantic scene search (ChromaDB + vision AI)      |
+| `/virality`    | `routers/virality.py`          | Virality predictor + social connections           |
+| `/image-tools` | `routers/image_tools.py`       | Image-specific operations                         |
+| `/debug`       | `routers/debug.py`             | Animation diagnostics                             |
+| `/mcp-remote`  | `routers/mcp_remote_router.py` | MCP protocol for external AI access               |
 
 ### Background Job Queue
 
@@ -230,6 +232,7 @@ class Job:
 Frontend polls `GET /jobs/{job_id}` or listens to SSE events for completion.
 
 ---
+
 ## 6. Layer 4 - C++20 Renderer (Vulkan + Skia)
 
 **Files:** `renderer/src/` -- 39 `.cpp` files, built as a `.node` native addon
@@ -364,12 +367,12 @@ NODE_API_MODULE(render_engine, Init)
 
 ```typescript
 // Electron main.ts -- used like a normal Node.js module
-const engine = require('./renderer/build/Release/render_engine.node')
-engine.initRenderer({ width: 1920, height: 1080, fps: 30 })
+const engine = require("./renderer/build/Release/render_engine.node");
+engine.initRenderer({ width: 1920, height: 1080, fps: 30 });
 engine.setFrameCallback((frameBuffer: Buffer) => {
   // Raw RGBA bytes -- direct V8 ArrayBuffer, one memcopy only
-  ws.send(frameBuffer)  // WebSocket -> frontend canvas
-})
+  ws.send(frameBuffer); // WebSocket -> frontend canvas
+});
 ```
 
 ### ThreadSafeFunction (TSFN) - Cross-Thread Callbacks
@@ -413,6 +416,7 @@ npx cmake-js build --runtime electron --runtime-version 29.0.0
 ```
 
 ---
+
 ## 8. Multi-Agent AI System
 
 **Files:** `backend/ai/` -- **LangGraph** + **LangChain**
@@ -458,14 +462,14 @@ def get_specialized_agent(agent_type: str, port: int) -> CompiledGraph:
 
 ### Tool Sets (`backend/ai/tool_sets.py`)
 
-| Agent | Tools | Scoped to |
-|-------|-------|-----------|
-| `video` | 117 | Timeline, clips, effects, transitions, export, animations |
-| `image` | 58 | Compositions, layers, image download/generate, masks |
-| `audio` | 39 | Volume, TTS, Whisper, silence removal, audio tracks |
-| `pdf` | 22 | PDF docs, pages, content, summaries |
+| Agent      | Tools   | Scoped to                                                              |
+| ---------- | ------- | ---------------------------------------------------------------------- |
+| `video`    | 117     | Timeline, clips, effects, transitions, export, animations              |
+| `image`    | 58      | Compositions, layers, image download/generate, masks                   |
+| `audio`    | 39      | Volume, TTS, Whisper, silence removal, audio tracks                    |
+| `pdf`      | 22      | PDF docs, pages, content, summaries                                    |
 | `director` | ALL + 3 | Everything + dispatch_task, get_campaign_status, list_platform_presets |
-| `home` | 25 | Read-only: library, search, project overview |
+| `home`     | 25      | Read-only: library, search, project overview                           |
 
 ### Director Agent - Campaign Orchestration
 
@@ -492,18 +496,18 @@ Director:
 
 ### Platform Presets (`backend/ai/platform_presets.py`)
 
-| Key | Dimensions | FPS | Max Duration |
-|-----|-----------|-----|-------------|
-| `youtube` | 1920x1080 | 30 | 60s |
-| `instagram_post` | 1080x1080 | 30 | 60s |
-| `instagram_story` | 1080x1920 | 30 | 90s |
-| `tiktok` | 1080x1920 | 30 | 180s |
-| `twitter` | 1280x720 | 30 | 140s |
-| `youtube_short` | 1080x1920 | 30 | 60s |
-| `linkedin` | 1920x1080 | 30 | 600s |
-| `pinterest` | 1000x1500 | 30 | 15s |
-| `facebook` | 1280x720 | 30 | 240s |
-| `facebook_story` | 1080x1920 | 30 | 20s |
+| Key               | Dimensions | FPS | Max Duration |
+| ----------------- | ---------- | --- | ------------ |
+| `youtube`         | 1920x1080  | 30  | 60s          |
+| `instagram_post`  | 1080x1080  | 30  | 60s          |
+| `instagram_story` | 1080x1920  | 30  | 90s          |
+| `tiktok`          | 1080x1920  | 30  | 180s         |
+| `twitter`         | 1280x720   | 30  | 140s         |
+| `youtube_short`   | 1080x1920  | 30  | 60s          |
+| `linkedin`        | 1920x1080  | 30  | 600s         |
+| `pinterest`       | 1000x1500  | 30  | 15s          |
+| `facebook`        | 1280x720   | 30  | 240s         |
+| `facebook_story`  | 1080x1920  | 30  | 20s          |
 
 ### Task Queue (`backend/ai/task_queue.py`)
 
@@ -546,14 +550,14 @@ Retries on transient errors with exponential backoff -- up to 4 attempts.
 
 ### Supported LLM Providers
 
-| Provider | `FADE_AI_PROVIDER` | Notes |
-|----------|-------------------|-------|
-| **Ollama** (default) | `ollama` | Local, offline. Needs: `llama3.2`, `qwen2.5`, `mistral` |
-| **OpenAI** | `openai` | GPT-4o, GPT-4-turbo |
-| **Anthropic** | `anthropic` | Claude 3.5 Sonnet |
-| **Google Gemini** | `google` | Gemini 1.5 Pro |
-| **Groq** | `groq` | Ultra-fast inference |
-| **TokenRouter** | `tokenrouter` | Multi-provider load balancer |
+| Provider             | `FADE_AI_PROVIDER` | Notes                                                   |
+| -------------------- | ------------------ | ------------------------------------------------------- |
+| **Ollama** (default) | `ollama`           | Local, offline. Needs: `llama3.2`, `qwen2.5`, `mistral` |
+| **OpenAI**           | `openai`           | GPT-4o, GPT-4-turbo                                     |
+| **Anthropic**        | `anthropic`        | Claude 3.5 Sonnet                                       |
+| **Google Gemini**    | `google`           | Gemini 1.5 Pro                                          |
+| **Groq**             | `groq`             | Ultra-fast inference                                    |
+| **TokenRouter**      | `tokenrouter`      | Multi-provider load balancer                            |
 
 ---
 
@@ -585,22 +589,22 @@ RGBA readback -> N-API TSFN -> Node.js Buffer -> WebSocket -> frontend canvas
 
 ### Audio Stack
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Decode | FFmpeg / PyAV (`av`) | Audio stream demux + decode |
-| TTS | **Kokoro** (bundled, offline) | Neural text-to-speech |
-| Speech-to-text | **Faster-Whisper** (CTranslate2) | Timestamped transcription |
-| Processing | **Numba / LLVM** | Silence detection, waveform analysis |
-| Mixing | FFmpeg audio graph | Multi-track mix for export |
+| Component      | Technology                       | Purpose                              |
+| -------------- | -------------------------------- | ------------------------------------ |
+| Decode         | FFmpeg / PyAV (`av`)             | Audio stream demux + decode          |
+| TTS            | **Kokoro** (bundled, offline)    | Neural text-to-speech                |
+| Speech-to-text | **Faster-Whisper** (CTranslate2) | Timestamped transcription            |
+| Processing     | **Numba / LLVM**                 | Silence detection, waveform analysis |
+| Mixing         | FFmpeg audio graph               | Multi-track mix for export           |
 
 ### Image Processing
 
-| Component | Technology | Purpose |
-|-----------|-----------|---------|
-| Load/save | **Pillow (PIL)** | Format conversion, thumbnails |
-| Analysis | **OpenCV** (headless) | Frame extraction, filtering |
-| ML inference | **PyTorch + torchvision** | Vision model inference |
-| Server-side 2D | **skia-python** | PDF page composition |
+| Component      | Technology                | Purpose                       |
+| -------------- | ------------------------- | ----------------------------- |
+| Load/save      | **Pillow (PIL)**          | Format conversion, thumbnails |
+| Analysis       | **OpenCV** (headless)     | Frame extraction, filtering   |
+| ML inference   | **PyTorch + torchvision** | Vision model inference        |
+| Server-side 2D | **skia-python**           | PDF page composition          |
 
 ---
 
@@ -631,16 +635,16 @@ SSE push -> GET /library/events -> LibraryPanel live update
 
 ```json
 {
-  "assetId":    "a1b2c3d4",
-  "name":       "promo_clip.mp4",
-  "type":       "video",
-  "path":       "/project/media/a1b2c3d4.mp4",
-  "duration":   30.5,
-  "width":      1920,
-  "height":     1080,
-  "fps":        30,
-  "thumbnail":  "/project/thumbnails/a1b2c3d4.jpg",
-  "indexed":    true,
+  "assetId": "a1b2c3d4",
+  "name": "promo_clip.mp4",
+  "type": "video",
+  "path": "/project/media/a1b2c3d4.mp4",
+  "duration": 30.5,
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "thumbnail": "/project/thumbnails/a1b2c3d4.jpg",
+  "indexed": true,
   "transcript": null
 }
 ```
@@ -677,10 +681,10 @@ def evaluate(frame: int) -> float:
 
 ```javascript
 // Mathematical expressions evaluated server-side per frame:
-"sin(time * 2) * 100"                   // oscillating position
-"frame / totalFrames * 360"             // full rotation over clip duration
-"Math.random() * 10 + scale"            // camera shake
-"linkedProp('clip_abc', 'opacity')"     // link to another clip's property
+"sin(time * 2) * 100"; // oscillating position
+"frame / totalFrames * 360"; // full rotation over clip duration
+"Math.random() * 10 + scale"; // camera shake
+"linkedProp('clip_abc', 'opacity')"; // link to another clip's property
 ```
 
 **Easing presets:** `linear` / `ease_in` / `ease_out` / `ease_in_out` / `bounce` / `spring` / `back` / `elastic`
@@ -727,6 +731,7 @@ captureFrame() -> RGBA Buffer -> N-API -> C++ compositor layer
 ```
 
 **AI tools:**
+
 ```python
 create_webcomp(name, html_body, css, js)         # create live HTML comp
 edit_webcomp_file(webcomp_id, filename, content) # edit HTML/CSS/JS
@@ -759,14 +764,14 @@ Progress -> SSE stream (GET /export/progress) -> ExportProgressOverlay (live %)
 Done -> file saved to disk -> desktop notification
 ```
 
-| Format | Codec | Best For |
-|--------|-------|---------|
-| MP4 H.264 | libx264 | Universal compatibility |
-| MP4 H.265 | libx265 | Smaller file, same quality |
-| ProRes 422 | prores_ks | Professional post-production |
-| WebM VP9 | libvpx-vp9 | Web streaming |
-| GIF | palettegen+paletteuse | Short animated clips |
-| PNG Sequence | rawvideo | Frame-by-frame editing |
+| Format       | Codec                 | Best For                     |
+| ------------ | --------------------- | ---------------------------- |
+| MP4 H.264    | libx264               | Universal compatibility      |
+| MP4 H.265    | libx265               | Smaller file, same quality   |
+| ProRes 422   | prores_ks             | Professional post-production |
+| WebM VP9     | libvpx-vp9            | Web streaming                |
+| GIF          | palettegen+paletteuse | Short animated clips         |
+| PNG Sequence | rawvideo              | Frame-by-frame editing       |
 
 ---
 
@@ -774,52 +779,52 @@ Done -> file saved to disk -> desktop notification
 
 ### Frontend
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| Electron | 29 | Desktop shell, native APIs, process management |
-| React | 18 | UI component framework |
-| TypeScript | 5/7 | Static typing |
-| Vite | 5 | Build tool + HMR dev server |
-| FlexLayout-React | 0.10 | Dockable panel layout |
-| Allotment | 1.20 | Resizable split panes |
+| Technology       | Version | Purpose                                        |
+| ---------------- | ------- | ---------------------------------------------- |
+| Electron         | 29      | Desktop shell, native APIs, process management |
+| React            | 18      | UI component framework                         |
+| TypeScript       | 5/7     | Static typing                                  |
+| Vite             | 5       | Build tool + HMR dev server                    |
+| FlexLayout-React | 0.10    | Dockable panel layout                          |
+| Allotment        | 1.20    | Resizable split panes                          |
 
 ### Backend (Python)
 
-| Technology | Version | Purpose |
-|-----------|---------|---------|
-| FastAPI | >=0.111 | REST API + SSE streaming |
-| Uvicorn | >=0.29 | ASGI server |
-| LangGraph | >=0.2 | Stateful AI agent graphs |
-| LangChain | >=0.3 | LLM provider abstractions |
-| PyAV (`av`) | >=13 | Python FFmpeg bindings |
-| Pillow | >=10 | Image I/O and processing |
-| NumPy | >=1.26 | Array operations |
-| PyTorch | >=2.0 | ML inference runtime |
-| sentence-transformers | >=2.0 | Semantic embeddings |
-| ChromaDB | latest | Local vector database |
-| Faster-Whisper | 1.2.1 | CTranslate2 speech-to-text |
-| Kokoro TTS | bundled | Offline neural TTS |
-| yt-dlp | latest | Media downloading |
-| DuckDuckGo Search | >=9.0 | Content search |
-| OpenCV | headless | Frame extraction, filtering |
-| skia-python | latest | Server-side 2D rendering |
-| MCP | >=1.0 | Model Context Protocol |
+| Technology            | Version  | Purpose                     |
+| --------------------- | -------- | --------------------------- |
+| FastAPI               | >=0.111  | REST API + SSE streaming    |
+| Uvicorn               | >=0.29   | ASGI server                 |
+| LangGraph             | >=0.2    | Stateful AI agent graphs    |
+| LangChain             | >=0.3    | LLM provider abstractions   |
+| PyAV (`av`)           | >=13     | Python FFmpeg bindings      |
+| Pillow                | >=10     | Image I/O and processing    |
+| NumPy                 | >=1.26   | Array operations            |
+| PyTorch               | >=2.0    | ML inference runtime        |
+| sentence-transformers | >=2.0    | Semantic embeddings         |
+| ChromaDB              | latest   | Local vector database       |
+| Faster-Whisper        | 1.2.1    | CTranslate2 speech-to-text  |
+| Kokoro TTS            | bundled  | Offline neural TTS          |
+| yt-dlp                | latest   | Media downloading           |
+| DuckDuckGo Search     | >=9.0    | Content search              |
+| OpenCV                | headless | Frame extraction, filtering |
+| skia-python           | latest   | Server-side 2D rendering    |
+| MCP                   | >=1.0    | Model Context Protocol      |
 
 ### C++ Renderer
 
-| Technology | Purpose |
-|-----------|---------|
-| C++20 | Language standard |
+| Technology            | Purpose                            |
+| --------------------- | ---------------------------------- |
+| C++20                 | Language standard                  |
 | CMake 3.20 + cmake-js | Build system + Node.js integration |
-| node-addon-api 8.9 | N-API C++ wrapper |
-| Vulkan 1.3 | GPU compute and rendering |
-| Skia (Chromium m126) | 2D GPU-accelerated drawing |
-| FFmpeg 6.x | Video/audio decode/encode |
-| VulkanMemoryAllocator | GPU memory management |
-| GLM | Mathematics (matrices, vectors) |
-| stb_image | Lightweight image loading |
-| nlohmann/json | JSON parsing in C++ |
-| WinHTTP | HTTP requests from C++ |
+| node-addon-api 8.9    | N-API C++ wrapper                  |
+| Vulkan 1.3            | GPU compute and rendering          |
+| Skia (Chromium m126)  | 2D GPU-accelerated drawing         |
+| FFmpeg 6.x            | Video/audio decode/encode          |
+| VulkanMemoryAllocator | GPU memory management              |
+| GLM                   | Mathematics (matrices, vectors)    |
+| stb_image             | Lightweight image loading          |
+| nlohmann/json         | JSON parsing in C++                |
+| WinHTTP               | HTTP requests from C++             |
 
 ---
 
@@ -930,8 +935,10 @@ FADE_PORT=8000
 # Optional
 FADE_USER_NAME=                  # AI addresses user by name
 ```
+
 ```
 
 ---
 
-*Built for Smart India Hackathon (SIH) 2025 -- Fade/Echo team*
+*Built for Smart India Hackathon (SIH) 2026  *
+```

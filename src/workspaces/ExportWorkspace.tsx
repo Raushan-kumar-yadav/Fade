@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import './ExportWorkspace.css'
 import { exportApi, type ExportProgress } from '../api/toolsApi'
+import { registerOnServer, getFadeServerConfig } from '../api/fadeServerApi'
 
 interface CompMeta {
   compId: string; name: string; kind: string
@@ -76,6 +77,26 @@ export default function ExportWorkspace() {
       if (!r.ok) { const d=await r.json().catch(()=>({})); setIState({phase:'error',msg:d.detail??`Server error ${r.status}`}); return }
       const d = await r.json()
       setIState({ phase:'done', artifactId: d.artifact_id, tx: d.batch?.tx??null, wmPath: d.watermarked_output_path??null })
+
+      // Auto-register on the Fade Render Server in background
+      try {
+        const cfg = getFadeServerConfig()
+        await registerOnServer({
+          artifact_id: d.artifact_id,
+          sha256: d.sha256,
+          phash: d.phash ?? null,
+          wm_id: d.wm_id ?? null,
+          merkle_proof: d.batch?.proof ?? null,
+          merkle_root: d.batch?.root ?? null,
+          ledger_tx: d.batch?.tx ?? null,
+          filename: filePath.split(/[\\/]/).pop() ?? null,
+          content_type: d.content_type ?? 'video',
+          size_bytes: d.size_bytes ?? null,
+        }, cfg)
+        console.log('[Fade Server] Artifact registered on server:', d.artifact_id)
+      } catch (serverErr) {
+        console.warn('[Fade Server] Could not register on server (non-critical):', serverErr)
+      }
     } catch(e:any) {
       setIState({phase:'error', msg: e.message??'Registration failed'})
     }
