@@ -217,12 +217,12 @@ VIDEO_TOOLS = _SHARED + [
     create_composition, list_compositions, add_comp_to_timeline,
     activate_comp, get_comp_state, get_comp_layers,
     update_comp_layer, move_comp_layer, rename_composition, delete_composition,
-    seek_to, play, pause, set_in_out_points,
+    seek_to, play, pause,
     create_webcomp, list_webcomps, list_webcomp_templates,
     add_webcomp_to_timeline, get_webcomp_clip_info, read_webcomp_file,
     edit_webcomp_file, set_webcomp_params, set_webcomp_transform,
     set_webcomp_opacity, delete_webcomp, reload_webcomp, update_webcomp_meta,
-    get_social_connections, get_youtube_videos, analyze_virality,
+    get_social_connections, get_youtube_videos,
     search_news,
     # Tracking & Privacy
     start_track, check_track_job, wait_for_track,
@@ -278,7 +278,7 @@ PDF_TOOLS = _SHARED + [
     get_pdf_page_summary, get_pdf_doc_summary,
     # Text layout — the core of PDF creation
     add_text_clip, set_text_style, layout_text_block, layout_element, set_text_content,
-    add_solid_clip, add_shape_clip, place_clip, add_solid_clip,
+    add_solid_clip, add_shape_clip, place_clip,
     find_free_overlay_track,
     animate_property, remove_keyframe, clear_animation,
     list_curve_presets, apply_curve_preset,

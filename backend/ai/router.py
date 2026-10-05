@@ -537,41 +537,88 @@ async def ai_chat(req: ChatRequest):
                 elif current_step:
                     _store.update_step_status(current_step.step_id, "running")
 
-            # Stream events from LangGraph
-            async for event in agent.astream_events(
-                {"messages": messages},
-                version="v2",
-                config={"recursion_limit": 100},
-            ):
-                kind = event["event"]
+            # Retry loop: retries on 429 for up to 5 minutes, then gives up
+            _attempt = 0
+            _retry_start = None
+            _MAX_RETRY_SECS = 300  # 5 minutes
+            while True:
+                _attempt += 1
+                try:
+                    # Stream events from LangGraph
+                    async for event in agent.astream_events(
+                        {"messages": messages},
+                        version="v2",
+                        config={"recursion_limit": 100},
+                    ):
+                        kind = event["event"]
 
-                # LLM token streaming
-                if kind == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"]
-                    text = chunk.content if hasattr(chunk, "content") else ""
-                    if text:
-                        if last_phase != "responding":
-                            last_phase = "responding"
-                            yield f"data: {json.dumps({'type': 'status', 'phase': 'responding', 'label': 'Responding...'})}\n\n"
-                        yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
+                        # LLM token streaming
+                        if kind == "on_chat_model_stream":
+                            chunk = event["data"]["chunk"]
+                            text = chunk.content if hasattr(chunk, "content") else ""
+                            if text:
+                                if last_phase != "responding":
+                                    last_phase = "responding"
+                                    yield f"data: {json.dumps({'type': 'status', 'phase': 'responding', 'label': 'Responding...'})}\n\n"
+                                yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
 
-                # Tool call start
-                elif kind == "on_tool_start":
-                    name = event.get("name", "")
-                    args = event["data"].get("input", {})
-                    label = _tool_label(name)
-                    last_phase = "tool"
-                    yield f"data: {json.dumps({'type': 'status', 'phase': 'tool', 'label': label, 'tool': name})}\n\n"
-                    yield f"data: {json.dumps({'type': 'tool_call', 'name': name, 'args': args})}\n\n"
+                        # Tool call start
+                        elif kind == "on_tool_start":
+                            name = event.get("name", "")
+                            args = event["data"].get("input", {})
+                            label = _tool_label(name)
+                            last_phase = "tool"
+                            yield f"data: {json.dumps({'type': 'status', 'phase': 'tool', 'label': label, 'tool': name})}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_call', 'name': name, 'args': args})}\n\n"
 
-                # Tool call end
-                elif kind == "on_tool_end":
-                    name = event.get("name", "")
-                    output = event["data"].get("output", "")
-                    content = str(output) if not isinstance(output, str) else output
-                    last_phase = "thinking"
-                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking...'})}\n\n"
-                    yield f"data: {json.dumps({'type': 'tool_result', 'name': name, 'content': content})}\n\n"
+                        # Tool call end
+                        elif kind == "on_tool_end":
+                            name = event.get("name", "")
+                            output = event["data"].get("output", "")
+                            content = str(output) if not isinstance(output, str) else output
+                            last_phase = "thinking"
+                            yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking...'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'tool_result', 'name': name, 'content': content})}\n\n"
+
+                    break  # success — exit retry loop
+
+                except Exception as _rl_exc:
+                    _rl_str = str(_rl_exc)
+                    _is_rl = (
+                        "429" in _rl_str
+                        or "rate limit" in _rl_str.lower()
+                        or "quota" in _rl_str.lower()
+                        or "request limit" in _rl_str.lower()
+                        or "too many requests" in _rl_str.lower()
+                    )
+                    if not _is_rl:
+                        raise  # not a rate limit — propagate to outer except
+
+                    import time as _time, re as _rex
+                    _now = _time.monotonic()
+                    if _retry_start is None:
+                        _retry_start = _now
+                    _elapsed = _now - _retry_start
+
+                    # Give up after 5 minutes total
+                    if _elapsed >= _MAX_RETRY_SECS:
+                        raise RuntimeError(
+                            f"Rate-limited for over 5 minutes ({_attempt} retries). "
+                            "Please switch to a different model or wait and try again."
+                        )
+
+                    _m = _rex.search(r'retry.after[":\s]+([0-9]+)', _rl_str, _rex.IGNORECASE)
+                    _wait = int(_m.group(1)) if _m else min(10 * _attempt, 60)
+                    # Don't sleep past the 5-min deadline
+                    _remaining = _MAX_RETRY_SECS - _elapsed
+                    _wait = min(_wait, int(_remaining))
+
+                    _elapsed_str = f"{int(_elapsed)}s"
+                    print(f"[AI Router] Rate-limited (429), retrying in {_wait}s (attempt {_attempt}, elapsed {_elapsed_str}/300s)...", flush=True)
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': f'Rate limited — retrying in {_wait}s... ({_elapsed_str}/5min)'})}\n\n"
+                    await asyncio.sleep(_wait)
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': f'Retrying (attempt {_attempt + 1})...'})}\n\n"
+
 
             # Post-execution: update plan step status  
             if current_step and active_plan:

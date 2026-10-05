@@ -103,27 +103,73 @@ async def _run_step(
         state = {"messages": [HumanMessage(content=skill_step.instruction)]}
         result_chunks: list[str] = []
 
-        async for event in graph.astream_events(state, config=config, version="v2"):
-            kind = event.get("event", "")
+        # Retry loop: retries on 429 for up to 5 minutes
+        import time as _time
+        _attempt = 0
+        _retry_start = None
+        _MAX_RETRY_SECS = 300  # 5 minutes
 
-            if kind == "on_chat_model_stream":
-                chunk = event.get("data", {}).get("chunk")
-                text = getattr(chunk, "content", "") if chunk else ""
-                if isinstance(text, str) and text:
-                    result_chunks.append(text)
-                    yield {"type": "step_token", "content": text}
+        while True:
+            _attempt += 1
+            try:
+                async for event in graph.astream_events(state, config=config, version="v2"):
+                    kind = event.get("event", "")
 
-            elif kind == "on_tool_start":
-                name = event.get("name", "")
-                args = event.get("data", {}).get("input", {})
-                yield {"type": "step_tool_call", "name": name, "args": args}
+                    if kind == "on_chat_model_stream":
+                        chunk = event.get("data", {}).get("chunk")
+                        text = getattr(chunk, "content", "") if chunk else ""
+                        if isinstance(text, str) and text:
+                            result_chunks.append(text)
+                            yield {"type": "step_token", "content": text}
 
-            elif kind == "on_tool_end":
-                name = event.get("name", "")
-                output = str(event.get("data", {}).get("output", ""))
-                if output:
-                    result_chunks.append(f"\n[tool:{name}] {output[:200]}")
-                yield {"type": "step_tool_result", "name": name, "content": output[:400]}
+                    elif kind == "on_tool_start":
+                        name = event.get("name", "")
+                        args = event.get("data", {}).get("input", {})
+                        yield {"type": "step_tool_call", "name": name, "args": args}
+
+                    elif kind == "on_tool_end":
+                        name = event.get("name", "")
+                        output = str(event.get("data", {}).get("output", ""))
+                        if output:
+                            result_chunks.append(f"\n[tool:{name}] {output[:200]}")
+                        yield {"type": "step_tool_result", "name": name, "content": output[:400]}
+
+                break  # success — exit retry loop
+
+            except Exception as _rl_exc:
+                _rl_str = str(_rl_exc)
+                _is_rl = (
+                    "429" in _rl_str
+                    or "rate limit" in _rl_str.lower()
+                    or "quota" in _rl_str.lower()
+                    or "request limit" in _rl_str.lower()
+                    or "too many requests" in _rl_str.lower()
+                )
+                if not _is_rl:
+                    raise  # not a rate limit — propagate
+
+                import re as _rex
+                _now = _time.monotonic()
+                if _retry_start is None:
+                    _retry_start = _now
+                _elapsed = _now - _retry_start
+
+                if _elapsed >= _MAX_RETRY_SECS:
+                    raise RuntimeError(
+                        f"[SkillExecutor] Rate-limited for over 5 minutes ({_attempt} retries). "
+                        "Please switch to a different model or wait and try again."
+                    )
+
+                _m = _rex.search(r'retry.after["\:\s]+([0-9]+)', _rl_str, _rex.IGNORECASE)
+                _wait = int(_m.group(1)) if _m else min(10 * _attempt, 60)
+                _remaining = _MAX_RETRY_SECS - _elapsed
+                _wait = min(_wait, int(_remaining))
+
+                logger.warning("[SkillExecutor] Rate-limited (429), retrying in %ds (attempt %d, elapsed %ds/300s)...",
+                               _wait, _attempt, int(_elapsed))
+                yield {"type": "step_retry", "wait": _wait, "attempt": _attempt,
+                       "label": f"Rate limited — retrying in {_wait}s... ({int(_elapsed)}s/5min)"}
+                await asyncio.sleep(_wait)
 
         result_str = "".join(result_chunks)[:500] or f"Step {skill_step.name} completed."
         yield {"type": "step_ok", "result": result_str}
