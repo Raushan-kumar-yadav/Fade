@@ -142,13 +142,30 @@ class ArtifactIntegrityService:
         #  embed watermark into new file
         wm_ok = embed_watermark(video_path, watermarked_output_path, artifact_id)
         wm_id = artifact_id[:8] if wm_ok else None
+        
+        final_sha256 = rec["sha256"]
+        final_size = rec["size"]
+        
         if wm_ok:
-            logger.info("Watermarked copy: %s", watermarked_output_path)
+            logger.info("Watermarking done. Replacing original file with watermarked copy...")
+            # 1. Get the hash of the newly watermarked file
+            from backend.integrity.echo_integrity import sha256_file
+            final_sha256 = sha256_file(watermarked_output_path)
+            final_size = os.path.getsize(watermarked_output_path)
+            
+            # 2. Overwrite the clean file so the user only gets ONE final output file
+            try:
+                os.replace(watermarked_output_path, video_path)
+            except OSError:
+                import shutil
+                shutil.move(watermarked_output_path, video_path)
+                
+            watermarked_output_path = video_path
 
-        # Persist extra fields
+        # Persist extra fields + update the sha256 to the final watermarked hash
         svc.db.execute(
-            "UPDATE artifacts SET phash=?, wm_id=? WHERE id=?",
-            (phash, wm_id, artifact_id),
+            "UPDATE artifacts SET sha256=?, size=?, phash=?, wm_id=? WHERE id=?",
+            (final_sha256, final_size, phash, wm_id, artifact_id),
         )
         svc.db.commit()
 
@@ -157,9 +174,9 @@ class ArtifactIntegrityService:
 
         result = {
             "artifact_id": artifact_id,
-            "sha256": rec["sha256"],
+            "sha256": final_sha256,
             "filename": rec["filename"],
-            "size_bytes": rec["size"],
+            "size_bytes": final_size,
             "phash": phash,
             "phash_available": phash is not None,
             "wm_id": wm_id,
@@ -174,7 +191,7 @@ class ArtifactIntegrityService:
         # Non-blocking: errors are logged but never propagate.
         _publish_to_server({
             "artifact_id":  artifact_id,
-            "sha256": rec["sha256"],
+            "sha256": final_sha256,
             "phash": phash,
             "wm_id":         wm_id,
             "merkle_proof":  batch.get("proof") if batch else None,
@@ -182,7 +199,7 @@ class ArtifactIntegrityService:
             "ledger_tx":     batch.get("tx")    if batch else None,
             "filename":      rec["filename"],
             "content_type":  _guess_content_type(rec["filename"] or video_path),
-            "size_bytes":    rec["size"],
+            "size_bytes":    final_size,
         })
 
         return result
