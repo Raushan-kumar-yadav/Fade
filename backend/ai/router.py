@@ -4,12 +4,17 @@ import json
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from backend.ai.prompt_shield import shield_prompt
 
 ai_router = APIRouter(tags=["ai"])
+
+# ── Cancellation token ────────────────────────────────────────────────────────
+# A simple asyncio.Event that is set when the user clicks Stop.
+# The skill execution loop checks this between every yielded event.
+_cancel_event = asyncio.Event()
 
 # Module-level tool label map 
 _TOOL_LABELS: dict[str, str] = {
@@ -169,11 +174,19 @@ async def ai_restart():
 
 # /ai/chat   
 
+@ai_router.post("/cancel")
+async def ai_cancel():
+    """Signal the backend to stop the current skill/plan execution."""
+    _cancel_event.set()
+    return {"ok": True}
+
 @ai_router.post("/chat")
 async def ai_chat(req: ChatRequest):
     from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
     async def event_stream():
+        # Reset cancel flag for this new request
+        _cancel_event.clear()
         try:
             # Prompt-injection shield  
             ok, safe_message, err = shield_prompt(req.message)
@@ -237,12 +250,19 @@ async def ai_chat(req: ChatRequest):
 
                 yield f"data: {json.dumps({'type': 'plan_created', 'plan': skill_plan.to_dict(), 'skill': matched_skill.name})}\n\n"
 
+
                 total = len(skill_plan.steps)
+                cancelled = False
                 async for evt in execute_skill_plan(
                     plan=skill_plan,
                     skill=matched_skill,
                     port=req.port,
                 ):
+                    # Check cancel before forwarding each event
+                    if _cancel_event.is_set():
+                        cancelled = True
+                        break
+
                     t = evt["type"]
 
                     if t == "step_start":
@@ -277,6 +297,8 @@ async def ai_chat(req: ChatRequest):
                     elif t == "tool_result":
                         yield f"data: {json.dumps({'type': 'tool_result', 'name': evt['name'], 'content': evt['content']})}\n\n"
 
+                if cancelled:
+                    yield f"data: {json.dumps({'type': 'token', 'content': '\n⏹ Stopped.'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
@@ -322,7 +344,11 @@ async def ai_chat(req: ChatRequest):
                     resume_skill = plan_to_pseudo_skill(resume_plan)
                     yield f"data: {json.dumps({'type': 'plan_created', 'plan': resume_plan.to_dict()})}\n\n"
                     total_r = len(resume_plan.steps)
+                    cancelled_r = False
                     async for evt in execute_skill_plan(plan=resume_plan, skill=resume_skill, port=req.port):
+                        if _cancel_event.is_set():
+                            cancelled_r = True
+                            break
                         t = evt["type"]
                         if t == "step_start":
                             label = f"[{evt['order']}/{total_r}] {evt['name']} — {evt.get('tool', '')}..."
@@ -334,7 +360,7 @@ async def ai_chat(req: ChatRequest):
                             yield f"data: {json.dumps({'type': 'step_failed', 'order': evt['order'], 'step_id': evt['step_id'], 'name': evt['name'], 'error': evt.get('error', '')})}\n\n"
                         elif t == "skill_done":
                             yield f"data: {json.dumps({'type': 'skill_done', 'skill': 'auto_plan', 'steps_completed': evt.get('steps_completed')})}\n\n"
-                            yield f"data: {json.dumps({'type': 'token', 'content': '\n✅ Plan complete.'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'token', 'content': '\n\u2705 Plan complete.'})}\n\n"
                         elif t == "plan_halted":
                             _halt_msg = f"Plan {evt.get('status', 'halted')}. Say continue to resume."
                             yield f"data: {json.dumps({'type': 'token', 'content': _halt_msg})}\n\n"
@@ -344,6 +370,8 @@ async def ai_chat(req: ChatRequest):
                             yield f"data: {json.dumps({'type': 'tool_call', 'name': evt['name'], 'args': evt.get('args', {})})}\n\n"
                         elif t == "tool_result":
                             yield f"data: {json.dumps({'type': 'tool_result', 'name': evt['name'], 'content': evt['content']})}\n\n"
+                    if cancelled_r:
+                        yield f"data: {json.dumps({'type': 'token', 'content': '\n\u23f9 Stopped.'})}\n\n"
                     yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     return
@@ -389,11 +417,15 @@ async def ai_chat(req: ChatRequest):
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'skill', 'label': f'Executing {total}-step plan...'})}\n\n"
 
                 from backend.ai.skill_executor import execute_skill_plan
+                cancelled_c = False
                 async for evt in execute_skill_plan(
                     plan=plan,
                     skill=pseudo_skill,
                     port=req.port,
                 ):
+                    if _cancel_event.is_set():
+                        cancelled_c = True
+                        break
                     t = evt["type"]
                     if t == "step_start":
                         label = f"[{evt['order']}/{total}] {evt['name']} — {evt.get('tool', '')}..."
@@ -406,8 +438,7 @@ async def ai_chat(req: ChatRequest):
                     elif t == "skill_done":
                         n = evt.get("steps_completed", total)
                         yield f"data: {json.dumps({'type': 'skill_done', 'skill': 'auto_plan', 'steps_completed': n})}\n\n"
-                        yield f"data: {json.dumps({'type': 'token', 'content': f'\n✅ Plan complete — {n}/{total} steps done.'})}\n\n"
-                    # ── Forward live LLM output from inside each step ──────────────
+                        yield f"data: {json.dumps({'type': 'token', 'content': f'\n\u2705 Plan complete \u2014 {n}/{total} steps done.'})}\n\n"
                     elif t == "token":
                         yield f"data: {json.dumps({'type': 'token', 'content': evt['content']})}\n\n"
                     elif t == "tool_call":
@@ -415,7 +446,8 @@ async def ai_chat(req: ChatRequest):
                     elif t == "tool_result":
                         yield f"data: {json.dumps({'type': 'tool_result', 'name': evt['name'], 'content': evt['content']})}\n\n"
 
-
+                if cancelled_c:
+                    yield f"data: {json.dumps({'type': 'token', 'content': '\n\u23f9 Stopped.'})}\n\n"
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return

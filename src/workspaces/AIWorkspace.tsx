@@ -19,7 +19,7 @@ export default function AIWorkspace() {
     <TimelineProvider>
       <div className="ai-ws">
         <Allotment>
-          {/* Library panel � collapsible, default 280px */}
+          {/* Library panel — collapsible, default 280px */}
           <Allotment.Pane minSize={200} maxSize={400} preferredSize={280} snap>
             <div className="ai-library-pane">
               <LibraryPanel onAddToTimeline={handleAddToTimeline} />

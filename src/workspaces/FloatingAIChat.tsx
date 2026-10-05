@@ -21,6 +21,7 @@ interface Message {
   text: string
   toolName?: string
   toolArgs?: Record<string, unknown>
+  toolStatus?: 'running' | 'done'
   streaming?: boolean
   // For skill_progress role:
   skillName?: string
@@ -86,47 +87,47 @@ const AGENT_META: Record<string, { name: string; emoji: string; color: string }>
 }
 
 const TOOL_ICONS: Record<string, string> = {
-  get_timeline_state: '??',
-  get_library: '??',
-  get_library_assets: '??',
-  place_clip: '??',
-  add_text_clip: '??',
-  add_shape_clip: '??',
-  split_clip: '??',
-  trim_clip: '??',
-  move_clip: '??',
-  delete_clip: '???',
-  add_transition: '??',
-  add_transitions_between_all_clips: '??',
-  apply_effect_to_clip: '?',
-  download_videos: '??',
-  download_images: '???',
-  schedule_download: '?',
-  generate_image: '??',
-  search_video_scenes: '??',
-  get_asset_context: '??',
-  get_clip_context: '??',
-  describe_clip: '??',
-  describe_selected_clip: '??',
-  get_timeline_context: '??',
-  create_news_video: '??',
-  create_webcomp: '??',
-  generate_tts: '???',
-  check_job_status: '??',
-  animate_property: '??',
-  apply_curve_preset: '??',
-  search_news: '??',
-  find_free_overlay_track: '???',
-  add_track: '?',
-  remove_silence: '??',
-  generate_captions: '??',
-  undo: '??',
-  redo: '??',
-  export_video: '??',
-  stop_indexing: '??',
-  set_clip_volume: '??',
-  mute_clip: '??',
-  get_clip_volume: '??',
+  get_timeline_state: '\u{1F4CB}',
+  get_library: '\u{1F4DA}',
+  get_library_assets: '\u{1F4C2}',
+  place_clip: '\u{1F3AC}',
+  add_text_clip: '\u{1F524}',
+  add_shape_clip: '\u{1F536}',
+  split_clip: '\u2702\uFE0F',
+  trim_clip: '\u2702\uFE0F',
+  move_clip: '\u{1F4E6}',
+  delete_clip: '\u{1F5D1}\uFE0F',
+  add_transition: '\u{1F504}',
+  add_transitions_between_all_clips: '\u{1F504}',
+  apply_effect_to_clip: '\u2728',
+  download_videos: '\u{1F4E5}',
+  download_images: '\u{1F5BC}\uFE0F',
+  schedule_download: '\u{1F4E5}',
+  generate_image: '\u{1F3A8}',
+  search_video_scenes: '\u{1F50D}',
+  get_asset_context: '\u{1F4D6}',
+  get_clip_context: '\u{1F4D6}',
+  describe_clip: '\u{1F441}\uFE0F',
+  describe_selected_clip: '\u{1F441}\uFE0F',
+  get_timeline_context: '\u{1F4CB}',
+  create_news_video: '\u{1F4F0}',
+  create_webcomp: '\u{1F3A8}',
+  generate_tts: '\u{1F5E3}\uFE0F',
+  check_job_status: '\u{1F552}',
+  animate_property: '\u{1F3AC}',
+  apply_curve_preset: '\u{1F4C8}',
+  search_news: '\u{1F4F0}',
+  find_free_overlay_track: '\u{1F50D}',
+  add_track: '\u2795',
+  remove_silence: '\u{1F507}',
+  generate_captions: '\u{1F4AC}',
+  undo: '\u21A9\uFE0F',
+  redo: '\u21AA\uFE0F',
+  export_video: '\u{1F4E4}',
+  stop_indexing: '\u{1F6D1}',
+  set_clip_volume: '\u{1F50A}',
+  mute_clip: '\u{1F507}',
+  get_clip_volume: '\u{1F50A}',
 }
 
 const TIMELINE_TOOLS = new Set([
@@ -168,7 +169,7 @@ function SelectedClipBadge() {
   return (
     <div className="fchat__clip-badge">
       <span className="fchat__clip-dot" />
-      Clip on track {clip.trackIndex} � AI can apply effects
+      Clip on track {clip.trackIndex} — AI can apply effects
     </div>
   )
 }
@@ -278,54 +279,45 @@ function Bubble({ msg }: { msg: Message }) {
   }
 
   if (msg.role === 'tool_call') {
-    const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '??'
+    const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '\u2699\uFE0F'
+    const isDone = msg.toolStatus === 'done'
     const hasArgs = msg.toolArgs && Object.keys(msg.toolArgs).length > 0
     const argsStr = hasArgs ? JSON.stringify(msg.toolArgs, null, 2) : ''
+    const MAX = 200
+    const hasResult = isDone && msg.text
+    const preview = hasResult && msg.text.length > MAX ? msg.text.slice(0, MAX) + '\u2026' : msg.text
+    const truncated = hasResult && msg.text.length > MAX
     return (
-      <div className="fchat__tool-card fchat__tool-card--call">
-        <span className="fchat__tool-icon fchat__tool-icon--spin">{icon}</span>
+      <div className={`fchat__tool-card ${isDone ? 'fchat__tool-card--done' : 'fchat__tool-card--running'}`}>
+        <span className={`fchat__tool-icon ${isDone ? '' : 'fchat__tool-icon--spin'}`}>{icon}</span>
         <div className="fchat__tool-body">
-          <div className="fchat__tool-name">{msg.toolName}</div>
-          {hasArgs && (
-            <>
-              <button
-                className="fchat__tool-expand"
-                onClick={() => setExpanded(v => !v)}
-              >
-                {expanded ? '? hide args' : '? show args'}
-              </button>
-              {expanded && (
-                <pre className="fchat__tool-args">{argsStr}</pre>
-              )}
-            </>
+          <div className="fchat__tool-name">
+            {msg.toolName}
+            {isDone && <span className="fchat__tool-done">{'\u2713'} done</span>}
+          </div>
+          {hasResult && (
+            <div className="fchat__tool-summary">{expanded ? msg.text : preview}</div>
+          )}
+          {(truncated || (hasArgs && !isDone)) && (
+            <button className="fchat__tool-expand" onClick={() => setExpanded(v => !v)}>
+              {expanded ? '\u25BC less' : '\u25B6 ' + (truncated ? 'more' : 'args')}
+            </button>
+          )}
+          {expanded && hasArgs && !hasResult && (
+            <pre className="fchat__tool-args">{argsStr}</pre>
           )}
         </div>
-        <span className="fchat__tool-badge fchat__tool-badge--running">running</span>
+        <span className={`fchat__tool-badge ${isDone ? 'fchat__tool-badge--done' : 'fchat__tool-badge--running'}`}>
+          {isDone ? '\u2713' : 'RUN'}
+        </span>
       </div>
     )
   }
 
   if (msg.role === 'tool_result') {
-    const icon = TOOL_ICONS[msg.toolName ?? ''] ?? '?'
-    const MAX = 200
-    const preview = msg.text.length > MAX ? msg.text.slice(0, MAX) + '�' : msg.text
-    const truncated = msg.text.length > MAX
-    return (
-      <div className="fchat__tool-card fchat__tool-card--result">
-        <span className="fchat__tool-icon">{icon}</span>
-        <div className="fchat__tool-body">
-          <div className="fchat__tool-name">{msg.toolName} <span className="fchat__tool-done">done</span></div>
-          <div className="fchat__tool-summary">{expanded ? msg.text : preview}</div>
-          {truncated && (
-            <button className="fchat__tool-expand" onClick={() => setExpanded(v => !v)}>
-              {expanded ? '? less' : '? more'}
-            </button>
-          )}
-        </div>
-        <span className="fchat__tool-badge fchat__tool-badge--done">?</span>
-      </div>
-    )
+    return null
   }
+
 
   return (
     <div className={`fchat__msg fchat__msg--${msg.role === 'error' ? 'error' : msg.role}`}>
@@ -333,7 +325,11 @@ function Bubble({ msg }: { msg: Message }) {
         <div className={`fchat__avatar ${msg.streaming ? 'fchat__avatar--pulse' : ''}`}>AI</div>
       )}
       <div className="fchat__bubble">
-        {msg.text || (msg.streaming ? <span className="fchat__cursor">?</span> : null)}
+        {msg.text
+          ? msg.text
+          : msg.streaming
+            ? <span className="fchat__thinking"><span /><span /><span /></span>
+            : null}
       </div>
     </div>
   )
@@ -409,7 +405,7 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
     setSkillRun(null)
     inSkillPlan.current = false
     setBusy(true)
-    setStatus({ phase: 'thinking', label: 'Thinking�' })
+    setStatus({ phase: 'thinking', label: 'Thinking…' })
 
     appendMsg({ id: uid(), role: 'user', text })
     historyRef.current = [...historyRef.current, { role: 'user', text }]
@@ -420,6 +416,12 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
     let aiText = ''
     // ID of the AI bubble currently being streamed into
     let currentBubbleId = aiId
+    let lastToolCardId = ''
+    // Map of toolName 
+    const toolCardIds = new Map<string, string>()
+ 
+    let pendingAiBubbleId = ''
+
     abortRef.current = new AbortController()
 
     try {
@@ -534,6 +536,11 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               scrollBottom()
 
             } else if (evt.type === 'token') {
+              // Lazily create AI bubble if we only have a pending ID (post-tool, pre-token)
+              if (pendingAiBubbleId && pendingAiBubbleId === currentBubbleId) {
+                appendMsg({ id: pendingAiBubbleId, role: 'ai', text: '', streaming: true })
+                pendingAiBubbleId = ''
+              }
               aiText += evt.content
               // Patch by ID so we always hit the right bubble regardless of position
               setMessages(prev => prev.map(m =>
@@ -542,40 +549,43 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               scrollBottom()
 
             } else if (evt.type === 'tool_call') {
-              // Remove trailing empty AI bubble (placeholder) before showing tool card
+              // Remove trailing empty AI bubble before showing tool card
               setMessages(prev => {
                 const last = prev[prev.length - 1]
-                if (last?.role === 'ai' && !last.text) {
-                  return prev.slice(0, -1)
-                }
+                if (last?.role === 'ai' && !last.text) return prev.slice(0, -1)
                 return prev
               })
-              appendMsg({ id: uid(), role: 'tool_call', text: '', toolName: evt.name, toolArgs: evt.args })
+              // Track by name so parallel tool calls all get resolved
+              const toolCardId = `tool-${evt.name}-${Date.now()}`
+              toolCardIds.set(evt.name, toolCardId)
+              appendMsg({ id: toolCardId, role: 'tool_call', text: '', toolName: evt.name, toolArgs: evt.args, toolStatus: 'running' })
+
             } else if (evt.type === 'tool_result') {
-              appendMsg({ id: uid(), role: 'tool_result', text: evt.content, toolName: evt.name })
-              // Always open a new AI bubble after a tool result.
-              // Subsequent tokens (reasoning / follow-up) need a target to stream into.
-              const afterToolId = uid()
-              currentBubbleId = afterToolId
+              // Update the matching tool_call card: running -> done
+              const matchId = toolCardIds.get(evt.name) ?? lastToolCardId
+              toolCardIds.delete(evt.name)
+              setMessages(prev => prev.map(m =>
+                m.id === matchId ? { ...m, text: evt.content, toolStatus: 'done' } : m
+              ))
+              // Don't eagerly create an AI bubble here — create it lazily on first token
+              // so parallel tool calls don't produce ghost empty bubbles.
+              // Just prepare the IDs; the token handler will create the bubble if needed.
+              pendingAiBubbleId = uid()
+              currentBubbleId = pendingAiBubbleId
               aiText = ''
-              appendMsg({ id: afterToolId, role: 'ai', text: '', streaming: true })
               dispatchToolEvents(evt.name)
-              // Export tool � dispatch overlay event
+              // Export tool — dispatch overlay event
               if ((evt.name === 'export_video' || evt.name === 'set_integrity_registration') && typeof evt.content === 'string') {
-                // Export job signal -> show ExportProgressOverlay
                 const mJob = evt.content.match(/EXPORT_JOB_ID:([\w-]+)/)
-                if (mJob) {
-                  window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: mJob[1] } }))
-                }
-                // Integrity toggle signal -> set checkbox in ExportWorkspace
+                if (mJob) window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: mJob[1] } }))
                 const mInt = evt.content.match(/INTEGRITY_ENABLED:([01])/)
-                if (mInt) {
-                  window.dispatchEvent(new CustomEvent('fade:integrity-toggle', { detail: { enabled: mInt[1] === '1' } }))
-                }
+                if (mInt) window.dispatchEvent(new CustomEvent('fade:integrity-toggle', { detail: { enabled: mInt[1] === '1' } }))
               }
 
             } else if (evt.type === 'done') {
               // Mark the current bubble as finished
+              // Clear pending bubble id — if it was never materialized, the filter below drops it
+              pendingAiBubbleId = ''
               setMessages(prev => prev.map(m =>
                 m.id === currentBubbleId ? { ...m, streaming: false } : m
               ))
@@ -583,14 +593,14 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               setMessages(prev => prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai'))
 
             } else if (evt.type === 'error') {
-              patchLast({ text: `? ${evt.message}`, streaming: false, role: 'error' })
+              patchLast({ text: `❌ ${evt.message}`, streaming: false, role: 'error' })
             }
           } catch { /* ignore parse errors */ }
         }
       }
     } catch (err: any) {
       if (err.name !== 'AbortError')
-        patchLast({ text: `? ${err.message}`, streaming: false, role: 'error' })
+        patchLast({ text: `\u274C ${err.message}`, streaming: false, role: 'error' })
     }
 
     historyRef.current = [...historyRef.current, { role: 'ai', text: aiText }]
@@ -600,6 +610,9 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
   }
 
   function stop() {
+    // Tell the backend to stop the current skill/plan execution
+    fetch(`http://127.0.0.1:${port}/ai/cancel`, { method: 'POST' }).catch(() => {})
+    // Then abort the SSE stream
     abortRef.current?.abort()
     setStatus({ phase: 'idle', label: '' })
     setBusy(false)
@@ -669,10 +682,10 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
           <span className="fchat__online-dot" />
           {AGENT_META[agentId]?.emoji ?? '🤖'} {AGENT_META[agentId]?.name ?? 'AI Director'}
         </span>
-        <button className="fchat__close" onClick={onClose} title="Close">?</button>
+        <button className="fchat__close" onClick={onClose} title="Close">✕</button>
       </div>
 
-      {/* ONE status indicator � shown only while busy, labels from backend */}
+      {/* ONE status indicator — shown only while busy, labels from backend */}
       <StatusBar status={status} />
 
       <SelectedClipBadge />
@@ -707,7 +720,7 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
           <textarea
             ref={inputRef}
             className="fchat__input"
-            placeholder={busy ? 'AI is working�' : 'Ask AI to edit, download media, create videos�'}
+            placeholder={busy ? 'AI is working…' : 'Ask AI to edit, download media, create videos…'}
             value={input}
             rows={2}
             onChange={e => setInput(e.target.value)}
@@ -716,12 +729,12 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
           />
         </div>
         {busy
-          ? <button className="fchat__send fchat__send--stop" onClick={stop} title="Stop">�</button>
-          : <button className="fchat__send" onClick={send} title="Send (Enter)">?</button>
+          ? <button className="fchat__send fchat__send--stop" onClick={stop} title="Stop">■</button>
+          : <button className="fchat__send" onClick={send} title="Send (Enter)">▶</button>
         }
       </div>
 
-      {/* Resize handle � bottom-right corner */}
+      {/* Resize handle — bottom-right corner */}
       <div className="fchat__resize-handle" onMouseDown={onResizeMouseDown} />
     </div>
   )

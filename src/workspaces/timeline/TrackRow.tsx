@@ -51,7 +51,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
     transitionApi.listAll().then(r => {
       setTransitions(r.transitions.filter(tr => clipIdsRef.current.has(tr.clipA_id)));
     }).catch(() => {});
-  }, []); // no deps � always reads from ref
+  }, []); // no deps — always reads from ref
 
   React.useEffect(() => {
     fetchTransitions();
@@ -388,7 +388,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
           }});
           window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
         } else {
-          // API returned null � rollback
+          // API returned null — rollback
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
           console.warn('[TrackRow] addClipToTimeline returned null for scene hit', hit.assetId);
         }
@@ -539,7 +539,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
       )}
 
       {placing && (
-        <div className="tl-track-row__placing-hint">Adding�</div>
+        <div className="tl-track-row__placing-hint">Adding…</div>
       )}
 
       {/* Resize handle */}

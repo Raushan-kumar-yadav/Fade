@@ -33,8 +33,8 @@ interface MediaJob {
   status: 'pending' | 'running' | 'done' | 'error';
   progress: number;
   message: string;
-  assetIds: string[];   // for download/generate jobs � the resulting assetIds
-  assetId?: string | null;  // for asset-bound jobs � the specific asset being processed
+  assetIds: string[];   // for download/generate jobs — the resulting assetIds
+  assetId?: string | null;  // for asset-bound jobs — the specific asset being processed
   error?: string | null;
 }
 
@@ -175,7 +175,7 @@ function PlaceholderCard({ job, onDismiss }: { job: MediaJob; onDismiss: () => v
       {/* Full card overlay while loading */}
       <div className="lib-placeholder-card__overlay">
         {isError ? (
-          <span className="lib-placeholder-card__err">?</span>
+          <span className="lib-placeholder-card__err">⚠</span>
         ) : (
           <span className="lib-placeholder-card__spinner" />
         )}
@@ -204,7 +204,7 @@ function PlaceholderCard({ job, onDismiss }: { job: MediaJob; onDismiss: () => v
 
       {/* Dismiss on error */}
       {isError && (
-        <button className="lib-placeholder-card__dismiss" onClick={onDismiss} title="Dismiss">?</button>
+        <button className="lib-placeholder-card__dismiss" onClick={onDismiss} title="Dismiss">✕</button>
       )}
     </div>
   );
@@ -254,7 +254,7 @@ function AssetTaskOverlay({
   if (pollActive) {
     // Overlay driven purely by poll status  
     const icon = assetType === 'image' ? '??' : '??';
-    const msg  = assetType === 'image' ? 'Describing image�' : 'Indexing: Vision + Whisper�';
+    const msg  = assetType === 'image' ? 'Describing image…' : 'Indexing: Vision + Whisper…';
     return (
       <div className="lib-asset-overlay lib-asset-overlay--active">
         <span className="lib-asset-overlay__icon">{icon}</span>
@@ -451,19 +451,19 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
       <form className="lib-modal" onSubmit={handleSubmit} style={{ width: 480, maxHeight: '80vh' }}>
         <div className="lib-modal__header">
           <span className="lib-modal__title" style={{ color: '#a78bfa' }}>? New WebComp</span>
-          <button type="button" className="lib-modal__close" onClick={onCancel}>?</button>
+          <button type="button" className="lib-modal__close" onClick={onCancel}>✕</button>
         </div>
         <div className="lib-modal__body" style={{ overflowY: 'auto', maxHeight: 'calc(80vh - 120px)' }}>
           <label className="lib-comp-cfg__label">NAME</label>
           <input ref={nameRef} className="lib-comp-cfg__input" value={name}
             onChange={e => { setName(e.target.value); autoNamed.current = false; }}
-            placeholder="WebComp name�" />
+            placeholder="WebComp name…" />
 
           <label className="lib-comp-cfg__label" style={{ marginTop: 16 }}>TEMPLATE</label>
 
           {loading ? (
             <div style={{ padding: '20px 0', textAlign: 'center', color: '#5a5a74', fontSize: 12 }}>
-              Loading templates�
+              Loading templates—
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 6 }}>
@@ -500,7 +500,7 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
                       )}
                       {t.width && (
                         <span style={{ fontSize: 9, color: '#6b7280', background: 'rgba(255,255,255,0.05)',
-                          borderRadius: 4, padding: '1px 5px' }}>{t.width}�{t.height}</span>
+                          borderRadius: 4, padding: '1px 5px' }}>{t.width}×{t.height}</span>
                       )}
                     </div>
                   </label>
@@ -516,7 +516,7 @@ function WebCompCreateModal({ onSubmit, onCancel }: {
           <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create"
             style={{ background: '#7c3aed' }}
             disabled={creating || !name.trim() || loading}>
-            {creating ? 'Creating�' : '? Create WebComp'}
+            {creating ? 'Creating…' : '➕ Create WebComp'}
           </button>
         </div>
       </form>
@@ -592,12 +592,12 @@ function CompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) =
       <form className="lib-modal" onSubmit={handleSubmit}>
         <div className="lib-modal__header">
           <span className="lib-modal__title">? New Composition</span>
-          <button type="button" className="lib-modal__close" onClick={onCancel}>?</button>
+          <button type="button" className="lib-modal__close" onClick={onCancel}>✕</button>
         </div>
         <div className="lib-modal__body">
           <label className="lib-comp-cfg__label">Name</label>
           <input ref={nameRef} className="lib-comp-cfg__input" value={name}
-            onChange={e => setName(e.target.value)} placeholder="Composition name�" />
+            onChange={e => setName(e.target.value)} placeholder="Composition name…" />
 
           <label className="lib-comp-cfg__label" style={{ marginTop: 8 }}>Resolution Preset</label>
           <div className="lib-comp-cfg__presets">
@@ -635,13 +635,13 @@ function CompConfigModal({ onSubmit, onCancel }: { onSubmit: (cfg: CompConfig) =
             </div>
           </div>
           <div className="lib-comp-cfg__hint" style={{ marginTop: 4 }}>
-            {durationSec}s � {width}�{height} � {fps}fps
+            {durationSec}s — {width}×{height} — {fps}fps
           </div>
         </div>
         <div className="lib-modal__footer">
           <button type="button" className="lib-comp-cfg__btn lib-comp-cfg__btn--cancel" onClick={onCancel}>Cancel</button>
           <button type="submit" className="lib-comp-cfg__btn lib-comp-cfg__btn--create" disabled={creating || !name.trim()}>
-            {creating ? 'Creating�' : '? Create'}
+            {creating ? 'Creating…' : '➕ Create'}
           </button>
         </div>
       </form>
@@ -885,7 +885,7 @@ function LibCard({
         {subtitle && <span className="lib-card__subtitle">{subtitle}</span>}
       </div>
       {onDelete && (
-        <button className="lib-card__del" title="Remove" onClick={e => { e.stopPropagation(); onDelete(); }}>?</button>
+        <button className="lib-card__del" title="Remove" onClick={e => { e.stopPropagation(); onDelete(); }}>{'\u2715'}</button>
       )}
     </div>
   );
@@ -1225,7 +1225,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
       { icon: '?', label: 'New Image Comp',       onClick: () => setShowImgCfg(true) },
       { icon: '?', label: 'New PDF Comp',       onClick: () => setShowPdfCfg(true) },
       { icon: '?', label: 'New WebComp',      onClick: () => setShowWcCfg(true) },
-      { icon: '+', label: 'Import Media�',    onClick: () => fileInputRef.current?.click() },
+      { icon: '+', label: 'Import Media…',    onClick: () => fileInputRef.current?.click() },
       { icon: '', label: '', sep: true, onClick: () => {} },
       { icon: '?', label: 'Refresh',          onClick: () => { refreshAssets(); refreshComps(); refreshWebComps(); } },
     ]);
@@ -1261,11 +1261,11 @@ export default function LibraryPanel({ onAddToTimeline }: {
         <span className="lib__search-icon">{semanticLoading ? '?' : isSemanticMode ? '?' : '?'}</span>
         <input
           className="lib__search-input"
-          placeholder="Search files or describe a scene�"
+          placeholder="Search files or describe a scene…"
           value={query}
           onChange={e => setQuery(e.target.value)}
         />
-        {query && <button className="lib__search-clear" onClick={() => { setQuery(''); setSemanticResults(null); }} title="Clear">?</button>}
+        {query && <button className="lib__search-clear" onClick={() => { setQuery(''); setSemanticResults(null); }} title="Clear">✕</button>}
         <button className="lib__import-btn" title="Import" onClick={() => fileInputRef.current?.click()}>+</button>
         <input ref={fileInputRef} type="file" hidden multiple accept="video/*,image/*,audio/*,.svg" onChange={handleFileSelect} />
       </div>
@@ -1297,7 +1297,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
             {semanticLoading && (
               <div className="lib__semantic-searching">
                 <span className="lib__spinner" style={{ display: 'inline-block', width: 14, height: 14, marginRight: 8 }} />
-                Searching scenes�
+                Searching scenes—
               </div>
             )}
 
@@ -1342,8 +1342,8 @@ export default function LibraryPanel({ onAddToTimeline }: {
                       <div className="lib__semantic-hit-score">{score}%</div>
                       <div className="lib__semantic-hit-info">
                         <div className="lib__semantic-hit-name">{asset?.filename ?? hit.assetId.slice(0,8)}</div>
-                        <div className="lib__semantic-hit-time">{startS}s � {endS}s</div>
-                        <div className="lib__semantic-hit-desc">{hit.text.slice(0, 120)}{hit.text.length > 120 ? '�' : ''}</div>
+                        <div className="lib__semantic-hit-time">{startS}s — {endS}s</div>
+                        <div className="lib__semantic-hit-desc">{hit.text.slice(0, 120)}{hit.text.length > 120 ? '…' : ''}</div>
                       </div>
                     </div>
                   );
@@ -1354,10 +1354,10 @@ export default function LibraryPanel({ onAddToTimeline }: {
             {!semanticLoading && semanticResults && semanticResults.length === 0 && (
               <div className="lib__semantic-empty">
                 {allIndexed
-                  ? <><span>??</span><p>No matching scenes found</p><small>All {videoAssets.length} video{videoAssets.length !== 1 ? 's' : ''} indexed</small></>
+                  ? <><span>🔍</span><p>No matching scenes found</p><small>All {videoAssets.length} video{videoAssets.length !== 1 ? 's' : ''} indexed</small></>
                   : indexingCount > 0
-                    ? <><span>?</span><p>No results yet</p><small>Still indexing {indexingCount} video{indexingCount !== 1 ? 's' : ''}� try again soon</small></>
-                    : <><span>??</span><p>No matching scenes found</p></>}
+                    ? <><span>⌛</span><p>No results yet</p><small>Still indexing {indexingCount} video{indexingCount !== 1 ? 's' : ''} — try again soon</small></>
+                    : <><span>🔍</span><p>No matching scenes found</p></>}
               </div>
             )}
           </div>
@@ -1381,7 +1381,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                   type="webcomp"
                   title={wc.name}
                   badge="WC"
-                  subtitle={`${wc.width}�${wc.height} � ${wc.fps}fps`}
+                  subtitle={`${wc.width}—${wc.height} — ${wc.fps}fps`}
                   isDragging={dragging === wc.assetId}
                   onDragStart={e => {
                     setDragging(wc.assetId);

@@ -522,7 +522,7 @@ export function TimelineProvider({ children, floatingMode = false }: { children:
         : `${base}/timeline/state`;
 
       if (state.activeCompId) {
-        // ensure tracks exist (idempotent � safe to call every time)
+        // ensure tracks exist (idempotent — safe to call every time)
         await fetch(`${base}/comps/${state.activeCompId}/ensure-tracks`, { method: 'POST' }).catch(() => {});
       }
 

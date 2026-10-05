@@ -73,7 +73,7 @@ interface KeyframeBtnProps {
 function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBtnProps) {
   return (
     <div className="insp-kf-group">
-      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onPrev} title="Previous keyframe">�</button>
+      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onPrev} title="Previous keyframe">◀</button>
       <button
         className={`insp-kf-diamond${hasKf ? ' insp-kf-diamond--active' : ''}${isAnimated ? ' insp-kf-diamond--animated' : ''}`}
         onClick={onToggle}
@@ -88,7 +88,7 @@ function KeyframeBtn({ isAnimated, hasKf, onToggle, onPrev, onNext }: KeyframeBt
           />
         </svg>
       </button>
-      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onNext} title="Next keyframe">�</button>
+      <button className="insp-kf-nav" disabled={!isAnimated} onClick={onNext} title="Next keyframe">▶</button>
     </div>
   );
 }
@@ -248,7 +248,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     onRefresh(); load();
   }, [kfData, clipId, paramId, onRefresh, load]);
 
-  if (loading) return <div className="insp-kftrack-loading">Loading�</div>;
+  if (loading) return <div className="insp-kftrack-loading">Loading…</div>;
 
   // Render  
   const playX = frameToX(currentFrame);
@@ -257,7 +257,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
     <div className="insp-kftrack" onClick={e => e.stopPropagation()}>
       {/* Header */}
       <div className="insp-kftrack-header">
-        <span className="insp-kftrack-title">Keyframes � {label}</span>
+        <span className="insp-kftrack-title">Keyframes — {label}</span>
         <span className="insp-kftrack-count">{kfData.length} kf</span>
         <button className="insp-kftrack-zoom-btn" onClick={() => { setTlZoom(1); setTlPan(0); }} title="Reset zoom">?</button>
       </div>
@@ -327,7 +327,7 @@ function KFTrackPanel({ clipId, paramId, label, frames, currentFrame, onRefresh 
                 fill={col} stroke={isSel ? '#fff' : 'rgba(255,255,255,0.5)'}
                 strokeWidth={isSel ? 1.5 : 1}
               />
-              <title>Frame {kf.frame} � {kf.interp} � {kf.value.toFixed(3)}</title>
+              <title>Frame {kf.frame} — {kf.interp} — {kf.value.toFixed(3)}</title>
             </g>
           );
         })}
@@ -1118,7 +1118,7 @@ export default function InspectorPanel() {
     return (
       <div className="insp-empty">
         <div className="insp-empty__spinner" />
-        <div className="insp-empty__text">Loading�</div>
+        <div className="insp-empty__text">Loading…</div>
       </div>
     );
   }
@@ -1151,7 +1151,7 @@ export default function InspectorPanel() {
         <div className="insp-clip-header__badge">{data.clipType.replace('Clip', '')}</div>
         <div className="insp-clip-header__name">{selected.clipName}</div>
         <div className="insp-clip-header__meta">
-          {data.duration} fr � start {data.startFrame} � track {selected.trackIndex + 1}
+          {data.duration} fr — start {data.startFrame} — track {selected.trackIndex + 1}
         </div>
       </div>
 
