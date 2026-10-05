@@ -53,16 +53,18 @@
   display: inline-block;
 }
 .pw-status-dot--executing { background: #a5b4fc; box-shadow: 0 0 6px #7c6fff; animation: pw-pulse 1.5s infinite; }
-.pw-status-dot--paused    { background: #fbbf24; }
-.pw-status-dot--done      { background: #86efac; }
-.pw-status-dot--failed    { background: #fca5a5; }
+.pw-status-dot--paused { background: #fbbf24; }
+.pw-status-dot--done { background: #86efac; }
+.pw-status-dot--failed { background: #fca5a5; }
 .pw-status-dot--planning  { background: rgba(255,255,255,0.3); animation: pw-pulse 2s infinite; }
 @keyframes pw-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 .pw-status-label { font-weight: 500; }
-.pw-divider      { opacity: 0.4; }
-.pw-count        { font-variant-numeric: tabular-nums; }
-.pw-chevron      { font-size: 9px; color: rgba(255,255,255,0.3); margin-left: 4px; }
+.pw-divider { opacity: 0.4; }
+.pw-count { font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.pw-current { color: #a5b4fc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.pw-meta { min-width: 0; }
+.pw-chevron { font-size: 9px; color: rgba(255,255,255,0.3); margin-left: 4px; }
 
 /* Controls */
 .pw-ctrl {
@@ -107,7 +109,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  max-height: 400px;
+  max-height: 240px;
   overflow-y: auto;
 }
 .pw-steps::-webkit-scrollbar { width: 3px; }

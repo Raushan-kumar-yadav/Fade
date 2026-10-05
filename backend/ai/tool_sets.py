@@ -58,6 +58,7 @@ from backend.ai.tools import (
     add_text_clip,
     set_text_style,
     layout_text_block,
+    layout_element,
     add_solid_clip,
     add_shape_clip,
     add_svg_clip,

@@ -1,4 +1,4 @@
-﻿"""
+"""
 skill_executor.py — Checkpoint-driven skill plan executor.
 
 Runs a TaskPlan built from a SkillDef step-by-step.
@@ -70,16 +70,20 @@ async def _run_step(
     done_summaries: list[str],
     port: int,
     tools_override: list | None = None,
-) -> tuple[bool, str]:
-    """Run one skill step with a focused agent call.
+):
+    """Run one skill step, yielding SSE-style events as they happen.
 
-    Returns (success, result_str).
+    Yields dicts with type:
+      step_token       – streamed LLM text
+      step_tool_call   – tool being called
+      step_tool_result – tool output
+      step_ok          – step succeeded, payload: result str
+      step_err         – step failed,     payload: error str
     """
     from backend.ai.agent import build_agent
     from backend.ai.tool_sets import get_tools_for
     from langchain_core.messages import HumanMessage
 
-    # Build step-scoped tool list — only expose the step's tool + read-only helpers
     READ_ONLY = {"get_timeline_state", "get_library_assets", "get_playback_state",
                  "get_current_viewport_image", "get_clip_info", "undo", "redo"}
     if tools_override:
@@ -97,25 +101,36 @@ async def _run_step(
     try:
         config = {"recursion_limit": 25}
         state = {"messages": [HumanMessage(content=skill_step.instruction)]}
-        result_chunks = []
+        result_chunks: list[str] = []
 
         async for event in graph.astream_events(state, config=config, version="v2"):
             kind = event.get("event", "")
+
             if kind == "on_chat_model_stream":
                 chunk = event.get("data", {}).get("chunk")
-                if chunk and isinstance(getattr(chunk, "content", ""), str):
-                    result_chunks.append(chunk.content)
+                text = getattr(chunk, "content", "") if chunk else ""
+                if isinstance(text, str) and text:
+                    result_chunks.append(text)
+                    yield {"type": "step_token", "content": text}
+
+            elif kind == "on_tool_start":
+                name = event.get("name", "")
+                args = event.get("data", {}).get("input", {})
+                yield {"type": "step_tool_call", "name": name, "args": args}
+
             elif kind == "on_tool_end":
+                name = event.get("name", "")
                 output = str(event.get("data", {}).get("output", ""))
                 if output:
-                    result_chunks.append(f"\n[tool:{event.get('name','')}] {output[:200]}")
+                    result_chunks.append(f"\n[tool:{name}] {output[:200]}")
+                yield {"type": "step_tool_result", "name": name, "content": output[:400]}
 
         result_str = "".join(result_chunks)[:500] or f"Step {skill_step.name} completed."
-        return True, result_str
+        yield {"type": "step_ok", "result": result_str}
 
     except Exception as e:
         logger.error("[SkillExecutor] Step %s failed: %s", skill_step.name, e)
-        return False, str(e)
+        yield {"type": "step_err", "error": str(e)}
 
 
 # ── Main executor ─────────────────────────────────────────────────────────────
@@ -164,6 +179,14 @@ async def execute_skill_plan(
         if task_step.status == "done":
             continue
 
+      
+        _live = get_plan(plan.plan_id)
+        if _live and _live.status in ("paused", "failed", "done"):
+            halted = {"type": "plan_halted", "plan_id": plan.plan_id, "status": _live.status}
+            _emit(halted)
+            yield halted
+            return
+
         skill_step = skill_step_map.get(task_step.order)
         if not skill_step:
             logger.warning("[SkillExecutor] No skill step for order %d", task_step.order)
@@ -185,11 +208,23 @@ async def execute_skill_plan(
         # Mark running in DB
         update_step_status(task_step.step_id, "running")
 
-        # Run the step
+        # Run the step — forward tokens and tool events to the SSE stream
         t0 = time.time()
-        success, result = await _run_step(
-            task_step, skill_step, skill, done_summaries, port
-        )
+        success = False
+        result = f"Step {skill_step.name} completed."
+        async for ev in _run_step(task_step, skill_step, skill, done_summaries, port):
+            et = ev["type"]
+            if et == "step_token":
+                yield {"type": "token", "content": ev["content"]}
+            elif et == "step_tool_call":
+                yield {"type": "tool_call", "name": ev["name"], "args": ev.get("args", {})}
+            elif et == "step_tool_result":
+                yield {"type": "tool_result", "name": ev["name"], "content": ev["content"]}
+            elif et == "step_ok":
+                success = True
+                result = ev["result"]
+            elif et == "step_err":
+                result = ev["error"]
         elapsed = round(time.time() - t0, 1)
 
         if success:
@@ -237,7 +272,7 @@ async def execute_skill_plan(
             }
             _emit(err_event)
             yield err_event
-            # Stop on failure — user must resume manually
+            # Stop on failure  
             return
 
     # All steps done

@@ -33,6 +33,7 @@ _COMPLEXITY_SIGNALS = [
 _CONTINUE_SIGNALS = [
     "continue", "keep going", "next step", "go ahead",
     "resume", "proceed", "carry on", "do it", "go on",
+    "approve", "approved", "looks good", "run it", "yes go",
 ]
 
 # Signals for checking progress
@@ -179,3 +180,89 @@ def classify_skill_with_llm(
             "[IntentClassifier] LLM skill classifier failed: %s", e
         )
         return None
+
+
+# ── Unified Router ───────────────────────────────────────────────────────────
+
+from dataclasses import dataclass
+
+
+@dataclass
+class RouteDecision:
+    route: str                       # "skill" | "plan" | "direct" | "query"
+    skill: "SkillDef | None" = None
+    reason: str = ""
+
+
+def route_request(
+    message: str,
+    skills: "list[SkillDef]",
+    llm,
+    agent_type: str = "video",
+) -> RouteDecision:
+    """ONE LLM call that decides how to handle a request.
+
+    - skill:  matches a known workflow  (checkpointed execution)
+    - plan:   multi-step, no skill fits (LLM builds a custom plan)
+    - direct: single action / small edit (tool-calling agent)
+    - query:  read-only question
+
+    Tiny messages skip the LLM entirely. Any failure falls back to the
+    rule-based heuristics so routing never blocks the user.
+    """
+    import json
+    import logging
+    log = logging.getLogger(__name__)
+
+    def _heuristic(reason: str) -> RouteDecision:
+        intent = classify_intent(message)
+        if intent == Intent.COMPLEX_TASK:
+            return RouteDecision("plan", None, reason)
+        if intent == Intent.SIMPLE_QUERY:
+            return RouteDecision("query", None, reason)
+        return RouteDecision("direct", None, reason)
+
+    if len(message.split()) <= 3:
+        return RouteDecision("direct", None, "short message")
+    if llm is None:
+        return _heuristic("no llm")
+
+    from langchain_core.messages import SystemMessage, HumanMessage
+
+    skill_list = "\n".join(
+        f"- {s.name}: {s.description[:120].strip()}" for s in skills
+    ) or "(none)"
+
+    system = (
+        f"You route requests for a {agent_type} editing AI. Choose ONE route:\n"
+        "  skill  - the request fits one of the listed workflows\n"
+        "  plan   - needs several dependent steps (create/build something new) "
+        "but no skill fits\n"
+        "  direct - one small edit/action on existing content\n"
+        "  query  - read-only question about the project\n"
+        'Reply with ONLY JSON: {"route": "...", "skill": "<name or null>"}'
+    )
+    user_msg = f'Request: "{message}"\n\nSkills:\n{skill_list}'
+
+    try:
+        resp = llm.invoke([SystemMessage(content=system), HumanMessage(content=user_msg)])
+        raw = str(resp.content).strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw
+        start, end = raw.find("{"), raw.rfind("}")
+        data = json.loads(raw[start:end + 1])
+        route = str(data.get("route", "")).lower()
+        if route not in ("skill", "plan", "direct", "query"):
+            return _heuristic("invalid route")
+        if route == "skill":
+            name = str(data.get("skill") or "").lower().strip()
+            match = next((s for s in skills if s.name.lower() == name), None)
+            if match:
+                return RouteDecision("skill", match, "llm")
+            return RouteDecision("plan", None, "skill name not found")
+        return RouteDecision(route, None, "llm")
+    except Exception as e:
+        log.warning("[Router] LLM route failed: %s", e)
+        return _heuristic("llm failed")
+

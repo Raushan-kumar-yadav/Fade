@@ -1084,12 +1084,12 @@ def layout_element(
     my = margin_y if margin_y >= 0 else grid["my"]
 
     # Safe zone boundaries
-    safe_left   = mx
-    safe_right  = cw - mx
-    safe_top    = my
+    safe_left = mx
+    safe_right = cw - mx
+    safe_top = my
     safe_bottom = ch - my
-    safe_w      = safe_right  - safe_left
-    safe_h      = safe_bottom - safe_top
+    safe_w = safe_right  - safe_left
+    safe_h = safe_bottom - safe_top
 
     anchor = anchor.lower().strip()
 
@@ -1113,19 +1113,19 @@ def layout_element(
     y = round(y + offset_y)
 
     return json.dumps({
-        "comp_type":    comp_type,
-        "anchor":       anchor,
-        "x":            x,
-        "y":            y,
-        "center_x":     round(x + element_width  / 2),
-        "center_y":     round(y + element_height / 2),
-        "right_edge":   round(x + element_width),
+        "comp_type": comp_type,
+        "anchor": anchor,
+        "x": x,
+        "y": y,
+        "center_x": round(x + element_width  / 2),
+        "center_y": round(y + element_height / 2),
+        "right_edge": round(x + element_width),
         "bottom_edge":  round(y + element_height),
-        "element_width":  int(element_width),
+        "element_width": int(element_width),
         "element_height": int(element_height),
         "safe_zone": {
             "left": safe_left, "right": safe_right,
-            "top": safe_top,   "bottom": safe_bottom,
+            "top": safe_top, "bottom": safe_bottom,
         },
         "workflow": (
             f"1. Place or create your clip/shape/image\n"

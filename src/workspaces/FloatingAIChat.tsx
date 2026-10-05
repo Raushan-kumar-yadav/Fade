@@ -194,22 +194,26 @@ const STEP_STATUS_ICON: Record<string, string> = {
 }
 
 function SkillProgressCard({ msg }: { msg: Message }) {
+  const [open, setOpen] = useState(false)
   const steps = msg.skillSteps ?? []
   const total = steps.length
   const done  = steps.filter(s => s.status === 'done').length
   const pct   = total > 0 ? Math.round(done / total * 100) : 0
+  const current = steps.find(s => s.status === 'running')
+  const currentLabel = current ? `${current.order}. ${current.name.replace(/_/g, ' ')}` : ''
   const compType = msg.skillName?.includes('video') ? '🎬'
     : msg.skillName?.includes('social') || msg.skillName?.includes('post') ? '🖼'
     : msg.skillName?.includes('product') ? '📦' : '📚'
 
   return (
-    <div className={`fchat__skill-card ${msg.skillDone ? 'fchat__skill-card--done' : ''} ${msg.skillError ? 'fchat__skill-card--error' : ''}`}>
-      {/* Header */}
-      <div className="fchat__skill-header">
+    <div className={`fchat__skill-card fchat__skill-card--dock ${msg.skillDone ? 'fchat__skill-card--done' : ''} ${msg.skillError ? 'fchat__skill-card--error' : ''}`}>
+      {/* Header — click to expand/collapse */}
+      <div className="fchat__skill-header fchat__skill-header--click" onClick={() => setOpen(v => !v)}>
         <span className="fchat__skill-icon">{compType}</span>
         <div className="fchat__skill-title">
           <span className="fchat__skill-name">{(msg.skillName ?? '').replace(/_/g, ' ')}</span>
           {msg.skillVersion && <span className="fchat__skill-version">v{msg.skillVersion}</span>}
+          {!open && currentLabel && <span className="fchat__skill-current">{currentLabel}</span>}
         </div>
         <span className={`fchat__skill-state-badge ${
           msg.skillDone ? 'fchat__skill-state-badge--done'
@@ -218,6 +222,7 @@ function SkillProgressCard({ msg }: { msg: Message }) {
         }`}>
           {msg.skillDone ? '✅ done' : msg.skillError ? '✕ failed' : '⟳ running'}
         </span>
+        <span className="fchat__skill-chevron">{open ? '▼' : '▶'}</span>
       </div>
 
       {/* Progress bar */}
@@ -233,8 +238,8 @@ function SkillProgressCard({ msg }: { msg: Message }) {
         </div>
       )}
 
-      {/* Steps list */}
-      <div className="fchat__skill-steps">
+      {/* Steps list (expanded only) */}
+      {open && <div className="fchat__skill-steps">
         {steps.map(s => (
           <div
             key={s.order}
@@ -252,7 +257,7 @@ function SkillProgressCard({ msg }: { msg: Message }) {
             )}
           </div>
         ))}
-      </div>
+      </div>}
 
       {/* Error */}
       {msg.skillError && (
@@ -347,6 +352,13 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
   const [busy,     setBusy]     = useState(false)
   const [status,   setStatus]   = useState<AgentStatus>({ phase: 'idle', label: '' })
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
+  // Skill run lives OUTSIDE the message stream so it never hijacks LLM output
+  const [skillRun, setSkillRun] = useState<Message | null>(null)
+  const patchSkill = useCallback((fn: (m: Message) => Message) => {
+    setSkillRun(prev => (prev ? fn(prev) : prev))
+  }, [])
+ 
+  const inSkillPlan = useRef(false)
 
   // Widget position & size
   const [pos,  setPos]  = useState(() => contained ? { x: 20, y: 50 } : { x: window.innerWidth - 440, y: 72 })
@@ -394,6 +406,8 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
     const text = input.trim()
     if (!text || busy) return
     setInput('')
+    setSkillRun(null)
+    inSkillPlan.current = false
     setBusy(true)
     setStatus({ phase: 'thinking', label: 'Thinking�' })
 
@@ -404,6 +418,8 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
     const aiId = uid()
     appendMsg({ id: aiId, role: 'ai', text: '', streaming: true })
     let aiText = ''
+    // ID of the AI bubble currently being streamed into
+    let currentBubbleId = aiId
     abortRef.current = new AbortController()
 
     try {
@@ -430,7 +446,8 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
 
             } else if (evt.type === 'skill_detected') {
               setStatus({ phase: 'skill', label: `📚 Skill: ${evt.skill} (${evt.steps} steps)…` })
-              appendMsg({
+              inSkillPlan.current = true
+              setSkillRun({
                 id: `skill-${aiId}`,
                 role: 'skill_progress',
                 text: '',
@@ -441,45 +458,50 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               })
               scrollBottom()
 
-            } else if (evt.type === 'plan_created' && evt.skill) {
+            } else if (evt.type === 'plan_created') {
               const plan = evt.plan
               // Open the Plan Preview Widget
               if (plan?.plan_id) setActivePlanId(plan.plan_id)
               if (plan?.steps) {
                 const steps: SkillStepState[] = (plan.steps as any[]).map((s: any) => ({
-                  order:  s.order ?? 0,
-                  name:   s.tool_name ?? `Step ${s.order}`,
-                  tool:   s.tool_name ?? '',
-                  status: 'pending' as const,
+                  order: s.order ?? 0,
+                  name: s.tool_name ?? `Step ${s.order}`,
+                  tool: s.tool_name ?? '',
+                  status: (s.status === 'done' ? 'done' : 'pending') as SkillStepState['status'],
                 }))
-                setMessages(prev => prev.map(m =>
-                  m.id === `skill-${aiId}` ? { ...m, skillSteps: steps } : m
-                ))
+                setSkillRun(prev => ({
+                  ...(prev ?? { id: `skill-${aiId}`, role: 'skill_progress' as const, text: '',
+                                skillName: evt.skill ?? 'auto_plan', skillDone: false }),
+                  skillSteps: steps,
+                }))
               }
               setStatus({ phase: 'skill', label: `📋 Plan ready — ${plan?.steps?.length ?? '?'} steps` })
               window.dispatchEvent(new CustomEvent('fade:plan-changed'))
 
             } else if (evt.type === 'step_start') {
               setStatus({ phase: 'skill', label: `[${evt.order}] ${evt.name} — ${evt.tool ?? ''}…` })
-              setMessages(prev => prev.map(m => {
-                if (m.id !== `skill-${aiId}`) return m
+              patchSkill(m => {
                 const steps = (m.skillSteps ?? []).map((s: SkillStepState) =>
                   s.order === evt.order ? { ...s, status: 'running' as const } : s
                 )
                 return { ...m, skillSteps: steps }
-              }))
+              })
+              // Start a fresh AI bubble for this step's output
+              const stepBubbleId = `${aiId}-step-${evt.order}`
+              currentBubbleId = stepBubbleId
+              aiText = ''
+              appendMsg({ id: stepBubbleId, role: 'ai', text: '', streaming: true })
               scrollBottom()
 
             } else if (evt.type === 'step_done') {
-              setMessages(prev => prev.map(m => {
-                if (m.id !== `skill-${aiId}`) return m
+              patchSkill(m => {
                 const steps = (m.skillSteps ?? []).map((s: SkillStepState) =>
                   s.order === evt.order
                     ? { ...s, status: 'done' as const, checkpoint: evt.checkpoint }
                     : s
                 )
                 return { ...m, skillSteps: steps }
-              }))
+              })
               if (evt.checkpoint) {
                 setStatus({ phase: 'checkpoint', label: `🏁 Checkpoint: ${evt.checkpoint}` })
               }
@@ -487,27 +509,28 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               scrollBottom()
 
             } else if (evt.type === 'step_failed') {
-              setMessages(prev => prev.map(m => {
-                if (m.id !== `skill-${aiId}`) return m
+              patchSkill(m => {
                 const steps = (m.skillSteps ?? []).map((s: SkillStepState) =>
                   s.order === evt.order ? { ...s, status: 'failed' as const } : s
                 )
                 return { ...m, skillSteps: steps, skillError: evt.error ?? 'Step failed' }
-              }))
+              })
               window.dispatchEvent(new CustomEvent('fade:plan-changed'))
               setStatus({ phase: 'idle', label: '' })
 
             } else if (evt.type === 'skill_done') {
-              setMessages(prev => prev.map(m =>
-                m.id === `skill-${aiId}` ? { ...m, skillDone: true } : m
-              ))
+              inSkillPlan.current = false
+              patchSkill(m => ({ ...m, skillDone: true }))
               window.dispatchEvent(new CustomEvent('fade:plan-changed'))
               setStatus({ phase: 'idle', label: '' })
               scrollBottom()
 
             } else if (evt.type === 'token') {
               aiText += evt.content
-              patchLast({ text: aiText, streaming: true })
+              // Patch by ID so we always hit the right bubble regardless of position
+              setMessages(prev => prev.map(m =>
+                m.id === currentBubbleId ? { ...m, text: aiText, streaming: true } : m
+              ))
               scrollBottom()
 
             } else if (evt.type === 'tool_call') {
@@ -522,8 +545,12 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
 
             } else if (evt.type === 'tool_result') {
               appendMsg({ id: uid(), role: 'tool_result', text: evt.content, toolName: evt.name })
-              appendMsg({ id: uid(), role: 'ai', text: '', streaming: true })
+              // Always open a new AI bubble after a tool result.
+              // Subsequent tokens (reasoning / follow-up) need a target to stream into.
+              const afterToolId = uid()
+              currentBubbleId = afterToolId
               aiText = ''
+              appendMsg({ id: afterToolId, role: 'ai', text: '', streaming: true })
               dispatchToolEvents(evt.name)
               // Export tool � dispatch overlay event
               if ((evt.name === 'export_video' || evt.name === 'set_integrity_registration') && typeof evt.content === 'string') {
@@ -540,11 +567,12 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               }
 
             } else if (evt.type === 'done') {
-              patchLast({ streaming: false })
-              setMessages(prev => {
-                const f = prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai')
-                return f
-              })
+              // Mark the current bubble as finished
+              setMessages(prev => prev.map(m =>
+                m.id === currentBubbleId ? { ...m, streaming: false } : m
+              ))
+              // Remove any remaining empty AI bubbles (unfilled placeholders)
+              setMessages(prev => prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai'))
 
             } else if (evt.type === 'error') {
               patchLast({ text: `? ${evt.message}`, streaming: false, role: 'error' })
@@ -647,18 +675,21 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
         <div ref={bottomRef} />
       </div>
 
-      {/* Plan Preview Widget — shown when an active plan exists */}
-      {activePlanId && (
-        <div className="fchat__plan-widget-wrapper">
-          <PlanWidget
-            port={port}
-            onPlanChange={p => {
-              if (!p || p.status === 'done' || p.status === 'failed') {
-                // Keep visible for 4s after done so user sees final state
-                setTimeout(() => setActivePlanId(null), 4000)
-              }
-            }}
-          />
+      {/* Pinned dock — plan + skill execution. Collapsed by default, never blocks chat output. */}
+      {(activePlanId || skillRun) && (
+        <div className="fchat__dock">
+          {activePlanId && (
+            <PlanWidget
+              port={port}
+              onPlanChange={p => {
+                if (!p || p.status === 'done' || p.status === 'failed') {
+                  // Keep visible for 4s after done so user sees final state
+                  setTimeout(() => setActivePlanId(null), 4000)
+                }
+              }}
+            />
+          )}
+          {!activePlanId && skillRun && <SkillProgressCard msg={skillRun} />}
         </div>
       )}
 

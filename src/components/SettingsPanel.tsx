@@ -173,23 +173,23 @@ async function postEnvSettings(updates: Record<string, string>): Promise<EnvSett
 type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'agent' | 'generators' | 'apis' | 'connections' | 'skills';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: 'cache',       icon: '⚡', label: 'Cache'       },
-  { id: 'decoder',     icon: '🎞', label: 'Decoder'     },
-  { id: 'output',      icon: '🖼', label: 'Output'      },
-  { id: 'ai',          icon: '🔍', label: 'Indexing'    },
-  { id: 'agent',       icon: '🤖', label: 'Agent AI'    },
+  { id: 'cache', icon: '⚡', label: 'Cache'       },
+  { id: 'decoder', icon: '🎞', label: 'Decoder'     },
+  { id: 'output', icon: '🖼', label: 'Output'      },
+  { id: 'ai', icon: '🔍', label: 'Indexing'    },
+  { id: 'agent', icon: '🤖', label: 'Agent AI'    },
   { id: 'generators',  icon: '✨', label: 'Generators'  },
-  { id: 'apis',        icon: '🔑', label: 'API Keys'    },
+  { id: 'apis', icon: '🔑', label: 'API Keys'    },
   { id: 'connections', icon: '🔗', label: 'Connections' },
-  { id: 'skills',      icon: '📚', label: 'Skills'      },
+  { id: 'skills', icon: '📚', label: 'Skills'      },
 ];
 
-// ── Connections types ────────────────────────────────────────────────────────
-
+//   Connections types  
+ 
 type ConnStatus = 'idle' | 'connecting' | 'disconnecting' | 'error';
 
 interface ConnectionInfo {
-  provider:    string;
+  provider: string;
   connected:   boolean;
   configured:  boolean;
   accountName: string | null;
@@ -197,10 +197,10 @@ interface ConnectionInfo {
 }
 
 const PROVIDER_META: Record<string, { label: string; icon: string; logoClass: string; description: string }> = {
-  youtube:   { label: 'YouTube',   icon: '▶',  logoClass: 'sp-conn-logo--youtube',   description: 'Upload and publish videos to your channel' },
+  youtube: { label: 'YouTube',   icon: '▶',  logoClass: 'sp-conn-logo--youtube',   description: 'Upload and publish videos to your channel' },
   instagram: { label: 'Instagram', icon: '📷', logoClass: 'sp-conn-logo--instagram', description: 'Publish reels and posts to your profile' },
-  linkedin:  { label: 'LinkedIn',  icon: '💼', logoClass: 'sp-conn-logo--linkedin',  description: 'Share posts and articles with your network' },
-  gmail:     { label: 'Gmail',     icon: '✉',  logoClass: 'sp-conn-logo--gmail',     description: 'Send emails from your authorized account' },
+  linkedin: { label: 'LinkedIn',  icon: '💼', logoClass: 'sp-conn-logo--linkedin',  description: 'Share posts and articles with your network' },
+  gmail: { label: 'Gmail',     icon: '✉',  logoClass: 'sp-conn-logo--gmail',     description: 'Send emails from your authorized account' },
 };
 
 const PROVIDER_ORDER = ['youtube', 'instagram', 'linkedin', 'gmail'];
@@ -311,7 +311,7 @@ const INIT_H = Math.round(window.innerHeight * 0.82);
 const MIN_W  = 520;
 const MIN_H  = 400;
 
-// ── Connection API helpers (defined outside component, hoisted) ───────────────
+// Connection API helpers 
 
 async function fetchConnections(port: number): Promise<ConnectionInfo[]> {
   try {
@@ -354,7 +354,7 @@ export default function SettingsPanel({ onClose }: Props) {
     agent_type: string; triggers: string[]; steps: number;
     description: string;
   }
-  const [skills, setSkills]       = useState<SkillEntry[]>([]);
+  const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillImporting, setSkillImporting] = useState(false);
   const [skillImportStatus, setSkillImportStatus] = useState<{ok: boolean; msg: string} | null>(null);
@@ -384,7 +384,7 @@ export default function SettingsPanel({ onClose }: Props) {
     setSkillsLoading(false);
   };
 
-  // Scan .md content for prompt injection before accepting
+ 
   const scanSkillText = (text: string): { safe: boolean; issues: string[] } => {
     const issues: string[] = [];
     const lower = text.toLowerCase();
@@ -475,7 +475,7 @@ export default function SettingsPanel({ onClose }: Props) {
     startW: number; startH: number;
   } | null>(null);
 
-  // ── Connections state ──────────────────────────────────────────────────────
+  // Connections state  
   const [connections, setConnections] = useState<ConnectionInfo[]>([]);
   const [connBusy, setConnBusy] = useState<Record<string, ConnStatus>>({});
   const [connErrors, setConnErrors] = useState<Record<string, string>>({});
@@ -523,8 +523,7 @@ export default function SettingsPanel({ onClose }: Props) {
       return;
     }
     if (result.url) {
-      // Open in system browser via Electron shell (secure, no Node access in renderer)
-      // Falls back to window.open in dev/browser mode.
+  
       const eApi = (window as any).electronAPI;
       if (eApi?.shellOpenExternal) {
         await eApi.shellOpenExternal(result.url);
@@ -532,7 +531,7 @@ export default function SettingsPanel({ onClose }: Props) {
         window.open(result.url, '_blank', 'noopener,noreferrer');
       }
     }
-    // Keep 'connecting' badge — the poll will update when callback fires
+ 
   }, [clearProviderError, setProviderBusy, setProviderError]);
 
   const handleDisconnect = useCallback(async (provider: string) => {
@@ -645,7 +644,7 @@ export default function SettingsPanel({ onClose }: Props) {
     const next = await postEnvSettings({ [key]: value });
     if (next) setEnv(next);
     setSaving(false);
-    // Auto-restart agent when provider or model changes so it takes effect immediately
+   
     if (key === 'FADE_AI_PROVIDER' || key === 'FADE_AI_MODEL') {
       await restartAgent();
     }
@@ -715,7 +714,7 @@ export default function SettingsPanel({ onClose }: Props) {
               <p className="sp-loading">Connecting to engine…</p>
             )}
 
-            {/* ── Cache ── */}
+            {/* Cache */}
             {tab === 'cache' && s && (
               <>
                 <div className="sp-row">
@@ -744,7 +743,7 @@ export default function SettingsPanel({ onClose }: Props) {
               </>
             )}
 
-            {/* ── Decoder ── */}
+            {/* Decoder */}
             {tab === 'decoder' && s && (
               <>
                 <div className="sp-row">
@@ -787,7 +786,7 @@ export default function SettingsPanel({ onClose }: Props) {
               </>
             )}
 
-            {/* ── Output ── */}
+            {/* Output */}
             {tab === 'output' && s && (
               <div className="sp-row">
                 <label className="sp-label">JPEG quality</label>
@@ -800,7 +799,7 @@ export default function SettingsPanel({ onClose }: Props) {
               </div>
             )}
 
-            {/* ── AI Indexing ── */}
+            {/*   AI Indexing   */}
             {tab === 'ai' && (
               <>
                 {!ai ? (
@@ -812,7 +811,7 @@ export default function SettingsPanel({ onClose }: Props) {
                       Smaller/faster models trade detail for speed.
                     </p>
 
-                    {/* ── Vision Provider ── */}
+                    {/*   Vision Provider   */}
                     <div className="sp-subsection-title">🔍 Vision Provider</div>
 
                     <div className="sp-row">
@@ -824,7 +823,7 @@ export default function SettingsPanel({ onClose }: Props) {
                       </select>
                     </div>
 
-                    {/* ── Ollama section ── */}
+                    {/* Ollama section   */}
                     {(ai.indexProvider || 'ollama') === 'ollama' && (<>
                       <div className="sp-row">
                         <label className="sp-label" htmlFor="idx-ollama-host">Ollama Endpoint</label>
@@ -854,7 +853,7 @@ export default function SettingsPanel({ onClose }: Props) {
                       </div>
                     </>)}
 
-                    {/* ── Gemini section ── */}
+                    {/* Gemini section   */}
                     {(ai.indexProvider || 'ollama') === 'gemini' && (<>
                       <div className="sp-row">
                         <label className="sp-label" htmlFor="idx-gemini-model">Gemini model</label>
@@ -893,7 +892,7 @@ export default function SettingsPanel({ onClose }: Props) {
                       </span>
                     </div>
 
-                    {/* ── Transcription ── */}
+                    {/* Transcription */}
                     <div className="sp-subsection-title">Transcription (Whisper)</div>
 
                     <div className="sp-row">

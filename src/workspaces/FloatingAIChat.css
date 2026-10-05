@@ -627,8 +627,31 @@
 .fchat__status-bar--skill { background: rgba(108,99,255,0.15); }
 .fchat__status-bar--checkpoint { background: rgba(34,197,94,0.12); }
 
-/* Plan Widget wrapper inside chat */
+ 
+.fchat__dock {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 10px;
+  max-height: 42%;
+  overflow-y: auto;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  scrollbar-width: thin;
+}
 .fchat__plan-widget-wrapper {
   padding: 0 10px 8px;
   flex-shrink: 0;
 }
+.fchat__skill-card--dock { margin: 0; padding: 7px 10px; flex-shrink: 0; }
+.fchat__skill-card--dock .fchat__skill-header { margin-bottom: 6px; }
+.fchat__skill-card--dock .fchat__skill-progress-row { margin-bottom: 0; }
+.fchat__skill-card--dock .fchat__skill-steps { margin-top: 8px; max-height: 180px; overflow-y: auto; }
+.fchat__skill-header--click { cursor: pointer; user-select: none; }
+.fchat__skill-title { min-width: 0; overflow: hidden; }
+.fchat__skill-current {
+  font-size: 10.5px; color: #a5b4fc; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.fchat__skill-chevron { font-size: 9px; color: rgba(255,255,255,0.3); }
+

@@ -208,7 +208,7 @@ interface Props {
 export default function PlanWidget({ port = 8000, onPlanChange }: Props) {
   const [plan, setPlan]         = useState<Plan | null>(null)
   const [loading, setLoading]   = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(true)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -239,6 +239,7 @@ export default function PlanWidget({ port = 8000, onPlanChange }: Props) {
   const pct = plan.progress.percent
   const done = plan.progress.done
   const total = plan.progress.total
+  const runningStep = plan.steps.find(s => s.status === 'running')
 
   return (
     <div className={`pw-panel ${plan.status === 'done' ? 'pw-panel--done' : ''} ${plan.status === 'paused' ? 'pw-panel--paused' : ''}`}>
@@ -253,6 +254,12 @@ export default function PlanWidget({ port = 8000, onPlanChange }: Props) {
               <span className="pw-status-label">{plan.status}</span>
               <span className="pw-divider">·</span>
               <span className="pw-count">{done}/{total} steps</span>
+              {collapsed && runningStep && (
+                <>
+                  <span className="pw-divider">·</span>
+                  <span className="pw-current">#{runningStep.order} {runningStep.description.slice(0, 40)}</span>
+                </>
+              )}
             </div>
           </div>
         </div>

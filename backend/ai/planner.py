@@ -209,7 +209,7 @@ def plan_to_pseudo_skill(plan: TaskPlan) -> "SkillDef":
 
     skill_steps = [
         SkillStep(
-            order=s.order + 1,
+            order=s.order,
             name=(s.tool_name or f"step_{s.order}").upper(),
             tool_name=s.tool_name or "get_timeline_state",
             instruction=s.description,
@@ -221,7 +221,7 @@ def plan_to_pseudo_skill(plan: TaskPlan) -> "SkillDef":
     checkpoints = {
         s.order: f"CHECKPOINT_{s.order}"
         for s in skill_steps
-        if s.order % 3 == 0
+        if (s.order + 1) % 3 == 0
     }
 
     return SkillDef(

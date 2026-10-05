@@ -187,28 +187,41 @@ async def ai_chat(req: ChatRequest):
             matched_skill = skill_registry.match(scanned_message)
 
             #   LLM skill classifier fallback  
-            if not matched_skill:
+            from backend.ai.intent_classifier import (
+                classify_intent, Intent, intent_summary, route_request,
+            )
+            from backend.ai import task_store as _store
+            active_plan = _store.get_active_plan()
+            intent = classify_intent(scanned_message, has_active_plan=active_plan is not None)
+
+             
+            if not matched_skill and intent in (
+                Intent.SIMPLE_EDIT, Intent.SIMPLE_QUERY, Intent.COMPLEX_TASK
+            ):
                 all_skills = [
                     skill_registry.get(s["name"])
                     for s in skill_registry.list_skills()
                 ]
                 all_skills = [s for s in all_skills if s]
-                if all_skills:
-                    from backend.ai.intent_classifier import classify_skill_with_llm
+                try:
                     from backend.ai.agent import _build_llm
-                    try:
-                        llm_for_routing = _build_llm()
-                        matched_skill = classify_skill_with_llm(
-                            scanned_message, all_skills, llm_for_routing
-                        )
-                        if matched_skill:
-                            print(
-                                f"[AI Router] LLM skill classifier matched: "
-                                f"'{matched_skill.name}' for: {scanned_message[:60]}",
-                                flush=True,
-                            )
-                    except Exception as _e:
-                        print(f"[AI Router] LLM skill classifier skipped: {_e}", flush=True)
+                    llm_for_routing = _build_llm()
+                    decision = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: route_request(scanned_message, all_skills,
+                                              llm_for_routing, req.agent),
+                    )
+                    print(f"[AI Router] Route: {decision.route} ({decision.reason})", flush=True)
+                    if decision.route == "skill" and decision.skill:
+                        matched_skill = decision.skill
+                    elif decision.route == "plan":
+                        intent = Intent.COMPLEX_TASK
+                    elif decision.route == "query":
+                        intent = Intent.SIMPLE_QUERY
+                    else:
+                        intent = Intent.SIMPLE_EDIT
+                except Exception as _e:
+                    print(f"[AI Router] LLM routing skipped: {_e}", flush=True)
 
             if matched_skill:
                 print(f"[AI Router] Skill matched: '{matched_skill.name}' — switching to "
@@ -261,11 +274,6 @@ async def ai_chat(req: ChatRequest):
                 return
 
             #   Intent classification  
-            from backend.ai.intent_classifier import classify_intent, Intent, intent_summary
-            from backend.ai import task_store as _store
-
-            active_plan = _store.get_active_plan()
-            intent = classify_intent(scanned_message, has_active_plan=active_plan is not None)
             print(f"[AI Router] Intent: {intent.value} ({intent_summary(intent)})", flush=True)
 
             #   Handle plan-management intents  
@@ -296,18 +304,30 @@ async def ai_chat(req: ChatRequest):
                 return
 
             if intent == Intent.CONTINUE_TASK and active_plan:
-                # Resume: inject the plan context into the message
+                 
                 next_step = active_plan.next_pending_step
                 if next_step:
-                    scanned_message = (
-                        f"[CONTINUING PLAN: {active_plan.goal}]\n"
-                        f"Current step ({next_step.order + 1}/{len(active_plan.steps)}): "
-                        f"{next_step.description}\n"
-                        f"Tool to use: {next_step.tool_name}\n"
-                        f"Execute this step now."
-                    )
-                    _store.update_step_status(next_step.step_id, "running")
-                    yield f"data: {json.dumps({'type': 'plan_step', 'step_id': next_step.step_id, 'status': 'running', 'description': next_step.description})}\n\n"
+                    from backend.ai.planner import plan_to_pseudo_skill
+                    from backend.ai.skill_executor import execute_skill_plan
+                    _store.update_plan_status(active_plan.plan_id, "executing")
+                    resume_plan = _store.get_plan(active_plan.plan_id)
+                    resume_skill = plan_to_pseudo_skill(resume_plan)
+                    yield f"data: {json.dumps({'type': 'plan_created', 'plan': resume_plan.to_dict()})}\n\n"
+                    async for evt in execute_skill_plan(plan=resume_plan, skill=resume_skill, port=req.port):
+                        t = evt["type"]
+                        if t in ("step_start", "step_done", "step_failed"):
+                            payload = {k: evt.get(k) for k in ("order", "step_id", "name", "tool", "checkpoint", "error")}
+                            payload["type"] = t
+                            yield f"data: {json.dumps(payload)}\n\n"
+                        elif t == "skill_done":
+                            yield f"data: {json.dumps({'type': 'skill_done', 'skill': 'auto_plan', 'steps_completed': evt.get('steps_completed')})}\n\n"
+                            yield f"data: {json.dumps({'type': 'token', 'content': '\n✅ Plan complete.'})}\n\n"
+                        elif t == "plan_halted":
+                            _halt_msg = f"Plan {evt.get('status', 'halted')}. Say continue to resume."
+                            yield f"data: {json.dumps({'type': 'token', 'content': _halt_msg})}\n\n"
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
                 else:
                     _store.update_plan_status(active_plan.plan_id, "done")
                     yield f"data: {json.dumps({'type': 'token', 'content': 'All steps are complete! The plan is done.'})}\n\n"
@@ -331,7 +351,19 @@ async def ai_chat(req: ChatRequest):
                 yield f"data: {json.dumps({'type': 'token', 'content': plan_text})}\n\n"
                 yield f"data: {json.dumps({'type': 'plan_created', 'plan': plan.to_dict()})}\n\n"
 
-                # Wrap plan in pseudo-skill and run through checkpoint executor
+ 
+                _risky = {"export_video", "delete_clip", "delete_track"}
+                _flagged = sorted({s.tool_name for s in plan.steps if s.tool_name in _risky})
+                if _flagged:
+                    _store.update_plan_status(plan.plan_id, "paused")
+                    _msg = (f"\n⚠️ This plan uses {', '.join(_flagged)}. "
+                            f"Reply **approve** (or *continue*) to run it, or *cancel plan* to discard.")
+                    yield f"data: {json.dumps({'type': 'token', 'content': _msg})}\n\n"
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    return
+
+                 
                 pseudo_skill = plan_to_pseudo_skill(plan)
                 total = len(plan.steps)
 
@@ -356,6 +388,14 @@ async def ai_chat(req: ChatRequest):
                         n = evt.get("steps_completed", total)
                         yield f"data: {json.dumps({'type': 'skill_done', 'skill': 'auto_plan', 'steps_completed': n})}\n\n"
                         yield f"data: {json.dumps({'type': 'token', 'content': f'\n✅ Plan complete — {n}/{total} steps done.'})}\n\n"
+                    # ── Forward live LLM output from inside each step ──────────────
+                    elif t == "token":
+                        yield f"data: {json.dumps({'type': 'token', 'content': evt['content']})}\n\n"
+                    elif t == "tool_call":
+                        yield f"data: {json.dumps({'type': 'tool_call', 'name': evt['name'], 'args': evt.get('args', {})})}\n\n"
+                    elif t == "tool_result":
+                        yield f"data: {json.dumps({'type': 'tool_result', 'name': evt['name'], 'content': evt['content']})}\n\n"
+
 
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -574,7 +614,7 @@ async def ai_create_video(req: CreateVideoRequest):
                     "progress": [],
                 }
 
-                # Run the graph synchronously in this thread
+ 
                 final_state = None
                 for step_output in pipeline.stream(initial_state):
                     # Each step_output is 
@@ -727,7 +767,7 @@ def import_skill(req: SkillImportRequest):
     from fastapi import HTTPException
     from backend.ai.skill_loader import skill_registry, SKILLS_DIR, load_skill
 
-    # Server-side injection scan (second layer after frontend scan)
+ 
     lower = req.content.lower()
     BLOCKED = [
         'ignore previous instructions', 'ignore all previous',
