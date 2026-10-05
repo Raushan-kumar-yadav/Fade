@@ -13,6 +13,15 @@
 > **Electron shell -> React UI -> Python FastAPI backend -> C++20/Vulkan GPU renderer**,
 > all orchestrated by a **hierarchical multi-agent AI system**.
 
+### Download Pre-built Binary
+
+No build required. Download the self-contained Windows executable:
+
+**Google Drive:** https://drive.google.com/drive/folders/10WzWDuEOPObGmxKkgonT9sPAAYzh8YUw?usp=sharing
+
+Extract and double-click `Echo.exe`. All models and dependencies are bundled.
+If Windows SmartScreen warns, click **More info -> Run anyway**.
+
 ---
 
 ## Table of Contents
@@ -921,15 +930,7 @@ FADE_PORT=8000
 # Optional
 FADE_USER_NAME=                  # AI addresses user by name
 ```
-
-### Download Pre-built Binary
-
-No build required. Download the self-contained Windows executable:
-
-**Google Drive:** https://drive.google.com/drive/folders/10WzWDuEOPObGmxKkgonT9sPAAYzh8YUw?usp=sharing
-
-Extract and double-click `Echo.exe`. All models and dependencies are bundled.
-If Windows SmartScreen warns, click **More info -> Run anyway**.
+```
 
 ---
 
