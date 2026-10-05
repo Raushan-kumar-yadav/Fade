@@ -7,9 +7,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+import sys
+
 logger = logging.getLogger(__name__)
 
-SKILLS_DIR = Path(__file__).parent / "skills"
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    # When bundled by PyInstaller, fall back to the bundled data folder if needed
+    SKILLS_DIR = Path(sys._MEIPASS) / "backend" / "ai" / "skills"
+    if not SKILLS_DIR.exists():
+        SKILLS_DIR = Path(__file__).parent / "skills"
+else:
+    SKILLS_DIR = Path(__file__).parent / "skills"
 
 
 # Data classes  

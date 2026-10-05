@@ -43,6 +43,7 @@ interface JobState {
 
 interface Props {
   selectedClipId?: string | null
+  videoPath?: string | null
   totalFrames?: number
   fps?: number
 }

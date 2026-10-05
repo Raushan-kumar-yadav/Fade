@@ -606,7 +606,7 @@ export default function SettingsPanel({ onClose }: Props) {
     setSaving(false);
   }, []);
 
-  const applyAi = useCallback(async (delta: Partial<Pick<AiSettings,'visionModel'|'frameInterval'|'whisperBackend'|'whisperModel'>>) => {
+  const applyAi = useCallback(async (delta: Partial<Pick<AiSettings,'visionModel'|'frameInterval'|'whisperBackend'|'whisperModel'|'indexProvider'|'indexGeminiModel'>>) => {
     setSaving(true);
     const next = await postAiSettings(delta);
     if (next) setAi(next);

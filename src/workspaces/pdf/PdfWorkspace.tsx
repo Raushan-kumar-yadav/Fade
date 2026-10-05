@@ -36,7 +36,7 @@ const makePdfLayoutJson = (): FlexLayout.IJsonModel => ({
     tabSetEnableDrop: true,
     tabSetEnableMaximize: false,
     tabSetTabStripHeight: 28,
-  },
+  } as any,
   borders: [],
   layout: {
     type: 'column',

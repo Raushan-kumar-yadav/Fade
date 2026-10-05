@@ -37,7 +37,7 @@ const makeImageLayoutJson = (): FlexLayout.IJsonModel => ({
     tabSetEnableDrop: true,
     tabSetEnableMaximize: false,
     tabSetTabStripHeight: 28,
-  },
+  } as any,
   borders: [],
   layout: {
      

@@ -1,4 +1,4 @@
-﻿# Fade (Echo) - AI-Powered Professional Media Editor
+# Fade (Echo) - AI-Powered Professional Media Editor
 
 ![Electron](https://img.shields.io/badge/Electron_29-191970?style=for-the-badge&logo=Electron&logoColor=white)
 ![React](https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
@@ -926,7 +926,7 @@ FADE_USER_NAME=                  # AI addresses user by name
 
 No build required. Download the self-contained Windows executable:
 
-**Google Drive:** https://drive.google.com/drive/folders/1ga8dbEF9xsMm5zsoMSc6cOVBdDtnOnT4?usp=sharing
+**Google Drive:** https://drive.google.com/drive/folders/10WzWDuEOPObGmxKkgonT9sPAAYzh8YUw?usp=sharing
 
 Extract and double-click `Echo.exe`. All models and dependencies are bundled.
 If Windows SmartScreen warns, click **More info -> Run anyway**.

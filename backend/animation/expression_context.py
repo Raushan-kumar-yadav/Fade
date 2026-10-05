@@ -1,4 +1,4 @@
-﻿ 
+ 
 
 from __future__ import annotations
 import math
@@ -166,7 +166,7 @@ def build_context(
             return interpolate_at(track_id, int(frame_), field)
         except Exception:
             return 0.0
-return {
+    return {
         # Time
         "frame": frame,
         "time": t,

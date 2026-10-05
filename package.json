@@ -62,6 +62,13 @@
                 ]
             },
             {
+                "from": "backend/ai/skills",
+                "to": "backend/_internal/backend/ai/skills",
+                "filter": [
+                    "**/*"
+                ]
+            },
+            {
                 "from": "templates",
                 "to": "templates",
                 "filter": [
