@@ -29,10 +29,10 @@ def list_skills() -> str:
     for skill in skills:
         step_names = [s.name for s in skill.steps]
         lines += [
-            f"Name:        {skill.name}",
-            f"Version:     v{skill.version}",
+            f"Name: {skill.name}",
+            f"Version: v{skill.version}",
             f"Description: {skill.description[:300].strip()}",
-            f"Triggers:    {', '.join(skill.triggers)}",
+            f"Triggers: {', '.join(skill.triggers)}",
             f"Steps ({len(skill.steps)}): {' → '.join(step_names)}",
             f"Checkpoints: {skill.checkpoints}",
             "",

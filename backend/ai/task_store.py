@@ -295,19 +295,58 @@ def get_plan(plan_id: str) -> TaskPlan | None:
     return plan
 
 
+# Plans older than this are considered stale (from a previous session)
+_PLAN_MAX_AGE_SECONDS = 10 * 60   # 10 minutes
+
+
 def get_active_plan() -> TaskPlan | None:
-    """Return the most recent non-done plan (executing or paused)."""
+    """Return the most recent non-done plan (executing or paused) — only from this session.
+
+    Any plan that has not been updated in the last 10 minutes is considered stale
+    (leftover from a previous session) and is automatically marked as failed so
+    typing 'continue' won't re-trigger it.
+    """
+    cutoff = time.time() - _PLAN_MAX_AGE_SECONDS
     with _lock:
         conn = _get_conn()
+        # First, expire any stale plans silently
+        conn.execute(
+            "UPDATE task_plans SET status='failed', updated_at=? "
+            "WHERE status IN ('planning', 'executing', 'paused') AND updated_at < ?",
+            (time.time(), cutoff),
+        )
+        conn.commit()
         row = conn.execute(
             "SELECT plan_id FROM task_plans "
-            "WHERE status IN ('planning', 'executing', 'paused') "
+            "WHERE status IN ('planning', 'executing', 'paused') AND updated_at >= ? "
             "ORDER BY updated_at DESC LIMIT 1",
+            (cutoff,),
         ).fetchone()
         conn.close()
     if row:
         return get_plan(row["plan_id"])
     return None
+
+
+def expire_stale_plans() -> int:
+    """Expire all plans not updated in _PLAN_MAX_AGE_SECONDS. Called on server startup.
+
+    Returns number of plans expired.
+    """
+    cutoff = time.time() - _PLAN_MAX_AGE_SECONDS
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            "UPDATE task_plans SET status='failed', updated_at=? "
+            "WHERE status IN ('planning', 'executing', 'paused') AND updated_at < ?",
+            (time.time(), cutoff),
+        )
+        count = cur.rowcount
+        conn.commit()
+        conn.close()
+    if count:
+        print(f"[TaskStore] Expired {count} stale plan(s) from previous session.", flush=True)
+    return count
 
 
 def list_plans(limit: int = 20) -> list[TaskPlan]:

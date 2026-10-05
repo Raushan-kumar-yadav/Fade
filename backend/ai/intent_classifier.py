@@ -86,7 +86,7 @@ def classify_intent(message: str, has_active_plan: bool = False) -> Intent:
         "trim", "split", "apply", "animate", "export",
     ] if v in msg.split())
 
-    # Complex if: 2+ complexity signals OR (long message + multiple action verbs)
+    # Complex if:  
     if hits >= 2 or (word_count > 20 and has_multiple_verbs >= 2):
         return Intent.COMPLEX_TASK
 
@@ -114,7 +114,7 @@ def intent_summary(intent: Intent) -> str:
     }.get(intent, "Unknown")
 
 
-# ── LLM Skill Classifier ─────────────────────────────────────────────────────
+# LLM Skill Classifier  
 
 def classify_skill_with_llm(
     message: str,
@@ -182,7 +182,7 @@ def classify_skill_with_llm(
         return None
 
 
-# ── Unified Router ───────────────────────────────────────────────────────────
+# Unified Router  
 
 from dataclasses import dataclass
 

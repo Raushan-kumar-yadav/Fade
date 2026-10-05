@@ -131,6 +131,15 @@ async def lifespan(app: FastAPI):
         print(f"[main] sandbox worker failed to start: {_e}", flush=True)
 
 
+
+    # Expire plans leftover from previous server sessions.
+    # Prevents 'continue' from re-triggering an old task on next startup.
+    try:
+        from backend.ai.task_store import expire_stale_plans
+        expire_stale_plans()
+    except Exception as _e:
+        print(f'[main] expire_stale_plans: {_e}', flush=True)
+
     asyncio.create_task(engine.startPreviewLoop())
 
     _HTTP_PORT = int(os.environ.get("BACKEND_PORT", 8000))

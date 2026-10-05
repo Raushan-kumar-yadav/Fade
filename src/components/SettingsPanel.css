@@ -738,7 +738,7 @@
   border-radius: 8px;
 }
 
-/* ── Skills Tab ──────────────────────────────────────────────────────────── */
+/*   Skills Tab   */
 
 .sp-skills-import-row {
   display: flex;
@@ -866,9 +866,9 @@
   border-radius: 20px;
   letter-spacing: 0.3px;
 }
-.sp-skill-badge--type    { background: rgba(108,99,255,0.18); color: #a5b4fc; border: 1px solid rgba(108,99,255,0.3); }
+.sp-skill-badge--type { background: rgba(108,99,255,0.18); color: #a5b4fc; border: 1px solid rgba(108,99,255,0.3); }
 .sp-skill-badge--version { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.08); }
-.sp-skill-badge--steps   { background: rgba(34,197,94,0.12);  color: #86efac; border: 1px solid rgba(34,197,94,0.2); }
+.sp-skill-badge--steps { background: rgba(34,197,94,0.12);  color: #86efac; border: 1px solid rgba(34,197,94,0.2); }
 
 .sp-skill-delete {
   background: none;

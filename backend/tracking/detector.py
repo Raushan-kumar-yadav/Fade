@@ -236,7 +236,7 @@ def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.5)
             template = cv2.resize(template, (int(tw * scale), int(th * scale)))
             th, tw = template.shape[:2]
 
-        # Multi-scale search: try original + 80% + 60% + 40% of template size
+         
         scales = [1.0, 0.8, 0.6, 0.4]
         best_val = -1.0
         best_loc = (0, 0)
@@ -260,7 +260,7 @@ def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.5)
         logger.info("[tracker] template best match: val=%.3f at %s (threshold=%.2f)", best_val, best_loc, threshold)
 
         if best_val >= threshold:
-            # Good match — also collect all locations above threshold at best scale
+            # Good match 
             scaled_tmpl = cv2.resize(template, (best_tw, best_th))
             result = cv2.matchTemplate(frame_bgr, scaled_tmpl, cv2.TM_CCOEFF_NORMED)
             locs = np.where(result >= threshold)
@@ -269,8 +269,7 @@ def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.5)
                 boxes.append(BBox(float(px), float(py), float(best_tw), float(best_th), float(result[py, px]), "image"))
             return _simple_nms(boxes, iou_threshold=0.3)
         elif best_val >= 0.3:
-            # Below threshold but still a plausible match — return as single box with low confidence
-            # This lets tracking begin even when template is not a perfect pixel match
+             
             px, py = best_loc
             logger.warning("[tracker] template match below threshold (%.3f < %.2f), using best guess", best_val, threshold)
             return [BBox(float(px), float(py), float(best_tw), float(best_th), float(best_val), "image")]
@@ -282,7 +281,7 @@ def detect_image_template(frame_bgr, template_path: str, threshold: float = 0.5)
         return []
 
 
-# ── Face by Reference ────────────────────────────────────────────────────────
+# Face by Reference  
 
 def extract_face_embedding(img_bgr) -> "np.ndarray | None":
     """Crop the largest face from an image and return a normalised feature vector.

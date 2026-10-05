@@ -129,8 +129,8 @@ def remove_background_video(
             raise RuntimeError(f"Cannot open video: {input_path}")
 
         fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
-        total  = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
         _prog(2, f"Opened video: {width}x{height} @ {fps}fps, {total} frames")

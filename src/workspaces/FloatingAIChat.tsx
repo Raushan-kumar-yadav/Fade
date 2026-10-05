@@ -60,14 +60,14 @@ const _storeMessages: Map<string, Message[]> = new Map()
 const _storeHistory: Map<string, { role: string; text: string }[]> = new Map()
 const _storeInput: Map<string, string> = new Map()
 
-// Max conversation turns kept in memory — prevents "continue" re-triggering old tasks
+// Max conversation turns kept in memory  
 const MAX_HISTORY = 10  // 5 user + 5 ai turns
 
 function getStore(agentId: string) {
   if (!_storeMessages.has(agentId)) _storeMessages.set(agentId, [makeWelcome(agentId)])
   if (!_storeHistory.has(agentId)) _storeHistory.set(agentId, [])
   if (!_storeInput.has(agentId)) _storeInput.set(agentId, '')
-  // Trim history so it never grows beyond MAX_HISTORY
+ 
   const h = _storeHistory.get(agentId)!
   if (h.length > MAX_HISTORY) _storeHistory.set(agentId, h.slice(-MAX_HISTORY))
   return {
