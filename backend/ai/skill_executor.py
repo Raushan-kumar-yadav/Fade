@@ -103,10 +103,8 @@ async def _run_step(
         state = {"messages": [HumanMessage(content=skill_step.instruction)]}
         result_chunks: list[str] = []
 
-        _dbg_event_count = 0
         async for event in graph.astream_events(state, config=config, version="v2"):
             kind = event.get("event", "")
-            _dbg_event_count += 1
 
             if kind == "on_chat_model_stream":
                 chunk = event.get("data", {}).get("chunk")
@@ -114,9 +112,6 @@ async def _run_step(
                 if isinstance(text, str) and text:
                     result_chunks.append(text)
                     yield {"type": "step_token", "content": text}
-                elif text:
-                    # Non-string content (list of blocks, etc.)
-                    print(f"[DBG _run_step] non-str content type={type(text).__name__} val={str(text)[:100]}", flush=True)
 
             elif kind == "on_tool_start":
                 name = event.get("name", "")
@@ -131,7 +126,6 @@ async def _run_step(
                 yield {"type": "step_tool_result", "name": name, "content": output[:400]}
 
         result_str = "".join(result_chunks)[:500] or f"Step {skill_step.name} completed."
-        print(f"[DBG _run_step] DONE events={_dbg_event_count} tokens_chars={len(''.join(result_chunks))}", flush=True)
         yield {"type": "step_ok", "result": result_str}
 
     except Exception as e:
@@ -218,13 +212,9 @@ async def execute_skill_plan(
         t0 = time.time()
         success = False
         result = f"Step {skill_step.name} completed."
-        _fwd_tokens = 0
         async for ev in _run_step(task_step, skill_step, skill, done_summaries, port):
             et = ev["type"]
             if et == "step_token":
-                _fwd_tokens += 1
-                if _fwd_tokens <= 3 or _fwd_tokens % 50 == 0:
-                    print(f"[DBG execute_plan] fwd token #{_fwd_tokens}: {ev['content'][:30]!r}", flush=True)
                 yield {"type": "token", "content": ev["content"]}
             elif et == "step_tool_call":
                 yield {"type": "tool_call", "name": ev["name"], "args": ev.get("args", {})}
