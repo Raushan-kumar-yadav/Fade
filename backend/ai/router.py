@@ -269,6 +269,14 @@ async def ai_chat(req: ChatRequest):
                         lbl = evt.get("label", "")
                         yield f"data: {json.dumps({'type': 'status', 'phase': 'checkpoint', 'label': f'Checkpoint: {lbl}'})}\n\n"
 
+                    # Forward live LLM output 
+                    elif t == "token":
+                        yield f"data: {json.dumps({'type': 'token', 'content': evt['content']})}\n\n"
+                    elif t == "tool_call":
+                        yield f"data: {json.dumps({'type': 'tool_call', 'name': evt['name'], 'args': evt.get('args', {})})}\n\n"
+                    elif t == "tool_result":
+                        yield f"data: {json.dumps({'type': 'tool_result', 'name': evt['name'], 'content': evt['content']})}\n\n"
+
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
@@ -313,18 +321,29 @@ async def ai_chat(req: ChatRequest):
                     resume_plan = _store.get_plan(active_plan.plan_id)
                     resume_skill = plan_to_pseudo_skill(resume_plan)
                     yield f"data: {json.dumps({'type': 'plan_created', 'plan': resume_plan.to_dict()})}\n\n"
+                    total_r = len(resume_plan.steps)
                     async for evt in execute_skill_plan(plan=resume_plan, skill=resume_skill, port=req.port):
                         t = evt["type"]
-                        if t in ("step_start", "step_done", "step_failed"):
-                            payload = {k: evt.get(k) for k in ("order", "step_id", "name", "tool", "checkpoint", "error")}
-                            payload["type"] = t
-                            yield f"data: {json.dumps(payload)}\n\n"
+                        if t == "step_start":
+                            label = f"[{evt['order']}/{total_r}] {evt['name']} — {evt.get('tool', '')}..."
+                            yield f"data: {json.dumps({'type': 'status', 'phase': 'skill', 'label': label})}\n\n"
+                            yield f"data: {json.dumps({'type': 'step_start', 'order': evt['order'], 'step_id': evt['step_id'], 'name': evt['name'], 'tool': evt.get('tool', '')})}\n\n"
+                        elif t == "step_done":
+                            yield f"data: {json.dumps({'type': 'step_done', 'order': evt['order'], 'step_id': evt['step_id'], 'name': evt['name'], 'checkpoint': evt.get('checkpoint')})}\n\n"
+                        elif t == "step_failed":
+                            yield f"data: {json.dumps({'type': 'step_failed', 'order': evt['order'], 'step_id': evt['step_id'], 'name': evt['name'], 'error': evt.get('error', '')})}\n\n"
                         elif t == "skill_done":
                             yield f"data: {json.dumps({'type': 'skill_done', 'skill': 'auto_plan', 'steps_completed': evt.get('steps_completed')})}\n\n"
                             yield f"data: {json.dumps({'type': 'token', 'content': '\n✅ Plan complete.'})}\n\n"
                         elif t == "plan_halted":
                             _halt_msg = f"Plan {evt.get('status', 'halted')}. Say continue to resume."
                             yield f"data: {json.dumps({'type': 'token', 'content': _halt_msg})}\n\n"
+                        elif t == "token":
+                            yield f"data: {json.dumps({'type': 'token', 'content': evt['content']})}\n\n"
+                        elif t == "tool_call":
+                            yield f"data: {json.dumps({'type': 'tool_call', 'name': evt['name'], 'args': evt.get('args', {})})}\n\n"
+                        elif t == "tool_result":
+                            yield f"data: {json.dumps({'type': 'tool_result', 'name': evt['name'], 'content': evt['content']})}\n\n"
                     yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
                     yield f"data: {json.dumps({'type': 'done'})}\n\n"
                     return

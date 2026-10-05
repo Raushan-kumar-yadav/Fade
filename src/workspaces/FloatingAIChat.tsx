@@ -460,6 +460,8 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
 
             } else if (evt.type === 'plan_created') {
               const plan = evt.plan
+              // Mark that we're in a plan — critical for token routing
+              inSkillPlan.current = true
               // Open the Plan Preview Widget
               if (plan?.plan_id) setActivePlanId(plan.plan_id)
               if (plan?.steps) {
@@ -494,6 +496,12 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               scrollBottom()
 
             } else if (evt.type === 'step_done') {
+              // Mark the current step's bubble as finished streaming
+              setMessages(prev => prev.map(m =>
+                m.id === currentBubbleId ? { ...m, streaming: false } : m
+              ))
+              // Remove any empty AI bubbles left over from this step
+              setMessages(prev => prev.filter((m, i) => i === 0 || m.text !== '' || m.role !== 'ai'))
               patchSkill(m => {
                 const steps = (m.skillSteps ?? []).map((s: SkillStepState) =>
                   s.order === evt.order
@@ -534,15 +542,15 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
               scrollBottom()
 
             } else if (evt.type === 'tool_call') {
+              // Remove trailing empty AI bubble (placeholder) before showing tool card
               setMessages(prev => {
                 const last = prev[prev.length - 1]
                 if (last?.role === 'ai' && !last.text) {
-                  const n = prev.slice(0, -1); return n
+                  return prev.slice(0, -1)
                 }
                 return prev
               })
               appendMsg({ id: uid(), role: 'tool_call', text: '', toolName: evt.name, toolArgs: evt.args })
-
             } else if (evt.type === 'tool_result') {
               appendMsg({ id: uid(), role: 'tool_result', text: evt.content, toolName: evt.name })
               // Always open a new AI bubble after a tool result.
