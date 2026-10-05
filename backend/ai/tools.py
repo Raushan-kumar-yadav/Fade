@@ -5246,6 +5246,9 @@ from backend.ai.tracking_tools import (  # noqa: E402
     add_follow_to_track,
     track_and_blur_face,
     track_and_blur_text,
+    track_face_with_image,
+    track_face_and_blur_by_asset,
+    track_person_by_asset,
 )
 ALL_TOOLS.extend(TRACKING_TOOLS)
 

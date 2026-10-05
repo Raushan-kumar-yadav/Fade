@@ -3,7 +3,7 @@ import { uploadAsset } from '../api/useApi'
 import './TrackingWorkspace.css'
 
 /* ── types ─────────────────────────────────────────────────────────────── */
-type DetectionMode = 'face' | 'face_ref' | 'person' | 'text' | 'image' | 'manual'
+type DetectionMode = 'face' | 'person' | 'text' | 'image' | 'manual'
 
 interface ClipMeta {
   clipId: string
@@ -181,8 +181,8 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
 
     const refAsset = imageAssets.find(a => a.assetId === refAssetId)
 
-    if ((mode === 'image' || mode === 'person' || mode === 'face_ref') && !refAsset) {
-      setError(`Pick a reference ${mode === 'face_ref' ? 'face' : ''} image for ${mode} mode.`); return
+    if ((mode === 'image' || mode === 'person') && !refAsset) {
+      setError(`Pick a reference image for ${mode} mode.`); return
     }
     if (mode === 'manual' && !manualBbox) {
       setError('Enter a bounding box (x,y,w,h) for Manual mode.'); return
@@ -388,16 +388,12 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         <span className="tr-hint">Pixel coordinates of the target in the start frame</span>
       </div>
     )
-    /* face_ref — specific face by reference photo */
-    if (mode === 'face_ref') {
+    /* face — show image picker; auto-detect if no image chosen */
+    if (mode === 'face') {
       const selectedAsset = imageAssets.find(a => a.assetId === refAssetId)
       return (
         <div className="tr-field-group">
-          <label className="tr-label">Reference face photo</label>
-          <span className="tr-hint" style={{ marginBottom: 8, display: 'block' }}>
-            Upload a clear photo showing only the target face. The system will find and track
-            that specific person even when multiple faces are in frame.
-          </span>
+          <label className="tr-label">Reference face photo <span className="tr-hint" style={{ fontWeight: 400 }}>(optional — leave blank to auto-detect all faces)</span></label>
 
           {/* Upload status */}
           {isUploading && (
@@ -428,12 +424,19 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
                 style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
                 onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
-              <span>Face: <strong>{selectedAsset.filename}</strong></span>
+              <span>Tracking: <strong>{selectedAsset.filename}</strong></span>
               <button
                 onClick={() => setRefAssetId('')}
                 style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#86efac', cursor: 'pointer', fontSize: '18px', lineHeight: 1 }}
-                title="Remove"
+                title="Remove — will auto-detect all faces"
               >×</button>
+            </div>
+          )}
+
+          {/* No image selected — auto-detect hint */}
+          {!isUploading && !selectedAsset && (
+            <div className="tr-hint tr-hint--info" style={{ marginBottom: 8 }}>
+              No photo selected — MediaPipe will auto-detect all faces in the clip.
             </div>
           )}
 
@@ -457,7 +460,7 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
             >
-              {isUploading ? 'Uploading…' : 'Upload Face Photo'}
+              {isUploading ? 'Uploading…' : 'Upload Photo'}
             </button>
           </div>
 
@@ -471,12 +474,6 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
         </div>
       )
     }
-    /* face — auto-detect all faces */
-    return (
-      <div className="tr-hint tr-hint--info">
-        MediaPipe face detection — automatically finds all faces in frame {fromFrame}
-      </div>
-    )
   })()
 
   /*   render   */
@@ -564,13 +561,13 @@ export default function TrackingWorkspace({ selectedClipId, totalFrames = 300 }:
       <div className="tr-field-group">
         <label className="tr-label">Detection mode</label>
         <div className="tr-mode-tabs">
-          {(['face', 'face_ref', 'person', 'text', 'image', 'manual'] as DetectionMode[]).map(m => (
+          {(['face', 'person', 'text', 'image', 'manual'] as DetectionMode[]).map(m => (
             <button
               key={m}
               className={`tr-mode-tab${mode === m ? ' tr-mode-tab--active' : ''}`}
               onClick={() => setMode(m)}
             >
-              {({ face: 'Face', face_ref: 'Face 📷', person: 'Person', text: 'Text', image: 'Image', manual: 'Manual' } as Record<DetectionMode,string>)[m]}
+              {({ face: '👤 Face', person: 'Person', text: 'Text', image: 'Image', manual: 'Manual' } as Record<DetectionMode,string>)[m]}
             </button>
           ))}
         </div>

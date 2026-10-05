@@ -326,17 +326,16 @@ def add_blur_track(req: AddBlurRequest):
     else:
         print(f"[add-blur] Using existing track at index {tl.tracks.index(target_track)}", flush=True)
 
-    # ── 3. Create a Shape clip (standard shape tool) ──────────
+    # ── 3. Create a Shape clip (ellipse — matches face shape better) ─────────
     from backend.timeline.clips.shapeClip import ShapeClip, ShapeStyle
-    
+
     style = ShapeStyle()
-    style.shapeType   = "rect"
-    style.width       = init_w   # Actual tracked box width
-    style.height      = init_h   # Actual tracked box height
-    style.fillColor   = [0.8, 0.2, 0.2, 1.0]  # Red color to distinguish it
+    style.shapeType   = "ellipse"
+    style.radiusX     = init_w / 2    # half-width of tracked bbox
+    style.radiusY     = init_h / 2    # half-height of tracked bbox
+    style.fillColor   = [0.0, 0.0, 0.0, 1.0]   # black — rendered as blur mask
     style.fillOpacity = 1.0
     style.strokeWidth = 0.0
-    style.cornerRadius = 0.0
 
     shape_clip = ShapeClip(
         clipId=str(uuid.uuid4()),
@@ -344,7 +343,7 @@ def add_blur_track(req: AddBlurRequest):
         duration=duration,
         style=style,
     )
-    
+
     shape_clip.transform.position.x.setBaseValue(init_cx)
     shape_clip.transform.position.y.setBaseValue(init_cy)
     shape_clip.transform.scale.x.setBaseValue(1.0)

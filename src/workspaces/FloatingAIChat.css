@@ -378,13 +378,120 @@
 /*   Input area   */
 
 .fchat__input-row {
-  padding: 10px 12px;
+  padding: 8px 12px 10px;
   display: flex;
-  gap: 8px;
-  align-items: flex-end;
+  flex-direction: column;
+  gap: 6px;
   border-top: 1px solid rgba(255,255,255,0.05);
   flex-shrink: 0;
   background: rgba(255,255,255,0.01);
+}
+
+/* Row that holds textarea + send button */
+.fchat__input-row > .fchat__input-wrap,
+.fchat__input-row > .fchat__send,
+.fchat__input-row > .fchat__send--stop {
+  /* keep these on the same horizontal line */
+}
+.fchat__input-row {
+  /* override: last row is textarea+button row, flex it horizontally */
+}
+/* Re-flex the actual textarea+button line */
+.fchat__input-wrap { width: 100%; }
+
+/* Wrapper for textarea + send button — horizontal */
+.fchat__input-bottom {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+/* ── Dropped asset chip ──────────────────────────────── */
+.fchat__drop-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: rgba(108, 99, 255, 0.12);
+  border: 1px solid rgba(108, 99, 255, 0.35);
+  border-radius: 8px;
+  font-size: 11.5px;
+  color: #c4bfff;
+  animation: fchat-chip-in 0.18s ease;
+}
+@keyframes fchat-chip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fchat__drop-chip-thumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: rgba(255,255,255,0.06);
+}
+.fchat__drop-chip-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+  font-weight: 500;
+  color: #e0ddff;
+}
+.fchat__drop-chip-type {
+  font-size: 10px;
+  color: rgba(196,191,255,0.55);
+  background: rgba(108,99,255,0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.fchat__drop-chip-remove {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.35);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+.fchat__drop-chip-remove:hover { color: #ff6b6b; }
+
+/* ── Drop overlay on the textarea ───────────────────── */
+.fchat__input-wrap {
+  position: relative;
+}
+.fchat__input-wrap--drop {
+  border-color: rgba(108, 99, 255, 0.7) !important;
+  box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.18), inset 0 0 18px rgba(108, 99, 255, 0.08) !important;
+  background: rgba(108, 99, 255, 0.07) !important;
+}
+.fchat__drop-overlay {
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: rgba(108, 99, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+}
+.fchat__drop-overlay span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #c4bfff;
+  letter-spacing: 0.03em;
+  background: rgba(20,18,40,0.85);
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(108,99,255,0.4);
 }
 
 .fchat__input-wrap {

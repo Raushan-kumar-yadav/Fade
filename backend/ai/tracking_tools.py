@@ -299,9 +299,184 @@ def track_and_blur_text(
         return json.dumps({"error": str(e)})
 
 
+
+
+
+
+@tool
+def track_face_with_image(
+    clip_id: str,
+    reference_image_path: str,
+    action: str = "blur",
+    padding: float = 10.0,
+    from_frame: int = 0,
+    to_frame: int = -1,
+) -> str:
+    """One-shot: track a SPECIFIC person/face using a reference photo, then blur or follow.
+
+    Use this when the user wants to track a specific person (not all faces).
+    Requires a reference image showing the target face clearly.
+
+    Args:
+        clip_id: clipId of the video clip to process.
+        reference_image_path: Absolute file path to the reference photo of the target face.
+        action: "blur" to hide the person, "follow" to just get the track_id.
+        padding: Extra blur pixels around the face (default 10).
+        from_frame: Start frame (0 = clip start).
+        to_frame: End frame (-1 = clip end).
+    """
+    try:
+        s = json.loads(start_track.invoke({
+            "clip_id": clip_id,
+            "detection_mode": "face",
+            "template_path": reference_image_path,
+            "label": "face_ref",
+            "from_frame": from_frame,
+            "to_frame": to_frame,
+        }))
+        if "error" in s:
+            return json.dumps({"error": f"Start failed: {s['error']}"})
+
+        w = json.loads(wait_for_track.invoke({"job_id": s["job_id"], "timeout_s": 180}))
+        if "error" in w:
+            return json.dumps({"error": f"Track failed: {w['error']}"})
+
+        if action == "blur":
+            b = json.loads(add_blur_to_track.invoke({
+                "track_id": w["track_id"],
+                "clip_id": clip_id,
+                "padding": padding,
+            }))
+            if "error" in b:
+                return json.dumps({"error": f"Blur failed: {b['error']}"})
+            return json.dumps({
+                "ok": True,
+                "track_id": w["track_id"],
+                "shape_clip_id": b.get("shape_clip_id"),
+                "message": f"Specific face tracked + blurred across {w.get('frame_count', '?')} frames.",
+            })
+
+        return json.dumps({
+            "ok": True,
+            "track_id": w["track_id"],
+            "message": f"Face tracked across {w.get('frame_count', '?')} frames. Use add_follow_to_track to attach a clip.",
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+@tool
+def track_face_and_blur_by_asset(
+    asset_id: str,
+    padding: float = 8.0,
+    from_frame: int = 0,
+    to_frame: int = -1,
+) -> str:
+    """Track ALL faces on the clip that owns asset_id and blur them.
+
+    Use this when the user drags a video clip into the chat and says
+    "track face", "hide face", "blur face", "track this person", etc.
+
+    Args:
+        asset_id: The assetId of the dragged clip (from library or timeline).
+        padding: Extra blur padding in pixels (default 8).
+        from_frame: First frame (0 = clip start).
+        to_frame: Last frame (-1 = clip end).
+    """
+    try:
+        timeline = _get("/timeline/state")
+        clip_id = None
+        for track in timeline.get("tracks", []):
+            for clip in track.get("clips", []):
+                if clip.get("assetId") == asset_id or clip.get("clipId") == asset_id:
+                    clip_id = clip["clipId"]
+                    break
+            if clip_id:
+                break
+        if not clip_id:
+            return json.dumps({"error": f"No clip with assetId {asset_id!r} on timeline. Add it first."})
+        return json.loads(track_and_blur_face.invoke({
+            "clip_id": clip_id, "label": "face",
+            "padding": padding, "from_frame": from_frame, "to_frame": to_frame,
+        }))
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@tool
+def track_person_by_asset(
+    video_asset_id: str,
+    reference_asset_id: str,
+    action: str = "blur",
+    padding: float = 8.0,
+    from_frame: int = 0,
+    to_frame: int = -1,
+) -> str:
+    """Track a specific person in a video using a reference photo, then blur or follow.
+
+    Use when the user drags a video + reference photo into chat and says
+    "track this person", "hide this person", "blur this person", etc.
+
+    Args:
+        video_asset_id: assetId of the video clip to process.
+        reference_asset_id: assetId of the reference photo of the target person.
+        action: "blur" to hide them, "follow" to attach another clip.
+        padding: Blur padding pixels (default 8).
+        from_frame: First frame.
+        to_frame: Last frame.
+    """
+    try:
+        timeline = _get("/timeline/state")
+        clip_id = None
+        for track in timeline.get("tracks", []):
+            for clip in track.get("clips", []):
+                if clip.get("assetId") == video_asset_id or clip.get("clipId") == video_asset_id:
+                    clip_id = clip["clipId"]
+                    break
+            if clip_id:
+                break
+        if not clip_id:
+            return json.dumps({"error": f"Video assetId {video_asset_id!r} not on timeline."})
+
+        lib = _get("/library/assets")
+        assets = lib if isinstance(lib, list) else lib.get("assets", [])
+        ref_path = next(
+            (a.get("filepath") or a.get("path")
+             for a in assets if a.get("assetId") == reference_asset_id),
+            None
+        )
+        if not ref_path:
+            return json.dumps({"error": f"Reference asset {reference_asset_id!r} not in library."})
+
+        s = json.loads(start_track.invoke({
+            "clip_id": clip_id, "detection_mode": "face",
+            "template_path": ref_path, "label": "person",
+            "from_frame": from_frame, "to_frame": to_frame,
+        }))
+        if "error" in s:
+            return json.dumps({"error": f"Start failed: {s['error']}"})
+
+        w = json.loads(wait_for_track.invoke({"job_id": s["job_id"], "timeout_s": 180}))
+        if "error" in w:
+            return json.dumps({"error": f"Track failed: {w['error']}"})
+
+        if action == "blur":
+            b = json.loads(add_blur_to_track.invoke({
+                "track_id": w["track_id"], "clip_id": clip_id, "padding": padding
+            }))
+            if "error" in b:
+                return json.dumps({"error": f"Blur failed: {b['error']}"})
+            return json.dumps({"ok": True, "track_id": w["track_id"],
+                                "message": f"Person tracked + blurred across {w.get('frame_count','?')} frames."})
+        return json.dumps({"ok": True, "track_id": w["track_id"],
+                            "message": f"Person tracked across {w.get('frame_count','?')} frames."})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
 TRACKING_TOOLS = [
     start_track, check_track_job, wait_for_track,
     list_tracks_for_clip, delete_track,
     add_blur_to_track, add_follow_to_track,
     track_and_blur_face, track_and_blur_text,
+    track_face_with_image,
+    track_face_and_blur_by_asset, track_person_by_asset,
 ]

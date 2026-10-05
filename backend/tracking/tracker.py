@@ -106,11 +106,15 @@ def _redetect(frame, mode: str, text_pattern: str, template_path: str | None,
     """Try to re-detect target. Returns best match closest to last known position, or None."""
     candidates: list[BBox] = []
 
-    if mode == "face":
-        candidates = detect_faces(frame)
-    elif mode == "face_ref" and ref_embedding is not None:
-        from backend.tracking.detector import detect_face_by_reference
-        return detect_face_by_reference(frame, ref_embedding)[0] if detect_face_by_reference(frame, ref_embedding) else None
+    if mode in ("face", "face_ref"):
+        if template_path and ref_embedding is not None:
+            # Specific face: match against reference embedding
+            from backend.tracking.detector import detect_face_by_reference
+            hits = detect_face_by_reference(frame, ref_embedding)
+            return hits[0] if hits else None
+        else:
+            # Auto-detect all faces, pick closest to last known position
+            candidates = detect_faces(frame)
     elif mode == "person":
         candidates = detect_persons(frame)
     elif mode == "text":

@@ -102,6 +102,7 @@ class ChatRequest(BaseModel):
     history: list[dict] = []
     port: int = 8000
     agent: str = "video"   # agent type: video | image | audio | pdf | director | home
+    asset_id: Optional[str] = None   # dragged asset from library/timeline
 
 class TranscribeRequest(BaseModel):
     assetId: str
@@ -835,7 +836,7 @@ def import_skill(req: SkillImportRequest):
     if '## Steps' not in req.content:
         raise HTTPException(400, "Skill file must contain a ## Steps section")
 
-    # Sanitise filename — alphanumeric + underscore only
+    # Sanitise filename  
     safe_name = _re.sub(r'[^a-z0-9_]', '_', req.filename.lower().removesuffix('.md'))
     if not safe_name:
         raise HTTPException(400, "Invalid filename")

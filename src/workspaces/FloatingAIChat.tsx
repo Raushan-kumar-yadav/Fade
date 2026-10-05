@@ -60,10 +60,16 @@ const _storeMessages: Map<string, Message[]> = new Map()
 const _storeHistory: Map<string, { role: string; text: string }[]> = new Map()
 const _storeInput: Map<string, string> = new Map()
 
+// Max conversation turns kept in memory — prevents "continue" re-triggering old tasks
+const MAX_HISTORY = 10  // 5 user + 5 ai turns
+
 function getStore(agentId: string) {
   if (!_storeMessages.has(agentId)) _storeMessages.set(agentId, [makeWelcome(agentId)])
-  if (!_storeHistory.has(agentId)) _storeHistory.set(agentId,  [])
+  if (!_storeHistory.has(agentId)) _storeHistory.set(agentId, [])
   if (!_storeInput.has(agentId)) _storeInput.set(agentId, '')
+  // Trim history so it never grows beyond MAX_HISTORY
+  const h = _storeHistory.get(agentId)!
+  if (h.length > MAX_HISTORY) _storeHistory.set(agentId, h.slice(-MAX_HISTORY))
   return {
     messages: _storeMessages.get(agentId)!,
     history:  _storeHistory.get(agentId)!,
@@ -359,6 +365,9 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
   // Widget position & size
   const [pos,  setPos]  = useState(() => contained ? { x: 20, y: 50 } : { x: window.innerWidth - 440, y: 72 })
   const [size, setSize] = useState({ w: 420, h: 520 })
+  // Dropped asset chip
+  const [droppedAsset, setDroppedAsset] = useState<{ assetId: string; filename: string; type: string } | null>(null)
+  const [isDragOver, setIsDragOver] = useState(false)
 
   const bottomRef  = useRef<HTMLDivElement>(null)
   const abortRef   = useRef<AbortController | null>(null)
@@ -401,14 +410,23 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
   async function send() {
     const text = input.trim()
     if (!text || busy) return
+    // Build message — append dropped asset context if any
+    const assetCtx = droppedAsset
+      ? `\n[Asset: ${droppedAsset.filename} | id:${droppedAsset.assetId}]`
+      : ''
+    const fullText = text + assetCtx
+    const assetId  = droppedAsset?.assetId ?? null
+    setDroppedAsset(null)
     setInput('')
     setSkillRun(null)
     inSkillPlan.current = false
     setBusy(true)
     setStatus({ phase: 'thinking', label: 'Thinking…' })
 
-    appendMsg({ id: uid(), role: 'user', text })
-    historyRef.current = [...historyRef.current, { role: 'user', text }]
+    appendMsg({ id: uid(), role: 'user', text: fullText })
+    // Cap history at MAX_HISTORY before pushing the new message
+    const cappedHistory = historyRef.current.slice(-MAX_HISTORY)
+    historyRef.current = [...cappedHistory, { role: 'user', text: fullText }]
     _storeHistory.set(agentId, historyRef.current)
 
     const aiId = uid()
@@ -425,10 +443,18 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
     abortRef.current = new AbortController()
 
     try {
+      // Detect "continue" / "ok" / "proceed" — these should NOT carry full history
+      // because the LLM would re-execute old tasks from the history.
+      const isContinue = /^(continue|ok|proceed|yes|go|next|sure|do it|run it|execute)$/i.test(fullText.trim())
+      // Keep only last 3 turns (6 msgs). For continue-type msgs: only last 1 AI reply for context.
+      const historySlice = isContinue
+        ? historyRef.current.slice(-2)   // just the last AI reply for context
+        : historyRef.current.slice(-6)   // last 3 turns
+
       const res = await fetch(`http://127.0.0.1:${port}/ai/chat`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ message: text, history: historyRef.current.slice(-20), port, agent: agentId }),
+        body:    JSON.stringify({ message: fullText, history: historySlice, port, agent: agentId, asset_id: assetId }),
         signal:  abortRef.current.signal,
       })
       const reader  = res.body!.getReader()
@@ -716,22 +742,73 @@ export default function FloatingAIChat({ onClose, contained = false, agentId = '
 
       {/* Input */}
       <div className="fchat__input-row">
-        <div className={`fchat__input-wrap ${glowClass}`}>
-          <textarea
-            ref={inputRef}
-            className="fchat__input"
-            placeholder={busy ? 'AI is working…' : 'Ask AI to edit, download media, create videos…'}
-            value={input}
-            rows={2}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-            disabled={busy}
-          />
+        {/* Dropped asset chip */}
+        {droppedAsset && (
+          <div className="fchat__drop-chip">
+            <img
+              src={`http://127.0.0.1:${port}/library/thumbnail/${droppedAsset.assetId}`}
+              alt={droppedAsset.filename}
+              className="fchat__drop-chip-thumb"
+              onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+            />
+            <span className="fchat__drop-chip-name">{droppedAsset.filename}</span>
+            <span className="fchat__drop-chip-type">{droppedAsset.type}</span>
+            <button
+              className="fchat__drop-chip-remove"
+              onClick={() => setDroppedAsset(null)}
+              title="Remove"
+            >×</button>
+          </div>
+        )}
+
+        <div className="fchat__input-bottom">
+          <div
+            className={`fchat__input-wrap ${glowClass}${isDragOver ? ' fchat__input-wrap--drop' : ''}`}
+            onDragOver={e => {
+              const hasFadeAsset =
+                e.dataTransfer.types.includes('application/fade-asset') ||
+                e.dataTransfer.types.includes('application/fade-scene-hit')
+              if (hasFadeAsset) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setIsDragOver(true) }
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={e => {
+              e.preventDefault()
+              setIsDragOver(false)
+              const raw = e.dataTransfer.getData('application/fade-asset') ||
+                          e.dataTransfer.getData('application/fade-scene-hit')
+              if (!raw) return
+              try {
+                const asset = JSON.parse(raw)
+                setDroppedAsset({
+                  assetId:  asset.assetId  ?? asset.id ?? '',
+                  filename: asset.filename ?? asset.name ?? 'asset',
+                  type:     asset.type     ?? asset.contentType ?? 'media',
+                })
+                inputRef.current?.focus()
+              } catch {}
+            }}
+          >
+            {isDragOver && (
+              <div className="fchat__drop-overlay">
+                <span>Drop to attach asset</span>
+              </div>
+            )}
+            <textarea
+              ref={inputRef}
+              className="fchat__input"
+              placeholder={busy ? 'AI is working…' : 'Ask AI to edit, download media, create videos…'}
+              value={input}
+              rows={2}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+              disabled={busy}
+            />
+          </div>
+          {busy
+            ? <button className="fchat__send fchat__send--stop" onClick={stop} title="Stop">■</button>
+            : <button className="fchat__send" onClick={send} title="Send (Enter)">▶</button>
+          }
         </div>
-        {busy
-          ? <button className="fchat__send fchat__send--stop" onClick={stop} title="Stop">■</button>
-          : <button className="fchat__send" onClick={send} title="Send (Enter)">▶</button>
-        }
       </div>
 
       {/* Resize handle — bottom-right corner */}
