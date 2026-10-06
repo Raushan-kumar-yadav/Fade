@@ -208,7 +208,9 @@ function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps =
 
   console.log(`[RenderEngine] Resizing to ${width}x${height} @ ${fps}fps`)
   console.log(`[RenderEngine] Init at preview res: ${pw}x${ph} (full: ${width}x${height}, scale: ${currentPreviewScale})`)
-  const effectsDir = path.join(getResourcesRoot(), 'backend', 'timeline', 'effects', 'sksl').replace(/\\/g, '/')
+  const _skslDirect   = path.join(getResourcesRoot(), 'backend', 'timeline', 'effects', 'sksl')
+  const _skslInternal = path.join(getResourcesRoot(), 'backend', '_internal', 'backend', 'timeline', 'effects', 'sksl')
+  const effectsDir = (fs.existsSync(_skslDirect) ? _skslDirect : _skslInternal).replace(/\\/g, '/')
   try {
     renderEngine.initialize(pw, ph, fps, effectsDir, pythonPort)
     renderEngine.setFrameReadyCallback(viewportFrameReadyCb)
@@ -225,7 +227,9 @@ function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps =
  
 function initRenderEngineFullRes(pythonPort: number, width = 1920, height = 1080, fps = 30): void {
   if (!renderEngine) return
-  const effectsDir = path.join(getResourcesRoot(), 'backend', 'timeline', 'effects', 'sksl').replace(/\\/g, '/')
+  const _skslDirect2   = path.join(getResourcesRoot(), 'backend', 'timeline', 'effects', 'sksl')
+  const _skslInternal2 = path.join(getResourcesRoot(), 'backend', '_internal', 'backend', 'timeline', 'effects', 'sksl')
+  const effectsDir = (fs.existsSync(_skslDirect2) ? _skslDirect2 : _skslInternal2).replace(/\\/g, '/')
   try {
     renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
     renderEngine.setFrameReadyCallback(viewportFrameReadyCb)

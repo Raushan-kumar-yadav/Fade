@@ -87,6 +87,16 @@ foreach ($kv in $copies.GetEnumerator()) {
     }
 }
 
+# C++ renderer also needs sksl at resources/backend/timeline/effects/sksl (not _internal)
+# because main.ts uses getResourcesRoot() which returns process.resourcesPath directly
+$skslSrc = Join-Path $ROOT "backend\timeline\effects\sksl"
+$skslCppDst = "$dst_backend\timeline\effects\sksl"
+if (Test-Path $skslSrc) {
+    New-Item $skslCppDst -ItemType Directory -Force | Out-Null
+    Copy-Item "$skslSrc\*" $skslCppDst -Recurse -Force
+    Write-Host "  [OK] sksl → C++ renderer path (backend\timeline\effects\sksl)" -ForegroundColor Green
+}
+
 # 6. Verify
 Write-Host "`n[6/6] Verifying key files..." -ForegroundColor Yellow
 $checks = @(

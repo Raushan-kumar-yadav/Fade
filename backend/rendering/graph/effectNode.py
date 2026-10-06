@@ -6,8 +6,10 @@ from backend.rendering.renderContext import RenderContext
 
 class EffectNode(BaseNode):
 
-    # Effects that overlay on top of already-rendered content (not saveLayer-based)
-    _OVERLAY_EFFECTS = {"VignetteEffect", "ChromaKeyEffect"}
+    # Effects that overlay on top of already-rendered content (not saveLayer-based).
+    # SkslEffect reads the canvas via getSurface() — it MUST be an overlay effect
+    # because the _CaptureSurface shim has no real surface to snapshot from.
+    _OVERLAY_EFFECTS = {"VignetteEffect", "ChromaKeyEffect", "SkslEffect", "DeepGlowEffect"}
 
     def __init__(self, effect, clipId: str) -> None:
         super().__init__(f"effect_{effect.__class__.__name__}_{clipId}")
