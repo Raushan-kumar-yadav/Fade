@@ -70,8 +70,7 @@ def plan_from_skill(skill: SkillDef, goal: str, agent_type: str | None = None) -
             return existing
 
     plan = create_plan(goal=goal, agent_type=agent_type or skill.agent_type)
-    # Tag with skill name via a special prefix in goal field (task_store has no skill_name col yet)
-    # We encode it as a JSON prefix — backward-compatible
+
     plan.goal = goal  # keep original for display
 
     for ss in sorted(skill.steps, key=lambda x: x.order):

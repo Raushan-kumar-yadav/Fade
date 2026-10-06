@@ -11,8 +11,11 @@
         "build": "vite build && npm run build:electron",
         "start": "electron . --remote-debugging-port=9222",
         "build:native": "cmake-js compile --directory renderer --out renderer/build",
-        "build:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \".venv\\Scripts\\pyinstaller.exe backend.spec --distpath pyinstaller-dist --workpath pyinstaller-build --noconfirm\"",
+        "build:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \".venv\\Scripts\\python.exe -m PyInstaller backend.spec --distpath pyinstaller-dist --workpath pyinstaller-build --noconfirm\"",
         "build:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build_full.ps1",
+        "build:backend-only": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build_full.ps1 -BackendOnly",
+        "build:ui-only": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build_full.ps1 -UiOnly",
+        "hotfix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\hotfix_deploy.ps1",
         "dist": "npm run build && electron-builder build --win --publish never"
 
     },
@@ -74,13 +77,6 @@
             {
                 "from": "templates",
                 "to": "templates",
-                "filter": [
-                    "**/*"
-                ]
-            },
-            {
-                "from": "AIModels/kokoro",
-                "to": "AIModels/kokoro",
                 "filter": [
                     "**/*"
                 ]

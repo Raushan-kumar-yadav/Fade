@@ -18,7 +18,10 @@ _embedder_type = "hash"
 # Tier 1 — fastembed (torch-free, pure ONNX)
 try:
     from fastembed import TextEmbedding as _FE
-    _fe_model = _FE("BAAI/bge-small-en-v1.5")
+    from backend.onnx_providers import onnx_providers as _onnx_providers
+    # Explicit providers: fastembed's default asks for CUDA whenever onnxruntime-gpu
+    # is installed, which logs an error on machines without the CUDA libraries.
+    _fe_model = _FE("BAAI/bge-small-en-v1.5", providers=_onnx_providers())
     _embedder = _fe_model
     _embedder_type = "fastembed"
     print("[indexer] Using fastembed embedder (Tier 1, torch-free ONNX)", flush=True)

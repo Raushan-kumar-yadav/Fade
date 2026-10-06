@@ -295,6 +295,8 @@ async def lifespan(app: FastAPI):
     def _setup_tesseract():
         try:
             import sys as _sys, os as _os
+            if getattr(_sys, "frozen", False):
+                return   # packaged builds ship Tesseract in AIModels/tesseract
             _scripts = _os.path.join(_os.path.dirname(__file__), '..', 'scripts')
             if _scripts not in _sys.path:
                 _sys.path.insert(0, _os.path.normpath(_scripts))

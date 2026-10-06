@@ -294,8 +294,21 @@ class KokoroTTSGenerator:
                     print(f"[KokoroTTS] OK {fname} ({size_mb}MB) saved to AIModels/", flush=True)
 
 
-            print("[KokoroTTS] Loading ONNX model ...", flush=True)
-            kokoro_instance = Kokoro(str(model_path), str(voices_path))
+            print(f"[KokoroTTS] Loading ONNX model ({model_path.name}) ...", flush=True)
+            # Build the session ourselves: only providers that can really load (no
+            # CUDA/TensorRT errors on machines without them), and errors-only logging,
+            # because the fp16 model makes ONNX Runtime print ~150 harmless
+            # "can't constant fold Reciprocal node" warnings on every load.
+            import onnxruntime as _ort
+            from backend.onnx_providers import onnx_providers as _onnx_providers
+            _so = _ort.SessionOptions()
+            _so.log_severity_level = 3
+            _session = _ort.InferenceSession(str(model_path), sess_options=_so,
+                                             providers=_onnx_providers())
+            if hasattr(Kokoro, "from_session"):
+                kokoro_instance = Kokoro.from_session(_session, str(voices_path))
+            else:   # older kokoro-onnx: no way to hand it a session
+                kokoro_instance = Kokoro(str(model_path), str(voices_path))
 
              
              

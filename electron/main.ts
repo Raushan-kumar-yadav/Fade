@@ -125,8 +125,22 @@ let _resizeTimer: ReturnType<typeof setTimeout> | null = null
 let _isExporting = false   // when true, render:resize IPC is silently ignored
 
  
+// The UI process behind mainWindow can die (crash, out-of-memory, Ctrl+C in the
+// dev terminal) while the window object and the native engine live on. Sending
+// to it then makes Electron log "Render frame was disposed…" for every message,
+// i.e. once per preview frame. Track liveness and drop messages instead.
+let rendererAlive = false
+let _rendererCrashTimes: number[] = []
+
+function sendToMain(channel: string, ...args: unknown[]): void {
+  if (!rendererAlive || !mainWindow || mainWindow.isDestroyed()) return
+  const wc = mainWindow.webContents
+  if (wc.isDestroyed() || wc.isCrashed()) return
+  wc.send(channel, ...args)
+}
+
 const viewportFrameReadyCb = (frameNum: number) => {
-  mainWindow?.webContents.send('render:frame-ready', frameNum)
+  sendToMain('render:frame-ready', frameNum)
 }
 
  
@@ -369,11 +383,38 @@ function killPythonTree(): void {
   pyProcess = null
 }
 
+// The native render engine owns worker threads and a thread-safe callback that are
+// never torn down (the addon has no shutdown call), so Electron's normal exit can
+// hang forever after the last window is gone: an invisible leftover Fade.exe that
+// keeps the install folder locked and blocks the next build or update.
+// Arm an external watchdog that ends THIS process if it is still alive a few
+// seconds after shutdown started. A clean exit simply beats it.
+let _exitWatchdogArmed = false
+function armExitWatchdog(): void {
+  if (_exitWatchdogArmed || process.platform !== 'win32') return
+  _exitWatchdogArmed = true
+  const exe = path.basename(process.execPath)
+  // ping = a ~6 s delay that works without a console (timeout.exe does not).
+  const cmd = `ping -n 7 127.0.0.1 >nul & taskkill /F /FI "PID eq ${process.pid}" /FI "IMAGENAME eq ${exe}" >nul 2>&1`
+  try {
+    spawn('cmd.exe', ['/d', '/s', '/c', `"${cmd}"`], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+      cwd: process.env.SystemRoot || 'C:\\Windows',   // never hold the app folder open
+    }).unref()
+  } catch (e) {
+    console.warn('[Cleanup] could not arm exit watchdog:', e)
+  }
+}
+
 function doCleanup(): void {
-  if (appQuitting) return   // idempotent 
+  if (appQuitting) return   // idempotent
   appQuitting  = true
   pyKilledByUs = true
   console.log('[Cleanup] Starting graceful shutdown…')
+  armExitWatchdog()
 
   // Pause render engine first so no more callbacks fire
   try { renderEngine?.pause() } catch { /* ignore */ }
@@ -439,15 +480,51 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
+  rendererAlive = true
+
   mainWindow.on('close', () => {
     doCleanup()
   })
 
+  mainWindow.on('closed', () => {
+    rendererAlive = false
+    mainWindow = null
+  })
+
+  mainWindow.webContents.on('dom-ready', () => { rendererAlive = true })
+
+  // The UI process died. Stop producing frames for it, say why, and bring the
+  // UI back — project state lives in the Python backend, so a reload restores it.
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    rendererAlive = false
+    console.error(`[Electron] UI process gone — reason=${details.reason} exitCode=${details.exitCode}`)
+    try { renderEngine?.pause() } catch { /* ignore */ }
+    if (appQuitting || details.reason === 'clean-exit') return
+
+    const now = Date.now()
+    _rendererCrashTimes = _rendererCrashTimes.filter(t => now - t < 60_000)
+    _rendererCrashTimes.push(now)
+    if (_rendererCrashTimes.length > 3) {
+      console.error('[Electron] UI crashed more than 3 times in a minute — not reloading again')
+      return
+    }
+    setTimeout(() => {
+      if (appQuitting || !mainWindow || mainWindow.isDestroyed()) return
+      console.log('[Electron] Reloading UI after crash…')
+      mainWindow.webContents.reload()
+    }, 500)
+  })
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.warn('[Electron] UI is unresponsive')
+  })
+
   mainWindow.webContents.on('did-finish-load', () => {
+    rendererAlive = true
     mainReady = true
     sendSplash('UI loaded', 90, 'ok')
     if (detectedPort !== null) {
-      mainWindow?.webContents.send('backend:port', detectedPort)
+      sendToMain('backend:port', detectedPort)
       console.log('[Electron] (re-)sent backend:port', detectedPort, 'after did-finish-load')
     }
     tryRevealMain()
@@ -735,7 +812,7 @@ ipcMain.handle('export:capture-pdf', async (_event, config: {
 ipcMain.on('export:start', async (_event, config) => {
   if (!renderEngine) {
     // Native engine not available  
-    mainWindow?.webContents.send('export:progress', {
+    sendToMain('export:progress', {
       frame: 0, total: 0, done: true,
       error: 'Native render engine not loaded — use Python export fallback'
     })
@@ -879,7 +956,7 @@ ipcMain.on('export:start', async (_event, config) => {
 
         //  Capture and push every frame
         const totalWebCompFrames = clips.reduce((s, c) => s + (c.endFrame - c.startFrame), 0)
-        mainWindow?.webContents.send('export:webcomp-phase', {
+        sendToMain('export:webcomp-phase', {
           active: true, done: 0, total: totalWebCompFrames
         })
 
@@ -902,13 +979,13 @@ ipcMain.on('export:start', async (_event, config) => {
             }
             doneFrames++
             if (doneFrames % 5 === 0 || doneFrames === totalWebCompFrames) {
-              mainWindow?.webContents.send('export:webcomp-phase', {
+              sendToMain('export:webcomp-phase', {
                 active: true, done: doneFrames, total: totalWebCompFrames
               })
             }
           }
         }
-        mainWindow?.webContents.send('export:webcomp-phase', {
+        sendToMain('export:webcomp-phase', {
           active: false, done: doneFrames, total: totalWebCompFrames
         })
         console.log(`[Export] Pre-rendered ${doneFrames} WebComp frames into full-res engine`)
@@ -1037,7 +1114,7 @@ ipcMain.on('export:start', async (_event, config) => {
 
          
         if (f % 10 === 0 || f === totalFrames - 1) {
-          mainWindow?.webContents.send('export:progress', {
+          sendToMain('export:progress', {
             frame: f + 1, total: totalFrames, done: false, error: ''
           })
         }
@@ -1083,7 +1160,7 @@ ipcMain.on('export:start', async (_event, config) => {
      
     if (exitCode === 0 && !exportError && !exportCancelled && portSnapshot) {
       console.log('[Export] Starting audio mux pass...')
-      mainWindow?.webContents.send('export:progress', {
+      sendToMain('export:progress', {
         frame: totalFrames, total: totalFrames, done: false,
         error: '', status: 'audio'
       })
@@ -1217,7 +1294,7 @@ ipcMain.on('export:start', async (_event, config) => {
     }
 
     // Report final done event
-    mainWindow?.webContents.send('export:progress', {
+    sendToMain('export:progress', {
       frame: exportCancelled ? 0 : totalFrames,
       total: totalFrames,
       done: true,
@@ -1233,7 +1310,7 @@ ipcMain.on('export:start', async (_event, config) => {
     }
   })().catch(err => {
     console.error('[Export] Unexpected export error:', err)
-    mainWindow?.webContents.send('export:progress', {
+    sendToMain('export:progress', {
       frame: 0, total: totalFrames, done: true,
       error: String(err)
     })

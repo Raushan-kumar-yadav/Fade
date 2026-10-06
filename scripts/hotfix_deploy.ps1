@@ -9,8 +9,9 @@
 #>
 param([string[]]$Files = @())
 
-$SRC = "E:\Echo\backend"
-$DST = "E:\Echo\dist-app\win-unpacked\resources\backend\_internal\backend"
+$ROOT = Split-Path $PSScriptRoot -Parent
+$SRC = Join-Path $ROOT "backend"
+$DST = Join-Path $ROOT "dist-app\win-unpacked\resources\backend\_internal\backend"
 
 if (-not (Test-Path $DST)) {
     Write-Host "ERROR: Build not found at $DST" -ForegroundColor Red; exit 1
@@ -33,4 +34,4 @@ foreach ($f in $list) {
     if (Test-Path $cache) { Get-ChildItem $cache -Filter "$stem*.pyc" | Remove-Item -Force }
     Write-Host "  ✓ $f"
 }
-Write-Host "Hotfix deployed — reopen Echo.exe" -ForegroundColor Green
+Write-Host "Hotfix deployed — reopen Fade.exe" -ForegroundColor Green

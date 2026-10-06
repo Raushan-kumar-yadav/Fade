@@ -71,7 +71,10 @@ if (Test-Path $tvSrc) {
 # it is dynamically loaded. Without it, FaceDetector falls back to OpenCV.
 Write-Host ""
 Write-Host "[2.5] Matplotlib dependencies..." -ForegroundColor Yellow
-if (Test-Path $venv) {
+if (Test-Path "$internal\matplotlib\__init__.py") {
+    # backend.spec no longer excludes matplotlib, so PyInstaller bundles it itself.
+    Ok "Matplotlib already bundled by PyInstaller"
+} elseif (Test-Path $venv) {
     $mplDeps = @("matplotlib", "mpl_toolkits", "cycler", "kiwisolver", "fontTools", "contourpy", "pyparsing", "dateutil", "packaging")
     $mplCopied = 0
     foreach ($dep in $mplDeps) {
@@ -188,21 +191,101 @@ if (Test-Path $rendererSrc) {
     }
 } else { Warn "renderer/build/Release not found" }
 
+# ---- 8.5 MSVC runtime for the C++ renderer ----------------------------------
+# render_engine.node is linked against the dynamic MSVC runtime (msvcp140.dll,
+# vcruntime140.dll, vcruntime140_1.dll). Electron does not ship those, so on a PC
+# without the Visual C++ Redistributable the addon fails to load and the app
+# silently falls back to the slow Python compositor. Windows resolves an addon's
+# dependencies from the addon's own folder first, so place them beside it.
+Write-Host ""
+Write-Host "[8.5] MSVC runtime for render_engine.node..." -ForegroundColor Yellow
+if (Test-Path $rendererDst) {
+    $crtCopied = 0
+    foreach ($dll in @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")) {
+        $candidates = @("$internal\$dll", "$env:SystemRoot\System32\$dll")
+        $src = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if (-not $src) { Warn "$dll not found in the backend bundle or System32"; continue }
+        $dst = "$rendererDst\$dll"
+        if ((Test-Path $dst) -and ((Get-Item $dst).Length -eq (Get-Item $src).Length)) {
+            $crtCopied++     # already in place (and possibly loaded by a running app)
+            continue
+        }
+        try {
+            Copy-Item $src $dst -Force
+            $crtCopied++
+        } catch { Warn "$dll could not be copied (file in use?)" }
+    }
+    Ok "MSVC runtime ($crtCopied of 3 DLLs beside render_engine.node)"
+} else { Warn "renderer destination missing - MSVC runtime not copied" }
+
+# ---- 8.6 Prompt-injection shield ---------------------------------------------
+# backend.spec bundles it; this is a fallback for builds made from an old spec.
+Write-Host ""
+Write-Host "[8.6] Prompt-injection shield..." -ForegroundColor Yellow
+$shieldSrc = "$ROOT\cyberSecurityRepos\injection_shield\src"
+$shieldDst = "$internal\cyberSecurityRepos\injection_shield\src"
+if (Test-Path "$shieldDst\shield") {
+    Ok "injection_shield already bundled"
+} elseif (Test-Path $shieldSrc) {
+    New-Item $shieldDst -ItemType Directory -Force | Out-Null
+    Copy-Item "$shieldSrc\*" $shieldDst -Recurse -Force
+    Ok "injection_shield copied"
+} else { Warn "cyberSecurityRepos\injection_shield\src not found - prompt shield disabled in this build" }
+
 # ---- 9. Verify critical files -----------------------------------------------
+# REQUIRED: the build is broken without these -> exit 1.
+# FEATURE : one feature is degraded without these -> listed as [FAIL], exit 1 too,
+#           because a silent fallback in the packaged app is hard to notice later.
 Write-Host ""
 Write-Host "[9] Verifying critical files..." -ForegroundColor Yellow
+$rel = "$res\renderer\build\Release"
 $checks = [ordered]@{
-    "Fade.exe"              = "$ROOT\dist-app\$DistName\Fade.exe"
-    "backend.exe"           = "$backend\backend.exe"
-    ".env"                  = "$backend\.env"
-    "_root.py"              = "$internal\backend\_root.py"
-    "render_engine.node"    = "$res\renderer\build\Release\render_engine.node"
-    "sksl/gaussian (C++)"   = "$backend\timeline\effects\sksl\gaussian_blur.sksl"
-    "sksl/gaussian (py)"    = "$internal\backend\timeline\effects\sksl\gaussian_blur.sksl"
-    "torchvision/_C_stable" = "$internal\torchvision\_C_stable.pyd"
-    "yolov8n.pt"            = "$res\AIModels\yolov8n.pt"
-    "splash.html"           = "$splashDst"
-    "pii/scrubber.py"       = "$res\pii\scrubber.py"
+    # --- application shell
+    "Fade.exe"                         = "$ROOT\dist-app\$DistName\Fade.exe"
+    "Electron main.js"                 = "$res\app\dist-electron\main.js"
+    "Electron preload.js"              = "$res\app\dist-electron\preload.js"
+    "UI index.html"                    = "$res\app\dist\index.html"
+    "splash.html"                      = "$splashDst"
+    # --- python backend
+    "backend.exe"                      = "$backend\backend.exe"
+    ".env"                             = "$backend\.env"
+    "_root.py"                         = "$internal\backend\_root.py"
+    "AI skills"                        = "$internal\backend\ai\skills\educational_video.md"
+    "pii/scrubber.py"                  = "$res\pii\scrubber.py"
+    "templates"                        = "$res\templates"
+    # --- C++ renderer + its native libraries
+    "render_engine.node"               = "$rel\render_engine.node"
+    "ffmpeg.exe"                       = "$rel\ffmpeg.exe"
+    "ffprobe.exe"                      = "$rel\ffprobe.exe"
+    "avcodec-61.dll"                   = "$rel\avcodec-61.dll"
+    "avformat-61.dll"                  = "$rel\avformat-61.dll"
+    "avutil-59.dll"                    = "$rel\avutil-59.dll"
+    "swscale-8.dll"                    = "$rel\swscale-8.dll"
+    "swresample-5.dll"                 = "$rel\swresample-5.dll"
+    "msvcp140.dll (renderer)"          = "$rel\msvcp140.dll"
+    "vcruntime140.dll (renderer)"      = "$rel\vcruntime140.dll"
+    "vcruntime140_1.dll (renderer)"    = "$rel\vcruntime140_1.dll"
+    "vulkan-1.dll"                     = "$ROOT\dist-app\$DistName\vulkan-1.dll"
+    "sksl/gaussian (C++)"              = "$backend\timeline\effects\sksl\gaussian_blur.sksl"
+    "sksl/gaussian (py)"               = "$internal\backend\timeline\effects\sksl\gaussian_blur.sksl"
+    # --- python native libraries / data that PyInstaller cannot find by itself
+    "torch (torch_cpu.dll)"            = "$internal\torch\lib\torch_cpu.dll"
+    "torchvision/_C_stable"            = "$internal\torchvision\_C_stable.pyd"
+    "onnxruntime"                      = "$internal\onnxruntime\capi"
+    "kokoro_onnx/config.json (TTS)"    = "$internal\kokoro_onnx\config.json"
+    "espeak-ng.dll (TTS)"              = "$internal\espeakng_loader\espeak-ng.dll"
+    "espeak-ng-data (TTS)"             = "$internal\espeakng_loader\espeak-ng-data"
+    "mediapipe C library (faces)"      = "$internal\mediapipe\tasks\c\libmediapipe.dll"
+    "whisper assets (captions)"        = "$internal\whisper\assets\mel_filters.npz"
+    "scipy (OCR tracking)"             = "$internal\scipy"
+    "matplotlib"                       = "$internal\matplotlib"
+    "reportlab (PDF export)"           = "$internal\reportlab"
+    "injection shield"                 = "$internal\cyberSecurityRepos\injection_shield\src\shield"
+    # --- models
+    "yolov8n.pt"                       = "$res\AIModels\yolov8n.pt"
+    "Kokoro voices"                    = "$res\AIModels\kokoro\voices-v1.0.bin"
+    "Tesseract"                        = "$res\AIModels\tesseract\tesseract.exe"
+    "face model (blaze_face)"          = "$res\AIModels\blaze_face_short_range.tflite"
 }
 
 $ok = 0; $fail = 0
@@ -210,6 +293,11 @@ foreach ($kv in $checks.GetEnumerator()) {
     if (Test-Path $kv.Value) { Ok $kv.Key; $ok++ }
     else                     { Fail $kv.Key; $fail++ }
 }
+
+# Kokoro needs one of the two model files (fp16 is the fast one).
+$kokoroModels = @(Get-ChildItem "$res\AIModels\kokoro" -Filter "kokoro-v1.0.*.onnx" -ErrorAction SilentlyContinue)
+if ($kokoroModels.Count -gt 0) { Ok ("Kokoro model (" + ($kokoroModels.Name -join ", ") + ")"); $ok++ }
+else                           { Fail "Kokoro model (kokoro-v1.0.fp16.onnx)"; $fail++ }
 
 $col = if ($fail -eq 0) { "Green" } else { "Yellow" }
 Write-Host ""
