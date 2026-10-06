@@ -19,7 +19,7 @@ No build required. Download the self-contained Windows executable:
 
 **Google Drive:** https://drive.google.com/drive/folders/10WzWDuEOPObGmxKkgonT9sPAAYzh8YUw?usp=sharing
 
-Extract and double-click `Echo.exe`. All models and dependencies are bundled.
+Extract and double-click `Fade.exe`. All models and dependencies are bundled.
 If Windows SmartScreen warns, click **More info -> Run anyway**.
 
 ---

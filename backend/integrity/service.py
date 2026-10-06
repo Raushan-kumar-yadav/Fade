@@ -148,12 +148,11 @@ class ArtifactIntegrityService:
         
         if wm_ok:
             logger.info("Watermarking done. Replacing original file with watermarked copy...")
-            # 1. Get the hash of the newly watermarked file
+ 
             from backend.integrity.echo_integrity import sha256_file
             final_sha256 = sha256_file(watermarked_output_path)
             final_size = os.path.getsize(watermarked_output_path)
             
-            # 2. Overwrite the clean file so the user only gets ONE final output file
             try:
                 os.replace(watermarked_output_path, video_path)
             except OSError:
@@ -162,7 +161,6 @@ class ArtifactIntegrityService:
                 
             watermarked_output_path = video_path
 
-        # Persist extra fields + update the sha256 to the final watermarked hash
         svc.db.execute(
             "UPDATE artifacts SET sha256=?, size=?, phash=?, wm_id=? WHERE id=?",
             (final_sha256, final_size, phash, wm_id, artifact_id),
