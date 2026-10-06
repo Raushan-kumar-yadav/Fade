@@ -171,9 +171,15 @@ def draw_text(canvas: skia.Canvas, clip: "TextClip", frame: int) -> None:
     canvas.save()
     clip.transform.applyToCanvas(canvas)
 
+    # Vertical centering: match C++ DrawText.cpp behavior.
+    # originY = -totalH/2 + font_size  so the text block is centered on the canvas origin.
+    # (pos=0,0 → canvas origin = comp center → text appears visually centered.)
+    total_h = line_height * len(lines)
+    origin_y = -total_h / 2.0 + s.fontSize
+
     char_counter = 0
     for i, line in enumerate(lines):
-        baseline_y = (i + 1) * line_height
+        baseline_y = origin_y + i * line_height
 
         # Measure line width for alignment
         line_w = _measure_text_with_spacing(font, line, letter_extra)

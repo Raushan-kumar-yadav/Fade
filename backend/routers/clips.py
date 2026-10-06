@@ -197,6 +197,8 @@ class TextClipRequest(BaseModel):
     text: str = "New Text"      # promoted
     fontFamily: str = "Arial"   # promoted
     style:       dict = {}       # full style dict override
+    x: float = 960.0            # default horizontal center (1920/2)
+    y: float = 540.0            # default vertical center (1080/2)
     compId: str | None = None   # target comp; None = root/main timeline
 
 
@@ -215,6 +217,7 @@ def addTextClip(req: TextClipRequest):
     merged_style = {"fontFamily": req.fontFamily, **req.style}
     clip  = TextClip(clipId=str(uuid.uuid4()), startFrame=req.startFrame,
                      duration=req.duration, style=TextStyle.fromDict(merged_style))
+    clip.transform.position.setBase(req.x, req.y)
     # Always apply the promoted text field directly
     clip.style.text = req.text
     track.addClip(clip)

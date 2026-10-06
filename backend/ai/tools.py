@@ -744,8 +744,8 @@ def add_text_clip(
     all_caps: bool = False,
     letter_spacing: float = 0.0,
     #   Layout    
-    alignment: str = "left",
-    max_width: float = 0.0,
+    alignment: str = "center",   # center | left | right  (default: center = composition center)
+    max_width: float = 1760.0,    # default safe-area width for 16:9; 0 = no wrap
     line_height: float = 1.2,
     #   Fill color (RGBA 0-1)  
     color_r: float = 1.0,
@@ -798,9 +798,10 @@ def add_text_clip(
         letter_spacing:   Extra pixels between characters (tracking).
 
         alignment:        "left" | "center" | "right" — horizontal text alignment.
-        max_width:        Pixel width before word-wrapping to next line.
-                          0 = no wrap. Set to column width for documents.
-                          A4 content width = 2000px. 16:9 safe width = 1760px.
+                          DEFAULT is "center" so text appears centered in the composition.
+                          Use "left" + pos_x=-880 for left-anchored text.
+        max_width:        Pixel width before word-wrapping. Default=1760 (16:9 safe width).
+                          Set to 0 to disable wrapping.
         line_height:      Line height multiplier (1.2 = 120% of font_size).
 
         color_r/g/b/a:    Fill color as RGBA floats 0-1. White=(1,1,1,1).
