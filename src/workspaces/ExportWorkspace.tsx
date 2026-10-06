@@ -63,11 +63,11 @@ export default function ExportWorkspace() {
 
   // Integrity state  
   const [integrityEnabled, setIntegrityEnabled] = useState(false)
-  type IState = {phase:'idle'}|{phase:'running'}|{phase:'done';artifactId:string;tx:string|null;wmPath:string|null}|{phase:'error';msg:string}
+  type IState = {phase:'idle'}|{phase:'running'; pct: number; label: string}|{phase:'done';artifactId:string;tx:string|null;wmPath:string|null}|{phase:'error';msg:string}
   const [iState, setIState] = useState<IState>({phase:'idle'})
 
   const runIntegrity = useCallback(async (filePath: string) => {
-    setIState({phase:'running'})
+    setIState({phase:'running', pct: 0, label: 'Computing SHA-256 Hash...'})
     try {
       const r = await fetch(`http://127.0.0.1:${port}/integrity/register`, {
         method: 'POST',
@@ -126,6 +126,64 @@ export default function ExportWorkspace() {
     window.addEventListener('fade:integrity-toggle', handler)
     return () => window.removeEventListener('fade:integrity-toggle', handler)
   }, [])
+
+  // Fake progress bar for Integrity Phase
+  useEffect(() => {
+    if (iState.phase !== 'running') return
+    
+    const steps = [
+      { p: 10,  time: 1000, label: 'Computing SHA-256 Hash...' },
+      { p: 30,  time: 3000, label: 'Extracting Perceptual Signature (pHash)...' },
+      { p: 50,  time: 6000, label: 'Embedding Invisible Watermark...' },
+      { p: 70,  time: 15000, label: 'Connecting to Render Cloud (Waking up server)...' },
+      { p: 90,  time: 35000, label: 'Uploading cryptographic proof to ledger...' },
+      { p: 98,  time: 60000, label: 'Waiting for blockchain confirmation...' }
+    ]
+    
+    let timerId: any
+    let currentStepIndex = 0
+    let currentPct = 0
+    let targetPct = steps[0].p
+    
+    const tick = () => {
+      currentPct += 1
+      if (currentPct > targetPct) currentPct = targetPct
+      
+      let nextLabel = iState.label
+      if (currentStepIndex < steps.length - 1) {
+        const nextStep = steps[currentStepIndex + 1]
+        // estimate time elapsed based on ticks (roughly 500ms)
+        // just use a simple time based progression:
+      }
+      
+      setIState(prev => {
+        if (prev.phase !== 'running') return prev
+        return { ...prev, pct: currentPct }
+      })
+    }
+    
+    const startTime = Date.now()
+    const ival = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      // Find current step
+      let step = steps[0]
+      for (let i = steps.length - 1; i >= 0; i--) {
+        if (elapsed >= steps[i].time) {
+          step = steps[i]
+          break
+        }
+      }
+      
+      setIState(prev => {
+        if (prev.phase !== 'running') return prev
+        // Smoothly approach the step's max percentage
+        const newPct = prev.pct + (step.p - prev.pct) * 0.05
+        return { ...prev, pct: newPct, label: step.label }
+      })
+    }, 200)
+    
+    return () => clearInterval(ival)
+  }, [iState.phase])
 
 
   const fetchComps = async () => {
@@ -504,9 +562,17 @@ export default function ExportWorkspace() {
         {integrityEnabled && iState.phase !== 'idle' && (
           <div className="export-integrity-status">
             {iState.phase === 'running' && (
-              <div className="export-integrity-status__running">
-                <span className="export-integrity-spin" />
-                Hashing &bull; Fingerprinting &bull; Watermarking&hellip;
+              <div className="export-progress">
+                <div className="export-progress__label">
+                  <span className="export-phase-badge export-phase-badge--audio">
+                    <span className="export-integrity-spin" style={{marginRight:6, display:'inline-block'}} /> 
+                    {iState.label}
+                  </span>
+                  <span>{Math.floor(iState.pct)}%</span>
+                </div>
+                <div className="export-progress__bar">
+                  <div className="export-progress__fill export-progress__fill--webcomp" style={{width: `${iState.pct}%`}}/>
+                </div>
               </div>
             )}
             {iState.phase === 'done' && (

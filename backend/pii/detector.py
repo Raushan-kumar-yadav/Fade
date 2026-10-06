@@ -10,7 +10,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
  
-_PII_DIR = Path(__file__).resolve().parent.parent.parent / "pii"
+from backend._root import PROJECT_ROOT
+
+_PII_DIR = PROJECT_ROOT / "pii"
 if str(_PII_DIR) not in sys.path:
     sys.path.insert(0, str(_PII_DIR))
 

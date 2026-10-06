@@ -57,8 +57,10 @@ from backend.ai.tools import (
     patch_clip_effect,
     add_text_clip,
     set_text_style,
+    get_comp_resolution,
     layout_text_block,
     layout_element,
+
     add_solid_clip,
     add_shape_clip,
     add_svg_clip,

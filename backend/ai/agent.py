@@ -241,7 +241,8 @@ def _get_user_name() -> str:
     try:
         from pathlib import Path as _Path
         import sqlite3 as _sqlite3
-        db_path = _Path(__file__).resolve().parent.parent.parent / "virality.db"
+        from backend._root import user_data_dir
+        db_path = user_data_dir() / "virality.db"
         if not db_path.exists():
             return ""
         conn = _sqlite3.connect(str(db_path))
@@ -768,21 +769,28 @@ Current project context will be injected by the router.
 
 TEXT STYLING & LAYOUT — FULL WORKFLOW:
 All text clips support rich styling via add_text_clip parameters. Use these tools:
-  1. layout_text_block(comp_type, blocks) → get x, y, max_width for each text block
+  STEP 0 (MANDATORY): ALWAYS call get_comp_resolution(comp_id) first.
+    → This gives you the REAL width, height, center_x, center_y, safe zones.
+    → NEVER assume 1920×1080 or any fixed size. Compositions can be any resolution.
+    → Use center_x/center_y from the result for centered text pos_x/pos_y.
+    → Use safe_x_min/safe_x_max, safe_y_min/safe_y_max for boundary-safe placement.
+  1. layout_text_block(comp_type, blocks, comp_id=comp_id) → get x, y, max_width for each text block
   2. add_text_clip(..., alignment, max_width, font_size, bold, shadow, bg_enabled) → place
   3. animate_property(clip_id, "pos_x", frame, x) + animate_property(..., "pos_y", frame, y)
   4. set_text_style(clip_id, ...) → patch any style after placement
 
 ELEMENT POSITIONING (images, logos, shapes, WebComps, any clip):
-Use layout_element() for anchor-based placement of ANY non-text element:
+Use layout_element() for anchor-based placement of ANY non-text element.
+STEP 0: Call get_comp_resolution(comp_id) first — pass actual width/height to layout_element.
   layout_element(comp_type, anchor, element_width, element_height, margin_x, margin_y)
   anchor options: "top-left" | "top-center" | "top-right"
                   "center-left" | "center" | "center-right"
                   "bottom-left" | "bottom-center" | "bottom-right"
 
   Examples:
-    Logo bottom-right (16:9 video):
-      pos = layout_element("16x9", "bottom-right", 200, 80)
+    Logo bottom-right — first get resolution, then:
+      res = get_comp_resolution(comp_id)  → width=W, height=H
+      pos = layout_element(res.comp_type, "bottom-right", 200, 80)
       → place_clip(asset_id), then animate_property(clip_id, "pos_x", 0, pos.x)
                                     animate_property(clip_id, "pos_y", 0, pos.y)
 
@@ -790,10 +798,10 @@ Use layout_element() for anchor-based placement of ANY non-text element:
       pos = layout_element("a4", "center", 1200, 800)
 
     Brand watermark bottom-left with custom margin:
-      pos = layout_element("16x9", "bottom-left", 300, 100, margin_x=40, margin_y=40)
+      pos = layout_element(res.comp_type, "bottom-left", 300, 100, margin_x=40, margin_y=40)
 
     Fine-tune position with offset_x / offset_y:
-      pos = layout_element("9x16", "bottom-center", 400, 120, offset_y=-20)
+      pos = layout_element(res.comp_type, "bottom-center", 400, 120, offset_y=-20)
 
   ALWAYS use layout_element when placing:
   - Logos / watermarks (always anchored to a corner)
@@ -802,8 +810,11 @@ Use layout_element() for anchor-based placement of ANY non-text element:
   - Icons / badges (any corner)
   - WebComp overlays with specific corner placement
 
-COMPOSITION LAYOUT GRIDS — memorize these, never guess pixel positions:
+COMPOSITION LAYOUT GRIDS — always read from get_comp_resolution(), never hardcode:
+  get_comp_resolution() returns: width, height, center_x, center_y,
+  safe_x_min, safe_x_max, safe_y_min, safe_y_max, content_width, content_height
 
+  Common presets for reference (actual values may differ — always verify with get_comp_resolution):
   A4 PDF (2480×3508 px @ 300dpi):
     margin_x=240  content_width=2000  margin_top=300
     H1: font_size=120  bold=True   → line step = 156px
@@ -813,26 +824,14 @@ COMPOSITION LAYOUT GRIDS — memorize these, never guess pixel positions:
     Two-column: each col=960px  gutter=80px
     Body text: alignment="left"  max_width=2000  line_height=1.3
 
-  16:9 VIDEO (1920×1080 px):
-    safe_x: 80 to 1840  safe_y: 60 to 1020
-    Title center_x=960 center_y=540  (use alignment="center")
-    Upper title: y=200  Subtitle: y=310
-    Lower-third: y=880  Caption strip: y=950
+  16:9 VIDEO (typically 1920×1080, but ALWAYS verify):
+    Title: center_x=comp.center_x  center_y=comp.center_y  (use alignment="center")
+    Upper title: y=comp.safe_y_min+120  Lower-third: y=comp.safe_y_max-80
     Title: font_size=90 bold=True  Subtitle: font_size=56  Body: font_size=44
-    Lower-third: font_size=36 bg_enabled=True bg_a=0.7 bg_corner_radius=8
 
-  9:16 REEL / VERTICAL (1080×1920 px):
-    safe_x: 80 to 1000  safe_y: 150 to 1770
-    Hook: y=300  Body: y=600  Feature list: y=900  CTA: y=1700
+  9:16 REEL / VERTICAL (typically 1080×1920, but ALWAYS verify):
+    Hook: y=comp.safe_y_min+150  Body: y=comp.center_y-200  CTA: y=comp.safe_y_max-150
     Hook: font_size=80 bold=True alignment="center"
-    Body: font_size=42 max_width=920 line_height=1.4
-    CTA: font_size=52 bold=True bg_enabled=True bg_corner_radius=40
-
-  1:1 SOCIAL (1080×1080 px):
-    safe_x: 80 to 1000  safe_y: 80 to 1000
-    Headline vertical center: y=420  Subtext: y=560  Logo area: y=900
-    Headline: font_size=80 bold=True alignment="center"
-    Subtext: font_size=42 alignment="center" max_width=920
 
 ALWAYS for PDF documents:
   1. create_pdf_doc(name, 2480, 3508) → get docId

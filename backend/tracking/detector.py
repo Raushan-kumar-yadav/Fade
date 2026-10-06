@@ -11,13 +11,8 @@ logger = logging.getLogger(__name__)
 
  
 def _resolve_models_dir() -> Path:
-    if getattr(sys, "frozen", False):
-        # Running as a PyInstaller bundle
-        base = Path(sys._MEIPASS)   
-    else:
-         
-        base = Path(__file__).parent.parent.parent
-    d = base / "AIModels"
+    from backend._root import PROJECT_ROOT
+    d = PROJECT_ROOT / "AIModels"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

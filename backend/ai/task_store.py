@@ -91,7 +91,9 @@ class TaskPlan:
 
 # ── Store ────────────────────────────────────────────────────────────────────
 
-_DB_PATH = Path(__file__).resolve().parent.parent.parent / "fade_tasks.db"
+from backend._root import PROJECT_ROOT, user_data_dir
+
+_DB_PATH = user_data_dir() / "fade_tasks.db"
 _lock = threading.Lock()
 
 

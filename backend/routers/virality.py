@@ -23,7 +23,9 @@ router = APIRouter()
 
 #   SQLite DB  
 
-_DB_PATH = Path(__file__).resolve().parent.parent.parent / "virality.db"
+from backend._root import PROJECT_ROOT, user_data_dir
+
+_DB_PATH = user_data_dir() / "virality.db"
 _db_lock = threading.Lock()
 
 
@@ -73,8 +75,8 @@ _init_db()
 
 _pipeline = None
 _pipeline_lock = threading.Lock()
-_MODELS_DIR = Path(__file__).resolve().parent.parent.parent / "AIModels" / "SIH_Virality_Prototype" / "models"
-_PIPELINE_SRC = Path(__file__).resolve().parent.parent.parent / "AIModels" / "SIH_Virality_Prototype"
+_MODELS_DIR = PROJECT_ROOT / "AIModels" / "SIH_Virality_Prototype" / "models"
+_PIPELINE_SRC = PROJECT_ROOT / "AIModels" / "SIH_Virality_Prototype"
 
 
 def _get_pipeline():
@@ -129,7 +131,7 @@ def _call_llm(prompt: str) -> str:
 def _get_youtube_credentials():
     try:
         from dotenv import load_dotenv
-        env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+        env_path = PROJECT_ROOT / ".env"
         load_dotenv(env_path)
     except ImportError:
         pass

@@ -29,7 +29,9 @@ DEFAULT_IMAGE_MODEL = "u2net"
 DEFAULT_VIDEO_MODEL = "u2netp"   # faster for frame-by-frame
 
  
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "bg_removed"
+from backend._root import user_data_dir
+
+OUTPUT_DIR = user_data_dir() / "bg_removed"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 

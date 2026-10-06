@@ -12,8 +12,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Output directory for exported PDFs
-_EXPORT_DIR = Path(__file__).parent.parent.parent / "exports"
+from backend._root import user_data_dir
+
+# Output directory for exported PDFs — user-writable location
+_EXPORT_DIR = user_data_dir() / "exports"
 _EXPORT_DIR.mkdir(exist_ok=True)
 
 

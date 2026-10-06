@@ -4,14 +4,9 @@ import os
 import sys
 import pathlib
 
- 
-if getattr(sys, 'frozen', False):
-     _RESOURCE_ROOT = pathlib.Path(sys.executable).parent.parent   
-else:
-    _RESOURCE_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent   
+from backend._root import PROJECT_ROOT
 
- 
-WHISPER_MODELS_DIR = _RESOURCE_ROOT / "AIModels" / "whisper"
+WHISPER_MODELS_DIR = PROJECT_ROOT / "AIModels" / "whisper"
 
 DEFAULT_MODEL = os.environ.get("FADE_WHISPER_MODEL", "small")
 

@@ -24,9 +24,9 @@ Claude Desktop  (%APPDATA%\\Claude\\claude_desktop_config.json)
   {
     "mcpServers": {
       "fade-editor": {
-        "command": "E:\\\\Editor_SIH\\\\Fade\\\\.venv\\\\Scripts\\\\python.exe",
+        "command": "<path-to-fade>/.venv/Scripts/python.exe",
         "args": ["-m", "backend.ai.mcp_server"],
-        "cwd": "E:\\\\Editor_SIH\\\\Fade"
+        "cwd": "<path-to-fade>"
       }
     }
   }
@@ -35,9 +35,9 @@ Cursor / VS Code (.cursor/mcp.json or .vscode/mcp.json)
   {
     "mcpServers": {
       "fade-editor": {
-        "command": "E:\\\\Editor_SIH\\\\Fade\\\\.venv\\\\Scripts\\\\python.exe",
+        "command": "<path-to-fade>/.venv/Scripts/python.exe",
         "args": ["-m", "backend.ai.mcp_server"],
-        "cwd": "E:\\\\Editor_SIH\\\\Fade"
+        "cwd": "<path-to-fade>"
       }
     }
   }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+import threading
 import time
 from pathlib import Path
 
@@ -57,7 +58,7 @@ def _publish_to_server(payload: dict) -> None:
             endpoint,
             json=payload,
             headers=headers,
-            timeout=15,          # don't hang the export flow
+            timeout=90,          # Increased from 15 to 90s to handle Render free tier cold starts
         )
         if resp.status_code == 200:
             logger.info("[integrity] Published to server OK: artifact_id=%s", payload.get("artifact_id"))
@@ -129,78 +130,92 @@ class ArtifactIntegrityService:
             p = Path(video_path)
             watermarked_output_path = str(p.parent / (p.stem + "_wm" + p.suffix))
 
-        #  exact SHA-256 + register in SQLite
+        # ── Step 1 (fast, synchronous): SHA-256 + register in SQLite ──
         rec = svc.register(video_path)
         artifact_id = rec["id"]
         logger.info("Registered artifact %s sha256=%s", artifact_id, rec["sha256"][:16])
 
-        #  perceptual hash (slow - frame extraction)
-        phash = compute_phash(video_path)
-        if phash:
-            logger.info("Computed phash %s for artifact %s", phash, artifact_id)
-
-        #  embed watermark into new file
-        wm_ok = embed_watermark(video_path, watermarked_output_path, artifact_id)
-        wm_id = artifact_id[:8] if wm_ok else None
-        
-        final_sha256 = rec["sha256"]
-        final_size = rec["size"]
-        
-        if wm_ok:
-            logger.info("Watermarking done. Replacing original file with watermarked copy...")
- 
-            from backend.integrity.echo_integrity import sha256_file
-            final_sha256 = sha256_file(watermarked_output_path)
-            final_size = os.path.getsize(watermarked_output_path)
-            
-            try:
-                os.replace(watermarked_output_path, video_path)
-            except OSError:
-                import shutil
-                shutil.move(watermarked_output_path, video_path)
-                
-            watermarked_output_path = video_path
-
-        svc.db.execute(
-            "UPDATE artifacts SET sha256=?, size=?, phash=?, wm_id=? WHERE id=?",
-            (final_sha256, final_size, phash, wm_id, artifact_id),
-        )
-        svc.db.commit()
-
-        # Seal Merkle tree and anchor root to ledger
-        batch = svc.seal()
-
+        # Return immediately so the UI is not blocked.
+        # pHash + watermark + Render publish run in a background thread.
         result = {
             "artifact_id": artifact_id,
-            "sha256": final_sha256,
+            "sha256": rec["sha256"],
             "filename": rec["filename"],
-            "size_bytes": final_size,
-            "phash": phash,
-            "phash_available": phash is not None,
-            "wm_id": wm_id,
-            "wm_available": wm_ok,
-            "watermarked_output_path": watermarked_output_path if wm_ok else None,
-            "batch": batch,
+            "size_bytes": rec["size"],
+            "phash": None,
+            "phash_available": False,
+            "wm_id": None,
+            "wm_available": False,
+            "watermarked_output_path": None,
+            "batch": None,
             "registered_at": rec["registered_at"],
         }
 
-        # Auto-publish proof bundle to hosted verification server
-        # Reads VERIFICATION_SERVER_URL + VERIFICATION_SERVER_KEY from env.
-        # Non-blocking: errors are logged but never propagate.
-        _publish_to_server({
-            "artifact_id":  artifact_id,
-            "sha256": final_sha256,
-            "phash": phash,
-            "wm_id":         wm_id,
-            "merkle_proof":  batch.get("proof") if batch else None,
-            "merkle_root":   batch.get("root")  if batch else None,
-            "ledger_tx":     batch.get("tx")    if batch else None,
-            "filename":      rec["filename"],
-            "content_type":  _guess_content_type(rec["filename"] or video_path),
-            "size_bytes":    final_size,
-        })
+        # ── Step 2 (slow, background): pHash + watermark + Merkle + Render ──
+        def _background_work(
+            _video_path=video_path,
+            _wm_out=watermarked_output_path,
+            _artifact_id=artifact_id,
+            _rec=rec,
+        ):
+            try:
+                _svc2 = _get_svc()
+                final_sha256 = _rec["sha256"]
+                final_size = _rec["size"]
+
+                # pHash (slow – frame extraction)
+                phash = compute_phash(_video_path)
+                if phash:
+                    logger.info("pHash %s for artifact %s", phash, _artifact_id)
+
+                # Embed invisible watermark
+                wm_ok = embed_watermark(_video_path, _wm_out, _artifact_id)
+                wm_id = _artifact_id[:8] if wm_ok else None
+
+                if wm_ok:
+                    logger.info("Watermark done. Replacing original with watermarked copy…")
+                    from backend.integrity.echo_integrity import sha256_file
+                    final_sha256 = sha256_file(_wm_out)
+                    final_size = os.path.getsize(_wm_out)
+                    try:
+                        os.replace(_wm_out, _video_path)
+                    except OSError:
+                        import shutil
+                        shutil.move(_wm_out, _video_path)
+
+                # Update DB with final values
+                _svc2.db.execute(
+                    "UPDATE artifacts SET sha256=?, size=?, phash=?, wm_id=? WHERE id=?",
+                    (final_sha256, final_size, phash, wm_id, _artifact_id),
+                )
+                _svc2.db.commit()
+
+                # Seal Merkle tree
+                batch = _svc2.seal()
+
+                # Publish to Render server (90s timeout, cold-start aware)
+                _publish_to_server({
+                    "artifact_id":  _artifact_id,
+                    "sha256":       final_sha256,
+                    "phash":        phash,
+                    "wm_id":        wm_id,
+                    "merkle_proof": batch.get("proof") if batch else None,
+                    "merkle_root":  batch.get("root")  if batch else None,
+                    "ledger_tx":    batch.get("tx")    if batch else None,
+                    "filename":     _rec["filename"],
+                    "content_type": _guess_content_type(_rec["filename"] or _video_path),
+                    "size_bytes":   final_size,
+                })
+                logger.info("[integrity] Background registration complete for %s", _artifact_id)
+            except Exception as exc:
+                logger.warning("[integrity] Background registration failed for %s: %s", _artifact_id, exc)
+
+        t = threading.Thread(target=_background_work, daemon=True)
+        t.start()
+        logger.info("[integrity] Background thread started for pHash+wm+publish (artifact=%s)", artifact_id)
 
         return result
+
 
 
     def verify_video(self, video_path: str) -> dict:

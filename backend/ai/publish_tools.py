@@ -10,7 +10,8 @@ from langchain_core.tools import tool
 
 
 def _db_connection_row(platform: str):
-    db_path = Path(__file__).resolve().parent.parent.parent / "virality.db"
+    from backend._root import user_data_dir
+    db_path = user_data_dir() / "virality.db"
     if not db_path.exists():
         return None
     conn = sqlite3.connect(str(db_path))

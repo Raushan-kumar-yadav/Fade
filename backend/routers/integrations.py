@@ -21,7 +21,9 @@ router = APIRouter(prefix="/integrations", tags=["integrations"])
 
 # Shared DB  
 
-_DB_PATH = Path(__file__).resolve().parent.parent.parent / "virality.db"
+from backend._root import user_data_dir
+
+_DB_PATH = user_data_dir() / "virality.db"
 _db_lock = threading.Lock()
 
 

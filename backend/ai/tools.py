@@ -657,9 +657,80 @@ def get_selected_clips() -> str:
     return json.dumps(clips, indent=2)
 
 
+@tool
+def get_comp_resolution(comp_id: str | None = None) -> str:
+    """Get the width, height, fps and safe-zone of a composition.
+
+    ALWAYS call this before adding text or placing elements so you know the
+    real canvas size. Never assume 1920x1080 — the user may have a vertical
+    (1080x1920), square (1080x1080), 4K (3840x2160), or any custom comp.
+
+    Args:
+        comp_id: Target composition ID. None = root / currently-active comp.
+
+    Returns:
+        JSON with: width, height, fps, aspect_ratio, comp_type,
+        center_x, center_y, safe_x_min, safe_x_max, safe_y_min, safe_y_max,
+        content_width, content_height
+        (comp_type is one of \"16x9\" | \"9x16\" | \"square\" | \"4k\" | \"a4\" | \"custom\")
+    """
+    try:
+        comps_data = _get("/comps")
+        comp_list = comps_data.get("comps", [])
+        comp = None
+        if comp_id:
+            comp = next((c for c in comp_list if c.get("compId") == comp_id), None)
+        if comp is None:
+            comp = next((c for c in comp_list if c.get("isRoot")), None)
+        if comp is None and comp_list:
+            comp = comp_list[0]
+        if comp is None:
+            return json.dumps({"error": "No composition found"})
+
+        w = int(comp.get("width", 1920))
+        h = int(comp.get("height", 1080))
+        fps = float(comp.get("fps", 30))
+
+        safe = max(80, int(min(w, h) * 0.05))
+
+        ratio = w / h if h else 1
+        if abs(ratio - 16 / 9) < 0.05:
+            comp_type = "16x9" if w <= 2000 else "4k"
+        elif abs(ratio - 9 / 16) < 0.05:
+            comp_type = "9x16"
+        elif abs(ratio - 1.0) < 0.05:
+            comp_type = "square"
+        elif w >= 2480 and h >= 3500:
+            comp_type = "a4"
+        elif w >= 2550 and h >= 3200:
+            comp_type = "letter"
+        else:
+            comp_type = "custom"
+
+        return json.dumps({
+            "comp_id":        comp.get("compId", ""),
+            "name":           comp.get("name", ""),
+            "width":          w,
+            "height":         h,
+            "fps":            fps,
+            "aspect_ratio":   round(ratio, 4),
+            "comp_type":      comp_type,
+            "center_x":       w // 2,
+            "center_y":       h // 2,
+            "safe_x_min":     safe,
+            "safe_x_max":     w - safe,
+            "safe_y_min":     safe,
+            "safe_y_max":     h - safe,
+            "content_width":  w - 2 * safe,
+            "content_height": h - 2 * safe,
+        }, indent=2)
+    except Exception as exc:
+        return json.dumps({"error": str(exc)})
+
 
 @tool
 def add_text_clip(
+
     track_index: int,
     start_frame: int,
     duration: int,
@@ -896,42 +967,63 @@ def layout_text_block(
     margin_x: float = -1.0,
     column_count: int = 1,
     gutter: float = 40.0,
+    comp_id: str | None = None,
 ) -> str:
     """Calculate pixel positions for a sequence of text blocks in any composition.
 
     Returns ready-to-use x, y, max_width values to pass directly to add_text_clip.
     Eliminates manual pixel math for document and video layouts.
 
+    IMPORTANT: Pass comp_id whenever possible so positions are calculated from
+    the REAL composition resolution, not a hardcoded preset. The comp_type
+    parameter is used as a fallback font-size style guide only.
+
     Args:
-        comp_type:     Preset layout grid:
-                       "a4"       — A4 at 300dpi (2480x3508px), 240px margins
-                       "letter"   — US Letter at 300dpi (2550x3300px)
-                       "16x9"     — 1920x1080 video, 80px safe zone
-                       "9x16"     — 1080x1920 vertical/reel
-                       "square"   — 1080x1080 social
-                       "custom"   — uses margin_x and start_y you provide
+        comp_type:     Style preset for font sizes:
+                       "a4"       — A4 document style
+                       "letter"   — US Letter document style
+                       "16x9"     — widescreen video
+                       "9x16"     — vertical/reel
+                       "square"   — 1:1 social
+                       "custom"   — uses actual comp size
         blocks:        List of dicts, each describing one text block:
                        [{"role": "h1"|"h2"|"body"|"caption"|"subtitle",
                          "text": "...",
-                         "lines": 1}]   ← lines: estimated line count for spacing
+                         "lines": 1}]   <- lines: estimated line count for spacing
         start_y:       Override starting Y position. -1 = use comp default.
         margin_x:      Override left margin. -1 = use comp default.
         column_count:  Number of columns (1 or 2). Only for a4/letter.
         gutter:        Space between columns in px.
+        comp_id:       Comp ID to read actual resolution from. Strongly recommended.
 
     Returns:
         JSON list: [{text, role, x, y, max_width, font_size, alignment,
                      line_height, track_index_hint}, ...]
-        Pass x→pos_x, y→pos_y, max_width→max_width to add_text_clip,
+        Pass x->pos_x, y->pos_y, max_width->max_width to add_text_clip,
         and use animate_property to set the position after placement.
     """
-    # Built-in layout grids
+    # --- Step 1: Resolve actual comp dimensions ---
+    actual_w, actual_h = None, None
+    if comp_id is not None:
+        try:
+            info = json.loads(get_comp_resolution(comp_id))
+            if "width" in info:
+                actual_w = info["width"]
+                actual_h = info["height"]
+                # Override comp_type from real dimensions if not explicitly set
+                if comp_type == "custom":
+                    comp_type = info.get("comp_type", "16x9")
+        except Exception:
+            pass
+
+    # Built-in layout grids (used as fallback if no comp_id given)
     GRIDS = {
         "a4":     {"w": 2480, "h": 3508, "mx": 240, "my": 300, "col_gap": gutter},
         "letter": {"w": 2550, "h": 3300, "mx": 255, "my": 300, "col_gap": gutter},
         "16x9":   {"w": 1920, "h": 1080, "mx": 80,  "my": 80,  "col_gap": gutter},
         "9x16":   {"w": 1080, "h": 1920, "mx": 80,  "my": 150, "col_gap": gutter},
         "square": {"w": 1080, "h": 1080, "mx": 80,  "my": 80,  "col_gap": gutter},
+        "4k":     {"w": 3840, "h": 2160, "mx": 160, "my": 160, "col_gap": gutter},
     }
     FONT_SIZES = {
         "a4":     {"h1": 120, "h2": 90,  "body": 60,  "caption": 48, "subtitle": 72},
@@ -939,11 +1031,29 @@ def layout_text_block(
         "16x9":   {"h1": 90,  "h2": 72,  "body": 44,  "caption": 32, "subtitle": 56},
         "9x16":   {"h1": 80,  "h2": 64,  "body": 42,  "caption": 30, "subtitle": 52},
         "square": {"h1": 80,  "h2": 64,  "body": 42,  "caption": 30, "subtitle": 52},
+        "4k":     {"h1": 180, "h2": 140, "body": 88,  "caption": 64, "subtitle": 112},
+        "custom": {"h1": 80,  "h2": 64,  "body": 42,  "caption": 30, "subtitle": 52},
     }
     LINE_HEIGHT = 1.3
 
-    grid = GRIDS.get(comp_type, GRIDS["16x9"])
-    fsizes = FONT_SIZES.get(comp_type, FONT_SIZES["16x9"])
+    grid = GRIDS.get(comp_type, GRIDS["16x9"]).copy()
+    fsizes_base = FONT_SIZES.get(comp_type, FONT_SIZES["16x9"])
+
+    # --- Step 2: Override grid with real comp dimensions ---
+    if actual_w is not None and actual_h is not None:
+        safe = max(80, int(min(actual_w, actual_h) * 0.05))
+        grid["w"] = actual_w
+        grid["h"] = actual_h
+        # Scale font sizes proportionally from the reference grid
+        ref_h = GRIDS.get(comp_type, GRIDS["16x9"])["h"]
+        scale = actual_h / ref_h if ref_h else 1.0
+        fsizes = {k: max(18, round(v * scale)) for k, v in fsizes_base.items()}
+        if margin_x < 0:
+            grid["mx"] = safe
+        if start_y < 0:
+            grid["my"] = safe
+    else:
+        fsizes = fsizes_base
 
     mx = margin_x if margin_x >= 0 else grid["mx"]
     sy = start_y  if start_y  >= 0 else grid["my"]
@@ -957,7 +1067,7 @@ def layout_text_block(
 
     results = []
     cur_y = sy
-    col = 0  # 0 = left, 1 = right
+    col = 0
 
     for blk in blocks:
         role = blk.get("role", "body")
@@ -983,7 +1093,6 @@ def layout_text_block(
             "estimated_height": round(block_h),
         })
 
-        # Advance Y position
         spacing_after = {
             "h1": fs * 0.6, "h2": fs * 0.5,
             "body": fs * 0.3, "caption": fs * 0.2, "subtitle": fs * 0.4,
@@ -991,14 +1100,12 @@ def layout_text_block(
 
         cur_y += block_h + spacing_after
 
-        # Column flow for 2-column layouts
         if column_count == 2:
             col = 1 - col
-            if col == 0:
-                pass  # both columns filled, keep advancing Y
 
     return json.dumps({
         "comp_type": comp_type,
+        "actual_resolution": {"width": grid["w"], "height": grid["h"]},
         "grid": {"width": grid["w"], "height": grid["h"],
                  "margin_x": mx, "start_y": sy, "content_width": round(col_w)},
         "blocks": results,
