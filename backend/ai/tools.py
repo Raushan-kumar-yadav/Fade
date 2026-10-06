@@ -3010,23 +3010,26 @@ def animate_property(
             _hin_f  = p["in_frame_frac"] * 10.0
             _hin_v  = p["in_value_frac"]
 
-    result = _post(f"/anim/{clip_id}/keyframe", {
-        "param": param,
-        "frame": frame,
-        "value": value,
-        "easing": _easing,
-        "handle_in_frames": _hin_f,
-        "handle_in_value": _hin_v,
-        "handle_out_frames": _hout_f,
-        "handle_out_value":  _hout_v,
-    })
-    total = result.get("totalKeyframes", "?")
-    kf    = result.get("keyframe", {})
-    note  = f" [preset={preset}]" if preset else ""
-    return (
-        f"Keyframe added: {param} = {value} @ frame {frame} "
-        f"(easing={kf.get('easing', _easing)}, total keyframes={total}){note}"
-    )
+    try:
+        result = _post(f"/anim/{clip_id}/keyframe", {
+            "param": param,
+            "frame": frame,
+            "value": value,
+            "easing": _easing,
+            "handle_in_frames": _hin_f,
+            "handle_in_value": _hin_v,
+            "handle_out_frames": _hout_f,
+            "handle_out_value":  _hout_v,
+        })
+        total = result.get("totalKeyframes", "?")
+        kf    = result.get("keyframe", {})
+        note  = f" [preset={preset}]" if preset else ""
+        return (
+            f"Keyframe added: {param} = {value} @ frame {frame} "
+            f"(easing={kf.get('easing', _easing)}, total keyframes={total}){note}"
+        )
+    except Exception as e:
+        return f"Error adding keyframe to clip {clip_id}: {str(e)}. (Did the clip get deleted?)"
 
 
 @tool
