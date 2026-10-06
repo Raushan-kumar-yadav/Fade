@@ -56,7 +56,8 @@ class TaskPlan:
     @property
     def next_pending_step(self) -> TaskStep | None:
         for s in sorted(self.steps, key=lambda x: x.order):
-            if s.status == "pending":
+            # A failed step is retried on resume, same as a pending one.
+            if s.status in ("pending", "failed"):
                 # Check dependency
                 if s.depends_on:
                     dep = next((x for x in self.steps if x.step_id == s.depends_on), None)

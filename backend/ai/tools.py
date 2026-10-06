@@ -1557,23 +1557,7 @@ def download_videos(query: str, num_videos: int = 2) -> str:
     # Backend creates one job per video; 
     job_ids: list[str] = resp.get("jobIds", [resp["jobId"]])
 
-    pending = set(job_ids)
-    asset_ids: list[str] = []
-    errors: list[str] = []
-    for _ in range(450):   # 450 × 2s = 15 min max
-        _time.sleep(2)
-        still_pending: set[str] = set()
-        for jid in pending:
-            s = _get(f"/jobs/{jid}")
-            if s["status"] == "done":
-                asset_ids.extend(s.get("assetIds", []))
-            elif s["status"] == "error":
-                errors.append(s.get("error", "unknown"))
-            else:
-                still_pending.add(jid)
-        pending = still_pending
-        if not pending:
-            break
+    asset_ids, errors = _wait_for_jobs(job_ids, max_wait_s=900)   # 15 min max
 
     if not asset_ids:
         return f"All downloads failed: {'; '.join(errors)}"
@@ -1654,23 +1638,7 @@ def download_images(query: str, num_images: int = 2) -> str:
     resp = _post("/jobs/image-download", {"query": query, "numImages": num_images})
     job_ids: list[str] = resp.get("jobIds", [resp["jobId"]])
 
-    pending = set(job_ids)
-    asset_ids: list[str] = []
-    errors: list[str] = []
-    for _ in range(150):   # up to 5 min
-        _time.sleep(2)
-        still_pending: set[str] = set()
-        for jid in pending:
-            s = _get(f"/jobs/{jid}")
-            if s["status"] == "done":
-                asset_ids.extend(s.get("assetIds", []))
-            elif s["status"] == "error":
-                errors.append(s.get("error", "unknown"))
-            else:
-                still_pending.add(jid)
-        pending = still_pending
-        if not pending:
-            break
+    asset_ids, errors = _wait_for_jobs(job_ids, max_wait_s=300)   # up to 5 min
 
     if not asset_ids:
         return f"All image downloads failed: {'; '.join(errors)}"
@@ -1678,6 +1646,45 @@ def download_images(query: str, num_images: int = 2) -> str:
     if errors:
         result["errors"] = errors
     return json.dumps(result, indent=2)
+
+@tool
+def download_music(query: str) -> str:
+    """Search for and download a music / audio track into the library (audio only).
+
+    Use this for background music, ambience or sound beds. The track is imported
+    as an AUDIO asset, so place it on an audio track.
+
+    Args:
+        query: What to search for, e.g. 'serious investigation news background music'.
+               Adding 'no copyright' or 'royalty free' finds music that is safer to publish.
+
+    Returns JSON with the assetId and durationSec. Next steps:
+      1. add_track(type='audio') if no free audio track exists
+      2. place_clip(assetId, track_index, start_frame=0, duration=<frames you need>)
+         — duration trims the track, e.g. 900 frames = 30 s at 30 fps
+      3. set_clip_volume(clip_id, ...) to duck it under the voiceover
+    """
+    resp = _post("/jobs/audio-download", {"query": query})
+    job_id = resp["jobId"]
+    status = _wait_for_job(job_id, max_wait_s=600)
+    st = status.get("status")
+    if st == "done":
+        asset_ids = status.get("assetIds", [])
+        dur = 0.0
+        try:
+            dur = float(status.get("message", "").split("\u2014")[1].split("s")[0].strip())
+        except Exception:
+            pass
+        return json.dumps({
+            "assetId": asset_ids[0] if asset_ids else "",
+            "durationSec": dur,
+            "info": status.get("message", ""),
+        }, indent=2)
+    if st in ("error", "cancelled"):
+        return f"Music download failed: {status.get('error', 'unknown error')}"
+    return (f"Music download still running (job_id={job_id}). "
+            f"Call check_job_status('{job_id}') — it waits until the job finishes.")
+
 
 @tool
 def place_clip(
@@ -1724,14 +1731,12 @@ def generate_image(prompt: str, num_images: int = 1) -> str:
     num_images = max(1, min(num_images, 4))
     job = _post("/jobs/image-generate", {"prompt": prompt, "numImages": num_images})
     job_id = job["jobId"]
-    for _ in range(150):  # up to 5 min
-        _time.sleep(2)
-        status = _get(f"/jobs/{job_id}")
-        if status["status"] == "done":
-            asset_ids = status.get("assetIds", [])
-            return json.dumps({"assets": [{"assetId": a} for a in asset_ids]}, indent=2)
-        if status["status"] == "error":
-            return f"Generation failed: {status.get('error', 'unknown error')}"
+    status = _wait_for_job(job_id, max_wait_s=300)   # up to 5 min
+    if status.get("status") == "done":
+        asset_ids = status.get("assetIds", [])
+        return json.dumps({"assets": [{"assetId": a} for a in asset_ids]}, indent=2)
+    if status.get("status") in ("error", "cancelled"):
+        return f"Generation failed: {status.get('error', 'unknown error')}"
     return f"Generation timed out for job {job_id}."
 
 @tool
@@ -2177,6 +2182,7 @@ ALL_TOOLS = [
     remove_track_at_index,
     download_videos,
     download_images,
+    download_music,
     schedule_download,
     schedule_image_download,
     generate_image,
@@ -3289,20 +3295,16 @@ def generate_tts(
     if not job_id:
         return "Error: TTS job did not start — check backend logs."
 
-   
-    for _ in range(10):
-        _time.sleep(2)
-        status = _get(f"/jobs/{job_id}")
-        st = status.get("status", "")
-        if st == "done":
-            return _fmt_tts_done(status, voice)
-        if st in ("error", "cancelled"):
-            err = status.get("error", "unknown error")
-            label = "cancelled" if st == "cancelled" else "failed"
-            return f"TTS {label}: {err}"
+    status = _wait_for_job(job_id, max_wait_s=180)
+    st = status.get("status", "")
+    if st == "done":
+        return _fmt_tts_done(status, voice)
+    if st in ("error", "cancelled"):
+        err = status.get("error", "unknown error")
+        label = "cancelled" if st == "cancelled" else "failed"
+        return f"TTS {label}: {err}"
 
-    # Still running after 20 s 
-    status = _get(f"/jobs/{job_id}")
+    # Still running after 3 min
     pct = int(status.get("progress", 0) * 100)
     msg = status.get("message", "working…")
     return (
@@ -3312,6 +3314,49 @@ def generate_tts(
         f"  → Call check_job_status('{job_id}') to check again.\n"
         f"  → Call cancel_job('{job_id}') to abort."
     )
+
+
+def _wait_for_job(job_id: str, max_wait_s: int = 120) -> dict:
+    """Block until a background job reaches done/error/cancelled, or max_wait_s passes.
+
+    Uses the backend's job-done trigger (GET /jobs/{id}/wait), which returns the
+    moment the job finishes — no polling. Returns the last job status dict, or
+    {} if the job does not exist.
+    """
+    import time as _time
+    deadline = _time.monotonic() + max_wait_s
+    status: dict = {}
+    while True:
+        # Long-poll in chunks so no single HTTP request stays open for too long.
+        chunk = max(0.0, min(60.0, deadline - _time.monotonic()))
+        try:
+            status = _get_long(f"/jobs/{job_id}/wait?timeout={chunk:.0f}", timeout=int(chunk) + 30)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return {}
+            raise
+        if status.get("status") in ("done", "error", "cancelled"):
+            return status
+        if _time.monotonic() >= deadline:
+            return status
+
+
+def _wait_for_jobs(job_ids: list[str], max_wait_s: int) -> tuple[list[str], list[str]]:
+    """Wait for several jobs to finish. Returns (assetIds, errors)."""
+    import time as _time
+    deadline = _time.monotonic() + max_wait_s
+    asset_ids: list[str] = []
+    errors: list[str] = []
+    for jid in job_ids:
+        s = _wait_for_job(jid, max(0, int(deadline - _time.monotonic())))
+        st = s.get("status")
+        if st == "done":
+            asset_ids.extend(s.get("assetIds", []))
+        elif st in ("error", "cancelled"):
+            errors.append(s.get("error") or st)
+        else:
+            errors.append(f"job {jid} did not finish in time")
+    return asset_ids, errors
 
 
 def _fmt_tts_done(status: dict, voice: str) -> str:
@@ -3338,7 +3383,8 @@ def check_job_status(job_id: str) -> str:
 
     Use this after generate_tts(), download_videos(), or generate_images()
     returns a job_id instead of a finished result.
-    Call repeatedly until status is 'done', 'error', or 'cancelled'.
+    This call BLOCKS until the job finishes (up to 120 s), so do not poll in a
+    tight loop — call it once and it returns when the job is done.
 
     Args:
         job_id: The job ID returned by generate_tts() or visible in the ⏳ message.
@@ -3354,7 +3400,7 @@ def check_job_status(job_id: str) -> str:
     """
     import time as _time
 
-    status = _get(f"/jobs/{job_id}")
+    status = _wait_for_job(job_id, max_wait_s=120)
     if not status or "jobId" not in status:
         return f"Job '{job_id}' not found — it may have expired from the store."
 
@@ -3381,7 +3427,8 @@ def check_job_status(job_id: str) -> str:
         f"\u23f3 Job in progress ({pct}%) — {msg}\n"
         f"  job_id  = {job_id}\n"
         f"  elapsed = {elapsed}s\n"
-        f"  \u2192 Call check_job_status('{job_id}') again to re-check.\n"
+        f"  \u2192 Still running after waiting 120s. Call check_job_status('{job_id}') "
+        f"again \u2014 it waits for the job to finish, so one call at a time is enough.\n"
         f"  \u2192 Call cancel_job('{job_id}') to abort."
     )
 

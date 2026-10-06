@@ -23,6 +23,33 @@ from backend.ai.task_store import (
 
 logger = logging.getLogger(__name__)
 
+# How much of a step's output is carried into later steps. Must be large enough
+# to keep a full script and the assetIds / clipIds a step produced.
+_RESULT_CHARS = 3000
+
+# Older steps are shortened in the prompt so long plans don't grow without bound.
+_RECENT_FULL_STEPS = 4
+_OLD_RESULT_CHARS = 700
+
+_READ_ONLY_PREFIXES = ("get_", "list_", "search_", "describe_", "check_", "read_",
+                       "find_", "analyze_", "wait_", "test_")
+
+
+def _is_read_only(tool_name: str) -> bool:
+    """True for tools that only inspect state (they never change the project)."""
+    return not tool_name or tool_name.startswith(_READ_ONLY_PREFIXES)
+
+
+def _context_summaries(done_summaries: list[str]) -> list[str]:
+    """Recent step results in full, older ones cut to their label + closing summary."""
+    cutoff = len(done_summaries) - _RECENT_FULL_STEPS
+    out = []
+    for i, s in enumerate(done_summaries):
+        if i < cutoff and len(s) > _OLD_RESULT_CHARS + 80:
+            s = s[:80] + " … " + s[-_OLD_RESULT_CHARS:]
+        out.append(s)
+    return out
+
 
 # ── Plan builder ──────────────────────────────────────────────────────────────
 
@@ -61,7 +88,7 @@ def plan_from_skill(skill: SkillDef, goal: str, agent_type: str | None = None) -
     return reloaded or plan
 
 
-# ── Single step runner ────────────────────────────────────────────────────────
+#   Single step runner  
 
 async def _run_step(
     step: TaskStep,
@@ -70,6 +97,7 @@ async def _run_step(
     done_summaries: list[str],
     port: int,
     tools_override: list | None = None,
+    goal: str = "",
 ):
     """Run one skill step, yielding SSE-style events as they happen.
 
@@ -84,33 +112,42 @@ async def _run_step(
     from backend.ai.tool_sets import get_tools_for
     from langchain_core.messages import HumanMessage
 
-    READ_ONLY = {"get_timeline_state", "get_library_assets", "get_playback_state",
-                 "get_current_viewport_image", "get_clip_info", "undo", "redo"}
     if tools_override:
         tools = tools_override
     else:
-        all_tools = get_tools_for(skill.agent_type)
-        allowed_names = READ_ONLY | {skill_step.tool_name}
-        tools = [t for t in all_tools if getattr(t, "name", "") in allowed_names]
-        if not tools:
-            tools = get_tools_for(skill.agent_type)
+        # Full agent toolset: a step usually needs helpers besides its primary
+        # tool (e.g. placing a clip needs the download/lookup that produces the id).
+        tools = list(get_tools_for(skill.agent_type))
+        if skill_step.tool_name not in {getattr(t, "name", "") for t in tools}:
+            from backend.ai.tools import ALL_TOOLS
+            tools += [t for t in ALL_TOOLS if getattr(t, "name", "") == skill_step.tool_name]
 
-    system_prompt = skill.step_system_prompt(skill_step, done_summaries)
+    system_prompt = skill.step_system_prompt(
+        skill_step, _context_summaries(done_summaries), goal)
     graph = build_agent(port=port, tools_override=tools, system_override=system_prompt)
 
     try:
-        config = {"recursion_limit": 25}
-        state = {"messages": [HumanMessage(content=skill_step.instruction)]}
-        result_chunks: list[str] = []
-
- 
+        import re as _rex
         import time as _time
+
+        config = {"recursion_limit": 60}
+        human = f"Step {skill_step.order} — {skill_step.name}: {skill_step.instruction}"
+        if goal:
+            human = f"User request:\n{goal}\n\nNow do ONLY this step.\n{human}"
+
+        expects_change = not _is_read_only(skill_step.tool_name)
+        result_chunks: list[str] = []
+        called_tools: list[str] = []
+        note = ""               # extra guidance appended when a step is re-run
+        error_retried = False   # one automatic retry for a crashed attempt
+        nudged = False          # one re-prompt when the agent did nothing
         _attempt = 0
         _retry_start = None
         _MAX_RETRY_SECS = 300  # 5 minutes
 
         while True:
             _attempt += 1
+            state = {"messages": [HumanMessage(content=human + note)]}
             try:
                 async for event in graph.astream_events(state, config=config, version="v2"):
                     kind = event.get("event", "")
@@ -125,30 +162,46 @@ async def _run_step(
                     elif kind == "on_tool_start":
                         name = event.get("name", "")
                         args = event.get("data", {}).get("input", {})
+                        called_tools.append(name)
                         yield {"type": "step_tool_call", "name": name, "args": args}
 
                     elif kind == "on_tool_end":
                         name = event.get("name", "")
                         output = str(event.get("data", {}).get("output", ""))
                         if output:
-                            result_chunks.append(f"\n[tool:{name}] {output[:200]}")
+                            result_chunks.append(f"\n[tool:{name}] {output[:1500]}")
                         yield {"type": "step_tool_result", "name": name, "content": output[:400]}
 
-                break  # success — exit retry loop
-
-            except Exception as _rl_exc:
-                _rl_str = str(_rl_exc)
+            except Exception as _exc:
+                _err = str(_exc)
+                _low = _err.lower()
                 _is_rl = (
-                    "429" in _rl_str
-                    or "rate limit" in _rl_str.lower()
-                    or "quota" in _rl_str.lower()
-                    or "request limit" in _rl_str.lower()
-                    or "too many requests" in _rl_str.lower()
+                    "429" in _err
+                    or "rate limit" in _low
+                    or "quota" in _low
+                    or "request limit" in _low
+                    or "too many requests" in _low
                 )
-                if not _is_rl:
-                    raise  # not a rate limit — propagate
+                # A re-run starts the step from scratch, so tell the agent what
+                # may already have happened instead of letting it duplicate work.
+                if any(not _is_read_only(t) for t in called_tools):
+                    note = (
+                        "\n\nNOTE: an earlier attempt at this step was interrupted after it "
+                        "had already called: " + ", ".join(dict.fromkeys(called_tools)) + ". "
+                        "Call get_timeline_state / get_library_assets first and only do what "
+                        "is still missing — do not repeat work that already took effect."
+                    )
 
-                import re as _rex
+                if not _is_rl:
+                    if error_retried:
+                        raise
+                    error_retried = True
+                    logger.warning("[SkillExecutor] Step %s crashed (%s) — retrying once",
+                                   skill_step.name, _err[:200])
+                    yield {"type": "step_retry", "wait": 0, "attempt": _attempt,
+                           "label": f"Step hit an error ({_err[:120]}) — retrying once…"}
+                    continue
+
                 _now = _time.monotonic()
                 if _retry_start is None:
                     _retry_start = _now
@@ -160,7 +213,7 @@ async def _run_step(
                         "Please switch to a different model or wait and try again."
                     )
 
-                _m = _rex.search(r'retry.after["\:\s]+([0-9]+)', _rl_str, _rex.IGNORECASE)
+                _m = _rex.search(r'retry.after["\:\s]+([0-9]+)', _err, _rex.IGNORECASE)
                 _wait = int(_m.group(1)) if _m else min(10 * _attempt, 60)
                 _remaining = _MAX_RETRY_SECS - _elapsed
                 _wait = min(_wait, int(_remaining))
@@ -170,8 +223,29 @@ async def _run_step(
                 yield {"type": "step_retry", "wait": _wait, "attempt": _attempt,
                        "label": f"Rate limited — retrying in {_wait}s... ({int(_elapsed)}s/5min)"}
                 await asyncio.sleep(_wait)
+                continue
 
-        result_str = "".join(result_chunks)[:500] or f"Step {skill_step.name} completed."
+            # Verify the step actually did something: a text-only answer to a step
+            # that is supposed to change the project is not a completed step.
+            acted = any(not _is_read_only(t) for t in called_tools)
+            if expects_change and not acted and not nudged:
+                nudged = True
+                note = (
+                    "\n\nNOTE: your previous attempt ended without calling any tool that "
+                    "changes the project, so nothing happened. Describing the action does "
+                    f"not perform it. Call {skill_step.tool_name}() (or the correct tool) now. "
+                    "If this step is impossible or already satisfied, reply with one line "
+                    "starting with 'SKIPPED:' and the reason."
+                )
+                yield {"type": "step_retry", "wait": 0, "attempt": _attempt,
+                       "label": "No action was taken — asking the agent to run the tool…"}
+                continue
+            break
+
+        result_str = "".join(result_chunks)[-_RESULT_CHARS:] or f"Step {skill_step.name} completed."
+        if expects_change and not any(not _is_read_only(t) for t in called_tools):
+            result_str = ("WARNING: this step made NO changes to the project "
+                          "(no editing tool was called). " + result_str)[:_RESULT_CHARS]
         yield {"type": "step_ok", "result": result_str}
 
     except Exception as e:
@@ -208,7 +282,7 @@ async def execute_skill_plan(
     # Pre-populate summaries from already-done steps (resume scenario)
     for s in sorted(plan.steps, key=lambda x: x.order):
         if s.status == "done" and s.result:
-            done_summaries.append(f"Step {s.order} ({s.tool_name}): {s.result[:100]}")
+            done_summaries.append(f"Step {s.order} ({s.tool_name}): {s.result[-_RESULT_CHARS:]}")
 
     # Map plan steps → skill steps by order
     skill_step_map = {ss.order: ss for ss in skill.steps}
@@ -258,7 +332,8 @@ async def execute_skill_plan(
         t0 = time.time()
         success = False
         result = f"Step {skill_step.name} completed."
-        async for ev in _run_step(task_step, skill_step, skill, done_summaries, port):
+        async for ev in _run_step(task_step, skill_step, skill, done_summaries, port,
+                                  goal=plan.goal):
             et = ev["type"]
             if et == "step_token":
                 yield {"type": "token", "content": ev["content"]}
@@ -271,13 +346,15 @@ async def execute_skill_plan(
                 result = ev["result"]
             elif et == "step_err":
                 result = ev["error"]
+            elif et == "step_retry":
+                yield {"type": "token", "content": f"\n↻ {ev['label']}\n"}
         elapsed = round(time.time() - t0, 1)
 
         if success:
             update_step_status(task_step.step_id, "done", result=result)
             done_count += 1
             done_summaries.append(
-                f"Step {task_step.order} ({skill_step.tool_name}): {result[:100]}"
+                f"Step {task_step.order} ({skill_step.tool_name}): {result}"
             )
 
             # Check if this is a named checkpoint
@@ -307,7 +384,9 @@ async def execute_skill_plan(
 
         else:
             update_step_status(task_step.step_id, "failed", error=result)
-            update_plan_status(plan.plan_id, "failed")
+            # Paused (not failed) so the finished steps are kept and the user can
+            # say "continue" to retry from this step instead of starting over.
+            update_plan_status(plan.plan_id, "paused")
             err_event = {
                 "type": "step_failed",
                 "plan_id": plan.plan_id,
@@ -318,7 +397,10 @@ async def execute_skill_plan(
             }
             _emit(err_event)
             yield err_event
-            # Stop on failure  
+            yield {"type": "token", "content": (
+                f"\n⚠️ Step {task_step.order} ({skill_step.name}) failed: {result[:300]}\n"
+                f"The {done_count} finished step(s) are saved. Reply **continue** to retry "
+                f"from this step, or **cancel plan** to discard it.\n")}
             return
 
     # All steps done

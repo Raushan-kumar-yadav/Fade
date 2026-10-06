@@ -50,7 +50,8 @@ class SkillDef:
     def trigger_phrase(self) -> str:
         return self.triggers[0] if self.triggers else self.name
 
-    def step_system_prompt(self, step: SkillStep, done_summaries: list[str]) -> str:
+    def step_system_prompt(self, step: SkillStep, done_summaries: list[str],
+                           goal: str = "") -> str:
         """Build a focused system prompt for one step execution."""
         rules_text = "\n".join(f"  - {r}" for r in self.rules)
         prev_text = ""
@@ -58,15 +59,29 @@ class SkillDef:
             prev_text = "\n\nCompleted steps context:\n" + "\n".join(
                 f"  [{i+1}] {s}" for i, s in enumerate(done_summaries)
             )
+        goal_text = ""
+        if goal:
+            goal_text = (
+                "USER REQUEST (source of truth for topic, wording, durations, "
+                "positions and styling — it overrides the generic step text below):\n"
+                f"{goal}\n\n"
+            )
         return (
             f"[SKILL: {self.name} v{self.version}]\n"
             f"Step {step.order}/{len(self.steps)}: {step.name}\n"
-            f"Tool to use: {step.tool_name}\n\n"
+            f"Primary tool: {step.tool_name}\n\n"
+            f"{goal_text}"
             f"Skill Rules (MUST follow):\n{rules_text}\n"
             f"{prev_text}\n\n"
             f"YOUR TASK FOR THIS STEP:\n{step.instruction}\n\n"
-            f"Execute this ONE step only. Call {step.tool_name}() with appropriate parameters. "
-            f"When done, confirm what you did in 1-2 sentences."
+            f"Execute this ONE step only, applied to the user request above. "
+            f"Use {step.tool_name}() as the main tool, plus any supporting tools this step "
+            f"genuinely needs. Do not do work that belongs to other steps.\n"
+            f"Only use assetIds / clipIds / compIds returned by a tool or listed in the "
+            f"completed-steps context — never invent them. If an asset this step needs "
+            f"does not exist yet, create or download it first.\n"
+            f"When done, confirm what you did in 1-2 sentences and list every "
+            f"assetId / clipId you created so later steps can use them."
         )
 
 

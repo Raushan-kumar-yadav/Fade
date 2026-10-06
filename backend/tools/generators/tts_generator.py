@@ -246,6 +246,18 @@ class KokoroTTSGenerator:
             model_path  = ai_models_dir / "kokoro-v1.0.int8.onnx"
             voices_path = ai_models_dir / "voices-v1.0.bin"
 
+            # The fp16 model is ~9x faster than int8 on CPU (int8 ops are poorly
+            # optimised in ONNX Runtime), so use it whenever it is present.
+            # Only fall back to int8 when it is already on disk and fp16 is not.
+            fp16_path = ai_models_dir / "kokoro-v1.0.fp16.onnx"
+            if fp16_path.exists() or not model_path.exists():
+                model_path = fp16_path
+                _MODELS[0] = (
+                    "kokoro-v1.0.fp16.onnx",
+                    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/"
+                    "model-files-v1.0/kokoro-v1.0.fp16.onnx",
+                )
+
             for fname, url in _MODELS:
                 dest = ai_models_dir / fname
                 if not dest.exists():

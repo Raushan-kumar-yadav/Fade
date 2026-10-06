@@ -24,17 +24,28 @@ class ImageDownloader:
         query: str,
         num_images: int = 2,
         output_dir: str = "",
+        skip: int = 0,
+        stride: int = 1,
     ) -> list[dict]:
         """
         Uses duckduckgo_search to find images and download them.
         Returns a list of dicts with filepath and title.
+
+        skip / stride: only consider search results skip, skip+stride, skip+2*stride…
+        Parallel jobs for the same query pass their own index as `skip` and the job
+        count as `stride`, so each one downloads a different image and still has
+        fallback candidates when a URL fails.
         """
         if not output_dir:
             output_dir = str(Path.home() / ".fade" / "downloads")
         
         os.makedirs(output_dir, exist_ok=True)
         num_images = max(1, min(num_images, 10))
-        
+        skip = max(0, skip)
+        stride = max(1, stride)
+        # Fetch spare candidates: many image URLs are dead or block hotlinking.
+        max_results = skip + stride * (num_images + 3)
+
         results = []
         print(f"[ImageDownloader] Searching images for: {query}")
         
@@ -42,7 +53,7 @@ class ImageDownloader:
             # Generate the search results
             try:
                 # New ddgs API: query is positional
-                search_results = list(ddgs.images(query, max_results=num_images))
+                search_results = list(ddgs.images(query, max_results=max_results))
             except TypeError:
                 # Old duckduckgo_search API: keywords= kwarg
                 search_results = list(ddgs.images(
@@ -50,10 +61,12 @@ class ImageDownloader:
                     region="wt-wt",
                     safesearch="moderate",
                     size="Large",
-                    max_results=num_images
+                    max_results=max_results
                 ))
-            
-            for i, result in enumerate(search_results):
+
+            for i, result in list(enumerate(search_results))[skip::stride]:
+                if len(results) >= num_images:
+                    break
                 image_url = result.get('image')
                 title = result.get('title', f"image_{i}")
                 

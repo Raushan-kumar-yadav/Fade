@@ -17,7 +17,12 @@ MAX_JOBS = 30
 _lock: threading.Lock = threading.Lock()
 _jobs: dict[str, dict] = {}          
 _order: list[str] = []            
-_cancelled_jobs: set[str] = set()  # job_ids cancelled  
+_cancelled_jobs: set[str] = set()  # job_ids cancelled
+
+# Job-done trigger: signalled whenever a job reaches a terminal status, so
+# waiters (GET /jobs/{id}/wait) wake immediately instead of polling.
+_TERMINAL = ("done", "error", "cancelled")
+_done_cond = threading.Condition(_lock)
 
 
 def _make_job(
@@ -56,11 +61,26 @@ def _update_job(job_id: str, **kwargs) -> None:
             return
         _jobs[job_id].update(kwargs)
         payload = dict(_jobs[job_id])
+        if payload.get("status") in _TERMINAL:
+            _done_cond.notify_all()
     notify("job", payload)
 
 
 def _get_job(job_id: str) -> dict | None:
     with _lock:
+        return dict(_jobs[job_id]) if job_id in _jobs else None
+
+
+def wait_for_job(job_id: str, timeout: float) -> dict | None:
+    """Block until the job finishes (done/error/cancelled) or `timeout` seconds pass.
+
+    Returns the job's latest state, or None if it does not exist (or was evicted).
+    """
+    with _done_cond:
+        _done_cond.wait_for(
+            lambda: job_id not in _jobs or _jobs[job_id].get("status") in _TERMINAL,
+            timeout=timeout,
+        )
         return dict(_jobs[job_id]) if job_id in _jobs else None
 
 
@@ -192,6 +212,7 @@ def _run_video_download(parent_job_id: str, query: str, num_videos: int,
         results = downloader.search_and_download(
             query=query, num_videos=1,
             output_dir=downloads_dir, fps=fps,
+            skip=video_index,   # each job takes a different search result
         )
         if not results:
             _update_job(parent_job_id, status="error",
@@ -238,6 +259,7 @@ def _run_image_download(parent_job_id: str, query: str,
         downloads_dir = _resolve_download_dir()
         results = downloader.search_and_download(
             query=query, num_images=1, output_dir=downloads_dir,
+            skip=img_index, stride=total,   # each job takes a different result
         )
         if not results:
             _update_job(parent_job_id, status="error",
@@ -266,6 +288,43 @@ def _run_image_download(parent_job_id: str, query: str,
 
     except Exception as exc:
         _update_job(parent_job_id, status="error", message="Failed", error=str(exc))
+
+
+def _run_audio_download(job_id: str, query: str) -> None:
+    """Worker: download the audio track of the top search result (music / sound bed)."""
+    from backend.tools import YtdlpDownloader
+    from backend.routers.library import _resolve_download_dir, _import_file
+    from backend.worker.worker_bus import bus as _worker_bus
+    from backend.events import notify as _notify
+
+    _update_job(job_id, status="running", progress=0.0, message=f"Searching: {query}…")
+    try:
+        results = YtdlpDownloader().search_and_download(
+            query=query, num_videos=1,
+            output_dir=_resolve_download_dir(), audio_only=True,
+        )
+        if not results:
+            _update_job(job_id, status="error",
+                        message="No results found", error="No results found")
+            return
+
+        r = results[0]
+        _update_job(job_id, progress=0.7, message=f"Importing: {r.get('title', '')[:40]}…")
+        info = _import_file(r["filepath"])
+        asset_id = info["assetId"]
+        try:
+            _worker_bus.submit_waveform(asset_id, r["filepath"])
+        except Exception:
+            pass
+
+        dur = float(r.get("duration_sec", 0) or 0)
+        _update_job(job_id, status="done", progress=1.0,
+                    message=f"Ready — {dur:.1f}s | {r.get('title', '')[:60]}",
+                    assetIds=[asset_id])
+        _notify("library")
+
+    except Exception as exc:
+        _update_job(job_id, status="error", message="Failed", error=str(exc))
 
 
 def _run_image_generate(job_id: str, prompt: str, num_images: int) -> None:
@@ -478,6 +537,9 @@ class ImageDownloadRequest(BaseModel):
     query: str
     numImages: int = 2
 
+class AudioDownloadRequest(BaseModel):
+    query: str
+
 class ImageGenerateRequest(BaseModel):
     prompt: str
     numImages: int = 1
@@ -523,6 +585,16 @@ def start_image_download(req: ImageDownloadRequest):
             "status": "pending"}
 
 
+@router.post("/jobs/audio-download")
+def start_audio_download(req: AudioDownloadRequest):
+    """Start an async audio-only download (background music). One job card."""
+    label = f"Music: {req.query}"
+    job = _make_job("audio_download", label)
+    notify("job", job)
+    _start(_run_audio_download, job["jobId"], req.query)
+    return {"jobId": job["jobId"], "label": label, "status": "pending"}
+
+
 @router.post("/jobs/image-generate")
 def start_image_generate(req: ImageGenerateRequest):
     """Start an async Gemini image generation job. Returns immediately with jobId."""
@@ -566,6 +638,17 @@ def get_job(jobId: str):
     return job
 
 
+@router.get("/jobs/{jobId}/wait")
+def wait_job(jobId: str, timeout: float = 60.0):
+    """Long-poll: returns as soon as the job finishes, or after `timeout` seconds
+    with its current (still running) state. Used by the AI tools so the agent
+    waits on a done-trigger instead of polling GET /jobs/{jobId}."""
+    job = wait_for_job(jobId, max(0.0, min(timeout, 300.0)))
+    if job is None:
+        raise HTTPException(404, f"Job '{jobId}' not found")
+    return job
+
+
 @router.post("/jobs/{jobId}/cancel")
 def cancel_job_by_id(jobId: str):
      
@@ -602,4 +685,6 @@ def clear_stuck_jobs(older_than_s: int = 30):
                     job["error"] = "Worker thread crashed or timed out"
                     notify("job", dict(job))
                     cleared += 1
+        if cleared:
+            _done_cond.notify_all()
     return {"cleared": cleared}

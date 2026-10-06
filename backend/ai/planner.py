@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 # Known tool names the planner can assign to steps
 _KNOWN_TOOLS = [
     "get_timeline_state", "get_library_assets", "search_video_scenes",
-    "download_videos", "download_images", "generate_image",
-    "place_clip", "add_text_clip", "add_shape_clip",
+    "download_videos", "download_images", "download_music", "generate_image",
+    "place_clip", "add_track", "set_clip_volume", "add_text_clip", "add_shape_clip",
     "find_free_overlay_track", "add_transitions_between_all_clips",
     "apply_effect_to_clip", "generate_tts", "generate_captions",
     "remove_silence", "animate_property", "apply_curve_preset",
@@ -42,10 +42,18 @@ Each step should map to ONE primary tool call from the available tools.
 RULES:
 1. Always start with get_timeline_state or get_library_assets if you need context.
 2. Order steps by dependency -- downloads before placements, etc.
-3. Keep steps atomic -- one tool call per step.
+3. One step per logical stage. A step may call its tool several times (e.g. one
+   "download B-roll" step that downloads all 4 clips, one "add titles" step that adds
+   all 5 text clips). Do NOT create a separate step for every single tool call.
 4. Use find_free_overlay_track before any text/overlay placement.
 5. End with add_transitions_between_all_clips if placing multiple clips.
 6. Be specific in descriptions (include what to search for, what text to add, etc.)
+7. If the user lists their own numbered steps, make ONE plan step per user step, cover
+   EVERY one of them, and copy their exact values (narration text, search queries,
+   frames, sizes, URLs) into the descriptions. Reorder only for dependencies:
+   generate/download every asset before the steps that place it on the timeline, and
+   export last.
+8. Background music: use download_music, then place it on an audio track.
 
 Available tools: {tools}
 

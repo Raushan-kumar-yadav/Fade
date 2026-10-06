@@ -38,22 +38,25 @@ chapter title overlays, B-roll footage, and clean fade transitions.
    Scan the library to discover all available assets (videos, images, audio).
    Note any footage that is relevant to the topic.
 
-2. SCRIPT | generate_tts
-   Write a structured educational script about the topic.
-   Break it into 3 sections: Introduction, Main Content, Summary.
-   Use a clear, pedagogical tone. Aim for 2-4 minutes of narration.
+2. SCRIPT | get_timeline_state
+   Write the full narration script for the requested topic as plain text in your reply.
+   If the user supplied narration text or a scene breakdown, use it verbatim.
+   Otherwise break it into Introduction, Main Content, Summary, sized to the
+   requested duration. Do NOT generate audio in this step.
 
 3. VOICEOVER | generate_tts
    Generate narration audio from the script using a professional voice.
-   Place the audio on track 0 (audio track).
+   Add an audio track if none exists and place the audio on it at frame 0.
 
-4. VISUALS | search_video_scenes
-   Search and download relevant B-roll footage matching each script section.
-   Aim for 3-5 clips per minute of narration.
+4. VISUALS | download_videos
+   Download B-roll footage matching each script section (one search query per
+   section, or the exact queries the user listed). Also download any images the
+   user asked for. If the library already has relevant footage, reuse it.
 
 5. TIMELINE | place_clip
-   Place footage clips on video track 0, aligned with narration timing.
-   Space clips with 0.5s gaps. Match clip order to script sections.
+   Place the footage assets from the VISUALS step on video track 0 in script
+   order, back to back, covering the narration duration. Use only assetIds
+   returned by earlier steps or get_library_assets (never a composition id).
 
 6. TITLES | add_text_clip
    Add chapter title lower-thirds at the start of each section.

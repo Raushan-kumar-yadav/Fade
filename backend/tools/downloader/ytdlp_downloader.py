@@ -30,16 +30,24 @@ class YtdlpDownloader:
         num_videos: int = 2,
         output_dir: str = "",
         fps: float = 30.0,
+        skip: int = 0,
+        audio_only: bool = False,
     ) -> list[dict]:
-        
+        """Search YouTube and download the results.
+
+        skip:       ignore the first `skip` search results (so parallel jobs for the
+                    same query each fetch a different video instead of the top hit).
+        audio_only: download just the audio track as .mp3 (for music / sound beds).
+        """
         if not output_dir:
             output_dir = str(Path.home() / ".fade" / "downloads")
-        
+
         os.makedirs(output_dir, exist_ok=True)
-        
+
         num_videos = max(1, min(num_videos, 5))
-        search_query = f"ytsearch{num_videos}:{query}"
-        
+        skip = max(0, skip)
+        search_query = f"ytsearch{skip + num_videos}:{query}"
+
         fmt = (
             "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]"  # best h264 + aac  
             "/mp4[height<=720]"                                      
@@ -67,7 +75,17 @@ class YtdlpDownloader:
         }
         if _ffmpeg_dir:
             ydl_opts['ffmpeg_location'] = _ffmpeg_dir
-
+        if skip:
+            ydl_opts['playlist_items'] = f"{skip + 1}-{skip + num_videos}"
+        if audio_only:
+            ydl_opts['format'] = 'bestaudio[ext=m4a]/bestaudio/best'
+            ydl_opts.pop('merge_output_format', None)
+            ydl_opts['postprocessors'] = [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }]
+        final_ext = '.mp3' if audio_only else '.mp4'
 
         results = []
         print(f"[YtdlpDownloader] Searching and downloading: {search_query}")
@@ -82,13 +100,15 @@ class YtdlpDownloader:
                     continue
                 
                 filepath = entry.get('requested_downloads', [{}])[0].get('filepath')
+                if audio_only and filepath and not filepath.lower().endswith(final_ext):
+                    filepath = os.path.splitext(filepath)[0] + final_ext
                 if not filepath:
                     filepath = ydl.prepare_filename(entry)
                      
                     if filepath:
                         base, ext = os.path.splitext(filepath)
-                        if ext != '.mp4':
-                            filepath = base + '.mp4'
+                        if ext != final_ext:
+                            filepath = base + final_ext
                 
                 if filepath and os.path.exists(filepath):
                     results.append({

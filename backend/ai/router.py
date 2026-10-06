@@ -209,8 +209,16 @@ async def ai_chat(req: ChatRequest):
             active_plan = _store.get_active_plan()
             intent = classify_intent(scanned_message, has_active_plan=active_plan is not None)
 
-             
-            if not matched_skill and intent in (
+            # The user wrote their own numbered workflow: a fixed skill template
+            # would replace their steps, so build a custom plan from them instead.
+            import re as _re
+            user_steps = len(_re.findall(r"(?i)\bstep\s*\d+\s*[—–:.)\-]", scanned_message)) >= 3
+            if user_steps:
+                print("[AI Router] Route: plan (user supplied explicit steps)", flush=True)
+                matched_skill = None
+                intent = Intent.COMPLEX_TASK
+
+            if not matched_skill and not user_steps and intent in (
                 Intent.SIMPLE_EDIT, Intent.SIMPLE_QUERY, Intent.COMPLEX_TASK
             ):
                 all_skills = [
@@ -390,10 +398,26 @@ async def ai_chat(req: ChatRequest):
                 yield f"data: {json.dumps({'type': 'status', 'phase': 'planning', 'label': 'Analysing goal and building plan...'})}\n\n"
 
                 from backend.ai.planner import generate_plan_with_llm, format_plan_for_display, plan_to_pseudo_skill
-                plan = await asyncio.get_event_loop().run_in_executor(
+                plan_future = asyncio.get_event_loop().run_in_executor(
                     None,
                     lambda: generate_plan_with_llm(scanned_message, req.agent)
                 )
+                # The planner is one long non-streaming LLM call: keep the UI alive
+                # with an elapsed-time heartbeat and honour Stop while it runs.
+                import time as _ptime
+                _plan_t0 = _ptime.monotonic()
+                while True:
+                    _done, _ = await asyncio.wait({plan_future}, timeout=3)
+                    if _done:
+                        break
+                    if _cancel_event.is_set():
+                        yield f"data: {json.dumps({'type': 'token', 'content': '⏹ Stopped while planning.'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
+                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                        return
+                    _secs = int(_ptime.monotonic() - _plan_t0)
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'planning', 'label': f'Building plan… {_secs}s'})}\n\n"
+                plan = plan_future.result()
 
                 # Show the plan to the user
                 plan_text = format_plan_for_display(plan)

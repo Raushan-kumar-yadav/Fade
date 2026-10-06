@@ -583,7 +583,7 @@ TOOLS:
 - list_kokoro_voices()             Ã¢â€ â€™ browse all voices grouped by language
 - list_kokoro_voices("en-us")      Ã¢â€ â€™ filter to American English only
 - generate_tts(text, voice, speed) Ã¢â€ â€™ synthesise speech, auto-import into library
-- check_job_status(job_id)         Ã¢â€ â€™ poll progress of any running job
+- check_job_status(job_id)         Ã¢â€ â€™ wait for a running job to finish (blocks until done)
 - cancel_job(job_id)               Ã¢â€ â€™ abort any running/pending job
 
 VOICE QUICK REFERENCE (most popular first):
@@ -606,7 +606,7 @@ VOICEOVER WORKFLOW (long script Ã¢â‚¬â€ takes >20 s):
   1. generate_tts(long_script, voice="af_heart")
      Ã¢â€ â€™ Returns "Ã¢Å’â€º job_id=abcÃ¢â‚¬Â¦ progress=20%"
   2. Tell the user: "Your voiceover is generating, I'll check back shortly."
-  3. check_job_status("abcÃ¢â‚¬Â¦")     Ã¢â€  call every 10Ã¢â‚¬â€œ20 s until done
+  3. check_job_status("abcÃ¢â‚¬Â¦")     Ã¢â€  ONE call - it waits until the job is done
      Ã¢â€ â€™ "Ã¢Å’â€º 65% Ã¢â‚¬â€ SynthesisingÃ¢â‚¬Â¦"
   4. check_job_status("abcÃ¢â‚¬Â¦")
      Ã¢â€ â€™ "Ã¢Å“â€œ Done! assetId=xyz, duration=312s"
@@ -744,8 +744,8 @@ WHEN TO USE cancel_job():
 
 CHECK-CANCEL PATTERN (use whenever any tool returns a job_id):
   1. Inform the user the job is running: "Generating your voiceover, one momentâ€¦"
-  2. check_job_status(job_id)            â† call after ~10 s
-  3. If still running â†’ update user â†’ check_job_status(job_id) again
+  2. check_job_status(job_id)            â† ONE call - it blocks until the job finishes
+  3. Only if it reports "still running" after its wait: call it ONE more time (never in a rapid loop)
   4. If done â†’ extract assetId â†’ continue with place_clip() etc.
   5. If user says stop â†’ cancel_job(job_id) â†’ confirm to user
 
@@ -995,10 +995,10 @@ WORKFLOW â€” blur ALL faces in a clip (no reference photo):
 
 WORKFLOW â€” blur a SPECIFIC person when [ATTACHED IMAGE] is in the message:
   The message will contain:
-    reference_image_path: C:\path\to\photo.jpg
+    reference_image_path: C:\\path\\to\\photo.jpg
     asset_id: <id>
   CALL: get_timeline_state() â†’ find the target clip_id
-  CALL: track_face_with_image(clip_id=<id>, reference_image_path="C:\path\to\photo.jpg", action="blur")
+  CALL: track_face_with_image(clip_id=<id>, reference_image_path="C:\\path\\to\\photo.jpg", action="blur")
   â€” TWO tool calls total. Do NOT call start_track manually.
 
 WORKFLOW â€” blur a SPECIFIC person (reference photo already in library):
@@ -1168,6 +1168,27 @@ def _build_skill_context() -> str:
     return "\n".join(lines)
 
 
+def _tool_error_message(e: Exception) -> str:
+    """Turn a failed tool call into a message the LLM can read and recover from.
+
+    Without this, a backend 4xx (e.g. a wrong assetId) raises out of the graph
+    and kills the whole run instead of letting the agent correct its arguments.
+    """
+    detail = str(e)
+    resp = getattr(e, "response", None)
+    if resp is not None:
+        try:
+            body = resp.json()
+            detail = f"HTTP {resp.status_code}: {body.get('detail', body)}"
+        except Exception:
+            detail = f"HTTP {resp.status_code}: {resp.text[:300]}"
+    return (
+        f"Tool call failed: {detail}\n"
+        "Do not repeat the same call. Check your arguments (ids must come from "
+        "get_library_assets / get_timeline_state, never invented) and try a corrected call."
+    )
+
+
 def build_agent(port: int = 8000, tools_override=None, system_override: str = "",
                 scratchpad_fn=None):
     """Build and return the compiled LangGraph agent.
@@ -1185,7 +1206,7 @@ def build_agent(port: int = 8000, tools_override=None, system_override: str = ""
     llm = _build_llm()
     tools = tools_override if tools_override is not None else ALL_TOOLS
     llm_with_tools = llm.bind_tools(tools)
-    tool_node = ToolNode(tools)
+    tool_node = ToolNode(tools, handle_tool_errors=_tool_error_message)
 
     def call_model(state: AgentState):
         user_name = _get_user_name()

@@ -60,6 +60,7 @@ function jobTypeLabel(type: string): string {
     case 'image_download': return '\u2b07 Download Image';
     case 'image_generate': return '\uD83C\uDFA8 Generate Image';
     case 'tts_generate':   return '\uD83D\uDD0A Generate TTS';
+    case 'audio_download': return '\u2B07 Download Music';
     case 'video_index':    return '\uD83D\uDD0D Index Video';
     case 'image_index':    return '\uD83D\uDD0D Index Image';
     default:               return type.replace(/_/g, ' ');
