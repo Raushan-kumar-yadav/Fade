@@ -2073,11 +2073,14 @@ def add_solid_clip(
         "trackIndex": track_index,
         "startFrame": start_frame,
         "duration": duration,
-        "shapeType": "rectangle",
-        "fillR": r, "fillG": g, "fillB": b, "fillA": a,
-        "strokeA": 0.0,
-        "width": 1920, "height": 1080,
-        "compId": comp_id,     # None = root timeline; str 
+        "compId": comp_id,
+        "style": {
+            "shapeType": "rect",
+            "fillColor": [r, g, b, a],
+            "strokeWidth": 0.0,
+            "width": 1920,
+            "height": 1080,
+        },
     })
     return json.dumps(result, indent=2)
 
@@ -2113,11 +2116,14 @@ def add_shape_clip(
         "trackIndex": track_index,
         "startFrame": start_frame,
         "duration": duration,
-        "shapeType": shape_type,
-        "fillR": fill_r, "fillG": fill_g, "fillB": fill_b, "fillA": fill_a,
-        "strokeA": 0.0,
-        "width": width, "height": height,
-        "compId": comp_id,     # None = root timeline 
+        "compId": comp_id,
+        "style": {
+            "shapeType": shape_type,
+            "fillColor": [fill_r, fill_g, fill_b, fill_a],
+            "strokeWidth": 0.0,
+            "width": width,
+            "height": height,
+        },
     })
     return json.dumps(result, indent=2)
 
@@ -2155,6 +2161,7 @@ ALL_TOOLS = [
     set_clip_param,
     add_text_clip,
     set_text_style,
+    get_comp_resolution,
     layout_text_block,
     layout_element,
     get_transitions_catalog,

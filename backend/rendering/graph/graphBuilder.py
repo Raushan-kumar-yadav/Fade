@@ -18,7 +18,7 @@ class GraphBuilder:
 
         tracks = timeline.tracks   
 
-        for track in tracks:
+        for track in reversed(tracks):
             if getattr(track, 'isAudio', lambda: False)():
                 continue   # skip audio tracks
             if getattr(track, 'isMuted', False):

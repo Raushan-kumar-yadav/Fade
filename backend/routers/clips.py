@@ -54,13 +54,28 @@ def _find_clip(clipId: str):
     raise HTTPException(404, f"Clip {clipId!r} not found")
 
 
-def _top_empty_track(startFrame: int, duration: int, tl=None):
-    """Find or create a non-overlapping video track in `tl` (defaults to root timeline)."""
+def _top_empty_track(startFrame: int, duration: int, tl=None, preferred_index: int | None = None):
+    """Find or create a non-overlapping video track in `tl` (defaults to root timeline).
+
+    If preferred_index is given, uses that track directly (creating tracks as needed).
+    Otherwise searches from index 0 (top/foreground) upward for the first free slot.
+    """
     if tl is None:
         tl = _resolve_timeline()
     endFrame = startFrame + duration
     video_tracks = [t for t in tl.tracks if not getattr(t, 'isAudio', lambda: False)()]
-    for track in reversed(video_tracks):
+
+    # If a specific track index was requested, honour it exactly
+    if preferred_index is not None:
+        # Auto-create tracks until we reach the requested index
+        while len(tl.tracks) <= preferred_index:
+            name = f"Video {len(tl.tracks) + 1}"
+            tl.addTrack(VideoTrack(name))
+        return tl.tracks[preferred_index]
+
+    # Otherwise: find the FIRST (lowest-index = foreground) track that has no overlap
+    video_tracks = [t for t in tl.tracks if not getattr(t, 'isAudio', lambda: False)()]
+    for track in video_tracks:  # index 0 first = top of stack
         overlaps = any(
             not (clip.startFrame >= endFrame or clip.startFrame + clip.duration <= startFrame)
             for clip in getattr(track, 'clips', [])
@@ -194,7 +209,8 @@ class TextPatchRequest(BaseModel):
 @router.post("/clips/text")
 def addTextClip(req: TextClipRequest):
     tl    = _resolve_timeline(req.compId)
-    track = _top_empty_track(req.startFrame, req.duration, tl)
+    track = _top_empty_track(req.startFrame, req.duration, tl,
+                             preferred_index=req.trackIndex)
     # Merge: promoted fields take priority over style dict
     merged_style = {"fontFamily": req.fontFamily, **req.style}
     clip  = TextClip(clipId=str(uuid.uuid4()), startFrame=req.startFrame,
@@ -237,6 +253,7 @@ def updateTextClip(clipId: str, req: TextPatchRequest):
 # Shape  
 
 class ShapeClipRequest(BaseModel):
+    trackIndex: int | None = None
     startFrame: int   = 0
     duration: int   = 150
     style: dict  = {}
@@ -253,7 +270,8 @@ class ShapePatchRequest(BaseModel):
 @router.post("/clips/shape")
 def addShapeClip(req: ShapeClipRequest):
     tl    = _resolve_timeline(req.compId)
-    track = _top_empty_track(req.startFrame, req.duration, tl)
+    track = _top_empty_track(req.startFrame, req.duration, tl,
+                             preferred_index=req.trackIndex)
     clip  = ShapeClip(clipId=str(uuid.uuid4()), startFrame=req.startFrame,
                       duration=req.duration, style=ShapeStyle.fromDict(req.style))
     clip.transform.position.setBase(req.x, req.y)
@@ -283,6 +301,7 @@ def updateShapeClip(clipId: str, req: ShapePatchRequest):
 #   Pen  
 
 class PenClipRequest(BaseModel):
+    trackIndex: int | None = None
     startFrame: int  = 0
     duration: int  = 150
     isClosed: bool = False
@@ -304,7 +323,8 @@ class PathKeyframeRequest(BaseModel):
 @router.post("/clips/pen")
 def addPenClip(req: PenClipRequest):
     tl    = _resolve_timeline(req.compId)
-    track = _top_empty_track(req.startFrame, req.duration, tl)
+    track = _top_empty_track(req.startFrame, req.duration, tl,
+                             preferred_index=req.trackIndex)
     clip  = PenClip(clipId=str(uuid.uuid4()), startFrame=req.startFrame,
                     duration=req.duration, isClosed=req.isClosed,
                     style=ShapeStyle.fromDict(req.style))

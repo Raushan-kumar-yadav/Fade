@@ -11,7 +11,10 @@
         "build": "vite build && npm run build:electron",
         "start": "electron . --remote-debugging-port=9222",
         "build:native": "cmake-js compile --directory renderer --out renderer/build",
+        "build:backend": "powershell -NoProfile -ExecutionPolicy Bypass -Command \".venv\\Scripts\\pyinstaller.exe backend.spec --distpath pyinstaller-dist --workpath pyinstaller-build --noconfirm\"",
+        "build:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\\build_full.ps1",
         "dist": "npm run build && electron-builder build --win --publish never"
+
     },
     "build": {
         "appId": "com.fade.videoeditor",

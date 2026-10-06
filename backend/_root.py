@@ -1,4 +1,4 @@
-﻿"""
+"""
 Fade project root resolver — works in dev AND PyInstaller frozen bundle.
 
 Usage (in any backend module):
@@ -40,7 +40,7 @@ PROJECT_ROOT: Path = _resolve_root()
 
 
 def user_data_dir(app_name: str = "fade") -> Path:
-    """
+    r"""
     Returns a per-user data directory that is writable even when the app is
     installed to a read-only location (e.g. Program Files).
 

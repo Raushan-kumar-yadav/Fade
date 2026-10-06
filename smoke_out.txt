@@ -1,0 +1,19 @@
+[Startup] Loaded .env from: E:\Editor_SIH\Fade\dist-app\win-unpacked\resources\backend\.env
+[indexer] Using fastembed embedder (Tier 1, torch-free ONNX)
+[ChromaDB] Using DB at: C:\Users\raush\.fade\chroma_db
+[main] AI router mounted at /ai
+[TaskStore] DB initialized: C:\Users\raush\AppData\Roaming\fade\fade_tasks.db
+[main] AI Task Plan router mounted at /ai/plans
+[main] MCP remote router mounted at /mcp-remote
+[main] Integrity router mounted at /integrity
+[tracking] Loaded 36 tracks from E:\Editor_SIH\Fade\dist-app\win-unpacked\resources\backend\_internal\backend\tracking\data
+[main] Tracking router mounted at /tracking
+[main] PII router mounted at /pii
+[Fade] Backend starting on port 8000
+[Fade] Python 3.12.0 | skia + subprocess-ffmpeg ready
+[WorkerBus] sandbox worker started (max_concurrent_index=2)
+[main] Tesseract setup skipped: No module named 'setup_tesseract'
+[TCP] Frame server listening on 127.0.0.1:8001
+[Startup] Loaded .env from: E:\Editor_SIH\Fade\dist-app\win-unpacked\resources\backend\.env
+[SandboxWorker] started
+[WorkerBus] check_and_resume: 0 vision + 0 transcript + 0 audio jobs queued
