@@ -35,7 +35,48 @@ def newProject(name: str = "Untitled Project",
 
     if mediaDownloadPath:
         engine.project.settings.mediaDownloadPath = mediaDownloadPath
+
+    _ensure_default_comps()
     return {"status": "ok", "project": engine.project.toDict()}
+
+
+def _ensure_default_comps() -> None:
+    """Auto-create hidden default image and PDF compositions for any project.
+
+    In dev mode these exist because the user has opened Image/PDF workspaces before.
+    In a fresh production build they don't exist — this makes them consistent.
+    The comps are created as isHidden=True so they don't clutter the library
+    unless the user explicitly opens that workspace.
+    """
+    if engine.project is None:
+        return
+    proj_w = engine.project.width
+    proj_h = engine.project.height
+    proj_fps = float(engine.project.fps)
+
+    existing_kinds = {getattr(tl, "kind", "video") for tl in engine.project.timelines
+                      if getattr(tl, "isDefault", False)}
+
+    if "image" not in existing_kinds:
+        comp = engine.createComposition(
+            name="Image Editor", width=proj_w, height=proj_h,
+            fps=proj_fps, total_frames=1,
+        )
+        comp.kind = "image"
+        comp.isHidden = True
+        comp.isDefault = True
+        print("[Project] Created default image comp", flush=True)
+
+    if "pdf" not in existing_kinds:
+        comp = engine.createComposition(
+            name="PDF Document", width=794, height=1123,
+            fps=1.0, total_frames=1,
+        )
+        comp.kind = "pdf"
+        comp.isHidden = True
+        comp.isDefault = True
+        comp.page_ids = []
+        print("[Project] Created default pdf comp", flush=True)
 
 
 from pydantic import BaseModel
@@ -640,6 +681,8 @@ def loadProject(req: LoadRequest):
         notify("project")
     except Exception:
         pass
+
+    _ensure_default_comps()
 
     return {
         "status": "ok",

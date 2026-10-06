@@ -238,11 +238,15 @@ def add_blur_track(req: AddBlurRequest):
         except Exception as e:
             print(f"[add-blur] Failed to read video dimensions from {video_path}: {e}", flush=True)
 
-    # Letterbox mapping
-    lb_scale = min(cw / iw, ch / ih) if iw > 0 and ih > 0 else 1.0
-    dx = (cw - iw * lb_scale) / 2.0
-    dy = (ch - ih * lb_scale) / 2.0
-    print(f"[add-blur] Letterbox: scale={lb_scale:.4f} offset=({dx:.1f}, {dy:.1f})", flush=True)
+    # Image/video-to-composition coordinate mapping
+    # imageClip.render() uses drawImageRect(0,0,cw,ch) which STRETCHES the image
+    # to fill the full composition (no letterboxing, independent X/Y scale).
+    # videoClip.render() uses the same applyToCanvas + fill behaviour.
+    # So tracker pixel (px,py) maps to comp pixel (px*sx_img, py*sy_img).
+    sx_img = cw / iw if iw > 0 else 1.0
+    sy_img = ch / ih if ih > 0 else 1.0
+    print(f"[add-blur] Stretch mapping: sx={sx_img:.4f} sy={sy_img:.4f} "
+          f"(src {iw}x{ih} -> comp {cw}x{ch})", flush=True)
 
     # Video transform mapping
     v_tx, v_ty, v_sx, v_sy = 0.0, 0.0, 1.0, 1.0
@@ -254,20 +258,22 @@ def add_blur_track(req: AddBlurRequest):
         v_sy = float(vt.scale.y.baseValue)
     print(f"[add-blur] Video transform: tx={v_tx} ty={v_ty} sx={v_sx} sy={v_sy}", flush=True)
 
-    def map_coords(raw_x, raw_y, raw_w, raw_h):
-        """Convert tracker pixel coords (top-left origin) to ShapeClip
-        transform coords (0,0 = center of composition)."""
-        # Step 1: apply letterbox scaling
-        lx = raw_x * lb_scale + dx
-        ly = raw_y * lb_scale + dy
-        lw = raw_w * lb_scale
-        lh = raw_h * lb_scale
-        # Step 2: apply video transform (scale around center + translate)
-        abs_x = v_sx * (lx - comp_cx) + v_tx + comp_cx
-        abs_y = v_sy * (ly - comp_cy) + v_ty + comp_cy
-        final_w = lw * v_sx
-        final_h = lh * v_sy
-        # Step 3: convert to centered coordinates (0,0 = center of comp)
+    def map_coords(raw_cx, raw_cy, raw_w, raw_h):
+        """Convert tracker pixel coords (image-space, Y from top) to ShapeClip
+        centered coords (0,0 = center of composition, Y+ = down).
+        Image clips stretch to fill the comp, so we scale X and Y independently.
+        """
+        # Step 1: stretch image pixels to composition pixels
+        comp_x  = raw_cx * sx_img
+        comp_y  = raw_cy * sy_img
+        comp_bw = raw_w  * sx_img
+        comp_bh = raw_h  * sy_img
+        # Step 2: apply clip-level transform (position offset + scale around center)
+        abs_x = v_sx * (comp_x - comp_cx) + v_tx + comp_cx
+        abs_y = v_sy * (comp_y - comp_cy) + v_ty + comp_cy
+        final_w = comp_bw * v_sx
+        final_h = comp_bh * v_sy
+        # Step 3: convert to centered coords (0,0 = center of comp)
         centered_x = abs_x - comp_cx
         centered_y = abs_y - comp_cy
         return centered_x, centered_y, final_w, final_h
@@ -299,17 +305,20 @@ def add_blur_track(req: AddBlurRequest):
     print(f"[add-blur] Mapped initial: cx={init_cx:.1f} cy={init_cy:.1f} "
           f"w={init_w:.1f} h={init_h:.1f}", flush=True)
 
-    # ── 2. Find a free video track BELOW the target video (Foreground) ────────
+    # ── 2. Find a free video track ABOVE the target video (overlay layer) ────
+    # In Fade, LOWER track index = renders ON TOP of higher-index tracks.
+    # So a censor/blur box must go at index < video_track_idx to appear over the video.
     actual_clip_id = req.clip_id or track_data.get("clip_id")
     video_track_idx = 0
     for i, tr in enumerate(tl.tracks):
         if any(getattr(c, "clipId", None) == actual_clip_id for c in tr.clips):
             video_track_idx = i
             break
+    print(f"[add-blur] Video clip at track index {video_track_idx} ('{tl.tracks[video_track_idx].name}')", flush=True)
 
     target_track = None
-    # Only search tracks that render OVER the video track (higher index)
-    for i in range(video_track_idx + 1, len(tl.tracks)):
+    # Search tracks ABOVE the video (lower index = renders over it)
+    for i in range(video_track_idx - 1, -1, -1):
         tr = tl.tracks[i]
         if getattr(tr, "type", "video") != "video" or getattr(tr, "isAudio", lambda: False)():
             continue
@@ -324,12 +333,12 @@ def add_blur_track(req: AddBlurRequest):
     if target_track is None:
         from backend.timeline.tracks.videoTrack import VideoTrack
         new_tr = VideoTrack(name=f"Censor {req.track_id[:6]}")
-        # Append to the end of the timeline so it renders correctly as the foreground layer
-        tl.tracks.append(new_tr)
+        # Insert directly BEFORE the video track so it renders ON TOP of it
+        tl.tracks.insert(video_track_idx, new_tr)
         target_track = new_tr
-        print(f"[add-blur] Created new track: '{new_tr.name}'", flush=True)
+        print(f"[add-blur] Created new track '{new_tr.name}' at index {video_track_idx} (above video)", flush=True)
     else:
-        print(f"[add-blur] Using existing track at index {tl.tracks.index(target_track)}", flush=True)
+        print(f"[add-blur] Using existing track at index {tl.tracks.index(target_track)} (above video)", flush=True)
 
     #   Create a Shape clip  
     from backend.timeline.clips.shapeClip import ShapeClip, ShapeStyle

@@ -12,9 +12,23 @@ logger = logging.getLogger(__name__)
  
 from backend._root import PROJECT_ROOT
 
-_PII_DIR = PROJECT_ROOT / "pii"
-if str(_PII_DIR) not in sys.path:
-    sys.path.insert(0, str(_PII_DIR))
+# Resolve pii/ directory — path differs between dev and frozen (.exe) modes:
+#   dev:    <repo>/pii/
+#   frozen: FADE_RESOURCES_PATH = resources/, but pii/ is in resources/backend/_internal/pii/
+#           OR sys._MEIPASS/_internal/pii/ when accessed directly
+import sys as _sys
+_PII_CANDIDATES = [
+    PROJECT_ROOT / "pii",                                # dev mode / _MEIPASS direct
+    PROJECT_ROOT / "backend" / "_internal" / "pii",      # frozen: resources/backend/_internal/pii
+]
+# Also add _MEIPASS if available (PyInstaller extracted bundle)
+_meipass = getattr(_sys, "_MEIPASS", None)
+if _meipass:
+    _PII_CANDIDATES.insert(0, Path(_meipass) / "pii")
+
+_PII_DIR = next((p for p in _PII_CANDIDATES if p.exists()), PROJECT_ROOT / "pii")
+if str(_PII_DIR) not in _sys.path:
+    _sys.path.insert(0, str(_PII_DIR))
 
 from scrubber import find_spans, _ocr_boxes, OCR_SCALE   
 
