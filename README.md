@@ -1,944 +1,599 @@
-# Fade (Echo) - AI-Powered Professional Media Editor
+# Fade (Echo) — AI-Powered Media Editor with Built-in Privacy Protection
 
 ![Electron](https://img.shields.io/badge/Electron_29-191970?style=for-the-badge&logo=Electron&logoColor=white)
 ![React](https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
-![TypeScript](https://img.shields.io/badge/TypeScript_5-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)
 ![C++](https://img.shields.io/badge/C++20-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white)
 ![Vulkan](https://img.shields.io/badge/Vulkan-AA3322?style=for-the-badge&logo=Vulkan&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-2E86AB?style=for-the-badge)
 
-> A next-generation, AI-first professional video and media editor. Five-layer architecture:
-> **Electron shell -> React UI -> Python FastAPI backend -> C++20/Vulkan GPU renderer**,
-> all orchestrated by a **hierarchical multi-agent AI system**.
+---
 
-### Download Pre-built Binary
+# ⬇️ DON'T WANT TO BUILD IT? DOWNLOAD IT HERE AND JUST USE IT
 
-No build required. Download the self-contained Windows executable:
+## 👉 **[GOOGLE DRIVE — DOWNLOAD FADE FOR WINDOWS](https://drive.google.com/drive/folders/10WzWDuEOPObGmxKkgonT9sPAAYzh8YUw?usp=sharing)** 👈
 
-**Google Drive:** https://drive.google.com/drive/folders/10WzWDuEOPObGmxKkgonT9sPAAYzh8YUw?usp=sharing
+**https://drive.google.com/drive/folders/10WzWDuEOPObGmxKkgonT9sPAAYzh8YUw?usp=sharing**
 
-Extract and double-click `Fade.exe`. All models and dependencies are bundled.
-If Windows SmartScreen warns, click **More info -> Run anyway**.
+No Python, Node.js or compiler needed. Download the folder, extract it, double-click **`Fade.exe`**.
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#1-overview)
-2. [Software Architecture](#2-software-architecture)
-3. [Layer 1 - Electron Shell](#3-layer-1--electron-shell)
-4. [Layer 2 - React Frontend](#4-layer-2--react-frontend)
-5. [Layer 3 - Python FastAPI Backend](#5-layer-3--python-fastapi-backend)
-6. [Layer 4 - C++20 Renderer (Vulkan + Skia)](#6-layer-4--c20-renderer)
-7. [Layer 5 - N-API Bridge (C++ <-> Node.js)](#7-layer-5--n-api-bridge)
-8. [Multi-Agent AI System](#8-multi-agent-ai-system)
-9. [Media Pipeline (FFmpeg + HW Decode)](#9-media-pipeline)
-10. [Library and Asset Uploading](#10-library--asset-uploading)
-11. [Animation and Expression Engine](#11-animation--expression-engine)
-12. [PDF and Document Engine](#12-pdf--document-engine)
-13. [WebComp - Live HTML Compositions](#13-webcomp--live-html-compositions)
-14. [Export Pipeline](#14-export-pipeline)
-15. [Technology Stack Summary](#15-technology-stack-summary)
-16. [Project Structure](#16-project-structure)
-17. [Getting Started (Development)](#17-getting-started-development)
+1. [How to use it (quick start)](#1-how-to-use-it-quick-start)
+2. [What each tab does](#2-what-each-tab-does)
+3. [Compositions: Video, Image, WebComp and PDF](#3-compositions-video-image-webcomp-and-pdf)
+4. [Cyber-security and privacy features](#4-cyber-security-and-privacy-features)
+5. [Tab-by-tab tour with screenshots](#5-tab-by-tab-tour-with-screenshots)
+6. [The AI agent](#6-the-ai-agent)
+7. [For developers: architecture](#7-for-developers-architecture)
+8. [For developers: build from source](#8-for-developers-build-from-source)
+9. [Project structure](#9-project-structure)
+10. [Known limitations](#10-known-limitations)
 
 ---
 
-## 1. Overview
+## 1. How to use it (quick start)
 
-**Fade** (shipped as **Echo**) is a desktop-native professional media editor that unifies:
+### Install
 
-| Workspace      | Capability                                                                    |
-| -------------- | ----------------------------------------------------------------------------- |
-| **Video**      | Multi-track NLE timeline, clip manipulation, effects, transitions, animations |
-| **Image**      | Layer-based canvas compositor (Photoshop-style)                               |
-| **PDF / Docs** | Multi-page document builder with visual layer editor                          |
-| **Audio**      | Volume mixing, TTS voiceover, Whisper transcription                           |
-| **Director**   | AI campaign orchestrator -- dispatches tasks to specialized agents            |
+1. Open the **[Google Drive folder](https://drive.google.com/drive/folders/10WzWDuEOPObGmxKkgonT9sPAAYzh8YUw?usp=sharing)** and download the build.
+2. Extract it anywhere (keep all files together — `Fade.exe` needs the `resources` folder beside it).
+3. Double-click **`Fade.exe`**. If Windows SmartScreen appears, click **More info → Run anyway**.
+4. A splash screen shows the backend and render engine starting, then the editor opens.
 
-Ships as a **self-contained Windows executable** -- no Python, Node.js, or GPU drivers needed.
+**Requirements:** Windows 10/11 64-bit. A GPU with Vulkan support is used for the live preview;
+without one the app falls back to a slower CPU compositor.
 
----
+### First run
 
-## 2. Software Architecture
+1. Open **Settings** (top-left) and choose an **AI provider** — a local **Ollama** model for fully
+   offline use, or paste an API key for OpenAI, Anthropic Claude, Google Gemini, Groq or OpenRouter.
+   The editor works without AI; only the chat agent needs a model.
+2. Go to the **Video** tab.
 
-```
-+------------------------------------------------------------------+
-|             ELECTRON SHELL  (Node.js 20)                          |
-|  Window mgmt . IPC bridge . Python spawn . WebComp host           |
-+-----------------------------+------------------------------------+
-                              | contextBridge (IPC)
-+-----------------------------v------------------------------------+
-|         REACT FRONTEND  (Vite 5 + TypeScript 5)                   |
-|  Multi-workspace UI . Timeline . Library . Per-agent AI chat      |
-+----------+--------------------------------+-----------------------+
-           | HTTP REST + SSE               | N-API (.node addon)
-           | WebSocket (frame pixels)      | via Electron IPC
-+----------v-------------------+    +------v--------------------+
-|  PYTHON FASTAPI BACKEND       |    |  C++20 RENDER ENGINE      |
-|                              |    |                           |
-|  21 REST API routers          |<-->|  Vulkan GPU device        |
-|  Timeline state machine       |HTTP|  Skia 2D rasterizer       |
-|  Multi-agent AI (LangGraph)   |    |  FFmpeg HW video decode   |
-|  Background job queue         |    |  Compositor render graph  |
-|  Media library + SSE push     |    |  Frame cache + scheduler  |
-|  Whisper / TTS / ChromaDB     |    |  RGBA -> TSFN -> JS Buf   |
-|  Export pipeline (PyAV)       |    |                           |
-+-------------------------------+    +---------------------------+
-```
+### Make your first video
 
-### Key Design Decisions
+| Step | What to do |
+| ---- | ---------- |
+| 1. Import | Drag files into the **Library** panel, or click **+**. You can also type a description in the search box to find a scene inside your footage. |
+| 2. Place | Drag an asset from the Library onto a track in the **Timeline**. |
+| 3. Edit | Use the floating toolbox: Select `V`, Razor `C`, Ripple `R`, Slip `Y`, Pan `H`. Create with Text `T`, Solid `O`, Brush `B`, Eraser `E`, Adjustment `A`, Pen path `P`. |
+| 4. Style | Select a clip, then use the right-hand tabs: **Inspector**, **Effects**, **Transitions**. |
+| 5. Protect | Use **Tracking** to blur faces, people or text, and **PII** to find and redact sensitive data. |
+| 6. Export | Open the **Export** tab, pick a composition and a format, click **Export Video**. |
 
-| Decision                        | Rationale                                          |
-| ------------------------------- | -------------------------------------------------- |
-| **Electron** (not web)          | Native FS, IPC to C++ `.node`, frameless window    |
-| **Python backend**              | LangGraph, Whisper, ChromaDB, PyTorch ecosystem    |
-| **C++ GPU renderer**            | HW video decode, Vulkan memory, sub-ms compositing |
-| **N-API** (not HTTP for frames) | Zero-serialization -- avoids 60fps JPEG overhead   |
-| **FastAPI + SSE** for AI        | LangGraph streams tokens/tool events natively      |
+`Space` plays / pauses, `←` `→` step one frame, `Ctrl+Shift+L` opens the backend log window.
+
+### Or just ask the AI
+
+Click the round AI button to open the agent chat and type what you want, for example:
+
+> *"Create a 30-second awareness video about fake e-challan scams: write the script, generate the
+> voiceover, download B-roll, add titles and captions, and blur every face."*
+
+The agent builds a step-by-step plan, runs it, and shows each step's progress in the chat.
 
 ---
 
-## 3. Layer 1 - Electron Shell
+## 2. What each tab does
 
-**Files:** `electron/main.ts` (1390 lines), `electron/preload.ts`, `electron/webComp/`
+| Tab | What it is for |
+| --- | -------------- |
+| **Home** | Landing page with shortcuts into the other workspaces and quick-start tips. |
+| **AI** | AI-first workspace: the Library and a large preview. You describe the result and the agent builds it. |
+| **Video** | The full editor: Library, Viewport, multi-track Timeline, and the Inspector / Effects / Transitions / Tools / Tracking / PII panels. |
+| **Image** | Layer-based still-image canvas. The same tools and effects, with layers instead of time. |
+| **PDF** | Multi-page document builder. Each page is a canvas of layers; exports a PDF. |
+| **Audio** | The editing layout with the audio agent: voiceover (text-to-speech), captions from speech, volume and silence removal. |
+| **Export** | Choose the composition, format, quality and audio settings, and optionally register the file for integrity verification. |
 
-### Python Process Lifecycle
-
-```typescript
-// Spawn Python backend as child process
-pyProcess = spawn(pythonExe, [backendScript], {
-  env: { ...process.env, FADE_PORT: String(port) },
-});
-// Polls stdout for "Backend ready on port XXXX"
-// On quit: SIGTERM + taskkill /F /T /PID (kills GPU worker threads too)
-```
-
-### Splash Screen
-
-A dedicated `BrowserWindow` shows boot progress while:
-
-- Python subprocess starts and loads FastAPI routes
-- Bundled ML models (Whisper `small.pt`, Kokoro TTS) initialize
-- C++ Vulkan device is selected and GPU context created
-
-### IPC Bridge (contextBridge)
-
-```typescript
-// electron/preload.ts
-contextBridge.exposeInMainWorld("electronAPI", {
-  minimize: () => ipcRenderer.send("window:minimize"),
-  maximize: () => ipcRenderer.send("window:maximize"),
-  close: () => ipcRenderer.send("window:close"),
-  openFile: () => ipcRenderer.invoke("dialog:openFile"),
-  renderFrame: (data) => ipcRenderer.invoke("render:frame", data),
-});
-```
-
-### WebComp Renderer (`electron/webComp/`)
-
-Each WebComp (live HTML composition) gets its own **Puppeteer/Playwright** headless browser
-page inside Electron's main process. `captureFrame()` screenshots the page and passes RGBA
-pixel data to the C++ compositor via the same N-API path as video frames.
+Every workspace has its own AI agent (Video Agent, Image Agent, Audio Agent, PDF Agent) with its
+own chat history, so a conversation in one tab does not leak into another.
 
 ---
 
-## 4. Layer 2 - React Frontend
+## 3. Compositions: Video, Image, WebComp and PDF
 
-**Files:** `src/` -- **Vite 5**, **React 18**, **TypeScript 5**
+A **composition** ("comp") is a canvas with its own size, frame rate and layers. A project can hold
+many comps, and one comp can be placed inside another as a clip.
 
-### Always-Mounted Workspaces
+### Video composition
 
-All workspaces are **always mounted** but toggled with `display: none`. Local state
-(scroll, zoom, selected layers) survives tab switches without component destruction:
+- **What it is:** a timeline with video and audio tracks. The project starts with one, the
+  **Main Timeline** (1920×1080, 30 fps).
+- **Clip types:** video, image, audio, text, shape, solid colour, brush / pen strokes, SVG,
+  nested compositions and WebComps.
+- **Use it for:** reels, explainers, awareness videos, product demos, podcasts clips.
+- **How to use:** Video tab → drag assets to tracks → trim, split and move clips → add effects,
+  transitions and keyframe animation → export as MP4 / WebM / GIF.
 
-```tsx
-// App.tsx
-<div style={{ display: isVideoTab ? 'flex' : 'none' }}>
-  <VideoWorkspace compId={videoCompId} />
-</div>
-<div style={{ display: isImageTab ? 'flex' : 'none' }}>
-  <ImageWorkspace compId={imageCompId} />
-</div>
-```
+### Image composition
 
-### Per-Agent Chat Isolation
+- **What it is:** a single-frame comp. Tracks become **layers**, like a photo editor.
+- **Use it for:** thumbnails, posters, social-media posts, redacted screenshots.
+- **How to use:** Image tab → add images, text and shapes as layers → apply effects and masks →
+  export as an image.
 
-`key={activeTab}` forces `FloatingAIChat` to **remount** on every tab switch. Each remount
-re-runs `useState` which reads the correct per-agent Map slot:
+### WebComp (live HTML composition)
 
-```tsx
-// App.tsx
-<FloatingAIChat key={activeTab} agentId={activeTab} onClose={...} />
+- **What it is:** a clip whose content is a real web page (HTML + CSS + JavaScript) rendered
+  frame-accurately. It can be a local animation or a live site.
+- **Use it for:** animated lower-thirds, counters and charts, UI mock-ups, particle backgrounds,
+  embedding a live website (for example an official helpline page) as an overlay.
+- **How to use:** ask the agent (*"add a web overlay of https://cybercrime.gov.in bottom-right for
+  6 seconds"* or *"make an animated stat counter"*), or create one from a template. Select the clip
+  to edit its files and parameters in the WebComp inspector. Position, size and opacity work like
+  any other clip.
 
-// FloatingAIChat.tsx -- module-level Map store (persists across remounts)
-const _storeMessages: Map<string, Message[]> = new Map()
-const _storeHistory:  Map<string, History[]>  = new Map()
-```
+### PDF composition
 
-Each agent has its own greeting:
-
-- **video** -- "I can edit the timeline, place clips, add effects..."
-- **image** -- "I can create image compositions, add layers, apply filters..."
-- **audio** -- "I can adjust volumes, TTS, transcribe speech..."
-- **pdf** -- "I can create PDF documents, add pages, populate content..."
-- **director** -- "Give me a high-level brief and I'll plan the campaign..."
+- **What it is:** a document made of pages; each page is its own canvas (A4 at 2480×3508).
+- **Use it for:** reports, advisories, one-page explainers, redacted documents.
+- **How to use:** PDF tab → **Add page** → place text, images and shapes as layers → export a PDF.
 
 ---
 
-## 5. Layer 3 - Python FastAPI Backend
+## 4. Cyber-security and privacy features
 
-**Files:** `backend/` -- **FastAPI** on **Uvicorn** (full async I/O)
+Fade treats privacy as part of editing. Detection and blurring run **on your own machine** — the
+backend only listens on `127.0.0.1`.
 
-### API Router Map
+### 4.1 Object Tracking — find it, follow it, blur it
 
-| Prefix         | File                           | Responsibility                                    |
-| -------------- | ------------------------------ | ------------------------------------------------- |
-| `/ai`          | `ai/router.py`                 | Chat SSE streaming, agent restart, Director run   |
-| `/timeline`    | `routers/timeline.py`          | Timeline state, track management                  |
-| `/clips`       | `routers/clips.py`             | CRUD: video / image / text / shape / SVG clips    |
-| `/comps`       | `routers/comps.py`             | Composition create / activate / state / PDF pages |
-| `/library`     | `routers/library.py`           | Asset listing, import, SSE change events          |
-| `/render`      | `routers/render.py`            | Frame requests (routed to C++ renderer)           |
-| `/playback`    | `routers/playback.py`          | Play / pause / seek / speed                       |
-| `/effects`     | `routers/effects.py`           | Effect catalog, add / remove / params             |
-| `/transitions` | `routers/transitions.py`       | Transition catalog + insertion                    |
-| `/audio`       | `routers/audio.py`             | Audio track management                            |
-| `/animation`   | `routers/animation.py`         | Keyframes, expressions, easing curves             |
-| `/export`      | `routers/export_.py`           | Export triggers + SSE progress stream             |
-| `/jobs`        | `routers/jobs.py`              | Background job queue (TTS, Whisper, downloads)    |
-| `/search`      | `routers/search.py`            | DuckDuckGo search + yt-dlp download trigger       |
-| `/context`     | `routers/context.py`           | LLM-optimized timeline/clip context dumps         |
-| `/scene-tools` | `routers/scene_tools.py`       | Semantic scene search (ChromaDB + vision AI)      |
-| `/virality`    | `routers/virality.py`          | Virality predictor + social connections           |
-| `/image-tools` | `routers/image_tools.py`       | Image-specific operations                         |
-| `/debug`       | `routers/debug.py`             | Animation diagnostics                             |
-| `/mcp-remote`  | `routers/mcp_remote_router.py` | MCP protocol for external AI access               |
+![Object Tracking panel](docs/screenshots/tracking-panel.png)
 
-### Background Job Queue
+Pick a clip, a frame range and a detection mode, then press **Start Tracking**.
 
-```python
-# Status flow: pending -> running -> done | failed
-class Job:
-    job_id:   str
-    type:     Literal["whisper", "tts", "download", "index", "export"]
-    status:   JobStatus
-    progress: float     # 0.0 to 1.0
-    result:   dict | None
-```
+| Mode | What is detected | How |
+| ---- | ---------------- | --- |
+| **Face** | Every face in the clip | MediaPipe face detector |
+| **Face + reference photo** | Only one specific person | A face embedding from the photo you upload |
+| **Person** | Whole bodies | YOLOv8 |
+| **Text** | On-screen text (optionally matching a pattern) | OCR |
+| **Image** | A logo or object you provide | Template matching |
+| **Manual** | A box you draw | Frame-to-frame tracker |
 
-Frontend polls `GET /jobs/{job_id}` or listens to SSE events for completion.
+A finished track can **blur** the subject (the blur follows it through the clip) or make another
+layer **follow** it.
 
----
+### 4.2 PII Review — detect and redact sensitive data
 
-## 6. Layer 4 - C++20 Renderer (Vulkan + Skia)
+![PII Review panel](docs/screenshots/pii-panel.png)
 
-**Files:** `renderer/src/` -- 39 `.cpp` files, built as a `.node` native addon
+Select a clip and the panel scans it for personal and secret data. For images and video, text is
+read from the frames with OCR; text files are scanned directly.
 
-### Source Layout
+| Detected | Examples |
+| -------- | -------- |
+| Indian identity data | Aadhaar numbers, PAN numbers, phone numbers |
+| Contact data | Email addresses; person names when the optional spaCy language model is installed |
+| Financial data | Credit-card numbers (checksum-validated) |
+| Secrets | Private keys, JWTs, AWS keys, GitHub tokens, bearer tokens, `password=` / `api_key=` values |
+| Network data | IPv4 addresses |
 
-```
-renderer/src/
-|-- napi/RenderEngineAddon.cpp         N-API entry: all JS-callable exports
-|-- HeadlessCompositor.cpp             Top-level compositor orchestrator
-|-- gpu/vulkan/
-|   |-- device/DeviceContext.cpp       VkInstance, VkDevice, VMA allocator
-|   |-- memory/Buffer.cpp              VMA-backed GPU buffer allocation
-|   |-- memory/Texture.cpp             VkImage + VkImageView + VkSampler
-|   |-- command/CommandBuffer.cpp      Recorded GPU draw commands
-|   |-- command/CommandPool.cpp        Thread-local command pool management
-|   `-- skia/SkiaContext.cpp           GrDirectContext (Skia Vulkan backend)
-|-- rendering/
-|   |-- Renderer.cpp                   Per-frame render loop
-|   |-- RenderThread.cpp               Dedicated C++ render thread
-|   |-- clips/VideoClip.cpp            Video frame -> textured quad
-|   |-- compositor/
-|   |   |-- Compositor.cpp             Graph execution engine
-|   |   |-- graph/RenderGraph.cpp      Node dependency graph
-|   |   `-- passes/
-|   |       |-- CameraSetupNode        Viewport + project transform
-|   |       |-- uploadTextureNode      CPU/GPU frame -> VkImage
-|   |       |-- CompDrawNode           Layer z-order compositing
-|   |       |-- EffectNode             Per-clip shader effects
-|   |       `-- MaskNode               Alpha mask compositing
-|   |-- effects/
-|   |   |-- EffectRegistry.cpp         Built-in effect catalog
-|   |   `-- EffectInstance.cpp         Per-clip effect state
-|   |-- DrawText.cpp                   Skia SkFont + SkTextBlob
-|   |-- DrawShape.cpp                  Skia SkPath (rect, ellipse, star)
-|   |-- DrawPen.cpp                    Freehand brush strokes
-|   `-- DrawSvg.cpp                    SkSVGDOM full SVG rendering
-|-- video/
-|   |-- HwVideoDecoder.cpp             DXVA2 / D3D11VA hardware decode
-|   |-- videoDecoder.cpp               Software fallback (CPU YUV->RGBA)
-|   `-- ClipDecoder.cpp                Per-clip decoder lifecycle
-`-- engine/
-    |-- DecodeScheduler.cpp            Pre-fetch frames ahead of playhead
-    |-- DecoderPool.cpp                Per-clip decoder instance pool
-    |-- FrameCache.cpp                 LRU ring buffer of decoded frames
-    |-- ThreadPool.cpp                 N worker threads for parallel decode
-    `-- SchedulerBridge.cpp            N-API TSFN callback bridge to JS
-```
+You review every finding, switch individual ones off, or add your own boxes. On confirm, Fade
+creates a **sanitized copy**, swaps it into the timeline, and marks the original **RESTRICTED** so
+it is not used by mistake.
 
-### GPU Device (DeviceContext.cpp)
+### 4.3 The agent protects privacy for you
 
-```cpp
-class DeviceContext {
-    VkInstance       instance;       // Vulkan instance (validation in debug)
-    VkPhysicalDevice physicalDevice; // GPU selection (prefers discrete GPU)
-    VkDevice         device;         // Logical device
-    VkQueue          graphicsQueue;
-    VmaAllocator     allocator;      // VulkanMemoryAllocator
-};
-```
+You can simply ask, and the agent runs the same tools:
 
-**VulkanMemoryAllocator (VMA)** manages GPU heap fragmentation automatically. Critical for
-long editing sessions where thousands of video frame textures are allocated and freed.
+| You say | The agent does |
+| ------- | -------------- |
+| *"Blur all faces in every clip"* | Detects and tracks every face, then applies a tracked blur |
+| *"Blur everyone except this person"* (with a photo) | Uses the reference photo to tell people apart |
+| *"Hide the phone number on screen"* | Tracks the matching text and blurs it |
+| *"Scan this asset for sensitive data"* | Runs PII detection and lists what it found |
+| *"Sanitize it"* | Redacts all detected PII and restricts the original |
 
-### Skia on Vulkan (SkiaContext.cpp)
+### 4.4 Prompt-injection shield
 
-```cpp
-GrVkBackendContext vkCtx {
-    .fInstance       = device.instance,
-    .fPhysicalDevice = device.physicalDevice,
-    .fDevice         = device.device,
-    .fQueue          = device.graphicsQueue,
-};
-GrDirectContext* grContext = GrDirectContext::MakeVulkan(vkCtx).release();
-sk_sp<SkSurface> surface   = SkSurface::MakeRenderTarget(grContext, ...);
-```
+Text hidden inside a file can try to hijack an AI agent ("ignore your instructions and …").
+Fade screens for this in three places:
 
-Skia renders to the **same Vulkan image** as video frame textures. No CPU readback between
-video compositing and 2D drawing -- one unified GPU render pass.
+- every message sent to the agent,
+- every imported **PDF**,
+- every imported **image** (its text is read with OCR first).
 
-### Hardware Video Decoding (HwVideoDecoder.cpp)
+Each input is allowed, cleaned (the malicious part is neutralised), or blocked.
 
-```cpp
-// Hardware path: DXVA2 -> D3D11VA -> GPU VRAM -> VkImage (zero-copy)
-av_hwdevice_ctx_create(&hwDevCtx, AV_HWDEVICE_TYPE_D3D11VA, nullptr, nullptr, 0);
+### 4.5 Integrity verification — prove a video is the original
 
-// Software fallback: CPU YUV420P -> pixel convert -> VMA staging -> VkImage
-```
+![Export tab with integrity registration](docs/screenshots/export-workspace.png)
 
-### Render Graph (Compositor Passes)
+Tick **Register for Integrity Verification** before exporting and Fade records four independent
+proofs of the file:
 
-```
-Frame N render:
-  CameraSetupNode    -- viewport matrix, aspect ratio correction
-  uploadTextureNode  -- video frame VRAM -> VkImage
-  CompDrawNode       -- iterate layers in z-order:
-    VideoClip        --   textured quad + transform matrix
-    TextClip         --   SkTextBlob (font cache, kerning)
-    ShapeClip        --   SkPath (rectangle, ellipse, polygon)
-    SVGClip          --   SkSVGDOM parse + rasterize
-  EffectNode         -- per-clip fragment shader (blur, color grade, etc.)
-  MaskNode           -- alpha mask compositing
-  DebugOverlayNode   -- fps counter (dev builds only)
-```
+| Layer | Survives | What it is |
+| ----- | -------- | ---------- |
+| SHA-256 hash | Nothing (exact copy only) | Byte-exact fingerprint |
+| Merkle tree + ledger anchor | — | Tamper-evident record of the hash (local ledger; an on-chain contract is supported) |
+| Perceptual hash | Re-encoding, resizing | Fingerprint of what the video *looks* like |
+| Invisible watermark | Platform re-uploads | An ID embedded in the frames (DWT-DCT) |
+
+Checking a file later returns one of: **AUTHENTIC**, **AUTHENTIC_REENCODED**,
+**AUTHENTIC_PLATFORM_COPY** or **UNVERIFIED**.
 
 ---
 
-## 7. Layer 5 - N-API Bridge (C++ <-> Node.js)
+## 5. Tab-by-tab tour with screenshots
 
-**Files:** `renderer/src/napi/RenderEngineAddon.cpp`
+### Video workspace
 
-**N-API** (Node-API) is the ABI-stable C API for native Node.js addons. The renderer compiles
-to `render_engine.node` and is loaded directly by Electron -- no serialization, no HTTP, no IPC.
+![Video workspace](docs/screenshots/video-workspace.png)
 
-### Exported JavaScript API
+| Area | Purpose |
+| ---- | ------- |
+| **Library** (left) | Imported and downloaded media, plus compositions. The search box also finds scenes by description. |
+| **Toolbox** (floating) | Edit tools (Select, Razor, Ripple, Slip, Pan) and create tools (Text, Solid, Brush, Eraser, Adjustment, shapes, Pen). |
+| **Viewport** (centre) | GPU preview with transport controls, in/out points, preview resolution and zoom. |
+| **Right panel** | Six tabs, described below. |
+| **Timeline** (bottom) | Video and audio tracks with mute / solo / lock per track. |
+| **Agent chat** | The Video Agent; drag the round AI button to move it. |
 
-```cpp
-// RenderEngineAddon.cpp
-Napi::Object Init(Napi::Env env, Napi::Object exports) {
-    exports.Set("initRenderer",     Napi::Function::New(env, InitRenderer));
-    exports.Set("renderFrame",      Napi::Function::New(env, RenderFrame));
-    exports.Set("setTimeline",      Napi::Function::New(env, SetTimeline));
-    exports.Set("setFrameCallback", Napi::Function::New(env, SetFrameCallback));
-    exports.Set("startExport",      Napi::Function::New(env, StartExport));
-    exports.Set("cancelExport",     Napi::Function::New(env, CancelExport));
-    exports.Set("setPythonPort",    Napi::Function::New(env, SetPythonPort));
-    exports.Set("setPreviewScale",  Napi::Function::New(env, SetPreviewScale));
-    return exports;
-}
-NODE_API_MODULE(render_engine, Init)
-```
+### Inspector
 
-```typescript
-// Electron main.ts -- used like a normal Node.js module
-const engine = require("./renderer/build/Release/render_engine.node");
-engine.initRenderer({ width: 1920, height: 1080, fps: 30 });
-engine.setFrameCallback((frameBuffer: Buffer) => {
-  // Raw RGBA bytes -- direct V8 ArrayBuffer, one memcopy only
-  ws.send(frameBuffer); // WebSocket -> frontend canvas
-});
-```
+![Inspector panel](docs/screenshots/inspector-panel.png)
 
-### ThreadSafeFunction (TSFN) - Cross-Thread Callbacks
+Shows the properties of the selected clip or transition: position, scale, rotation, opacity, text
+styling, WebComp parameters, and keyframe animation for any property.
 
-The renderer runs on its own C++ thread (not the Node.js event loop). Frames are delivered
-to JavaScript via `Napi::ThreadSafeFunction`:
+### Effects
 
-```cpp
-// SchedulerBridge.cpp -- called from C++ render thread
-g_tsfn.NonBlockingCall(
-  [frameData](Napi::Env env, Napi::Function jsCallback) {
-    // One memcopy: C++ heap -> V8 heap
-    auto buf = Napi::Buffer<uint8_t>::Copy(env, frameData.data(), frameData.size());
-    jsCallback.Call({ buf });
-  }
-);
-```
+![Effects panel](docs/screenshots/effects-panel.png)
 
-### Export State
+A searchable effect library with categories (Color, Cinematic, Keying, Color Correction, Stylize,
+Blur & Sharpen, Generate, Distort). Drag an effect onto a clip or double-click to apply, then tune
+its parameters on the right. Effects are GPU shaders, so the preview updates live.
 
-```cpp
-struct ExportProgress { int frame; int total; bool done; std::string error; };
-std::atomic<bool> g_exporting{false};
-std::atomic<bool> g_exportCancel{false};
-Napi::ThreadSafeFunction g_exportTsfn;  // second TSFN for export progress
-```
+### Transitions
 
-### Build System
+![Transitions panel](docs/screenshots/transitions-panel.png)
 
-```bash
-# cmake-js builds the C++ addon with Electron's exact Node.js ABI version
-npx cmake-js build --runtime electron --runtime-version 29.0.0
-# Output: renderer/build/Release/render_engine.node
+Dissolve, Fade to Black, Wipe Left / Right, Zoom In and Slide Left. Drag one onto the join between
+two clips.
 
-# Key CMakeLists.txt settings:
-#   find_package(Vulkan REQUIRED)
-#   NAPI_VERSION=8
-#   NAPI_DISABLE_CPP_EXCEPTIONS
-#   VK_USE_PLATFORM_WIN32_KHR
-#   Includes: FFmpeg headers, Skia source, VMA, GLM, stb, nlohmann/json
-```
+### Tools
 
----
+![Tools panel](docs/screenshots/tools-panel.png)
 
-## 8. Multi-Agent AI System
+Options for the active creation tool — text (`T`), shapes (`Q`), pen (`P`), brush and eraser
+settings, and masks.
 
-**Files:** `backend/ai/` -- **LangGraph** + **LangChain**
+### Tracking and PII
 
-### Architecture
+See [section 4](#4-cyber-security-and-privacy-features) for both panels.
 
-```
-User on any tab
-      |
-      v
-POST /ai/chat  { message, agent: "video"|"image"|"audio"|"pdf"|"director"|"home" }
-      |
-      v
-agent_registry.get_specialized_agent(agent_type, port)
-      |
-      v
-+------------------------------------------------------------+
-|          SPECIALIZED LANGGRAPH AGENT                        |
-|  SystemMessage  <- specialized system prompt per agent     |
-|  Tools          <- scoped to this agent's domain only      |
-|  History        <- isolated per-agent (frontend Map)       |
-|  call_model <-> tool_node  (loop until done)               |
-+------------------------------------------------------------+
-      |
-      v  SSE stream: tokens . tool_call . tool_result . status
-FloatingAIChat.tsx -- renders in real-time
-```
+### Image workspace
 
-### Agent Registry (`backend/ai/agent_registry.py`)
+![Image workspace](docs/screenshots/image-workspace.png)
 
-```python
-_cache: dict[str, CompiledGraph] = {}   # key: "video:8000"
+A still-image canvas. The Timeline panel lists layers instead of time, and the same Effects,
+Tools, Tracking and PII panels apply.
 
-def get_specialized_agent(agent_type: str, port: int) -> CompiledGraph:
-    key = f"{agent_type}:{port}"
-    if key not in _cache:
-        tools  = get_tools_for(agent_type)      # domain-scoped tool list
-        system = SYSTEM_PROMPTS[agent_type]     # specialized system prompt
-        _cache[key] = build_agent(port, tools_override=tools,
-                                  system_override=system)
-    return _cache[key]
-```
+### PDF workspace
 
-### Tool Sets (`backend/ai/tool_sets.py`)
+![PDF workspace](docs/screenshots/pdf-workspace.png)
 
-| Agent      | Tools   | Scoped to                                                              |
-| ---------- | ------- | ---------------------------------------------------------------------- |
-| `video`    | 117     | Timeline, clips, effects, transitions, export, animations              |
-| `image`    | 58      | Compositions, layers, image download/generate, masks                   |
-| `audio`    | 39      | Volume, TTS, Whisper, silence removal, audio tracks                    |
-| `pdf`      | 22      | PDF docs, pages, content, summaries                                    |
-| `director` | ALL + 3 | Everything + dispatch_task, get_campaign_status, list_platform_presets |
-| `home`     | 25      | Read-only: library, search, project overview                           |
+**Pages** on the left (add, reorder, delete), the page canvas in the centre, and the page's
+**image layers** on the right. The Library shows both the main timeline and the PDF document.
 
-### Director Agent - Campaign Orchestration
+### Export workspace
 
-```
-User: "Make social media content for all platforms"
+![Export workspace](docs/screenshots/export-workspace.png)
 
-Director:
-  1. list_platform_presets()
-     -> YouTube (1920x1080), IG Story (1080x1920), TikTok (1080x1920)...
-
-  2. dispatch_task("video", "60s YouTube video",
-                   platform="youtube", create_comp_name="YouTube_Post")
-     -> creates 1920x1080 comp -> queues AgentTask -> returns task_id
-
-  3. dispatch_task("image", "IG square post",
-                   platform="instagram_post", create_comp_name="IG_Post")
-
-  4. dispatch_task("video", "30s Reel",
-                   platform="instagram_story", create_comp_name="Reel")
-
-  5. get_campaign_status()
-     -> "3 tasks: 1 done, 1 running, 1 pending"
-```
-
-### Platform Presets (`backend/ai/platform_presets.py`)
-
-| Key               | Dimensions | FPS | Max Duration |
-| ----------------- | ---------- | --- | ------------ |
-| `youtube`         | 1920x1080  | 30  | 60s          |
-| `instagram_post`  | 1080x1080  | 30  | 60s          |
-| `instagram_story` | 1080x1920  | 30  | 90s          |
-| `tiktok`          | 1080x1920  | 30  | 180s         |
-| `twitter`         | 1280x720   | 30  | 140s         |
-| `youtube_short`   | 1080x1920  | 30  | 60s          |
-| `linkedin`        | 1920x1080  | 30  | 600s         |
-| `pinterest`       | 1000x1500  | 30  | 15s          |
-| `facebook`        | 1280x720   | 30  | 240s         |
-| `facebook_story`  | 1080x1920  | 30  | 20s          |
-
-### Task Queue (`backend/ai/task_queue.py`)
-
-```python
-@dataclass
-class AgentTask:
-    id:          str
-    agent_type:  Literal["video", "image", "audio", "pdf"]
-    job:         str          # natural language instruction
-    comp_id:     str | None   # composition created by Director
-    platform:    str | None   # platform preset name
-    status:      Literal["pending", "running", "done", "failed"]
-    result:      str | None
-```
-
-asyncio-safe via `asyncio.Lock`. Supports concurrent Director writes and worker reads.
-
-### LangGraph Agent (`backend/ai/agent.py`)
-
-```python
-def build_agent(port, tools_override=None, system_override=""):
-    llm            = _build_llm()              # Ollama / OpenAI / Gemini / Groq
-    llm_with_tools = llm.bind_tools(tools)     # LangChain tool binding
-    tool_node      = ToolNode(tools)           # auto-executes tool calls
-
-    def call_model(state: AgentState):
-        system   = system_override + "\n\n" + _SYSTEM
-        messages = [SystemMessage(content=system)] + state["messages"]
-        response = llm_with_tools.invoke(_trim_messages(messages))
-        return {"messages": [response]}
-
-    graph = StateGraph(AgentState)
-    graph.add_node("agent", call_model)
-    graph.add_node("tools", tool_node)
-    graph.add_conditional_edges("agent", should_continue)
-    return graph.compile()
-```
-
-Retries on transient errors with exponential backoff -- up to 4 attempts.
-
-### Supported LLM Providers
-
-| Provider             | `FADE_AI_PROVIDER` | Notes                                                   |
-| -------------------- | ------------------ | ------------------------------------------------------- |
-| **Ollama** (default) | `ollama`           | Local, offline. Needs: `llama3.2`, `qwen2.5`, `mistral` |
-| **OpenAI**           | `openai`           | GPT-4o, GPT-4-turbo                                     |
-| **Anthropic**        | `anthropic`        | Claude 3.5 Sonnet                                       |
-| **Google Gemini**    | `google`           | Gemini 1.5 Pro                                          |
-| **Groq**             | `groq`             | Ultra-fast inference                                    |
-| **TokenRouter**      | `tokenrouter`      | Multi-provider load balancer                            |
+| Setting | Options |
+| ------- | ------- |
+| Composition | Any video comp or PDF document in the project |
+| Format | MP4 1080p / 4K / 720p, YouTube Shorts, Instagram Reels, WebM VP9, GIF |
+| Video quality | CRF (quality) or fixed bitrate, plus encoder preset |
+| Audio | Sample rate, channels, bitrate |
+| Output | File path, estimated size |
+| Integrity | Optional registration (see 4.5) |
 
 ---
 
-## 9. Media Pipeline (FFmpeg + HW Decode)
+## 6. The AI agent
 
-### Video Decode Flow
-
-```
-Video file (mp4 / mov / mkv / webm / avi)
-    |
-    v
-FFmpeg AVFormatContext (demux) -> AVCodecContext (decode)
-    |
-    |-- HW path: DXVA2 / D3D11VA -> GPU VRAM -> VkImage (zero-copy)
-    `-- SW path: CPU YUV420P -> pixel convert -> VMA staging -> VkImage
-    |
-    v
-ClipDecoder -> DecodeScheduler (pre-fetch lookahead in ThreadPool)
-    |
-    v
-FrameCache (LRU ring buffer)
-    |
-    v
-Compositor render graph -> VkImage (all layers composited)
-    |
-    v
-RGBA readback -> N-API TSFN -> Node.js Buffer -> WebSocket -> frontend canvas
-```
-
-### Audio Stack
-
-| Component      | Technology                       | Purpose                              |
-| -------------- | -------------------------------- | ------------------------------------ |
-| Decode         | FFmpeg / PyAV (`av`)             | Audio stream demux + decode          |
-| TTS            | **Kokoro** (bundled, offline)    | Neural text-to-speech                |
-| Speech-to-text | **Faster-Whisper** (CTranslate2) | Timestamped transcription            |
-| Processing     | **Numba / LLVM**                 | Silence detection, waveform analysis |
-| Mixing         | FFmpeg audio graph               | Multi-track mix for export           |
-
-### Image Processing
-
-| Component      | Technology                | Purpose                       |
-| -------------- | ------------------------- | ----------------------------- |
-| Load/save      | **Pillow (PIL)**          | Format conversion, thumbnails |
-| Analysis       | **OpenCV** (headless)     | Frame extraction, filtering   |
-| ML inference   | **PyTorch + torchvision** | Vision model inference        |
-| Server-side 2D | **skia-python**           | PDF page composition          |
+- **Understands goals, not just commands.** A request is routed to one of four paths: a
+  ready-made **skill** (educational video, short reel, product demo, podcast clip, cinematic
+  B-roll, motion graphic, social post, software intro), a **custom plan** built for your request,
+  a **single edit**, or a **question** about the project.
+- **Your steps win.** If you write your own numbered steps, the agent follows them instead of a
+  template.
+- **Shows its work.** Each plan step appears in the chat with its status. If a step fails, the
+  finished steps are kept — reply **continue** to retry from that step.
+- **What it can do:** generate voiceover (Kokoro, runs locally), transcribe and caption (Whisper),
+  download video, images and music, generate images, build WebComps, place and animate clips,
+  apply effects and transitions, track and blur, scan for PII, and export.
+- **External control:** other AI clients can drive Fade through its MCP endpoint (`/mcp-remote`).
 
 ---
 
-## 10. Library and Asset Uploading
+## 7. For developers: architecture
 
-### Upload Flow
-
-```
-User drags file into Library panel  (or AI downloads media)
-    |
-    v
-POST /library/import  { filePath }
-    |
-    v
-library.py:
-    1. Validate type (video / image / audio / pdf / svg)
-    2. Generate assetId (UUID)
-    3. Copy to /project/media/
-    4. FFprobe: duration, dimensions, fps, codec
-    5. Generate thumbnail (Pillow / FFmpeg first frame)
-    6. Append to library.json manifest
-    |
-    v
-SSE push -> GET /library/events -> LibraryPanel live update
-```
-
-### Asset Schema
-
-```json
-{
-  "assetId": "a1b2c3d4",
-  "name": "promo_clip.mp4",
-  "type": "video",
-  "path": "/project/media/a1b2c3d4.mp4",
-  "duration": 30.5,
-  "width": 1920,
-  "height": 1080,
-  "fps": 30,
-  "thumbnail": "/project/thumbnails/a1b2c3d4.jpg",
-  "indexed": true,
-  "transcript": null
-}
-```
-
-### Semantic Video Search (ChromaDB)
+Fade is three programs that cooperate: an **Electron** shell, a **C++ render engine** loaded
+inside it, and a **Python** backend running beside it.
 
 ```
-When "Index" is triggered on a video:
-  1. FFmpeg extracts frames (default: 1 per 2 seconds)
-  2. Ollama vision model (moondream/llava) describes each frame
-  3. Faster-Whisper generates word-level transcript
-  4. sentence-transformers embeds descriptions + transcript
-  5. Stored in ChromaDB local vector database
-  6. search_video_scenes(query) -> cosine similarity -> frame timestamps
+┌──────────────────────── Fade.exe — Electron MAIN process (Node.js) ────────────────────────┐
+│ electron/main.ts                                                                           │
+│  • creates the splash, editor and log windows                                              │
+│  • spawns the Python backend and reads its port from stdout                                │
+│  • require("render_engine.node")  — the C++ engine runs INSIDE this process                │
+│  • hosts off-screen Chromium windows for WebComps                                          │
+└───────┬───────────────────────────────┬───────────────────────────────────┬────────────────┘
+        │ ① IPC (contextBridge)         │ ② N-API calls + thread-safe       │ spawn / kill
+        │                               │    callbacks                      │
+┌───────▼───────────────┐   ┌───────────▼─────────────────┐   ┌─────────────▼────────────────┐
+│ React UI              │   │ C++20 render engine         │   │ Python backend               │
+│ (renderer process)    │   │ Vulkan + Skia + FFmpeg      │   │ FastAPI + Uvicorn            │
+│ Vite · React · TS     │   │ render_engine.node          │   │ HTTP  127.0.0.1:PORT         │
+└───────┬───────────────┘   └───────────┬─────────────────┘   │ TCP   127.0.0.1:PORT+1       │
+        │                               │ ③ TCP: "frame N?" → frame description (JSON)        │
+        │                               └──────────────────────────────────►│                │
+        │ ④ HTTP REST + Server-Sent Events                                   │                │
+        └───────────────────────────────────────────────────────────────────►└────────────────┘
 ```
+
+### 7.1 Who owns what
+
+| Component | Owns | Does not own |
+| --------- | ---- | ------------ |
+| **Python backend** | The project: timeline, clips, comps, keyframes, undo history, library, jobs, AI | Pixels on screen |
+| **C++ engine** | Decoding and drawing frames on the GPU | Any project state — it asks Python what a frame contains |
+| **React UI** | Interaction and layout | State — it reads it from Python and repaints on events |
+| **Electron main** | Processes, windows, files, and the bridge between the other three | Editing logic |
+
+That split is the key idea: **Python is the single source of truth, C++ is a stateless painter.**
+
+### 7.2 Link ① — UI ↔ Electron main (IPC)
+
+`electron/preload.ts` exposes a small `window.electronAPI` through `contextBridge`
+(`contextIsolation` on, `nodeIntegration` off). Channels are grouped by prefix:
+
+| Prefix | Examples | Purpose |
+| ------ | -------- | ------- |
+| `window:` | `minimize`, `maximize`, `close` | Frameless window controls |
+| `dialog:` / `shell:` / `app:` | `dialog:open`, `dialog:save` | Native file dialogs and paths |
+| `backend:` | `backend:port`, `backend:get-port` | Tells the UI which port Python chose |
+| `render:` | `seek`, `play`, `pause`, `resize`, `set-preview-scale`, `get-buffer`, `get-stats`, `frame-ready` | Drives the native engine |
+| `export:` | `start`, `cancel`, `progress`, `capture-image`, `capture-pdf` | Export orchestration |
+| `webcomp:` | `create`, `capture-frame`, `prefetch`, `update-params`, `push-to-native` | WebComp windows |
+| `layout:` | `load`, `save`, `reset` | Panel layout persistence |
+
+### 7.3 Link ② — Electron main ↔ C++ (N-API)
+
+The renderer is compiled with **cmake-js** into `render_engine.node`, a native addon written
+against **Node-API (N-API v8)** with `node-addon-api`. Electron loads it with a plain `require()`,
+so calls are direct function calls in the same process — no sockets, no serialisation.
+
+Exports of `renderer/src/napi/RenderEngineAddon.cpp`:
+
+| Function | Purpose |
+| -------- | ------- |
+| `initialize(width, height, fps, effectsDir, pythonPort)` | Creates the Vulkan device, Skia context and compositor |
+| `seekFrame(n)` / `play()` / `pause()` / `isPlaying()` | Transport |
+| `setFrameReadyCallback(fn)` | Registers the "frame N is ready" callback |
+| `getSharedBuffer()` | Returns the latest RGBA frame as a `Buffer` |
+| `getStats()` | Current width, height, fps, buffer size |
+| `setPreviewScale(scale)` | Preview resolution (the editor previews at half size by default) |
+| `startExport(config, progressFn)` / `cancelExport()` | Full-resolution render to FFmpeg |
+| `pushWebCompFrame(id, frame, rgba, w, h)` | Hands a captured web page frame to the compositor |
+
+**Threads.** The engine renders on its own C++ thread, but JavaScript may only be called on the
+Node thread. The addon uses a `Napi::ThreadSafeFunction`: the render thread queues
+"frame N ready" and Node later runs the JS callback. Only the frame *number* crosses threads; the
+pixels are fetched on demand.
+
+**A frame's journey to the screen:**
+
+```
+C++ play thread         renders frame N on the GPU, reads RGBA back into its buffer
+   │  ThreadSafeFunction
+Electron main           frame-ready(N)  →  webContents.send('render:frame-ready', N)
+   │  IPC
+React ViewportWidget    invoke('render:get-buffer')  →  getSharedBuffer()  →  canvas.putImageData()
+```
+
+If the addon cannot load (no Vulkan, missing file), the app falls back to a Python/Skia compositor.
+
+### 7.4 Link ③ — C++ ↔ Python (frame descriptions over TCP)
+
+The engine holds no timeline. For every frame it asks Python what to draw, over a persistent
+local TCP socket on **HTTP port + 1** (`TCP_NODELAY`, loopback only):
+
+```
+C++  →  Python :   4 bytes  little-endian uint32   frame number
+Python →  C++  :   4 bytes  little-endian uint32   payload length
+                   N bytes  JSON                    frame description
+```
+
+The JSON lists every visible clip for that frame with all animation already evaluated: source
+file and source frame, transform, opacity, effects and their uniform values, text / shape / pen /
+SVG data, transitions, and nested compositions. C++ parses it into a `FrameDescriptor`
+(`napi/FrameDescriptor.hpp`) and draws it.
+
+Python answers from a small prefetch cache: after serving frame N it immediately computes N+1 in a
+thread pool, so sequential playback is normally a cache hit. A binary protocol was chosen over
+HTTP here because the per-request overhead mattered at 30–60 requests per second.
+
+### 7.5 Link ④ — UI ↔ Python (REST + events)
+
+- **Commands** are plain HTTP, for example `POST /timeline/add-clip` or `POST /jobs/tts-generate`.
+- **Changes** come back as **Server-Sent Events** with a scope (`timeline`, `library`, `job`,
+  `comp-resized`, …). The UI refetches only what changed. This is also how the UI stays correct
+  when the *agent* edits the project.
+- **AI chat** is an SSE stream of tokens, tool calls, tool results and plan-step events.
+- **Long jobs** (TTS, downloads, generation) return a job id. `GET /jobs/{id}/wait` holds the
+  request open and returns the moment the job finishes, so nothing polls.
+
+### 7.6 Inside the C++ engine (`renderer/src`)
+
+| Folder | Contents |
+| ------ | -------- |
+| `napi/` | The N-API surface and the frame-description parser |
+| `HeadlessCompositor.*` | Orchestrator: play loop, TCP client, render, read-back |
+| `gpu/vulkan/` | Device and queues, VMA-backed buffers and textures, command pools, and the Skia–Vulkan context |
+| `rendering/` | Text, shape, pen and SVG drawing; the render graph and its passes (upload, draw, effect, mask); the effect registry |
+| `video/` | FFmpeg decoders: hardware (D3D11VA) with a software fallback |
+| `engine/` | Decode scheduler, decoder pool, frame cache and thread pool — frames are decoded ahead of the playhead |
+
+**Vulkan** provides the device, memory and command submission. **Skia** draws on top of that same
+Vulkan device, so video frames, text, vector shapes and effects are composited in one GPU pass
+without copying to the CPU in between. **Effects** are SkSL shaders in
+`backend/timeline/effects/sksl/`; the same shader files are used by the C++ engine and the Python
+fallback so both render identically.
+
+### 7.7 Inside the Python backend (`backend/`)
+
+| Area | Contents |
+| ---- | -------- |
+| `main.py` | App start-up, router mounts, the TCP frame server |
+| `routers/` | REST endpoints: project, library, timeline, clips, comps, effects, transitions, animation, audio, jobs, export, search, PII, PDF export |
+| `engine/`, `timeline/`, `animation/`, `history/` | The project model, keyframes and expressions, undo / redo command stack |
+| `ai/` | Request router, skill and plan executor (checkpointed in SQLite), the LangGraph tool-calling agent, tool definitions, MCP server, prompt shield |
+| `tracking/`, `pii/`, `integrity/` | The security features of section 4 |
+| `worker/` | A sandboxed worker process for indexing, transcription and waveforms |
+| `tools/` | Downloaders (yt-dlp, image search) and generators (TTS, image) |
+
+The agent's tools are thin wrappers that call the backend's **own HTTP API** — the agent edits the
+project exactly the way the UI does, so both stay in sync and every agent action is undoable.
+
+### 7.8 WebComp pipeline
+
+Each WebComp gets a hidden, sandboxed, **off-screen Chromium window** in the Electron main process
+(`electron/webComp/webCompRenderer.ts`). For frame N the page's clock is set to N / fps, the page
+is captured, and the pixels are cached and handed to the compositor with `pushWebCompFrame`, where
+they are composited like any other layer. Captures are serialised so a frame can never be confused
+with its neighbour.
+
+### 7.9 Export pipeline
+
+```
+Electron main   re-initialises the engine at full resolution
+                pre-renders every WebComp frame and pushes it to the engine
+C++ engine      for each frame: ask Python → render on GPU → write raw RGBA into an FFmpeg pipe
+FFmpeg          encodes (NVENC / AMF / Media Foundation / x264, whichever is available)
+Electron main   muxes the mixed audio, reports progress to the UI
+Python          optional: integrity registration of the finished file
+```
+
+Still images are captured from the engine's buffer as PNG; PDF export captures each page the same
+way and the backend assembles the document.
 
 ---
 
-## 11. Animation and Expression Engine
-
-**Files:** `backend/animation/`, `backend/routers/animation.py`
-
-### Keyframe Mode
-
-```python
-class AnimatableProperty:
-    keyframes: list[Keyframe]  # [{frame, value, curve_type}]
-
-def evaluate(frame: int) -> float:
-    return interpolate_keyframes(self.keyframes, frame)
-```
-
-### Expression Mode
-
-```javascript
-// Mathematical expressions evaluated server-side per frame:
-"sin(time * 2) * 100"; // oscillating position
-"frame / totalFrames * 360"; // full rotation over clip duration
-"Math.random() * 10 + scale"; // camera shake
-"linkedProp('clip_abc', 'opacity')"; // link to another clip's property
-```
-
-**Easing presets:** `linear` / `ease_in` / `ease_out` / `ease_in_out` / `bounce` / `spring` / `back` / `elastic`
-
----
-
-## 12. PDF and Document Engine
-
-PDFs are **multi-page compositions** -- each page rendered by the C++ GPU compositor,
-then assembled into a PDF via Skia's PDF canvas backend.
-
-```
-PDFDocument
-  |-- Page 1  (comp: 2480x3508 -- A4)
-  |   |-- TextClip  (Skia SkTextBlob)
-  |   |-- ImageClip (VkImage)
-  |   `-- ShapeClip (SkPath)
-  |-- Page 2 ...
-  `-- Page N ...
-        | export
-        v
-    Skia PDF canvas -> .pdf file
-```
-
-**AI tools:** `create_pdf_doc` / `add_pdf_page` / `delete_pdf_page` / `reorder_pdf_pages` / `get_pdf_doc_summary`
-
----
-
-## 13. WebComp - Live HTML Compositions
-
-WebComps are live web pages (HTML/CSS/JS) that render as **clips in the video timeline**.
-
-```
-WebComp clip in timeline
-    |
-    v
-Electron main -> Puppeteer/Playwright page (isolated browser context)
-    |
-    v
-Page loads editable HTML/CSS/JS (created/modified by AI or user)
-    |
-    v
-captureFrame() -> RGBA Buffer -> N-API -> C++ compositor layer
-```
-
-**AI tools:**
-
-```python
-create_webcomp(name, html_body, css, js)         # create live HTML comp
-edit_webcomp_file(webcomp_id, filename, content) # edit HTML/CSS/JS
-set_webcomp_params(clip_id, params)              # update runtime params
-```
-
-**Use cases:** animated lower-thirds / data-driven infographics / live dashboards / generative art
-
----
-
-## 14. Export Pipeline
-
-```
-POST /export/start  { format, quality, in_point, out_point }
-    |
-    v
-ExportJob -> background thread
-    |
-    v
-Per frame in [in_point, out_point]:
-  1. C++ renderer -> full-resolution RGBA (no preview downscale)
-  2. RGBA Buffer -> Python via N-API TSFN callback
-  3. PyAV / FFmpeg encode (H.264 / H.265 / ProRes / VP9 / AV1)
-  4. Audio: FFmpeg audio graph mixes all tracks
-    |
-    v
-Progress -> SSE stream (GET /export/progress) -> ExportProgressOverlay (live %)
-    |
-    v
-Done -> file saved to disk -> desktop notification
-```
-
-| Format       | Codec                 | Best For                     |
-| ------------ | --------------------- | ---------------------------- |
-| MP4 H.264    | libx264               | Universal compatibility      |
-| MP4 H.265    | libx265               | Smaller file, same quality   |
-| ProRes 422   | prores_ks             | Professional post-production |
-| WebM VP9     | libvpx-vp9            | Web streaming                |
-| GIF          | palettegen+paletteuse | Short animated clips         |
-| PNG Sequence | rawvideo              | Frame-by-frame editing       |
-
----
-
-## 15. Technology Stack Summary
-
-### Frontend
-
-| Technology       | Version | Purpose                                        |
-| ---------------- | ------- | ---------------------------------------------- |
-| Electron         | 29      | Desktop shell, native APIs, process management |
-| React            | 18      | UI component framework                         |
-| TypeScript       | 5/7     | Static typing                                  |
-| Vite             | 5       | Build tool + HMR dev server                    |
-| FlexLayout-React | 0.10    | Dockable panel layout                          |
-| Allotment        | 1.20    | Resizable split panes                          |
-
-### Backend (Python)
-
-| Technology            | Version  | Purpose                     |
-| --------------------- | -------- | --------------------------- |
-| FastAPI               | >=0.111  | REST API + SSE streaming    |
-| Uvicorn               | >=0.29   | ASGI server                 |
-| LangGraph             | >=0.2    | Stateful AI agent graphs    |
-| LangChain             | >=0.3    | LLM provider abstractions   |
-| PyAV (`av`)           | >=13     | Python FFmpeg bindings      |
-| Pillow                | >=10     | Image I/O and processing    |
-| NumPy                 | >=1.26   | Array operations            |
-| PyTorch               | >=2.0    | ML inference runtime        |
-| sentence-transformers | >=2.0    | Semantic embeddings         |
-| ChromaDB              | latest   | Local vector database       |
-| Faster-Whisper        | 1.2.1    | CTranslate2 speech-to-text  |
-| Kokoro TTS            | bundled  | Offline neural TTS          |
-| yt-dlp                | latest   | Media downloading           |
-| DuckDuckGo Search     | >=9.0    | Content search              |
-| OpenCV                | headless | Frame extraction, filtering |
-| skia-python           | latest   | Server-side 2D rendering    |
-| MCP                   | >=1.0    | Model Context Protocol      |
-
-### C++ Renderer
-
-| Technology            | Purpose                            |
-| --------------------- | ---------------------------------- |
-| C++20                 | Language standard                  |
-| CMake 3.20 + cmake-js | Build system + Node.js integration |
-| node-addon-api 8.9    | N-API C++ wrapper                  |
-| Vulkan 1.3            | GPU compute and rendering          |
-| Skia (Chromium m126)  | 2D GPU-accelerated drawing         |
-| FFmpeg 6.x            | Video/audio decode/encode          |
-| VulkanMemoryAllocator | GPU memory management              |
-| GLM                   | Mathematics (matrices, vectors)    |
-| stb_image             | Lightweight image loading          |
-| nlohmann/json         | JSON parsing in C++                |
-| WinHTTP               | HTTP requests from C++             |
-
----
-
-## 16. Project Structure
-
-```
-fade/
-|-- electron/                    Electron main process (Node.js)
-|   |-- main.ts                  Lifecycle, IPC, Python spawn, N-API bridge
-|   |-- preload.ts               contextBridge API exposure
-|   `-- webComp/                 Puppeteer WebComp renderer
-|-- src/                         React frontend (Vite + TypeScript)
-|   |-- App.tsx                  Root: tab routing, workspace mounts
-|   |-- api/                     Backend hooks (SSE, REST)
-|   |-- components/              Shared UI (TitleBar, Library, DraggableAI)
-|   |-- context/                 React context providers (PortContext)
-|   `-- workspaces/
-|       |-- VideoWorkspace.tsx
-|       |-- ImageWorkspace.tsx
-|       |-- FloatingAIChat.tsx   Per-agent isolated AI chat (key={activeTab})
-|       `-- director/            Campaign orchestrator UI
-|-- backend/                     Python FastAPI backend
-|   |-- main.py                  App entry, 21 router mounts
-|   |-- ai/
-|   |   |-- agent.py             LangGraph agent builder
-|   |   |-- agent_registry.py    Per-type agent cache + system prompts
-|   |   |-- tool_sets.py         Domain-scoped tool lists (VIDEO/IMAGE/AUDIO/PDF)
-|   |   |-- tools.py             80+ tool implementations (4220+ lines)
-|   |   |-- platform_presets.py  Social media platform dimensions
-|   |   |-- task_queue.py        Director->Worker async task queue
-|   |   |-- director.py          DirectorSession + AgentScratchpad
-|   |   |-- router.py            /ai/* HTTP endpoints
-|   |   |-- whisper_tool.py      Faster-Whisper integration
-|   |   |-- mcp_client.py        MCP remote client
-|   |   `-- mcp_server.py        MCP tool server
-|   |-- animation/               Keyframe + expression engine
-|   |-- engine/                  Timeline engine, frame cache
-|   |-- routers/                 21 REST API routers
-|   |-- timeline/                Timeline + clip data models
-|   |-- worker/                  Background job workers
-|   `-- project/                 Project save/load (JSON)
-`-- renderer/                    C++ GPU renderer (39 .cpp files)
-    |-- CMakeLists.txt
-    |-- src/
-    |   |-- napi/                N-API bridge (RenderEngineAddon.cpp)
-    |   |-- gpu/vulkan/          Vulkan device, memory, Skia context
-    |   |-- rendering/           Compositor, effects, draw modules
-    |   |-- engine/              Decode scheduler, frame cache, thread pool
-    |   `-- video/               FFmpeg HW/SW decoder
-    `-- deps/
-        |-- ffmpeg/              FFmpeg headers + static libs
-        |-- skia/                Skia source (Vulkan backend)
-        |-- vma/                 VulkanMemoryAllocator
-        `-- include/             GLM, stb, nlohmann/json
-```
-
----
-
-## 17. Getting Started (Development)
+## 8. For developers: build from source
 
 ### Prerequisites
 
-- **Windows 10/11 x64** (renderer uses DXVA2/D3D11VA hardware decode)
-- **Node.js 20+** with npm
-- **Python 3.12** with pip
-- **Vulkan SDK 1.3+** from https://www.lunarg.com/vulkan-sdk/
-- **Visual Studio 2022** with "Desktop development with C++" workload
-- **CMake 3.20+**
+- Windows 10/11 x64, **Node.js 20+**, **Python 3.12**
+- For the C++ engine only: **Visual Studio 2022** (Desktop C++), **CMake 3.20+**, **Vulkan SDK**
 
-### Setup
+### Run in development
 
 ```bash
-# 1. Install Node.js dependencies
 npm install
-
-# 2. Python virtual environment
 python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-
-# 3. Build C++ renderer (requires Vulkan SDK + VS2022)
-npx cmake-js build --runtime electron --runtime-version 29.0.0
-
-# 4. Configure AI provider in .env
-echo FADE_AI_PROVIDER=ollama > .env
-ollama pull llama3.2   # pull a tool-capable model
-
-# 5. Start development server
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 npm run dev
 ```
 
-### Environment Variables (`.env`)
+`npm run dev` starts Vite, compiles the Electron main process, and launches the app, which starts
+the Python backend from `.venv`.
+
+### Build the app
+
+| Command | Rebuilds | Time |
+| ------- | -------- | ---- |
+| `npm run build:full` | Everything → `dist-app\win-unpacked\Fade.exe` | ~9 min |
+| `npm run build:full -- -Native` | Everything, recompiling the C++ engine first | longer |
+| `npm run build:backend-only` | The Python backend, then copies only changed files into the build | ~8 min |
+| `npm run build:ui-only` | The React UI and Electron code, copied into the build | ~10 s |
+| `npm run hotfix` | Nothing — copies changed backend `.py` files into the build | seconds |
+| `npm run build:native` | Only `render_engine.node` | — |
+
+The full build runs PyInstaller, Vite, electron-builder, then `scripts/post_build_patch.ps1`,
+which copies native libraries and models and **verifies about 45 required files** (FFmpeg DLLs,
+the MSVC runtime beside the engine, TTS and face-detection libraries, models).
+
+### Things to know
+
+- The build runs PyInstaller as `python -m PyInstaller` from this repo's `.venv`. Do not call
+  `.venv\Scripts\pyinstaller.exe` directly if the venv was ever moved or copied — that launcher
+  remembers its original path.
+- The backend ships as plain `.py` files inside the build, which is why `npm run hotfix` works.
+  `backend/main.py` is the exception: it is compiled into `backend.exe`.
+- `renderer/CMakeLists.txt` contains absolute paths to a local Vulkan helper source tree and FFmpeg
+  binaries. Adjust them before running `build:native` on another machine.
+- **Your `.env` is copied into the build.** Remove API keys from it before sharing a build.
+- Optional features are included only if their package is installed in `.venv` when you build.
+  The build prints a warning for each one that is missing.
+
+### Configuration (`.env`)
 
 ```env
-# AI Provider (choose one)
-FADE_AI_PROVIDER=ollama          # ollama | openai | anthropic | google | groq
-FADE_AI_MODEL=                   # auto-detected if empty
-
-# API Keys (cloud providers only)
-OPENAI_API_KEY=sk-...
-ANTHROPIC_API_KEY=sk-ant-...
-GOOGLE_API_KEY=AIza...
-GROQ_API_KEY=gsk_...
-
-# Backend
-FADE_PORT=8000
-
-# Optional
-FADE_USER_NAME=                  # AI addresses user by name
+FADE_AI_PROVIDER=ollama      # ollama | openai | claude | gemini | groq | ...
+FADE_AI_MODEL=               # leave empty to auto-select
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GOOGLE_API_KEY=
+GROQ_API_KEY=
 ```
 
+Everything here can also be set from **Settings** inside the app.
+
+---
+
+## 9. Project structure
+
+```
+Fade/
+├── electron/                Electron main process
+│   ├── main.ts              windows, IPC, backend process, native engine, export
+│   ├── preload.ts           the API exposed to the UI
+│   └── webComp/             off-screen WebComp renderer
+├── src/                     React UI
+│   ├── App.tsx              top-level tabs and workspaces
+│   └── workspaces/          video, image, pdf, export, library, timeline, viewport,
+│                            inspector, tools, tracking, pii, AI chat
+├── backend/                 Python backend (FastAPI)
+│   ├── main.py              start-up, routers, TCP frame server
+│   ├── routers/             REST API
+│   ├── ai/                  router, planner, skills, agent, tools, prompt shield
+│   ├── tracking/ pii/ integrity/      security features
+│   ├── timeline/ animation/ engine/   project model
+│   └── worker/ tools/                 background work, downloaders, generators
+├── renderer/                C++ render engine
+│   ├── CMakeLists.txt
+│   ├── src/                 napi, gpu/vulkan, rendering, video, engine
+│   └── deps/                Skia, FFmpeg, VMA, headers
+├── AIModels/                bundled models (TTS, speech, detection, OCR)
+├── scripts/                 build, post-build patch, hotfix
+├── docs/screenshots/        images used in this README
+└── backend.spec             PyInstaller configuration
 ```
 
 ---
 
-*Built for Smart India Hackathon (SIH) 2026  *
-```
+## 10. Known limitations
+
+- **Windows only.** The engine uses Direct3D hardware decoding and Windows sockets.
+- **"CUDA … is missing" in the log is harmless.** Without NVIDIA CUDA libraries the AI models run
+  on the CPU.
+- **A model is needed for the agent.** Editing, tracking, PII detection, TTS and captions work
+  offline; the chat agent needs Ollama or an API key.
+- **Background removal** is only present in builds made with the `rembg` package installed.
+- **Some models download on first use** if they are not already in `AIModels`.
+- **After closing the app, a `Fade.exe` process can occasionally linger** and keep the install
+  folder locked. Sign out or restart Windows if a build or update reports locked files.
+
+---
+
+*Built for Smart India Hackathon (SIH).*
