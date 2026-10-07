@@ -1,4 +1,4 @@
-# Fade (Echo) — AI-Powered Media Editor with Built-in Privacy Protection
+# Fade — AI-Powered Media Editor with Built-in Privacy Protection
 
 ![Electron](https://img.shields.io/badge/Electron_29-191970?style=for-the-badge&logo=Electron&logoColor=white)
 ![React](https://img.shields.io/badge/React_18-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
@@ -29,6 +29,7 @@ No Python, Node.js or compiler needed. Download the folder, extract it, double-c
 4. [Cyber-security and privacy features](#4-cyber-security-and-privacy-features)
 5. [Tab-by-tab tour with screenshots](#5-tab-by-tab-tour-with-screenshots)
 6. [The AI agent](#6-the-ai-agent)
+   - [Configure the AI: OpenRouter or Ollama](#61-configure-the-ai-do-this-once)
 7. [For developers: architecture](#7-for-developers-architecture)
 8. [For developers: build from source](#8-for-developers-build-from-source)
 9. [Project structure](#9-project-structure)
@@ -50,21 +51,22 @@ without one the app falls back to a slower CPU compositor.
 
 ### First run
 
-1. Open **Settings** (top-left) and choose an **AI provider** — a local **Ollama** model for fully
-   offline use, or paste an API key for OpenAI, Anthropic Claude, Google Gemini, Groq or OpenRouter.
+1. Open **Settings → Agent AI** and choose an AI provider: **OpenRouter** (the tested option) or a
+   local **Ollama** model for fully offline use. Step-by-step instructions are in
+   [Configure the AI](#61-configure-the-ai-do-this-once).
    The editor works without AI; only the chat agent needs a model.
 2. Go to the **Video** tab.
 
 ### Make your first video
 
-| Step | What to do |
-| ---- | ---------- |
-| 1. Import | Drag files into the **Library** panel, or click **+**. You can also type a description in the search box to find a scene inside your footage. |
-| 2. Place | Drag an asset from the Library onto a track in the **Timeline**. |
-| 3. Edit | Use the floating toolbox: Select `V`, Razor `C`, Ripple `R`, Slip `Y`, Pan `H`. Create with Text `T`, Solid `O`, Brush `B`, Eraser `E`, Adjustment `A`, Pen path `P`. |
-| 4. Style | Select a clip, then use the right-hand tabs: **Inspector**, **Effects**, **Transitions**. |
-| 5. Protect | Use **Tracking** to blur faces, people or text, and **PII** to find and redact sensitive data. |
-| 6. Export | Open the **Export** tab, pick a composition and a format, click **Export Video**. |
+| Step       | What to do                                                                                                                                                            |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Import  | Drag files into the **Library** panel, or click **+**. You can also type a description in the search box to find a scene inside your footage.                         |
+| 2. Place   | Drag an asset from the Library onto a track in the **Timeline**.                                                                                                      |
+| 3. Edit    | Use the floating toolbox: Select `V`, Razor `C`, Ripple `R`, Slip `Y`, Pan `H`. Create with Text `T`, Solid `O`, Brush `B`, Eraser `E`, Adjustment `A`, Pen path `P`. |
+| 4. Style   | Select a clip, then use the right-hand tabs: **Inspector**, **Effects**, **Transitions**.                                                                             |
+| 5. Protect | Use **Tracking** to blur faces, people or text, and **PII** to find and redact sensitive data.                                                                        |
+| 6. Export  | Open the **Export** tab, pick a composition and a format, click **Export Video**.                                                                                     |
 
 `Space` plays / pauses, `←` `→` step one frame, `Ctrl+Shift+L` opens the backend log window.
 
@@ -72,8 +74,8 @@ without one the app falls back to a slower CPU compositor.
 
 Click the round AI button to open the agent chat and type what you want, for example:
 
-> *"Create a 30-second awareness video about fake e-challan scams: write the script, generate the
-> voiceover, download B-roll, add titles and captions, and blur every face."*
+> _"Create a 30-second awareness video about fake e-challan scams: write the script, generate the
+> voiceover, download B-roll, add titles and captions, and blur every face."_
 
 The agent builds a step-by-step plan, runs it, and shows each step's progress in the chat.
 
@@ -81,15 +83,15 @@ The agent builds a step-by-step plan, runs it, and shows each step's progress in
 
 ## 2. What each tab does
 
-| Tab | What it is for |
-| --- | -------------- |
-| **Home** | Landing page with shortcuts into the other workspaces and quick-start tips. |
-| **AI** | AI-first workspace: the Library and a large preview. You describe the result and the agent builds it. |
-| **Video** | The full editor: Library, Viewport, multi-track Timeline, and the Inspector / Effects / Transitions / Tools / Tracking / PII panels. |
-| **Image** | Layer-based still-image canvas. The same tools and effects, with layers instead of time. |
-| **PDF** | Multi-page document builder. Each page is a canvas of layers; exports a PDF. |
-| **Audio** | The editing layout with the audio agent: voiceover (text-to-speech), captions from speech, volume and silence removal. |
-| **Export** | Choose the composition, format, quality and audio settings, and optionally register the file for integrity verification. |
+| Tab        | What it is for                                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Home**   | Landing page with shortcuts into the other workspaces and quick-start tips.                                                          |
+| **AI**     | AI-first workspace: the Library and a large preview. You describe the result and the agent builds it.                                |
+| **Video**  | The full editor: Library, Viewport, multi-track Timeline, and the Inspector / Effects / Transitions / Tools / Tracking / PII panels. |
+| **Image**  | Layer-based still-image canvas. The same tools and effects, with layers instead of time.                                             |
+| **PDF**    | Multi-page document builder. Each page is a canvas of layers; exports a PDF.                                                         |
+| **Audio**  | The editing layout with the audio agent: voiceover (text-to-speech), captions from speech, volume and silence removal.               |
+| **Export** | Choose the composition, format, quality and audio settings, and optionally register the file for integrity verification.             |
 
 Every workspace has its own AI agent (Video Agent, Image Agent, Audio Agent, PDF Agent) with its
 own chat history, so a conversation in one tab does not leak into another.
@@ -124,8 +126,8 @@ many comps, and one comp can be placed inside another as a clip.
   frame-accurately. It can be a local animation or a live site.
 - **Use it for:** animated lower-thirds, counters and charts, UI mock-ups, particle backgrounds,
   embedding a live website (for example an official helpline page) as an overlay.
-- **How to use:** ask the agent (*"add a web overlay of https://cybercrime.gov.in bottom-right for
-  6 seconds"* or *"make an animated stat counter"*), or create one from a template. Select the clip
+- **How to use:** ask the agent (_"add a web overlay of https://cybercrime.gov.in bottom-right for
+  6 seconds"_ or _"make an animated stat counter"_), or create one from a template. Select the clip
   to edit its files and parameters in the WebComp inspector. Position, size and opacity work like
   any other clip.
 
@@ -148,14 +150,14 @@ backend only listens on `127.0.0.1`.
 
 Pick a clip, a frame range and a detection mode, then press **Start Tracking**.
 
-| Mode | What is detected | How |
-| ---- | ---------------- | --- |
-| **Face** | Every face in the clip | MediaPipe face detector |
-| **Face + reference photo** | Only one specific person | A face embedding from the photo you upload |
-| **Person** | Whole bodies | YOLOv8 |
-| **Text** | On-screen text (optionally matching a pattern) | OCR |
-| **Image** | A logo or object you provide | Template matching |
-| **Manual** | A box you draw | Frame-to-frame tracker |
+| Mode                       | What is detected                               | How                                        |
+| -------------------------- | ---------------------------------------------- | ------------------------------------------ |
+| **Face**                   | Every face in the clip                         | MediaPipe face detector                    |
+| **Face + reference photo** | Only one specific person                       | A face embedding from the photo you upload |
+| **Person**                 | Whole bodies                                   | YOLOv8                                     |
+| **Text**                   | On-screen text (optionally matching a pattern) | OCR                                        |
+| **Image**                  | A logo or object you provide                   | Template matching                          |
+| **Manual**                 | A box you draw                                 | Frame-to-frame tracker                     |
 
 A finished track can **blur** the subject (the blur follows it through the clip) or make another
 layer **follow** it.
@@ -167,13 +169,13 @@ layer **follow** it.
 Select a clip and the panel scans it for personal and secret data. For images and video, text is
 read from the frames with OCR; text files are scanned directly.
 
-| Detected | Examples |
-| -------- | -------- |
-| Indian identity data | Aadhaar numbers, PAN numbers, phone numbers |
-| Contact data | Email addresses; person names when the optional spaCy language model is installed |
-| Financial data | Credit-card numbers (checksum-validated) |
-| Secrets | Private keys, JWTs, AWS keys, GitHub tokens, bearer tokens, `password=` / `api_key=` values |
-| Network data | IPv4 addresses |
+| Detected             | Examples                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| Indian identity data | Aadhaar numbers, PAN numbers, phone numbers                                                 |
+| Contact data         | Email addresses; person names when the optional spaCy language model is installed           |
+| Financial data       | Credit-card numbers (checksum-validated)                                                    |
+| Secrets              | Private keys, JWTs, AWS keys, GitHub tokens, bearer tokens, `password=` / `api_key=` values |
+| Network data         | IPv4 addresses                                                                              |
 
 You review every finding, switch individual ones off, or add your own boxes. On confirm, Fade
 creates a **sanitized copy**, swaps it into the timeline, and marks the original **RESTRICTED** so
@@ -183,13 +185,13 @@ it is not used by mistake.
 
 You can simply ask, and the agent runs the same tools:
 
-| You say | The agent does |
-| ------- | -------------- |
-| *"Blur all faces in every clip"* | Detects and tracks every face, then applies a tracked blur |
-| *"Blur everyone except this person"* (with a photo) | Uses the reference photo to tell people apart |
-| *"Hide the phone number on screen"* | Tracks the matching text and blurs it |
-| *"Scan this asset for sensitive data"* | Runs PII detection and lists what it found |
-| *"Sanitize it"* | Redacts all detected PII and restricts the original |
+| You say                                             | The agent does                                             |
+| --------------------------------------------------- | ---------------------------------------------------------- |
+| _"Blur all faces in every clip"_                    | Detects and tracks every face, then applies a tracked blur |
+| _"Blur everyone except this person"_ (with a photo) | Uses the reference photo to tell people apart              |
+| _"Hide the phone number on screen"_                 | Tracks the matching text and blurs it                      |
+| _"Scan this asset for sensitive data"_              | Runs PII detection and lists what it found                 |
+| _"Sanitize it"_                                     | Redacts all detected PII and restricts the original        |
 
 ### 4.4 Prompt-injection shield
 
@@ -209,12 +211,12 @@ Each input is allowed, cleaned (the malicious part is neutralised), or blocked.
 Tick **Register for Integrity Verification** before exporting and Fade records four independent
 proofs of the file:
 
-| Layer | Survives | What it is |
-| ----- | -------- | ---------- |
-| SHA-256 hash | Nothing (exact copy only) | Byte-exact fingerprint |
-| Merkle tree + ledger anchor | — | Tamper-evident record of the hash (local ledger; an on-chain contract is supported) |
-| Perceptual hash | Re-encoding, resizing | Fingerprint of what the video *looks* like |
-| Invisible watermark | Platform re-uploads | An ID embedded in the frames (DWT-DCT) |
+| Layer                       | Survives                  | What it is                                                                          |
+| --------------------------- | ------------------------- | ----------------------------------------------------------------------------------- |
+| SHA-256 hash                | Nothing (exact copy only) | Byte-exact fingerprint                                                              |
+| Merkle tree + ledger anchor | —                         | Tamper-evident record of the hash (local ledger; an on-chain contract is supported) |
+| Perceptual hash             | Re-encoding, resizing     | Fingerprint of what the video _looks_ like                                          |
+| Invisible watermark         | Platform re-uploads       | An ID embedded in the frames (DWT-DCT)                                              |
 
 Checking a file later returns one of: **AUTHENTIC**, **AUTHENTIC_REENCODED**,
 **AUTHENTIC_PLATFORM_COPY** or **UNVERIFIED**.
@@ -227,14 +229,14 @@ Checking a file later returns one of: **AUTHENTIC**, **AUTHENTIC_REENCODED**,
 
 ![Video workspace](docs/screenshots/video-workspace.png)
 
-| Area | Purpose |
-| ---- | ------- |
-| **Library** (left) | Imported and downloaded media, plus compositions. The search box also finds scenes by description. |
+| Area                   | Purpose                                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Library** (left)     | Imported and downloaded media, plus compositions. The search box also finds scenes by description.                    |
 | **Toolbox** (floating) | Edit tools (Select, Razor, Ripple, Slip, Pan) and create tools (Text, Solid, Brush, Eraser, Adjustment, shapes, Pen). |
-| **Viewport** (centre) | GPU preview with transport controls, in/out points, preview resolution and zoom. |
-| **Right panel** | Six tabs, described below. |
-| **Timeline** (bottom) | Video and audio tracks with mute / solo / lock per track. |
-| **Agent chat** | The Video Agent; drag the round AI button to move it. |
+| **Viewport** (centre)  | GPU preview with transport controls, in/out points, preview resolution and zoom.                                      |
+| **Right panel**        | Six tabs, described below.                                                                                            |
+| **Timeline** (bottom)  | Video and audio tracks with mute / solo / lock per track.                                                             |
+| **Agent chat**         | The Video Agent; drag the round AI button to move it.                                                                 |
 
 ### Inspector
 
@@ -287,14 +289,14 @@ Tools, Tracking and PII panels apply.
 
 ![Export workspace](docs/screenshots/export-workspace.png)
 
-| Setting | Options |
-| ------- | ------- |
-| Composition | Any video comp or PDF document in the project |
-| Format | MP4 1080p / 4K / 720p, YouTube Shorts, Instagram Reels, WebM VP9, GIF |
-| Video quality | CRF (quality) or fixed bitrate, plus encoder preset |
-| Audio | Sample rate, channels, bitrate |
-| Output | File path, estimated size |
-| Integrity | Optional registration (see 4.5) |
+| Setting       | Options                                                               |
+| ------------- | --------------------------------------------------------------------- |
+| Composition   | Any video comp or PDF document in the project                         |
+| Format        | MP4 1080p / 4K / 720p, YouTube Shorts, Instagram Reels, WebM VP9, GIF |
+| Video quality | CRF (quality) or fixed bitrate, plus encoder preset                   |
+| Audio         | Sample rate, channels, bitrate                                        |
+| Output        | File path, estimated size                                             |
+| Integrity     | Optional registration (see 4.5)                                       |
 
 ---
 
@@ -312,6 +314,104 @@ Tools, Tracking and PII panels apply.
   download video, images and music, generate images, build WebComps, place and animate clips,
   apply effects and transitions, track and blur, scan for PII, and export.
 - **External control:** other AI clients can drive Fade through its MCP endpoint (`/mcp-remote`).
+
+### 6.1 Configure the AI (do this once)
+
+The agent needs a language model that supports **tool calling**. Pick one of the two options
+below. Everything is set in **Settings → Agent AI**; the agent restarts by itself when you change
+the provider or model — no need to restart Fade.
+
+#### Option A — OpenRouter ✅ tested, recommended
+
+This is the setup Fade was built and tested with.
+
+1. Create an account and an API key at **https://openrouter.ai/keys**.
+2. In Fade open **Settings → Agent AI** and set **Provider** to **OpenRouter**.
+3. Paste the key into the **OpenRouter API key** field.
+4. Set **Model** to **`z-ai/glm-5.3`** — the model used during testing.
+   Any tool-calling model from **https://openrouter.ai/models** works; paste its id exactly as
+   shown there. If you leave the field empty, Fade uses `mistralai/mistral-7b-instruct`.
+
+#### Option B — Ollama (local, offline, no key)
+
+Supported, but OpenRouter is the tested path. Long multi-step plans may need a larger local model.
+
+1. Download and install Ollama from **https://ollama.com/download**. It runs in the background on
+   `http://localhost:11434`.
+2. Download **one chat model** that supports tool calling. Fade looks for them in this order and
+   uses the first one it finds installed:
+
+   | Order | Model      | Run this in a terminal | Model page                          |
+   | ----- | ---------- | ---------------------- | ----------------------------------- |
+   | 1     | `qwen2.5`  | `ollama pull qwen2.5`  | https://ollama.com/library/qwen2.5  |
+   | 2     | `llama3.2` | `ollama pull llama3.2` | https://ollama.com/library/llama3.2 |
+   | 3     | `llama3`   | `ollama pull llama3`   | https://ollama.com/library/llama3   |
+   | 4     | `gemma3`   | `ollama pull gemma3`   | https://ollama.com/library/gemma3   |
+   | 5     | `mistral`  | `ollama pull mistral`  | https://ollama.com/library/mistral  |
+
+3. In Fade open **Settings → Agent AI**, set **Provider** to **Ollama (Local)** and leave
+   **Model** empty to auto-detect (or type the model name).
+
+**Optional — a vision model for scene search.** Typing a description in the Library search box
+("person waving at the camera") needs your footage to be indexed by a vision model. Fade uses
+Ollama for this even when the agent itself runs on OpenRouter:
+
+| Model        | Command                  | Model page                            | Note                 |
+| ------------ | ------------------------ | ------------------------------------- | -------------------- |
+| `moondream`  | `ollama pull moondream`  | https://ollama.com/library/moondream  | Default; fastest     |
+| `llava`      | `ollama pull llava`      | https://ollama.com/library/llava      | More detailed        |
+| `llava-phi3` | `ollama pull llava-phi3` | https://ollama.com/library/llava-phi3 | Small                |
+
+Vision and embedding models cannot drive the agent — Fade skips them when picking a chat model.
+You can switch indexing to Google Gemini instead in **Settings → Indexing**.
+
+#### The configuration this project uses
+
+These are the values currently set in this repository (`.env` and
+`backend/config/app_config.json`), with secrets removed. Use them as a known-good starting point.
+
+| What it controls            | Setting                                       | Value                              | Change it in          |
+| --------------------------- | --------------------------------------------- | ---------------------------------- | --------------------- |
+| Agent provider              | `FADE_AI_PROVIDER`                            | `openrouter`                       | Settings → Agent AI   |
+| Agent model                 | `FADE_AI_MODEL`                               | `z-ai/glm-5.3`                     | Settings → Agent AI   |
+| Agent API key               | `OPENROUTER_API_KEY`                          | your own key                       | Settings → Agent AI   |
+| OpenRouter endpoint         | `OPENROUTER_BASE_URL`                         | `https://openrouter.ai/api/v1` (default) | `.env` only     |
+| Voiceover (text-to-speech)  | `generators.tts_provider`                     | `kokoro` — runs locally, no key    | Settings → Generators |
+| Captions (speech-to-text)   | `ai.whisper_backend` / `ai.whisper_model`     | `faster` / `small` — runs locally  | Settings → Indexing   |
+| Scene-search vision model   | `ai.vision_model`                             | `moondream:latest` (through Ollama) | Settings → Indexing  |
+| Scene-search sampling       | `ai.frame_interval`                           | one frame every `6` seconds        | Settings → Indexing   |
+| Parallel indexing jobs      | `ai.max_concurrent_index`                     | `2`                                | Settings → Indexing   |
+| Scene-search provider       | `ai.index_provider`                           | `ollama` (default; `gemini` also supported) | Settings → Indexing |
+| Ollama address              | `generators.ollama_url`                       | `http://localhost:11434`           | Settings → Generators |
+| AI image generation         | `generators.image_provider` / `stability_model` | `stability` / `core`, 1536×1536 — needs `STABILITY_API_KEY` | Settings → Generators |
+| AI video generation         | `generators.video_provider`                   | `google` — needs `GOOGLE_API_KEY`  | Settings → Generators |
+
+The same agent setup written as a `.env` file:
+
+```env
+FADE_AI_PROVIDER=openrouter
+FADE_AI_MODEL=z-ai/glm-5.3
+OPENROUTER_API_KEY=sk-or-...          # your own key - never commit or share it
+
+STABILITY_API_KEY=                    # only needed for AI image generation
+GOOGLE_API_KEY=                       # only needed for Gemini features
+```
+
+`.env` holds the provider, model and keys; `app_config.json` holds the pipeline settings. Both are
+written for you when you change something in **Settings**.
+
+#### All supported providers
+
+| Provider in Settings | `FADE_AI_PROVIDER` | Key / address setting                          | Model used if the field is empty |
+| -------------------- | ------------------ | ---------------------------------------------- | -------------------------------- |
+| OpenRouter ✅ tested  | `openrouter`       | `OPENROUTER_API_KEY`                           | `mistralai/mistral-7b-instruct`  |
+| Ollama (local)       | `ollama`           | none                                           | auto-detected (table above)      |
+| llama.cpp (local)    | `llamacpp`         | `LLAMACPP_BASE_URL` (default `http://localhost:8080/v1`) | `local-model`          |
+| OpenAI               | `openai`           | `OPENAI_API_KEY`                               | `gpt-4o-mini`                    |
+| Google Gemini        | `gemini`           | `GOOGLE_API_KEY`                               | `gemini-1.5-flash`               |
+| Anthropic Claude     | `claude`           | `ANTHROPIC_API_KEY`                            | `claude-3-5-haiku-20241022`      |
+| Groq                 | `groq`             | `GROQ_API_KEY`                                 | `llama3-8b-8192`                 |
+| TokenRouter          | `tokenrouter`      | `TOKENROUTER_API_KEY`, `TOKENROUTER_BASE_URL`  | `z-ai/glm-5.3-free`              |
 
 ---
 
@@ -343,12 +443,12 @@ inside it, and a **Python** backend running beside it.
 
 ### 7.1 Who owns what
 
-| Component | Owns | Does not own |
-| --------- | ---- | ------------ |
-| **Python backend** | The project: timeline, clips, comps, keyframes, undo history, library, jobs, AI | Pixels on screen |
-| **C++ engine** | Decoding and drawing frames on the GPU | Any project state — it asks Python what a frame contains |
-| **React UI** | Interaction and layout | State — it reads it from Python and repaints on events |
-| **Electron main** | Processes, windows, files, and the bridge between the other three | Editing logic |
+| Component          | Owns                                                                            | Does not own                                             |
+| ------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| **Python backend** | The project: timeline, clips, comps, keyframes, undo history, library, jobs, AI | Pixels on screen                                         |
+| **C++ engine**     | Decoding and drawing frames on the GPU                                          | Any project state — it asks Python what a frame contains |
+| **React UI**       | Interaction and layout                                                          | State — it reads it from Python and repaints on events   |
+| **Electron main**  | Processes, windows, files, and the bridge between the other three               | Editing logic                                            |
 
 That split is the key idea: **Python is the single source of truth, C++ is a stateless painter.**
 
@@ -357,15 +457,15 @@ That split is the key idea: **Python is the single source of truth, C++ is a sta
 `electron/preload.ts` exposes a small `window.electronAPI` through `contextBridge`
 (`contextIsolation` on, `nodeIntegration` off). Channels are grouped by prefix:
 
-| Prefix | Examples | Purpose |
-| ------ | -------- | ------- |
-| `window:` | `minimize`, `maximize`, `close` | Frameless window controls |
-| `dialog:` / `shell:` / `app:` | `dialog:open`, `dialog:save` | Native file dialogs and paths |
-| `backend:` | `backend:port`, `backend:get-port` | Tells the UI which port Python chose |
-| `render:` | `seek`, `play`, `pause`, `resize`, `set-preview-scale`, `get-buffer`, `get-stats`, `frame-ready` | Drives the native engine |
-| `export:` | `start`, `cancel`, `progress`, `capture-image`, `capture-pdf` | Export orchestration |
-| `webcomp:` | `create`, `capture-frame`, `prefetch`, `update-params`, `push-to-native` | WebComp windows |
-| `layout:` | `load`, `save`, `reset` | Panel layout persistence |
+| Prefix                        | Examples                                                                                         | Purpose                              |
+| ----------------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------ |
+| `window:`                     | `minimize`, `maximize`, `close`                                                                  | Frameless window controls            |
+| `dialog:` / `shell:` / `app:` | `dialog:open`, `dialog:save`                                                                     | Native file dialogs and paths        |
+| `backend:`                    | `backend:port`, `backend:get-port`                                                               | Tells the UI which port Python chose |
+| `render:`                     | `seek`, `play`, `pause`, `resize`, `set-preview-scale`, `get-buffer`, `get-stats`, `frame-ready` | Drives the native engine             |
+| `export:`                     | `start`, `cancel`, `progress`, `capture-image`, `capture-pdf`                                    | Export orchestration                 |
+| `webcomp:`                    | `create`, `capture-frame`, `prefetch`, `update-params`, `push-to-native`                         | WebComp windows                      |
+| `layout:`                     | `load`, `save`, `reset`                                                                          | Panel layout persistence             |
 
 ### 7.3 Link ② — Electron main ↔ C++ (N-API)
 
@@ -375,20 +475,20 @@ so calls are direct function calls in the same process — no sockets, no serial
 
 Exports of `renderer/src/napi/RenderEngineAddon.cpp`:
 
-| Function | Purpose |
-| -------- | ------- |
-| `initialize(width, height, fps, effectsDir, pythonPort)` | Creates the Vulkan device, Skia context and compositor |
-| `seekFrame(n)` / `play()` / `pause()` / `isPlaying()` | Transport |
-| `setFrameReadyCallback(fn)` | Registers the "frame N is ready" callback |
-| `getSharedBuffer()` | Returns the latest RGBA frame as a `Buffer` |
-| `getStats()` | Current width, height, fps, buffer size |
-| `setPreviewScale(scale)` | Preview resolution (the editor previews at half size by default) |
-| `startExport(config, progressFn)` / `cancelExport()` | Full-resolution render to FFmpeg |
-| `pushWebCompFrame(id, frame, rgba, w, h)` | Hands a captured web page frame to the compositor |
+| Function                                                 | Purpose                                                          |
+| -------------------------------------------------------- | ---------------------------------------------------------------- |
+| `initialize(width, height, fps, effectsDir, pythonPort)` | Creates the Vulkan device, Skia context and compositor           |
+| `seekFrame(n)` / `play()` / `pause()` / `isPlaying()`    | Transport                                                        |
+| `setFrameReadyCallback(fn)`                              | Registers the "frame N is ready" callback                        |
+| `getSharedBuffer()`                                      | Returns the latest RGBA frame as a `Buffer`                      |
+| `getStats()`                                             | Current width, height, fps, buffer size                          |
+| `setPreviewScale(scale)`                                 | Preview resolution (the editor previews at half size by default) |
+| `startExport(config, progressFn)` / `cancelExport()`     | Full-resolution render to FFmpeg                                 |
+| `pushWebCompFrame(id, frame, rgba, w, h)`                | Hands a captured web page frame to the compositor                |
 
 **Threads.** The engine renders on its own C++ thread, but JavaScript may only be called on the
 Node thread. The addon uses a `Napi::ThreadSafeFunction`: the render thread queues
-"frame N ready" and Node later runs the JS callback. Only the frame *number* crosses threads; the
+"frame N ready" and Node later runs the JS callback. Only the frame _number_ crosses threads; the
 pixels are fetched on demand.
 
 **A frame's journey to the screen:**
@@ -428,21 +528,21 @@ HTTP here because the per-request overhead mattered at 30–60 requests per seco
 - **Commands** are plain HTTP, for example `POST /timeline/add-clip` or `POST /jobs/tts-generate`.
 - **Changes** come back as **Server-Sent Events** with a scope (`timeline`, `library`, `job`,
   `comp-resized`, …). The UI refetches only what changed. This is also how the UI stays correct
-  when the *agent* edits the project.
+  when the _agent_ edits the project.
 - **AI chat** is an SSE stream of tokens, tool calls, tool results and plan-step events.
 - **Long jobs** (TTS, downloads, generation) return a job id. `GET /jobs/{id}/wait` holds the
   request open and returns the moment the job finishes, so nothing polls.
 
 ### 7.6 Inside the C++ engine (`renderer/src`)
 
-| Folder | Contents |
-| ------ | -------- |
-| `napi/` | The N-API surface and the frame-description parser |
-| `HeadlessCompositor.*` | Orchestrator: play loop, TCP client, render, read-back |
-| `gpu/vulkan/` | Device and queues, VMA-backed buffers and textures, command pools, and the Skia–Vulkan context |
-| `rendering/` | Text, shape, pen and SVG drawing; the render graph and its passes (upload, draw, effect, mask); the effect registry |
-| `video/` | FFmpeg decoders: hardware (D3D11VA) with a software fallback |
-| `engine/` | Decode scheduler, decoder pool, frame cache and thread pool — frames are decoded ahead of the playhead |
+| Folder                 | Contents                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `napi/`                | The N-API surface and the frame-description parser                                                                  |
+| `HeadlessCompositor.*` | Orchestrator: play loop, TCP client, render, read-back                                                              |
+| `gpu/vulkan/`          | Device and queues, VMA-backed buffers and textures, command pools, and the Skia–Vulkan context                      |
+| `rendering/`           | Text, shape, pen and SVG drawing; the render graph and its passes (upload, draw, effect, mask); the effect registry |
+| `video/`               | FFmpeg decoders: hardware (D3D11VA) with a software fallback                                                        |
+| `engine/`              | Decode scheduler, decoder pool, frame cache and thread pool — frames are decoded ahead of the playhead              |
 
 **Vulkan** provides the device, memory and command submission. **Skia** draws on top of that same
 Vulkan device, so video frames, text, vector shapes and effects are composited in one GPU pass
@@ -452,15 +552,15 @@ fallback so both render identically.
 
 ### 7.7 Inside the Python backend (`backend/`)
 
-| Area | Contents |
-| ---- | -------- |
-| `main.py` | App start-up, router mounts, the TCP frame server |
-| `routers/` | REST endpoints: project, library, timeline, clips, comps, effects, transitions, animation, audio, jobs, export, search, PII, PDF export |
-| `engine/`, `timeline/`, `animation/`, `history/` | The project model, keyframes and expressions, undo / redo command stack |
-| `ai/` | Request router, skill and plan executor (checkpointed in SQLite), the LangGraph tool-calling agent, tool definitions, MCP server, prompt shield |
-| `tracking/`, `pii/`, `integrity/` | The security features of section 4 |
-| `worker/` | A sandboxed worker process for indexing, transcription and waveforms |
-| `tools/` | Downloaders (yt-dlp, image search) and generators (TTS, image) |
+| Area                                             | Contents                                                                                                                                        |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.py`                                        | App start-up, router mounts, the TCP frame server                                                                                               |
+| `routers/`                                       | REST endpoints: project, library, timeline, clips, comps, effects, transitions, animation, audio, jobs, export, search, PII, PDF export         |
+| `engine/`, `timeline/`, `animation/`, `history/` | The project model, keyframes and expressions, undo / redo command stack                                                                         |
+| `ai/`                                            | Request router, skill and plan executor (checkpointed in SQLite), the LangGraph tool-calling agent, tool definitions, MCP server, prompt shield |
+| `tracking/`, `pii/`, `integrity/`                | The security features of section 4                                                                                                              |
+| `worker/`                                        | A sandboxed worker process for indexing, transcription and waveforms                                                                            |
+| `tools/`                                         | Downloaders (yt-dlp, image search) and generators (TTS, image)                                                                                  |
 
 The agent's tools are thin wrappers that call the backend's **own HTTP API** — the agent edits the
 project exactly the way the UI does, so both stay in sync and every agent action is undoable.
@@ -510,14 +610,14 @@ the Python backend from `.venv`.
 
 ### Build the app
 
-| Command | Rebuilds | Time |
-| ------- | -------- | ---- |
-| `npm run build:full` | Everything → `dist-app\win-unpacked\Fade.exe` | ~9 min |
-| `npm run build:full -- -Native` | Everything, recompiling the C++ engine first | longer |
-| `npm run build:backend-only` | The Python backend, then copies only changed files into the build | ~8 min |
-| `npm run build:ui-only` | The React UI and Electron code, copied into the build | ~10 s |
-| `npm run hotfix` | Nothing — copies changed backend `.py` files into the build | seconds |
-| `npm run build:native` | Only `render_engine.node` | — |
+| Command                         | Rebuilds                                                          | Time    |
+| ------------------------------- | ----------------------------------------------------------------- | ------- |
+| `npm run build:full`            | Everything → `dist-app\win-unpacked\Fade.exe`                     | ~9 min  |
+| `npm run build:full -- -Native` | Everything, recompiling the C++ engine first                      | longer  |
+| `npm run build:backend-only`    | The Python backend, then copies only changed files into the build | ~8 min  |
+| `npm run build:ui-only`         | The React UI and Electron code, copied into the build             | ~10 s   |
+| `npm run hotfix`                | Nothing — copies changed backend `.py` files into the build       | seconds |
+| `npm run build:native`          | Only `render_engine.node`                                         | —       |
 
 The full build runs PyInstaller, Vite, electron-builder, then `scripts/post_build_patch.ps1`,
 which copies native libraries and models and **verifies about 45 required files** (FFmpeg DLLs,
@@ -538,16 +638,13 @@ the MSVC runtime beside the engine, TTS and face-detection libraries, models).
 
 ### Configuration (`.env`)
 
-```env
-FADE_AI_PROVIDER=ollama      # ollama | openai | claude | gemini | groq | ...
-FADE_AI_MODEL=               # leave empty to auto-select
-OPENAI_API_KEY=
-ANTHROPIC_API_KEY=
-GOOGLE_API_KEY=
-GROQ_API_KEY=
-```
+AI provider, model and API keys live in `.env` at the project root; pipeline settings live in
+`backend/config/app_config.json`. Both are written by the **Settings** panel. The full list of
+variables, the supported providers and the values this project uses are in
+[6.1 Configure the AI](#61-configure-the-ai-do-this-once).
 
-Everything here can also be set from **Settings** inside the app.
+The code reads **`FADE_AI_PROVIDER`** and **`FADE_AI_MODEL`**. Older files that use
+`ECHO_AI_PROVIDER` / `ECHO_AI_MODEL` are ignored.
 
 ---
 
@@ -596,4 +693,4 @@ Fade/
 
 ---
 
-*Built for Smart India Hackathon (SIH).*
+_Built for Smart India Hackathon (SIH)._
